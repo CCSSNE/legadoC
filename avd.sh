@@ -1,1 +1,0 @@
-emulator -avd $1 -no-snapshot-load
