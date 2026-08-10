@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <io.legado.app.lib.prefs.IconListPreference
+        android:defaultValue="ic_launcher"
+        android:entries="@array/icon_names"
+        android:entryValues="@array/icons"
+        android:key="launcherIcon"
+        android:summary="@string/change_icon_summary"
+        android:title="@string/change_icon"
+        app:iconSpaceReserved="false"
+        app:icons="@array/icons" />
+
+    <io.legado.app.lib.prefs.NameListPreference
+        android:defaultValue="bookshelf"
+        android:key="defaultHomePage"
+        android:title="@string/default_home_page"
+        app:allowDividerAbove="false"
+        app:allowDividerBelow="false"
+        app:entries="@array/default_home_page"
+        app:entryValues="@array/default_home_page_value" />
+
+    <io.legado.app.lib.prefs.SwitchPreference
+        android:defaultValue="false"
+        android:key="mainTransparentStatusBar"
+        android:summary="@string/main_status_bar_immersion"
+        android:title="@string/main_immersion_status_bar"
+        app:iconSpaceReserved="false" />
+
+    <io.legado.app.lib.prefs.SwitchPreference
+        android:defaultValue="false"
+        android:key="moveSearchToBookshelf"
+        android:summary="@string/move_search_to_bookshelf_summary"
+        android:title="@string/move_search_to_bookshelf"
+        app:iconSpaceReserved="false" />
+
+    <io.legado.app.lib.prefs.SwitchPreference
+        android:defaultValue="true"
+        android:key="showReadRecord"
+        android:title="@string/show_read_record"
+        app:iconSpaceReserved="false" />
+
+    <io.legado.app.lib.prefs.Preference
+        android:key="discoverySubscriptionSettings"
+        android:summary="@string/discovery_subscription_settings_summary"
+        android:title="@string/discovery_subscription_settings_title"
+        app:iconSpaceReserved="false" />
+
+    <io.legado.app.lib.prefs.Preference
+        android:key="theme_manage"
+        android:summary="@string/theme_list_summary"
+        android:title="@string/theme_list"
+        app:iconSpaceReserved="false" />
+
+    <io.legado.app.lib.prefs.Preference
+        android:key="navigation_bar_manage"
+        android:summary="@string/navigation_bar_manage_summary"
+        android:title="@string/navigation_bar_manage"
+        app:iconSpaceReserved="false" />
+
+    <io.legado.app.lib.prefs.Preference
+        android:key="coverConfig"
+        android:summary="@string/cover_config_summary"
+        android:title="@string/cover_config"
+        app:iconSpaceReserved="false" />
+
+</androidx.preference.PreferenceScreen>

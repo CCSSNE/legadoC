@@ -1,0 +1,154 @@
+package io.legado.app.ui.book.read.config
+
+import android.content.DialogInterface
+import android.graphics.PorterDuff
+import android.os.Bundle
+import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup
+import android.view.WindowManager
+import android.widget.SeekBar
+import io.legado.app.R
+import io.legado.app.base.BaseDialogFragment
+import io.legado.app.databinding.DialogAutoReadBinding
+import io.legado.app.help.config.ReadBookConfig
+import io.legado.app.lib.theme.bottomBackground
+import io.legado.app.lib.theme.getPrimaryTextColor
+import io.legado.app.model.ReadAloud
+import io.legado.app.model.ReadBook
+import io.legado.app.ui.book.read.BaseReadBookActivity
+import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
+import io.legado.app.utils.ColorUtils
+import io.legado.app.utils.viewbindingdelegate.viewBinding
+import java.util.Locale
+
+
+class AutoReadDialog : BaseDialogFragment(R.layout.dialog_auto_read) {
+
+    private val binding by viewBinding(DialogAutoReadBinding::bind)
+    private val callBack: CallBack? get() = activity as? CallBack
+
+    override fun onStart() {
+        super.onStart()
+        dialog?.window?.run {
+            clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            setBackgroundDrawableResource(android.R.color.transparent)
+            decorView.setPadding(0, 0, 0, 0)
+            val attr = attributes
+            attr.dimAmount = 0.0f
+            attr.gravity = Gravity.BOTTOM
+            attributes = attr
+            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+    }
+
+    override fun onDismiss(dialog: DialogInterface) {
+        super.onDismiss(dialog)
+        (activity as? BaseReadBookActivity)?.bottomDialog--
+    }
+
+    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) = binding.run {
+        val readActivity = activity as? BaseReadBookActivity ?: return@run
+        val bottomDialog = readActivity.bottomDialog++
+        if (bottomDialog > 0) {
+            dismiss()
+            return@run
+        }
+        val bg = requireContext().bottomBackground
+        val isLight = ColorUtils.isColorLight(bg)
+        val textColor = requireContext().getPrimaryTextColor(isLight)
+        val palette = ReaderSheetStyle.resolve(requireContext(), bg)
+        root.background = ReaderSheetStyle.topSheetDrawable(palette)
+        rbAutoReadModeScroll.setTextColor(textColor)
+        rbAutoReadModeTimed.setTextColor(textColor)
+        tvReadSpeedTitle.setTextColor(textColor)
+        tvReadSpeed.setTextColor(textColor)
+        ivCatalog.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
+        tvCatalog.setTextColor(textColor)
+        ivMainMenu.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
+        tvMainMenu.setTextColor(textColor)
+        ivAutoPageStop.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
+        tvAutoPageStop.setTextColor(textColor)
+        ivSetting.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
+        tvSetting.setTextColor(textColor)
+        initOnChange()
+        initData()
+        initEvent()
+    }
+
+    private fun initData() {
+        if (ReadBookConfig.autoReadMode == ReadBookConfig.AUTO_READ_MODE_TIMED) {
+            binding.rbAutoReadModeTimed.isChecked = true
+        } else {
+            binding.rbAutoReadModeScroll.isChecked = true
+        }
+        updateSpeedTitleByMode()
+        val speed = if (ReadBookConfig.autoReadSpeed < 1) 1 else ReadBookConfig.autoReadSpeed
+        binding.tvReadSpeed.text = String.format(Locale.ROOT, "%ds", speed)
+        binding.seekAutoRead.progress = speed
+    }
+
+    private fun initOnChange() {
+        binding.seekAutoRead.setOnSeekBarChangeListener(object : SeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
+                val speed = if (progress < 1) 1 else progress
+                binding.tvReadSpeed.text = String.format(Locale.ROOT, "%ds", speed)
+            }
+
+            override fun onStopTrackingTouch(seekBar: SeekBar) {
+                ReadBookConfig.autoReadSpeed =
+                    if (binding.seekAutoRead.progress < 1) 1 else binding.seekAutoRead.progress
+                upTtsSpeechRate()
+            }
+        })
+    }
+
+    private fun initEvent() {
+        binding.rgAutoReadMode.setOnCheckedChangeListener { _, checkedId ->
+            ReadBookConfig.autoReadMode =
+                if (checkedId == R.id.rb_auto_read_mode_timed) {
+                    ReadBookConfig.AUTO_READ_MODE_TIMED
+                } else {
+                    ReadBookConfig.AUTO_READ_MODE_SCROLL
+                }
+            updateSpeedTitleByMode()
+        }
+        binding.llMainMenu.setOnClickListener {
+            callBack?.showMenuBar()
+            dismissAllowingStateLoss()
+        }
+        binding.llSetting.setOnClickListener {
+            (activity as? BaseReadBookActivity)?.showPageAnimConfig {
+                ReadBook.callBack?.upPageAnim()
+                ReadBook.loadContent(false)
+            }
+        }
+        binding.llCatalog.setOnClickListener { callBack?.openChapterList() }
+        binding.llAutoPageStop.setOnClickListener {
+            callBack?.autoPageStop()
+            binding.llAutoPageStop.post {
+                dismissAllowingStateLoss()
+            }
+        }
+    }
+
+    private fun upTtsSpeechRate() {
+        ReadAloud.upTtsSpeechRate(requireContext())
+    }
+
+    private fun updateSpeedTitleByMode() {
+        binding.tvReadSpeedTitle.setText(
+            if (ReadBookConfig.autoReadMode == ReadBookConfig.AUTO_READ_MODE_TIMED) {
+                R.string.auto_page_interval
+            } else {
+                R.string.auto_page_speed
+            }
+        )
+    }
+
+    interface CallBack {
+        fun showMenuBar()
+        fun openChapterList()
+        fun autoPageStop()
+    }
+}

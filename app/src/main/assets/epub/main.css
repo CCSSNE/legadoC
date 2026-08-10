@@ -1,0 +1,108 @@
+@charset "utf-8";
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    padding: 0 0.5em;
+    color: #3e3d3b;
+    font-family: "Songti SC", "Songti TC", "宋体", serif;
+    font-size: 1em;
+    line-height: 1.6;
+    text-align: justify;
+}
+
+p {
+    margin: 0 0 0.8em 0;
+    line-height: inherit;
+    text-align: justify;
+    text-indent: 2em;
+}
+
+a {
+    color: inherit;
+    text-decoration: none;
+}
+
+img {
+    max-width: 100%;
+    height: auto;
+    border: 0;
+}
+
+h1,
+h2,
+h3,
+h4 {
+    margin: 1em 0;
+    color: #3f83e8;
+    font-family: "Heiti SC", "Heiti TC", "黑体", sans-serif;
+    font-weight: bold;
+    line-height: 1.4;
+    text-indent: 0;
+}
+
+.chapter-title,
+.intro-title {
+    text-align: center;
+}
+
+.chapter-title {
+    margin: 1.2em 0 1.6em 0;
+}
+
+.intro-title {
+    margin-bottom: 2em;
+}
+
+.chapter-sequence-number {
+    display: inline-block;
+    margin-bottom: 0.2em;
+    color: inherit;
+    font-size: 0.8em;
+}
+
+.cover-page {
+    text-align: center;
+}
+
+.cover-frame {
+    margin: 35% auto 0 auto;
+    width: 45%;
+}
+
+.cover-image {
+    display: block;
+    width: 100%;
+    margin: 0 auto;
+}
+
+.cover-title {
+    margin: 1.5em 0 0.5em 0;
+    color: #3e3d3b;
+    font-size: 1.25em;
+    text-align: center;
+}
+
+.cover-author {
+    margin: 0;
+    text-align: center;
+}
+
+.cover-author-role {
+    font-size: 0.85em;
+}
+
+.duokan-image-single {
+    margin: 0.8em auto;
+    text-align: center;
+    text-indent: 0;
+}
+
+.picture-80 {
+    width: 80%;
+    margin: 0 auto;
+}

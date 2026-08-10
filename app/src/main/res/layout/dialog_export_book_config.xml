@@ -1,0 +1,444 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:clipToPadding="false"
+    android:overScrollMode="ifContentScrolls"
+    android:paddingStart="14dp"
+    android:paddingTop="8dp"
+    android:paddingEnd="14dp"
+    android:paddingBottom="12dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:id="@+id/tab_export_bar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:minHeight="40dp"
+            android:orientation="horizontal"
+            android:paddingStart="8dp"
+            android:paddingTop="4dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="4dp">
+
+            <TextView
+                android:id="@+id/btn_tab_export_base"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:minHeight="34dp"
+                android:text="@string/export_tab_base"
+                android:textColor="@color/primaryText"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/btn_tab_export_text"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:minHeight="34dp"
+                android:text="@string/export_tab_text"
+                android:textColor="@color/primaryText"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/btn_tab_export_background"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:minHeight="34dp"
+                android:text="@string/export_tab_background"
+                android:textColor="@color/primaryText"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/panel_export_base"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <LinearLayout
+                android:id="@+id/row_export_path"
+                style="@style/ReadColorRow">
+
+                <TextView
+                    style="@style/ReadColorRowTitle"
+                    android:text="@string/export_folder" />
+
+                <TextView
+                    android:id="@+id/tv_export_path_value"
+                    style="@style/ReadColorRowValue"
+                    tools:text="Books" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/row_book_filename"
+                style="@style/ReadColorRow">
+
+                <TextView
+                    style="@style/ReadColorRowTitle"
+                    android:text="@string/export_file_name" />
+
+                <TextView
+                    android:id="@+id/tv_book_filename_value"
+                    style="@style/ReadColorRowValue"
+                    android:layout_width="0dp"
+                    android:layout_weight="2"
+                    tools:text="{name}-{author}" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/row_export_charset"
+                style="@style/ReadColorRow">
+
+                <TextView
+                    style="@style/ReadColorRowTitle"
+                    android:text="@string/export_charset" />
+
+                <TextView
+                    android:id="@+id/tv_export_charset_value"
+                    style="@style/ReadColorRowValue"
+                    tools:text="UTF-8" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/row_use_replace"
+                style="@style/ReadColorRow">
+
+                <TextView
+                    style="@style/ReadColorRowTitle"
+                    android:text="@string/replace_purify" />
+
+                <TextView
+                    android:id="@+id/tv_use_replace_value"
+                    style="@style/ReadColorRowValue" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/row_export_web_dav"
+                style="@style/ReadColorRow">
+
+                <TextView
+                    style="@style/ReadColorRowTitle"
+                    android:text="@string/export_to_web_dav" />
+
+                <TextView
+                    android:id="@+id/tv_export_web_dav_value"
+                    style="@style/ReadColorRowValue" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/row_parallel_export"
+                style="@style/ReadColorRow">
+
+                <TextView
+                    style="@style/ReadColorRowTitle"
+                    android:text="@string/parallel_export_book" />
+
+                <TextView
+                    android:id="@+id/tv_parallel_export_value"
+                    style="@style/ReadColorRowValue" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/row_no_chapter_name"
+                style="@style/ReadColorRow">
+
+                <TextView
+                    style="@style/ReadColorRowTitle"
+                    android:text="@string/export_no_chapter_name" />
+
+                <TextView
+                    android:id="@+id/tv_no_chapter_name_value"
+                    style="@style/ReadColorRowValue" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/row_export_pics_file"
+                style="@style/ReadColorRow">
+
+                <TextView
+                    style="@style/ReadColorRowTitle"
+                    android:text="@string/export_pics_file" />
+
+                <TextView
+                    android:id="@+id/tv_export_pics_file_value"
+                    style="@style/ReadColorRowValue" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/row_custom_export"
+                style="@style/ReadColorRow">
+
+                <TextView
+                    style="@style/ReadColorRowTitle"
+                    android:text="@string/custom_export_section" />
+
+                <TextView
+                    android:id="@+id/tv_custom_export_value"
+                    style="@style/ReadColorRowValue" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/panel_export_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/row_epub_title_color"
+                style="@style/ReadColorRow">
+
+                <TextView
+                    style="@style/ReadColorRowTitle"
+                    android:text="@string/epub_title_color" />
+
+                <View
+                    android:id="@+id/vw_epub_title_color_swatch"
+                    style="@style/ReadColorRowSwatch" />
+
+                <TextView
+                    android:id="@+id/tv_epub_title_color_value"
+                    style="@style/ReadColorRowValue" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/row_epub_text_color"
+                style="@style/ReadColorRow">
+
+                <TextView
+                    style="@style/ReadColorRowTitle"
+                    android:text="@string/epub_text_color" />
+
+                <View
+                    android:id="@+id/vw_epub_text_color_swatch"
+                    style="@style/ReadColorRowSwatch" />
+
+                <TextView
+                    android:id="@+id/tv_epub_text_color_value"
+                    style="@style/ReadColorRowValue" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/row_epub_font"
+                style="@style/ReadColorRow">
+
+                <TextView
+                    style="@style/ReadColorRowTitle"
+                    android:text="@string/epub_font" />
+
+                <TextView
+                    android:id="@+id/tv_epub_font_value"
+                    style="@style/ReadColorRowValue" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/row_epub_embed_font"
+                style="@style/ReadColorRow">
+
+                <TextView
+                    style="@style/ReadColorRowTitle"
+                    android:text="@string/epub_embed_font" />
+
+                <TextView
+                    android:id="@+id/tv_epub_embed_font_value"
+                    style="@style/ReadColorRowValue" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/row_epub_text_size"
+                style="@style/ReadColorRow">
+
+                <TextView
+                    style="@style/ReadColorRowTitle"
+                    android:text="@string/epub_text_size" />
+
+                <TextView
+                    android:id="@+id/tv_epub_text_size_value"
+                    style="@style/ReadColorRowValue" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/row_epub_line_height"
+                style="@style/ReadColorRow">
+
+                <TextView
+                    style="@style/ReadColorRowTitle"
+                    android:text="@string/epub_line_height" />
+
+                <TextView
+                    android:id="@+id/tv_epub_line_height_value"
+                    style="@style/ReadColorRowValue" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/row_epub_paragraph_spacing"
+                style="@style/ReadColorRow">
+
+                <TextView
+                    style="@style/ReadColorRowTitle"
+                    android:text="@string/epub_paragraph_spacing" />
+
+                <TextView
+                    android:id="@+id/tv_epub_paragraph_spacing_value"
+                    style="@style/ReadColorRowValue" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/row_epub_paragraph_indent"
+                style="@style/ReadColorRow">
+
+                <TextView
+                    style="@style/ReadColorRowTitle"
+                    android:text="@string/epub_paragraph_indent" />
+
+                <TextView
+                    android:id="@+id/tv_epub_paragraph_indent_value"
+                    style="@style/ReadColorRowValue" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/panel_export_background"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/row_epub_background_color"
+                style="@style/ReadColorRow">
+
+                <TextView
+                    style="@style/ReadColorRowTitle"
+                    android:text="@string/epub_background_color" />
+
+                <View
+                    android:id="@+id/vw_epub_background_color_swatch"
+                    style="@style/ReadColorRowSwatch" />
+
+                <TextView
+                    android:id="@+id/tv_epub_background_color_value"
+                    style="@style/ReadColorRowValue" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/row_epub_background_image"
+                style="@style/ReadColorRow">
+
+                <TextView
+                    style="@style/ReadColorRowTitle"
+                    android:text="@string/epub_background_image" />
+
+                <TextView
+                    android:id="@+id/tv_epub_background_image_value"
+                    style="@style/ReadColorRowValue" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/ll_custom_export"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/row_epub_filename"
+                style="@style/ReadColorRow">
+
+                <TextView
+                    style="@style/ReadColorRowTitle"
+                    android:text="@string/export_file_name" />
+
+                <TextView
+                    android:id="@+id/tv_epub_filename_value"
+                    style="@style/ReadColorRowValue"
+                    android:layout_width="0dp"
+                    android:layout_weight="2" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/row_epub_size"
+                style="@style/ReadColorRow">
+
+                <TextView
+                    style="@style/ReadColorRowTitle"
+                    android:text="@string/file_contains_number" />
+
+                <TextView
+                    android:id="@+id/tv_epub_size_value"
+                    style="@style/ReadColorRowValue" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/row_input_scope"
+                style="@style/ReadColorRow">
+
+                <TextView
+                    style="@style/ReadColorRowTitle"
+                    android:text="@string/export_chapter_index" />
+
+                <TextView
+                    android:id="@+id/tv_input_scope_value"
+                    style="@style/ReadColorRowValue" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</androidx.core.widget.NestedScrollView>

@@ -1,0 +1,224 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:clipToPadding="false"
+    android:fillViewport="false">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="2dp"
+        android:paddingEnd="2dp"
+        android:paddingBottom="4dp">
+
+        <EditText
+            android:id="@+id/et_name"
+            android:layout_width="match_parent"
+            android:layout_height="42dp"
+            android:background="@drawable/bg_theme_name_edit"
+            android:hint="@string/theme_name"
+            android:layout_marginStart="4dp"
+            android:layout_marginEnd="4dp"
+            android:paddingStart="4dp"
+            android:paddingTop="0dp"
+            android:paddingEnd="4dp"
+            android:paddingBottom="5dp"
+            android:singleLine="true"
+            android:textColor="@color/primaryText"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:id="@+id/tab_edit_bar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="44dp"
+            android:layout_marginStart="4dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginEnd="4dp"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:paddingStart="8dp"
+            android:paddingTop="5dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="5dp">
+
+            <TextView
+                android:id="@+id/btn_tab_color"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:minHeight="34dp"
+                android:layout_weight="1"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="@string/theme_tab_color"
+                android:textColor="@color/primaryText"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/btn_tab_image"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:minHeight="34dp"
+                android:layout_weight="1"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="@string/theme_tab_image"
+                android:textColor="@color/primaryText"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/btn_tab_interface"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:minHeight="34dp"
+                android:layout_weight="1"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="@string/theme_tab_interface"
+                android:textColor="@color/primaryText"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/btn_tab_font"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:minHeight="34dp"
+                android:layout_weight="1"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="@string/theme_tab_font"
+                android:textColor="@color/primaryText"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/ll_color_group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="vertical"
+            android:padding="0dp">
+
+            <include
+                android:id="@+id/row_primary"
+                layout="@layout/item_theme_package_option" />
+
+            <include
+                android:id="@+id/row_accent"
+                layout="@layout/item_theme_package_option" />
+
+            <include
+                android:id="@+id/row_background"
+                layout="@layout/item_theme_package_option" />
+
+            <include
+                android:id="@+id/row_bottom_background"
+                layout="@layout/item_theme_package_option" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/ll_image_group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="vertical"
+            android:padding="0dp">
+
+            <include
+                android:id="@+id/row_main_background"
+                layout="@layout/item_theme_package_option" />
+
+            <include
+                android:id="@+id/row_background_blur"
+                layout="@layout/item_theme_package_option" />
+
+            <include
+                android:id="@+id/row_book_info_background"
+                layout="@layout/item_theme_package_option" />
+
+            <include
+                android:id="@+id/row_book_info_background_blur"
+                layout="@layout/item_theme_package_option" />
+
+            <include
+                android:id="@+id/row_image_blank_2"
+                layout="@layout/item_theme_package_option" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/ll_interface_group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="vertical"
+            android:padding="0dp">
+
+            <include
+                android:id="@+id/row_corner_scale"
+                layout="@layout/item_theme_package_option" />
+
+            <include
+                android:id="@+id/row_layout_alpha"
+                layout="@layout/item_theme_package_option" />
+
+            <include
+                android:id="@+id/row_search_follow"
+                layout="@layout/item_theme_package_option" />
+
+            <include
+                android:id="@+id/row_reply_follow"
+                layout="@layout/item_theme_package_option" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/ll_font_group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="vertical"
+            android:padding="0dp">
+
+            <include
+                android:id="@+id/row_font_scale"
+                layout="@layout/item_theme_package_option" />
+
+            <include
+                android:id="@+id/row_ui_font"
+                layout="@layout/item_theme_package_option" />
+
+            <include
+                android:id="@+id/row_title_font"
+                layout="@layout/item_theme_package_option" />
+
+            <include
+                android:id="@+id/row_font_blank"
+                layout="@layout/item_theme_package_option" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</ScrollView>

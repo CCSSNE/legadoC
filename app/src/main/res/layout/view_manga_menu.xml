@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/vw_menu_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <View
+        android:id="@+id/vw_menu_bg"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@string/content"
+        tools:layout_editor_absoluteX="0dp"
+        tools:layout_editor_absoluteY="0dp" />
+
+    <io.legado.app.ui.widget.TitleBar
+        android:id="@+id/title_bar"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:theme="?attr/actionBarStyle"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:opaque="false">
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/title_bar_addition"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingStart="16dp"
+            android:paddingTop="6dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="10dp">
+
+            <LinearLayout
+                android:id="@+id/ll_title_info"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="12dp"
+                android:gravity="center_vertical"
+                android:minHeight="38dp"
+                android:orientation="vertical"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toStartOf="@+id/tv_source_action"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent">
+
+                <TextView
+                    android:id="@+id/tv_chapter_name"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="middle"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:singleLine="true"
+                    android:textSize="15sp"
+                    android:textStyle="bold"
+                    android:visibility="gone"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/tv_chapter_url"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:ellipsize="end"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:singleLine="true"
+                    android:textSize="12sp"
+                    android:visibility="gone"
+                    tools:visibility="visible" />
+
+            </LinearLayout>
+
+            <io.legado.app.ui.widget.text.AccentBgTextView
+                android:id="@+id/tv_source_action"
+                android:layout_width="wrap_content"
+                android:layout_height="34dp"
+                android:ellipsize="end"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:maxWidth="120dp"
+                android:minWidth="64dp"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
+                android:text="@string/book_source"
+                android:textSize="12sp"
+                app:layout_constraintBottom_toBottomOf="@+id/ll_title_info"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="@+id/ll_title_info"
+                app:radius="4dp"
+                tools:visibility="visible" />
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+    </io.legado.app.ui.widget.TitleBar>
+
+    <LinearLayout
+        android:id="@+id/bottom_menu"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@android:color/transparent"
+        android:importantForAccessibility="no"
+        android:orientation="vertical"
+        app:layout_constraintBottom_toBottomOf="parent">
+
+        <LinearLayout
+            android:id="@+id/ll_manga_control_pill"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/manga_control_bar_height"
+            android:layout_marginStart="@dimen/manga_control_outer_margin_horizontal"
+            android:layout_marginTop="@dimen/manga_control_outer_margin_vertical"
+            android:layout_marginEnd="@dimen/manga_control_outer_margin_horizontal"
+            android:layout_marginBottom="@dimen/manga_control_outer_margin_vertical"
+            android:background="@drawable/bg_manga_control_pill"
+            android:gravity="center_vertical"
+            android:importantForAccessibility="no"
+            android:orientation="horizontal"
+            android:paddingStart="@dimen/manga_control_bar_padding_horizontal"
+            android:paddingEnd="@dimen/manga_control_bar_padding_horizontal">
+
+            <TextView
+                android:id="@+id/tv_pre"
+                style="@style/MangaControlButton"
+                android:text="@string/previous_chapter"
+                tools:ignore="TouchTargetSizeCheck" />
+
+            <io.legado.app.lib.theme.view.ThemeSeekBar
+                android:id="@+id/seek_read_page"
+                android:layout_width="0dp"
+                android:layout_height="@dimen/manga_control_seek_height"
+                android:layout_gravity="center_vertical"
+                android:layout_marginStart="@dimen/manga_control_seek_margin_horizontal"
+                android:layout_marginEnd="@dimen/manga_control_seek_margin_horizontal"
+                android:layout_weight="1" />
+
+            <TextView
+                android:id="@+id/tv_next"
+                style="@style/MangaControlButton"
+                android:text="@string/next_chapter"
+                tools:ignore="TouchTargetSizeCheck" />
+        </LinearLayout>
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>
