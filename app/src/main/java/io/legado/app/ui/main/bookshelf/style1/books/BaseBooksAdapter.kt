@@ -125,12 +125,16 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
         callBack: CallBack
     ) {
         val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
-        val longPressTimeout = ViewConfiguration.getLongPressTimeout().toLong()
         var downX = 0f
         var downY = 0f
         var longPressed = false
         var dragging = false
-        var longPressRunnable: Runnable? = null
+        setOnLongClickListener {
+            val book = bookProvider() ?: return@setOnLongClickListener false
+            longPressed = true
+            callBack.onBookLongPressed(book)
+            true
+        }
         setOnTouchListener { view, event ->
             val book = bookProvider() ?: return@setOnTouchListener false
             when (event.actionMasked) {
@@ -139,11 +143,6 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
                     downY = event.rawY
                     longPressed = false
                     dragging = false
-                    longPressRunnable = Runnable {
-                        longPressed = true
-                    }.also {
-                        view.postDelayed(it, longPressTimeout)
-                    }
                     false
                 }
 
@@ -164,29 +163,27 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
                 }
 
                 MotionEvent.ACTION_UP -> {
-                    longPressRunnable?.let(view::removeCallbacks)
-                    longPressRunnable = null
                     when {
                         dragging -> {
                             callBack.onBookDragEnd(book, event.rawX, event.rawY)
+                            longPressed = false
+                            dragging = false
                             true
                         }
 
-                        longPressed -> {
-                            callBack.onBookLongPressed(book)
-                            true
+                        else -> {
+                            longPressed = false
+                            false
                         }
-
-                        else -> false
                     }
                 }
 
                 MotionEvent.ACTION_CANCEL -> {
-                    longPressRunnable?.let(view::removeCallbacks)
-                    longPressRunnable = null
                     if (dragging) {
                         callBack.onBookDragCancel()
                     }
+                    longPressed = false
+                    dragging = false
                     false
                 }
 
