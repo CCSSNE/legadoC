@@ -24,7 +24,20 @@ io.legado.app.c
 - Gradle wrapper: `8.14.4`
 - compileSdk: `36`
 
-项目当前没有 `.git` 目录。默认版本号逻辑会读取 git commit 数，因此必须显式传入 `VERSION_CODE` 和 `VERSION_NAME`。
+覆盖安装给用户测试时，必须显式传入 `VERSION_CODE` 和 `VERSION_NAME`。不要依赖默认版本号逻辑；默认逻辑会受 git 提交数和编译时间影响，容易打出不能覆盖升级的包。
+
+## 覆盖编译版本号规则
+
+每次编译给用户安装的阅读 C APK，都按覆盖升级处理：
+
+1. 只编译 `appC` 变体，产物目录必须是 `app\build\outputs\apk\app\c`。
+2. 每次重新编译安装包前，先查看该目录现有 APK 或 `output-metadata.json` 的最大 `versionCode`。
+3. 新包的 `VERSION_CODE` 必须在现有最大值基础上加 1；不能复用旧值。
+4. `VERSION_NAME` 可以沿用当天主版本名，但 `VERSION_CODE` 必须递增。
+5. 如果只是跑普通 debug 编译验证，不交付给用户安装，必须明确说明那不是覆盖安装包。
+6. 禁止把 `app\build\outputs\apk\app\debug` 的 `.debug` 包当成阅读 C 包交付。
+
+当前阅读 C 使用独立包名，构建类型是 `c`，最终包名后缀是 `.c`。版本号沿用正常递增线，不要随手写超大版本号。
 
 ## 编译命令
 
@@ -42,7 +55,9 @@ $env:Path = @(
   "$env:ANDROID_HOME\platform-tools"
 ) + ($env:Path -split ';') -join ';'
 
-.\gradlew.bat ':app:assembleAppC' '-Pabi=arm64-v8a' '-PVERSION_CODE=10490' '-PVERSION_NAME=3.26.062204' '-Dkotlin.incremental=false' '-Dkotlin.compiler.execution.strategy=in-process' --no-daemon --console=plain --warning-mode=summary
+$versionCode=10005
+$versionName='3.26.081107'
+.\gradlew.bat ':app:assembleAppC' '-Pabi=arm64-v8a' "-PVERSION_CODE=$versionCode" "-PVERSION_NAME=$versionName" '-Dkotlin.incremental=false' '-Dkotlin.compiler.execution.strategy=in-process' --no-daemon --console=plain --warning-mode=summary
 ```
 
 ## 失败处理
@@ -53,20 +68,18 @@ $env:Path = @(
 2. 删除项目内生成目录：`app\build`、`modules\book\build`、`modules\rhino\build`。
 3. 用上面的无 daemon、关闭 Kotlin 增量编译命令重跑。
 
-当前阅读 C 使用独立包名，构建类型是 `c`，最终包名后缀是 `.c`。版本号沿用正常递增线，不要随手写超大版本号。
-
 ## 验证
 
 APK 预期路径：
 
 ```text
-D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_3.26.062204_10490.apk
+D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_3.26.081107_10005.apk
 ```
 
 检查包名、版本、ABI：
 
 ```powershell
-$apk='D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_3.26.062204_10490.apk'
+$apk='D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_3.26.081107_10005.apk'
 & "$env:ANDROID_HOME\build-tools\36.0.0\aapt.exe" dump badging $apk
 ```
 
@@ -74,8 +87,8 @@ $apk='D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_3.26.062204
 
 ```text
 package: name='io.legado.app.c'
-versionCode='10490'
-versionName='3.26.062204c'
+versionCode='10005'
+versionName='3.26.081107c'
 application-label-zh-CN:'阅读 C'
 application-label-zh-HK:'阅读 C'
 application-label-zh-TW:'阅读 C'
