@@ -10,6 +10,7 @@ import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.lib.theme.applyUiBodyTypeface
+import io.legado.app.ui.main.bookshelf.BookCollectionShelfItem
 
 abstract class BaseBooksAdapter<VH : RecyclerView.ViewHolder>(
     val context: Context,
@@ -38,6 +39,10 @@ abstract class BaseBooksAdapter<VH : RecyclerView.ViewHolder>(
                     oldItem.groupId == newItem.groupId
                 }
 
+                oldItem is BookCollectionShelfItem && newItem is BookCollectionShelfItem -> {
+                    oldItem.id == newItem.id
+                }
+
                 else -> false
             }
         }
@@ -60,6 +65,13 @@ abstract class BaseBooksAdapter<VH : RecyclerView.ViewHolder>(
                             oldItem.cover == newItem.cover &&
                             oldItem.enableRefresh == newItem.enableRefresh &&
                             oldItem.onlyUpdateRead == newItem.onlyUpdateRead
+                }
+
+                oldItem is BookCollectionShelfItem && newItem is BookCollectionShelfItem -> {
+                    oldItem.name == newItem.name &&
+                            oldItem.count == newItem.count &&
+                            oldItem.previewBooks.map { it.getDisplayCover() } ==
+                            newItem.previewBooks.map { it.getDisplayCover() }
                 }
 
                 else -> false
@@ -149,10 +161,11 @@ abstract class BaseBooksAdapter<VH : RecyclerView.ViewHolder>(
     }
 
     override fun getItemViewType(position: Int): Int {
-        if (getItem(position) is BookGroup) {
-            return 1
+        return when (getItem(position)) {
+            is BookGroup -> 1
+            is BookCollectionShelfItem -> 2
+            else -> 0
         }
-        return 0
     }
 
     final override fun onBindViewHolder(holder: VH, position: Int) {}

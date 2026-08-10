@@ -4,14 +4,18 @@ import android.content.Context
 import android.os.Bundle
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
+import io.legado.app.R
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
+import io.legado.app.databinding.ItemBookshelfCollectionGridBinding
 import io.legado.app.databinding.ItemBookshelfGrid2Binding
 import io.legado.app.databinding.ItemBookshelfGridBinding
 import io.legado.app.databinding.ItemBookshelfGridGroup2Binding
 import io.legado.app.databinding.ItemBookshelfGridGroupBinding
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
+import io.legado.app.ui.main.bookshelf.BookCollectionShelfItem
+import io.legado.app.ui.main.bookshelf.loadCollectionCovers
 import io.legado.app.utils.gone
 import io.legado.app.utils.invisible
 import io.legado.app.utils.visible
@@ -27,6 +31,10 @@ class BooksAdapterGrid(context: Context, callBack: CallBack) :
         viewType: Int
     ): RecyclerView.ViewHolder {
         return when (viewType) {
+            2 -> CollectionViewHolder(
+                ItemBookshelfCollectionGridBinding.inflate(inflater, parent, false)
+            )
+
             1 -> {
                 when (showBookname) {
                     2 -> GroupViewHolder2(ItemBookshelfGridGroup2Binding.inflate(inflater, parent, false))
@@ -66,6 +74,27 @@ class BooksAdapterGrid(context: Context, callBack: CallBack) :
             is GroupViewHolder2 -> (getItem(position) as? BookGroup)?.let {
                 holder.registerListener(it)
                 holder.onBind(it, position, payloads)
+            }
+
+            is CollectionViewHolder -> (getItem(position) as? BookCollectionShelfItem)?.let {
+                holder.registerListener(it)
+                holder.onBind(it)
+            }
+        }
+    }
+
+    inner class CollectionViewHolder(val binding: ItemBookshelfCollectionGridBinding) :
+        RecyclerView.ViewHolder(binding.root) {
+
+        fun onBind(item: BookCollectionShelfItem) = binding.run {
+            tvName.text = item.name
+            tvCount.text = context.getString(R.string.book_collection_count, item.count)
+            listOf(ivCover1, ivCover2, ivCover3, ivCover4).loadCollectionCovers(item.previewBooks)
+        }
+
+        fun registerListener(item: Any) {
+            binding.root.setOnClickListener {
+                callBack.onItemClick(item)
             }
         }
     }

@@ -270,7 +270,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         }
 
     var bookshelfLayout: Int
-        get() = appCtx.getPrefInt(PreferKey.bookshelfLayout, 0)
+        get() = appCtx.getPrefInt(PreferKey.bookshelfLayout, 3)
         set(value) {
             appCtx.putPrefInt(PreferKey.bookshelfLayout, value)
         }

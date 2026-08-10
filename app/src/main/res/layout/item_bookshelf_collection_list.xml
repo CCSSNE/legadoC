@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/cv_content"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_item_focused_on_tv"
+    android:clickable="true"
+    android:focusable="true"
+    android:minHeight="96dp">
+
+    <include
+        android:id="@+id/cover_mosaic"
+        layout="@layout/view_book_collection_mosaic"
+        android:layout_width="66dp"
+        android:layout_height="90dp"
+        android:layout_marginStart="8dp"
+        android:layout_marginBottom="4dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <TextView
+        android:id="@+id/tv_name"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="16dp"
+        android:ellipsize="end"
+        android:includeFontPadding="false"
+        android:maxLines="2"
+        android:textColor="@color/primaryText"
+        android:textSize="16sp"
+        app:layout_constraintBottom_toTopOf="@+id/tv_count"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toEndOf="@+id/cover_mosaic"
+        app:layout_constraintTop_toTopOf="parent"
+        tools:text="合集名称" />
+
+    <TextView
+        android:id="@+id/tv_count"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:includeFontPadding="false"
+        android:textColor="@color/tv_text_summary"
+        android:textSize="13sp"
+        app:layout_constraintEnd_toEndOf="@+id/tv_name"
+        app:layout_constraintStart_toStartOf="@+id/tv_name"
+        app:layout_constraintTop_toBottomOf="@+id/tv_name"
+        tools:text="共4本" />
+
+    <View
+        android:id="@+id/vw_foreground"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:background="?android:attr/selectableItemBackground"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

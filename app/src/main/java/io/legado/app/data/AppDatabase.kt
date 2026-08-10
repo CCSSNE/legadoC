@@ -11,6 +11,7 @@ import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
 import io.legado.app.R
 import io.legado.app.data.dao.BookChapterDao
+import io.legado.app.data.dao.BookCollectionDao
 import io.legado.app.data.dao.BookDao
 import io.legado.app.data.dao.BookGroupDao
 import io.legado.app.data.dao.BookSourceDao
@@ -35,6 +36,8 @@ import io.legado.app.data.dao.ServerDao
 import io.legado.app.data.dao.TxtTocRuleDao
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.BookCollection
+import io.legado.app.data.entities.BookCollectionItem
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
@@ -72,9 +75,10 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 92,
+    version = 93,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
+        BookCollection::class, BookCollectionItem::class,
         ReplaceRule::class, SearchBook::class, SearchKeyword::class, Cookie::class,
         RssSource::class, Bookmark::class, RssArticle::class, RssReadRecord::class,
         RssStar::class, TxtTocRule::class, ReadRecord::class, ReadRecordDaily::class,
@@ -135,6 +139,7 @@ val appDb by lazy {
 abstract class AppDatabase : RoomDatabase() {
 
     abstract val bookDao: BookDao
+    abstract val bookCollectionDao: BookCollectionDao
     abstract val bookGroupDao: BookGroupDao
     abstract val bookSourceDao: BookSourceDao
     abstract val bookChapterDao: BookChapterDao

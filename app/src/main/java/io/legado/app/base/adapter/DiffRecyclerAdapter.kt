@@ -118,19 +118,27 @@ abstract class DiffRecyclerAdapter<ITEM, VB : ViewBinding>(protected val context
      */
     protected open fun getSpanSize(viewType: Int, position: Int) = 1
 
+    protected open fun getItemViewType(item: ITEM, position: Int) = 0
+
     final override fun getItemCount() = getItems().size
 
     final override fun getItemViewType(position: Int): Int {
-        return 0
+        return getItem(position)?.let {
+            getItemViewType(it, position)
+        } ?: 0
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ItemViewHolder {
-        return ItemViewHolder(getViewBinding(parent).apply {
+        return ItemViewHolder(getViewBinding(parent, viewType).apply {
             applyUiBodyTypeface(context)
         })
     }
 
     protected abstract fun getViewBinding(parent: ViewGroup): VB
+
+    protected open fun getViewBinding(parent: ViewGroup, viewType: Int): VB {
+        return getViewBinding(parent)
+    }
 
     final override fun onBindViewHolder(holder: ItemViewHolder, position: Int) {}
 

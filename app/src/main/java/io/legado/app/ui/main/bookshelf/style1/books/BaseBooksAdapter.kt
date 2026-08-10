@@ -1,42 +1,76 @@
 package io.legado.app.ui.main.bookshelf.style1.books
 
 import android.content.Context
+import android.view.MotionEvent
+import android.view.View
+import android.view.ViewConfiguration
 import androidx.core.os.bundleOf
 import androidx.recyclerview.widget.DiffUtil
 import androidx.viewbinding.ViewBinding
 import io.legado.app.base.adapter.DiffRecyclerAdapter
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.data.entities.Book
+import io.legado.app.ui.main.bookshelf.BookCollectionShelfItem
 
 abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
-    DiffRecyclerAdapter<Book, VB>(context) {
+    DiffRecyclerAdapter<Any, VB>(context) {
+
+    protected companion object {
+        const val VIEW_TYPE_BOOK = 0
+        const val VIEW_TYPE_COLLECTION = 1
+    }
 
     override val keepScrollPosition = true
 
-    override val diffItemCallback: DiffUtil.ItemCallback<Book> =
-        object : DiffUtil.ItemCallback<Book>() {
+    override val diffItemCallback: DiffUtil.ItemCallback<Any> =
+        object : DiffUtil.ItemCallback<Any>() {
 
-            override fun areItemsTheSame(oldItem: Book, newItem: Book): Boolean {
-                return oldItem.name == newItem.name
-                        && oldItem.author == newItem.author
-            }
-
-            override fun areContentsTheSame(oldItem: Book, newItem: Book): Boolean {
+            override fun areItemsTheSame(oldItem: Any, newItem: Any): Boolean {
                 return when {
-                    oldItem.durChapterTime != newItem.durChapterTime -> false
-                    oldItem.name != newItem.name -> false
-                    oldItem.author != newItem.author -> false
-                    oldItem.durChapterTitle != newItem.durChapterTitle -> false
-                    oldItem.latestChapterTitle != newItem.latestChapterTitle -> false
-                    oldItem.lastCheckCount != newItem.lastCheckCount -> false
-                    oldItem.type != newItem.type -> false
-                    oldItem.getDisplayCover() != newItem.getDisplayCover() -> false
-                    oldItem.getUnreadChapterNum() != newItem.getUnreadChapterNum() -> false
-                    else -> true
+                    oldItem is Book && newItem is Book -> {
+                        oldItem.name == newItem.name && oldItem.author == newItem.author
+                    }
+
+                    oldItem is BookCollectionShelfItem && newItem is BookCollectionShelfItem -> {
+                        oldItem.id == newItem.id
+                    }
+
+                    else -> false
                 }
             }
 
-            override fun getChangePayload(oldItem: Book, newItem: Book): Any? {
+            override fun areContentsTheSame(oldItem: Any, newItem: Any): Boolean {
+                return when {
+                    oldItem is Book && newItem is Book -> {
+                        when {
+                            oldItem.durChapterTime != newItem.durChapterTime -> false
+                            oldItem.name != newItem.name -> false
+                            oldItem.author != newItem.author -> false
+                            oldItem.durChapterTitle != newItem.durChapterTitle -> false
+                            oldItem.latestChapterTitle != newItem.latestChapterTitle -> false
+                            oldItem.lastCheckCount != newItem.lastCheckCount -> false
+                            oldItem.type != newItem.type -> false
+                            oldItem.getDisplayCover() != newItem.getDisplayCover() -> false
+                            oldItem.getUnreadChapterNum() != newItem.getUnreadChapterNum() -> false
+                            else -> true
+                        }
+                    }
+
+                    oldItem is BookCollectionShelfItem && newItem is BookCollectionShelfItem -> {
+                        oldItem.name == newItem.name &&
+                                oldItem.count == newItem.count &&
+                                oldItem.previewBooks.map { it.getDisplayCover() } ==
+                                newItem.previewBooks.map { it.getDisplayCover() }
+                    }
+
+                    else -> false
+                }
+            }
+
+            override fun getChangePayload(oldItem: Any, newItem: Any): Any? {
+                if (oldItem !is Book || newItem !is Book) {
+                    return null
+                }
                 val bundle = bundleOf()
                 if (oldItem.name != newItem.name) {
                     bundle.putString("name", newItem.name)
@@ -72,15 +106,98 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
 
         }
 
+    override fun getItemViewType(item: Any, position: Int): Int {
+        return when (item) {
+            is BookCollectionShelfItem -> VIEW_TYPE_COLLECTION
+            else -> VIEW_TYPE_BOOK
+        }
+    }
+
     override fun onViewRecycled(holder: ItemViewHolder) {
         super.onViewRecycled(holder)
         holder.itemView.setOnClickListener(null)
         holder.itemView.setOnLongClickListener(null)
+        holder.itemView.setOnTouchListener(null)
+    }
+
+    protected fun View.bindBookTouch(
+        bookProvider: () -> Book?,
+        callBack: CallBack
+    ) {
+        val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+        val longPressTimeout = ViewConfiguration.getLongPressTimeout().toLong()
+        var downX = 0f
+        var downY = 0f
+        var longPressed = false
+        var dragging = false
+        var longPressRunnable: Runnable? = null
+        setOnTouchListener { view, event ->
+            val book = bookProvider() ?: return@setOnTouchListener false
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = event.rawX
+                    downY = event.rawY
+                    longPressed = false
+                    dragging = false
+                    longPressRunnable = Runnable {
+                        longPressed = true
+                    }.also {
+                        view.postDelayed(it, longPressTimeout)
+                    }
+                    false
+                }
+
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = event.rawX - downX
+                    val dy = event.rawY - downY
+                    val movedEnough = dx * dx + dy * dy > touchSlop * touchSlop
+                    if (longPressed && movedEnough) {
+                        if (!dragging) {
+                            dragging = true
+                            callBack.onBookTouchedForDrag(book, view)
+                        }
+                        callBack.onBookDragMove(event.rawX, event.rawY)
+                        true
+                    } else {
+                        false
+                    }
+                }
+
+                MotionEvent.ACTION_UP -> {
+                    longPressRunnable?.let(view::removeCallbacks)
+                    longPressRunnable = null
+                    when {
+                        dragging -> {
+                            callBack.onBookDragEnd(book, event.rawX, event.rawY)
+                            true
+                        }
+
+                        longPressed -> {
+                            callBack.onBookLongPressed(book)
+                            true
+                        }
+
+                        else -> false
+                    }
+                }
+
+                MotionEvent.ACTION_CANCEL -> {
+                    longPressRunnable?.let(view::removeCallbacks)
+                    longPressRunnable = null
+                    if (dragging) {
+                        callBack.onBookDragCancel()
+                    }
+                    false
+                }
+
+                else -> false
+            }
+        }
     }
 
     fun notification(bookUrl: String) {
         getItems().forEachIndexed { i, it ->
-            if (it.bookUrl == bookUrl) {
+            if (it is Book && it.bookUrl == bookUrl) {
                 notifyItemChanged(i, bundleOf(Pair("refresh", null), Pair("lastUpdateTime", null)))
                 return
             }
@@ -93,7 +210,15 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
 
     interface CallBack {
         fun open(book: Book)
+        fun openCollection(collection: BookCollectionShelfItem)
         fun openBookInfo(book: Book)
+        fun onBookLongPressed(book: Book)
+        fun onBookTouchedForDrag(book: Book, view: android.view.View)
+        fun onBookDragMove(rawX: Float, rawY: Float)
+        fun onBookDragEnd(book: Book, rawX: Float, rawY: Float)
+        fun onBookDragCancel()
+        fun onBookClickInSelection(book: Book)
+        fun isSelected(book: Book): Boolean
         fun isUpdate(bookUrl: String): Boolean
     }
 }

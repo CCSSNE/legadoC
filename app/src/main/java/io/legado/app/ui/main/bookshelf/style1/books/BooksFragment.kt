@@ -5,6 +5,8 @@ import android.graphics.Rect
 import android.os.Bundle
 import android.view.View
 import android.view.ViewConfiguration
+import android.widget.CheckBox
+import android.widget.LinearLayout
 import androidx.core.view.isGone
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
@@ -24,29 +26,42 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.FragmentBooksBinding
+import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.config.LocalConfig
+import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.main.MainViewModel
+import io.legado.app.ui.main.bookshelf.BookCollectionActivity
+import io.legado.app.ui.main.bookshelf.BookCollectionSelectDialog
+import io.legado.app.ui.main.bookshelf.BookCollectionShelfItem
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.applyMainBottomBarPadding
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChangeFirst
+import io.legado.app.utils.gone
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.setEdgeEffectColor
+import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.startActivityForBook
+import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import io.legado.app.model.SourceCallBack
+import io.legado.app.model.localBook.LocalBook
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.max
 
 /**
@@ -105,6 +120,9 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     private val bookshelfMargin by lazy { AppConfig.bookshelfMargin }
     private var itemCount = 0
     private var totalRows = 0
+    private val selectedBooks = linkedMapOf<String, Book>()
+    private var draggingBookView: View? = null
+    private var draggingBooks: List<Book> = emptyList()
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         arguments?.let {
@@ -118,6 +136,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             binding.refreshLayout.isEnabled = enableRefresh
         }
         initRecyclerView()
+        initBookActionBar()
         upRecyclerData()
     }
 
@@ -132,7 +151,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         binding.refreshLayout.setProgressViewOffset(true, (-28).dpToPx(), 56.dpToPx())
         binding.refreshLayout.setOnRefreshListener {
             binding.refreshLayout.isRefreshing = false
-            activityViewModel.upToc(booksAdapter.getItems(), onlyUpdateRead)
+            activityViewModel.upToc(getBooks(), onlyUpdateRead)
         }
         if (bookshelfLayout >= 2) {
             binding.rvBookshelf.layoutManager = GridLayoutManager(context, bookshelfLayout)
@@ -218,6 +237,147 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         }
     }
 
+    private fun initBookActionBar() = binding.run {
+        actionBookInfo.setOnClickListener {
+            val selected = selectedBookList()
+            if (selected.size != 1) {
+                toastOnUi(R.string.book_info_single_only)
+                return@setOnClickListener
+            }
+            openBookInfo(selected.first())
+            clearSelection()
+        }
+        actionAddCollection.setOnClickListener {
+            val urls = selectedBookList().map { it.bookUrl }
+            if (urls.isEmpty()) return@setOnClickListener
+            showDialogFragment(BookCollectionSelectDialog(ArrayList(urls)))
+            clearSelection()
+        }
+        actionAddGroup.setOnClickListener {
+            showAddToGroupDialog()
+        }
+        actionDeleteBook.setOnClickListener {
+            alertDeleteSelectedBooks()
+        }
+        bookActionBar.gone()
+    }
+
+    private fun selectedBookList(): List<Book> {
+        return selectedBooks.values.toList()
+    }
+
+    private fun clearSelection() {
+        if (selectedBooks.isEmpty() && binding.bookActionBar.isGone) return
+        selectedBooks.clear()
+        binding.bookActionBar.gone()
+        booksAdapter.notifyDataSetChanged()
+    }
+
+    private fun toggleSelection(book: Book) {
+        if (selectedBooks.remove(book.bookUrl) == null) {
+            selectedBooks[book.bookUrl] = book
+        }
+        updateSelectionBar()
+    }
+
+    private fun selectBook(book: Book) {
+        selectedBooks[book.bookUrl] = book
+        updateSelectionBar()
+    }
+
+    private fun updateSelectionBar() {
+        binding.bookActionBar.isGone = selectedBooks.isEmpty()
+        booksAdapter.notifyDataSetChanged()
+    }
+
+    private fun showAddToGroupDialog() {
+        val books = selectedBookList()
+        if (books.isEmpty()) return
+        viewLifecycleOwner.lifecycleScope.launch {
+            val groups = withContext(Dispatchers.IO) {
+                appDb.bookGroupDao.all
+                    .filter { it.groupId > 0 }
+                    .sortedWith(compareBy({ it.order }, { it.groupId }))
+            }
+            if (groups.isEmpty()) {
+                toastOnUi(R.string.book_group_custom_empty)
+                return@launch
+            }
+            alert(titleResource = R.string.add_to_group) {
+                items(groups.map { it.groupName }) { dialog, index ->
+                    dialog.dismiss()
+                    addBooksToGroup(books, groups[index].groupId, clearAfter = true)
+                }
+            }
+        }
+    }
+
+    private fun alertDeleteSelectedBooks() {
+        val books = selectedBookList()
+        if (books.isEmpty()) return
+        alert(titleResource = R.string.draw, messageResource = R.string.sure_del) {
+            var checkBox: CheckBox? = null
+            if (books.any { it.isLocal }) {
+                checkBox = CheckBox(requireContext()).apply {
+                    setText(R.string.delete_book_file)
+                    isChecked = LocalConfig.deleteBookOriginal
+                }
+                val view = LinearLayout(requireContext()).apply {
+                    setPadding(16.dpToPx(), 0, 16.dpToPx(), 0)
+                    addView(checkBox)
+                }
+                customView { view }
+            }
+            okButton {
+                checkBox?.let {
+                    LocalConfig.deleteBookOriginal = it.isChecked
+                }
+                deleteBooks(books, LocalConfig.deleteBookOriginal)
+                clearSelection()
+            }
+            noButton()
+        }
+    }
+
+    private fun deleteBooks(books: List<Book>, deleteOriginal: Boolean) {
+        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+            books.forEach {
+                if (it.isLocal) {
+                    LocalBook.clearBookShelfCache(it)
+                }
+            }
+            appDb.bookDao.delete(*books.toTypedArray())
+            books.forEach {
+                if (it.isLocal) {
+                    LocalBook.deleteBook(it, deleteOriginal)
+                } else {
+                    val source = appDb.bookSourceDao.getBookSource(it.origin)
+                    SourceCallBack.callBackBook(SourceCallBack.DEL_BOOK_SHELF, source, it)
+                }
+            }
+        }
+    }
+
+    private fun addBooksToGroup(books: List<Book>, groupId: Long, clearAfter: Boolean) {
+        if (groupId <= 0) {
+            toastOnUi(R.string.book_drop_system_group_invalid)
+            return
+        }
+        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+            val array = Array(books.size) { index ->
+                val book = books[index]
+                book.copy(group = book.group or groupId)
+            }
+            appDb.bookDao.update(*array)
+            withContext(Dispatchers.Main) {
+                toastOnUi(R.string.book_group_added)
+                if (clearAfter) {
+                    clearSelection()
+                }
+            }
+        }
+    }
+
     fun upBookSort(sort: Int) {
         binding.root.post {
             arguments?.putInt("bookSort", sort)
@@ -251,7 +411,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         booksFlowJob?.cancel()
         booksFlowJob = viewLifecycleOwner.lifecycleScope.launch {
             val userGroupIds = appDb.bookGroupDao.idsSum
-            appDb.bookDao.flowByGroup(groupId).map { list ->
+            val booksFlow = appDb.bookDao.flowByGroup(groupId).map { list ->
                 //排序
                 when (bookSort) {
                     1 -> list.sortedByDescending { it.latestChapterTime }
@@ -279,23 +439,36 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
                     list.filter { it.isInSecondaryGroup(secondaryGroupFilterId, userGroupIds) }
                 }
                 list to filteredList
+            }
+            booksFlow.combine(appDb.bookCollectionDao.flowCollections()) { bookData, collections ->
+                val (allBooks, filteredBooks) = bookData
+                val visibleBookUrls = filteredBooks.mapTo(hashSetOf()) { it.bookUrl }
+                val collectionItems = collections.mapNotNull { item ->
+                    val visibleBooks = item.books.filter { it.bookUrl in visibleBookUrls }
+                    if (visibleBooks.isEmpty()) {
+                        null
+                    } else {
+                        BookCollectionShelfItem(item.collection, visibleBooks)
+                    }
+                }
+                Triple(allBooks, filteredBooks, collectionItems + filteredBooks)
             }.flowWithLifecycleAndDatabaseChangeFirst(
                 viewLifecycleOwner.lifecycle,
                 Lifecycle.State.RESUMED,
                 AppDatabase.BOOK_TABLE_NAME
             ).catch {
                 AppLog.put("书架更新出错", it)
-            }.conflate().flowOn(Dispatchers.Default).collect { (allBooks, list) ->
+            }.conflate().flowOn(Dispatchers.Default).collect { (allBooks, list, items) ->
                 (parentFragment as? io.legado.app.ui.main.bookshelf.style1.BookshelfFragment1)
                     ?.onBooksChanged(groupId, allBooks)
-                itemCount = list.size
+                itemCount = items.size
                 val spanCount = bookshelfLayout
                 if (spanCount >= 2) {
                     totalRows = if (itemCount % spanCount == 0) itemCount / spanCount else itemCount / spanCount + 1
                 }
                 binding.tvEmptyMsg.isGone = itemCount > 0
-                binding.refreshLayout.isEnabled = enableRefresh && itemCount > 0
-                booksAdapter.setItems(list)
+                binding.refreshLayout.isEnabled = enableRefresh && list.isNotEmpty()
+                booksAdapter.setItems(items)
                 delay(100)
             }
         }
@@ -317,7 +490,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     fun getBooks(): List<Book> {
-        return booksAdapter.getItems()
+        return booksAdapter.getItems().filterIsInstance<Book>()
     }
 
     fun gotoTop() {
@@ -345,6 +518,12 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         startActivityForBook(book)
     }
 
+    override fun openCollection(collection: BookCollectionShelfItem) {
+        startActivity<BookCollectionActivity> {
+            putExtra("collectionId", collection.id)
+        }
+    }
+
     override fun openBookInfo(book: Book) {
         startActivity<BookInfoActivity> {
             putExtra("name", book.name)
@@ -352,8 +531,88 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         }
     }
 
+    override fun onBookLongPressed(book: Book) {
+        selectBook(book)
+    }
+
+    override fun onBookTouchedForDrag(book: Book, view: View) {
+        draggingBooks = if (selectedBooks.containsKey(book.bookUrl)) {
+            selectedBookList()
+        } else {
+            listOf(book)
+        }
+        draggingBookView = view
+        binding.bookActionBar.gone()
+        view.alpha = 0.45f
+    }
+
+    override fun onBookDragMove(rawX: Float, rawY: Float) {
+    }
+
+    override fun onBookDragEnd(book: Book, rawX: Float, rawY: Float) {
+        val books = draggingBooks.ifEmpty { listOf(book) }
+        val collection = findCollectionAt(rawX, rawY)
+        if (collection != null) {
+            addBooksToCollection(books, collection.id)
+            resetDraggingView()
+            return
+        }
+        val targetGroupId = (parentFragment as? io.legado.app.ui.main.bookshelf.style1.BookshelfFragment1)
+            ?.findSecondaryGroupIdAtRaw(rawX, rawY)
+        when {
+            targetGroupId == null -> toastOnUi(R.string.book_drop_target_invalid)
+            targetGroupId > 0 -> addBooksToGroup(books, targetGroupId, clearAfter = true)
+            else -> toastOnUi(R.string.book_drop_system_group_invalid)
+        }
+        resetDraggingView()
+    }
+
+    override fun onBookDragCancel() {
+        resetDraggingView()
+    }
+
+    override fun onBookClickInSelection(book: Book) {
+        if (selectedBooks.isEmpty()) {
+            open(book)
+        } else {
+            toggleSelection(book)
+        }
+    }
+
+    override fun isSelected(book: Book): Boolean {
+        return selectedBooks.containsKey(book.bookUrl)
+    }
+
     override fun isUpdate(bookUrl: String): Boolean {
         return activityViewModel.isUpdate(bookUrl)
+    }
+
+    private fun addBooksToCollection(books: List<Book>, collectionId: Long) {
+        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+            appDb.bookCollectionDao.addBookUrls(collectionId, books.map { it.bookUrl })
+            withContext(Dispatchers.Main) {
+                toastOnUi(R.string.book_collection_added)
+                clearSelection()
+            }
+        }
+    }
+
+    private fun findCollectionAt(rawX: Float, rawY: Float): BookCollectionShelfItem? {
+        val location = IntArray(2)
+        binding.rvBookshelf.getLocationOnScreen(location)
+        val child = binding.rvBookshelf.findChildViewUnder(
+            rawX - location[0],
+            rawY - location[1]
+        ) ?: return null
+        val position = binding.rvBookshelf.getChildAdapterPosition(child)
+        if (position == RecyclerView.NO_POSITION) return null
+        return booksAdapter.getItem(position) as? BookCollectionShelfItem
+    }
+
+    private fun resetDraggingView() {
+        draggingBookView?.alpha = 1f
+        draggingBookView = null
+        draggingBooks = emptyList()
     }
 
     private fun Book.isInSecondaryGroup(groupId: Long, userGroupIds: Long): Boolean {

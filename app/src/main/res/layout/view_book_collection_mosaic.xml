@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background_card"
+    android:baselineAligned="false"
+    android:orientation="vertical"
+    android:padding="3dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:baselineAligned="false"
+        android:orientation="horizontal">
+
+        <io.legado.app.ui.widget.image.CoverImageView
+            android:id="@+id/iv_cover1"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_margin="1dp"
+            android:layout_weight="1"
+            android:scaleType="centerCrop"
+            android:src="@drawable/image_cover_default" />
+
+        <io.legado.app.ui.widget.image.CoverImageView
+            android:id="@+id/iv_cover2"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_margin="1dp"
+            android:layout_weight="1"
+            android:scaleType="centerCrop"
+            android:src="@drawable/image_cover_default" />
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:baselineAligned="false"
+        android:orientation="horizontal">
+
+        <io.legado.app.ui.widget.image.CoverImageView
+            android:id="@+id/iv_cover3"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_margin="1dp"
+            android:layout_weight="1"
+            android:scaleType="centerCrop"
+            android:src="@drawable/image_cover_default" />
+
+        <io.legado.app.ui.widget.image.CoverImageView
+            android:id="@+id/iv_cover4"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_margin="1dp"
+            android:layout_weight="1"
+            android:scaleType="centerCrop"
+            android:src="@drawable/image_cover_default" />
+
+    </LinearLayout>
+
+</LinearLayout>

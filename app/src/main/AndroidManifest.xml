@@ -186,6 +186,10 @@
         <activity
             android:name=".ui.main.bookshelf.BookshelfTagManageActivity"
             android:launchMode="singleTask" />
+        <activity
+            android:name=".ui.main.bookshelf.BookCollectionActivity"
+            android:launchMode="singleTop"
+            android:screenOrientation="behind" />
         <!-- 音频播放界面 -->
         <activity
             android:name="io.legado.app.ui.book.audio.AudioPlayActivity"

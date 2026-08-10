@@ -94,6 +94,17 @@ class RoundedTagBarView @JvmOverloads constructor(
 
     fun getSelectedIndex(): Int = selectedIndex
 
+    fun findIndexAtRaw(rawX: Float, rawY: Float): Int? {
+        val location = IntArray(2)
+        recyclerView.getLocationOnScreen(location)
+        val child = recyclerView.findChildViewUnder(
+            rawX - location[0],
+            rawY - location[1]
+        ) ?: return null
+        val index = recyclerView.getChildAdapterPosition(child)
+        return index.takeIf { it in items.indices }
+    }
+
     fun setOnTagClickListener(listener: ((Int) -> Unit)?) {
         onTagClick = listener
     }

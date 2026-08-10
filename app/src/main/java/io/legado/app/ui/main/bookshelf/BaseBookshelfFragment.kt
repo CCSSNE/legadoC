@@ -210,8 +210,8 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
                             AppConfig.bookGroupStyle = 0
                         }
                         if (bookshelfLayout !in rgLayout.indices) {
-                            bookshelfLayout = 0
-                            AppConfig.bookshelfLayout = 0
+                            bookshelfLayout = 3
+                            AppConfig.bookshelfLayout = 3
                         }
                         if (bookshelfSort !in rgSort.indices) {
                             bookshelfSort = 0

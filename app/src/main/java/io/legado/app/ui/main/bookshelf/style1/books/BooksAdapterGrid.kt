@@ -4,21 +4,31 @@ import android.content.Context
 import android.os.Bundle
 import android.view.ViewGroup
 import androidx.viewbinding.ViewBinding
+import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.data.entities.Book
+import io.legado.app.databinding.ItemBookshelfCollectionGridBinding
 import io.legado.app.databinding.ItemBookshelfGrid2Binding
 import io.legado.app.databinding.ItemBookshelfGridBinding
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
+import io.legado.app.ui.main.bookshelf.BookCollectionShelfItem
+import io.legado.app.ui.main.bookshelf.loadCollectionCovers
 import io.legado.app.utils.gone
 import io.legado.app.utils.invisible
 import io.legado.app.utils.visible
-import splitties.views.onLongClick
 
 class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
     BaseBooksAdapter<ViewBinding>(context) {
     private val showBookname = AppConfig.showBookname
     override fun getViewBinding(parent: ViewGroup): ViewBinding {
+        return getViewBinding(parent, VIEW_TYPE_BOOK)
+    }
+
+    override fun getViewBinding(parent: ViewGroup, viewType: Int): ViewBinding {
+        if (viewType == VIEW_TYPE_COLLECTION) {
+            return ItemBookshelfCollectionGridBinding.inflate(inflater, parent, false)
+        }
         return when (showBookname) {
             2 -> ItemBookshelfGrid2Binding.inflate(inflater, parent, false)
             else -> ItemBookshelfGridBinding.inflate(inflater, parent, false)
@@ -28,9 +38,19 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
     override fun convert(
         holder: ItemViewHolder,
         binding: ViewBinding,
-        item: Book,
+        item: Any,
         payloads: MutableList<Any>
     ) {
+        holder.itemView.alpha = if (item is Book && callBack.isSelected(item)) 0.62f else 1f
+        if (item is BookCollectionShelfItem && binding is ItemBookshelfCollectionGridBinding) {
+            binding.run {
+                tvName.text = item.name
+                tvCount.text = context.getString(R.string.book_collection_count, item.count)
+                listOf(ivCover1, ivCover2, ivCover3, ivCover4).loadCollectionCovers(item.previewBooks)
+            }
+            return
+        }
+        if (item !is Book) return
         when (binding) {
             is ItemBookshelfGridBinding -> binding.run {
                 if (payloads.isEmpty()) {
@@ -126,15 +146,17 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
         holder.itemView.apply {
             setOnClickListener {
                 getItem(holder.layoutPosition)?.let {
-                    callBack.open(it)
+                    when (it) {
+                        is Book -> callBack.onBookClickInSelection(it)
+                        is BookCollectionShelfItem -> callBack.openCollection(it)
+                    }
                 }
             }
 
-            onLongClick {
-                getItem(holder.layoutPosition)?.let {
-                    callBack.openBookInfo(it)
-                }
-            }
+            bindBookTouch(
+                bookProvider = { getItem(holder.layoutPosition) as? Book },
+                callBack = callBack
+            )
         }
     }
 }

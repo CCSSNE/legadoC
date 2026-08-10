@@ -302,6 +302,11 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
         }
     }
 
+    fun findSecondaryGroupIdAtRaw(rawX: Float, rawY: Float): Long? {
+        val index = binding.tabLayout.findIndexAtRaw(rawX, rawY) ?: return null
+        return secondaryGroupIds.getOrNull(index)
+    }
+
     override fun observeLiveBus() {
         super.observeLiveBus()
         observeEvent<String>(EventBus.BOOKSHELF_REFRESH) {
