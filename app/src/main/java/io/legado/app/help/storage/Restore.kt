@@ -82,6 +82,7 @@ object Restore {
         "bg",
         "font",
         "covers",
+        "readRecordGoalAvatar",
         PreferKey.bgImage,
         PreferKey.bgImageN,
         PreferKey.bookInfoBgImage,
@@ -269,6 +270,7 @@ object Restore {
         }
         restoreBackgroundAssets(path)
         repairLocalCoverPaths()
+        normalizeReadRecordGoalAvatar()
         if (restoredReadConfig) {
             ReadBookConfig.initConfigs()
             ReadBookConfig.initShareConfig()
@@ -583,9 +585,42 @@ object Restore {
         if (path.startsWith(appCtx.externalFiles.absolutePath) && File(path).exists()) {
             return path
         }
-        val fileName = File(path).name.takeIf { it.isNotBlank() } ?: return null
+        val fileName = File(path).name.takeIf { it.isNotBlank() } ?: return path
         val restoredFile = appCtx.externalFiles.getFile("covers", fileName)
-        return restoredFile.takeIf { it.exists() }?.absolutePath
+        if (restoredFile.exists()) {
+            return restoredFile.absolutePath
+        }
+        return path
+    }
+
+    /**
+     * 恢复后把阅读记录头像配置里的绝对路径修正到当前应用目录，
+     * 找不到对应文件时保留原路径，不置空
+     */
+    private fun normalizeReadRecordGoalAvatar() {
+        val raw = appCtx.getPrefString(PreferKey.readRecordGoalConfig) ?: return
+        if (raw.isBlank()) return
+        val json = runCatching { JsonParser.parseString(raw) }
+            .getOrNull()
+            ?.takeIf { it.isJsonObject }
+            ?: return
+        val avatarElement = json.asJsonObject.get("avatar") ?: return
+        if (!avatarElement.isJsonPrimitive) return
+        val avatar = avatarElement.asString
+        if (avatar.isNullOrBlank() ||
+            avatar.startsWith("http", ignoreCase = true) ||
+            avatar.isContentScheme()
+        ) {
+            return
+        }
+        if (!avatar.contains(File.separator)) return
+        val fileName = File(avatar).name.takeIf { it.isNotBlank() } ?: return
+        val restoredFile = appCtx.externalFiles.getFile("readRecordGoalAvatar", fileName)
+        if (!restoredFile.exists()) return
+        json.asJsonObject.addProperty("avatar", restoredFile.absolutePath)
+        appCtx.defaultSharedPreferences.edit()
+            .putString(PreferKey.readRecordGoalConfig, json.toString())
+            .commit()
     }
 
     private fun normalizeStringPrefs() {

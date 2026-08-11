@@ -68,6 +68,7 @@ object Backup {
         "bg",
         "font",
         "covers",
+        "readRecordGoalAvatar",
         PreferKey.bgImage,
         PreferKey.bgImageN,
         PreferKey.bookInfoBgImage,
@@ -111,6 +112,41 @@ object Backup {
         } else {
             "backup${backupDate}.zip"
         }.normalizeFileName()
+    }
+
+    /**
+     * 把书架/分组自定义封面指向的本地图片复制进 covers 目录，
+     * 恢复时才能按文件名重新映射路径
+     */
+    private fun prepareCustomCoverBackup() {
+        val coversDir = appCtx.externalFiles.getFile("covers").apply {
+            createFolderIfNotExist()
+        }
+        val coverPaths = arrayListOf<String>()
+        appDb.bookDao.all.forEach { book ->
+            book.customCoverUrl?.let { coverPaths.add(it) }
+        }
+        appDb.bookGroupDao.all.forEach { group ->
+            group.cover?.let { coverPaths.add(it) }
+        }
+        coverPaths.distinct().forEach { path ->
+            if (path.isBlank() ||
+                path.startsWith("http", ignoreCase = true) ||
+                path.isContentScheme()
+            ) {
+                return@forEach
+            }
+            if (!path.contains(File.separator)) return@forEach
+            if (path.startsWith(coversDir.absolutePath)) return@forEach
+            val source = File(path)
+            if (!source.isFile) return@forEach
+            val fileName = source.name.takeIf { it.isNotBlank() } ?: return@forEach
+            runCatching {
+                source.copyTo(File(coversDir, fileName), overwrite = true)
+            }.onFailure {
+                AppLog.put("备份自定义封面失败 $path\n${it.localizedMessage}", it)
+            }
+        }
     }
 
     private fun shouldBackup(): Boolean {
@@ -254,6 +290,9 @@ object Backup {
             if (targets.shouldBackupTarget(dirName)) {
                 paths.add(appCtx.externalFiles.getFile(dirName).absolutePath)
             }
+        }
+        if (targets.shouldBackupTarget("covers")) {
+            prepareCustomCoverBackup()
         }
         if (targets.shouldBackupTarget(BackupThemePackageDedupe.themePackagesDirName)) {
             BackupThemePackageDedupe.prepareBackupThemePackages(

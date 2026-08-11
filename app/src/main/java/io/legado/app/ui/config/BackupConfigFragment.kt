@@ -542,7 +542,10 @@ class BackupConfigFragment : PreferenceFragment(),
             RestoreItem("书源", listOf("bookSource.json", "sourceSub.json")),
             RestoreItem("RSS", listOf("rssSources.json", "rssStar.json")),
             RestoreItem("替换规则", listOf("replaceRule.json")),
-            RestoreItem("阅读记录", listOf("readRecord.json", "readRecordDaily.json")),
+            RestoreItem(
+                "阅读记录",
+                listOf("readRecord.json", "readRecordDaily.json", "readRecordGoalAvatar")
+            ),
             RestoreItem("搜索记录", listOf("searchHistory.json")),
             RestoreItem("TXT 目录规则", listOf("txtTocRule.json")),
             RestoreItem("朗读引擎", listOf("httpTTS.json")),

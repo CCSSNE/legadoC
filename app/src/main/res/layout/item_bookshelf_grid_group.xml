@@ -9,6 +9,8 @@
     android:focusable="false"
     tools:ignore="UnusedAttribute">
 
+    <!-- 注意：这里刻意去掉了封面压暗、灰色渐变、水波纹等明暗变化效果，
+         当初删除它们是为了避免书架刷新/滚动时封面一闪一闪，不要再加回来。 -->
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -76,5 +78,4 @@
     </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
-
 
