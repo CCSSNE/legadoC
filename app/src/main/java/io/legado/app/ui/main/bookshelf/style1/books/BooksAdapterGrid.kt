@@ -41,7 +41,6 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
         item: Any,
         payloads: MutableList<Any>
     ) {
-        holder.itemView.alpha = 1f
         if (item is BookCollectionShelfItem && binding is ItemBookshelfCollectionGridBinding) {
             binding.run {
                 renderSelectionMark(selectionOuter, selectionDot, item, callBack)

@@ -46,7 +46,6 @@ class BooksAdapterList2(
         item: Any,
         payloads: MutableList<Any>
     ) {
-        holder.itemView.alpha = 1f
         if (item is BookCollectionShelfItem && binding is ItemBookshelfCollectionListBinding) {
             binding.run {
                 renderSelectionMark(selectionOuter, selectionDot, item, callBack)

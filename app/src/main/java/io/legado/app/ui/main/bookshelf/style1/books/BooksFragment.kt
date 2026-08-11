@@ -138,8 +138,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         val view: View,
         val translationX: Float,
         val translationY: Float,
-        val elevation: Float,
-        val alpha: Float
+        val elevation: Float
     )
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
@@ -382,7 +381,6 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
 
     private fun setActionEnabled(view: View, enabled: Boolean) {
         view.isEnabled = enabled
-        view.alpha = if (enabled) 1f else 0.38f
         if (view is ViewGroup) {
             for (index in 0 until view.childCount) {
                 view.getChildAt(index).isEnabled = enabled
@@ -651,11 +649,11 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     override fun onBookLongPressed(book: Book) {
-        selectBook(book, showActionBar = false)
+        selectBook(book, showActionBar = false, refreshItems = false)
     }
 
     override fun onBookLongPressFinished() {
-        updateSelectionBar(showActionBar = true, refreshItems = false)
+        updateSelectionBar(showActionBar = true, refreshItems = true)
     }
 
     override fun onBookTouchedForDrag(book: Book, view: View, rawX: Float, rawY: Float) {
@@ -699,7 +697,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     override fun onCollectionLongPressed(collection: BookCollectionShelfItem) {
-        selectCollection(collection, showActionBar = false)
+        selectCollection(collection, showActionBar = false, refreshItems = false)
     }
 
     override fun onCollectionTouchedForDrag(
@@ -779,7 +777,6 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             draggingViewStates.add(view.toDraggingViewState())
         }
         draggingViewStates.forEach {
-            it.view.alpha = 0.45f
             it.view.elevation = 24.dpToPx().toFloat()
         }
     }
@@ -789,8 +786,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             view = this,
             translationX = translationX,
             translationY = translationY,
-            elevation = elevation,
-            alpha = alpha
+            elevation = elevation
         )
     }
 
@@ -902,7 +898,6 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
 
     private fun resetDraggingView() {
         draggingViewStates.forEach {
-            it.view.alpha = it.alpha
             it.view.translationX = it.translationX
             it.view.translationY = it.translationY
             it.view.elevation = it.elevation

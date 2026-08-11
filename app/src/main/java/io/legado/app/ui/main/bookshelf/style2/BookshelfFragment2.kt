@@ -385,7 +385,6 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
 
     private fun setActionEnabled(view: View, enabled: Boolean) {
         view.isEnabled = enabled
-        view.alpha = if (enabled) 1f else 0.38f
         if (view is ViewGroup) {
             for (index in 0 until view.childCount) {
                 view.getChildAt(index).isEnabled = enabled
