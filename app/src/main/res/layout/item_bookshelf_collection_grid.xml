@@ -20,82 +20,12 @@
         android:paddingBottom="4dp"
         app:layout_constraintTop_toTopOf="parent">
 
-        <androidx.cardview.widget.CardView
-            android:id="@+id/cover_card"
+        <include
+            android:id="@+id/cover_mosaic"
+            layout="@layout/view_book_collection_mosaic"
             android:layout_width="match_parent"
-            android:layout_height="128dp"
-            android:layout_marginStart="4dp"
-            android:layout_marginEnd="4dp"
-            app:cardBackgroundColor="@color/background_card"
-            app:cardCornerRadius="8dp"
-            app:cardElevation="4dp"
-            app:cardUseCompatPadding="true">
-
-            <LinearLayout
-                android:id="@+id/cover_mosaic"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:baselineAligned="false"
-                android:orientation="vertical"
-                android:padding="4dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_weight="1"
-                    android:baselineAligned="false"
-                    android:orientation="horizontal">
-
-                    <io.legado.app.ui.widget.image.CoverImageView
-                        android:id="@+id/iv_cover1"
-                        android:layout_width="0dp"
-                        android:layout_height="match_parent"
-                        android:layout_margin="2dp"
-                        android:layout_weight="1"
-                        android:scaleType="centerCrop"
-                        android:src="@drawable/image_cover_default" />
-
-                    <io.legado.app.ui.widget.image.CoverImageView
-                        android:id="@+id/iv_cover2"
-                        android:layout_width="0dp"
-                        android:layout_height="match_parent"
-                        android:layout_margin="2dp"
-                        android:layout_weight="1"
-                        android:scaleType="centerCrop"
-                        android:src="@drawable/image_cover_default" />
-
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_weight="1"
-                    android:baselineAligned="false"
-                    android:orientation="horizontal">
-
-                    <io.legado.app.ui.widget.image.CoverImageView
-                        android:id="@+id/iv_cover3"
-                        android:layout_width="0dp"
-                        android:layout_height="match_parent"
-                        android:layout_margin="2dp"
-                        android:layout_weight="1"
-                        android:scaleType="centerCrop"
-                        android:src="@drawable/image_cover_default" />
-
-                    <io.legado.app.ui.widget.image.CoverImageView
-                        android:id="@+id/iv_cover4"
-                        android:layout_width="0dp"
-                        android:layout_height="match_parent"
-                        android:layout_margin="2dp"
-                        android:layout_weight="1"
-                        android:scaleType="centerCrop"
-                        android:src="@drawable/image_cover_default" />
-
-                </LinearLayout>
-
-            </LinearLayout>
-
-        </androidx.cardview.widget.CardView>
+            android:layout_height="wrap_content"
+            android:layout_margin="4dp" />
 
         <TextView
             android:id="@+id/tv_name"
@@ -109,17 +39,6 @@
             android:textColor="@color/primaryText"
             android:textSize="12sp"
             tools:text="合集名称" />
-
-        <TextView
-            android:id="@+id/tv_count"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="3dp"
-            android:gravity="center"
-            android:includeFontPadding="false"
-            android:textColor="@color/secondaryText"
-            android:textSize="11sp"
-            tools:text="共4本" />
 
     </LinearLayout>
 

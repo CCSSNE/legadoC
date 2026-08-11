@@ -45,8 +45,12 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
         if (item is BookCollectionShelfItem && binding is ItemBookshelfCollectionGridBinding) {
             binding.run {
                 tvName.text = item.name
-                tvCount.text = context.getString(R.string.book_collection_count, item.count)
-                listOf(ivCover1, ivCover2, ivCover3, ivCover4).loadCollectionCovers(item.previewBooks)
+                listOf(
+                    coverMosaic.ivCover1,
+                    coverMosaic.ivCover2,
+                    coverMosaic.ivCover3,
+                    coverMosaic.ivCover4
+                ).loadCollectionCovers(item.previewBooks)
             }
             return
         }

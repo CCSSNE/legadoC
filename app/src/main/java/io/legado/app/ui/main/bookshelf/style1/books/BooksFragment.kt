@@ -64,6 +64,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.max
+import kotlin.math.roundToInt
 
 /**
  * 书架界面
@@ -645,13 +646,27 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     private fun findCollectionAt(rawX: Float, rawY: Float): BookCollectionShelfItem? {
         val location = IntArray(2)
         binding.rvBookshelf.getLocationOnScreen(location)
-        val child = binding.rvBookshelf.findChildViewUnder(
-            rawX - location[0],
-            rawY - location[1]
-        ) ?: return null
-        val position = binding.rvBookshelf.getChildAdapterPosition(child)
-        if (position == RecyclerView.NO_POSITION) return null
-        return booksAdapter.getItem(position) as? BookCollectionShelfItem
+        val x = rawX - location[0]
+        val y = rawY - location[1]
+        val hitRect = Rect()
+        for (index in binding.rvBookshelf.childCount - 1 downTo 0) {
+            val child = binding.rvBookshelf.getChildAt(index)
+            if (child == draggingBookView) continue
+            hitRect.set(
+                (child.left + child.translationX).roundToInt(),
+                (child.top + child.translationY).roundToInt(),
+                (child.right + child.translationX).roundToInt(),
+                (child.bottom + child.translationY).roundToInt()
+            )
+            if (!hitRect.contains(x.roundToInt(), y.roundToInt())) continue
+            val position = binding.rvBookshelf.getChildAdapterPosition(child)
+            if (position == RecyclerView.NO_POSITION) continue
+            val item = booksAdapter.getItem(position)
+            if (item is BookCollectionShelfItem) {
+                return item
+            }
+        }
+        return null
     }
 
     private fun resetDraggingView() {
