@@ -38,7 +38,7 @@ class AboutFragment : PreferenceFragmentCompat() {
         addPreferencesFromResource(R.xml.about)
         findPreference<Preference>("update_log")?.summary =
             "${getString(R.string.version)} ${appInfo.versionName}"
-        findPreference<Preference>("telegram")?.setOnPreferenceLongClickListener {
+        findPreference<io.legado.app.lib.prefs.Preference>("telegram")?.onLongClick {
             requireContext().sendToClip(getString(R.string.qq_group_number))
             toastOnUi(R.string.qq_group_number_copied)
             true
