@@ -129,9 +129,16 @@ class BooksAdapterList2(
         holder.itemView.apply {
             setOnClickListener {
                 getItem(holder.layoutPosition)?.let {
-                    when (it) {
-                        is Book -> callBack.onBookClickInSelection(it)
-                        is BookCollectionShelfItem -> callBack.onCollectionClickInSelection(it)
+                    if (callBack.isInSelectionMode()) {
+                        when (it) {
+                            is Book -> callBack.onBookClickInSelection(it)
+                            is BookCollectionShelfItem -> callBack.onCollectionClickInSelection(it)
+                        }
+                    } else {
+                        when (it) {
+                            is Book -> callBack.open(it)
+                            is BookCollectionShelfItem -> callBack.openCollection(it)
+                        }
                     }
                 }
             }

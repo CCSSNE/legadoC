@@ -787,6 +787,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         draggingStartRawY = rawY
         binding.bookActionBar.gone()
         setMainBottomBarHidden(true)
+        showRootDropTarget()
         val draggingBookUrls = draggingBooks.mapTo(hashSetOf()) { it.bookUrl }
         val draggingCollectionIds = draggingCollections.mapTo(hashSetOf()) { it.id }
         draggingViewStates.clear()
@@ -824,6 +825,11 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     private fun finishDragging(rawX: Float, rawY: Float) {
         val books = draggingBooks
         val collections = draggingCollections
+        if (isRootDropTargetAt(rawX, rawY)) {
+            moveItemsToRoot(books, collections)
+            resetDraggingView()
+            return
+        }
         val collection = findCollectionAt(rawX, rawY)
         if (collection != null) {
             addItemsToCollection(books, collections, collection.id)
@@ -873,6 +879,43 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
                 clearSelection()
             }
         }
+    }
+
+    private fun moveItemsToRoot(
+        books: List<Book>,
+        collections: List<BookCollectionShelfItem>
+    ) {
+        if (books.isEmpty() && collections.isEmpty()) return
+        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+            val bookUrls = books.map { it.bookUrl }
+            val collectionIds = collections.map { it.id }
+            if (bookUrls.isNotEmpty()) {
+                appDb.bookCollectionDao.deleteItemsByBookUrls(bookUrls)
+            }
+            if (collectionIds.isNotEmpty()) {
+                appDb.bookCollectionDao.deleteParentsByChildCollectionIds(collectionIds)
+            }
+            withContext(Dispatchers.Main) {
+                upRecyclerData()
+                clearSelection()
+            }
+        }
+    }
+
+    private fun showRootDropTarget() {
+        binding.rootDropTarget.isGone = false
+        binding.rootDropTarget.bringToFront()
+    }
+
+    private fun isRootDropTargetAt(rawX: Float, rawY: Float): Boolean {
+        val target = binding.rootDropTarget
+        if (target.isGone || target.width <= 0 || target.height <= 0) return false
+        val location = IntArray(2)
+        target.getLocationOnScreen(location)
+        return rawX >= location[0] &&
+                rawX <= location[0] + target.width &&
+                rawY >= location[1] &&
+                rawY <= location[1] + target.height
     }
 
     private fun findCollectionAt(rawX: Float, rawY: Float): BookCollectionShelfItem? {
@@ -928,6 +971,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     private fun resetDraggingView() {
+        binding.rootDropTarget.gone()
         draggingViewStates.forEach {
             it.view.translationX = it.translationX
             it.view.translationY = it.translationY

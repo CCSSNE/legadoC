@@ -32,6 +32,17 @@
         android:visibility="gone"
         tools:text="TextView" />
 
+    <View
+        android:id="@+id/root_drop_target"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="24dp"
+        android:background="@drawable/bg_bookshelf_root_drop_target"
+        android:clickable="false"
+        android:elevation="12dp"
+        android:visibility="gone" />
+
     <LinearLayout
         android:id="@+id/book_action_bar"
         android:layout_width="match_parent"
