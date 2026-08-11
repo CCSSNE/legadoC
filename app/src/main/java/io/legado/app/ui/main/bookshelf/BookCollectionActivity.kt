@@ -363,7 +363,8 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
     }
 
     override fun onBookLongPressed(book: Book) {
-        selectBook(book, showActionBar = true, refreshItems = true)
+        selectBook(book, showActionBar = true, refreshItems = false)
+        adapter.renderVisibleSelectionMarks(binding.rvBooks, this)
     }
 
     override fun onBookLongPressFinished() {
@@ -411,7 +412,8 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
     }
 
     override fun onCollectionLongPressed(collection: BookCollectionShelfItem) {
-        selectCollection(collection, showActionBar = true, refreshItems = true)
+        selectCollection(collection, showActionBar = true, refreshItems = false)
+        adapter.renderVisibleSelectionMarks(binding.rvBooks, this)
     }
 
     override fun onCollectionTouchedForDrag(

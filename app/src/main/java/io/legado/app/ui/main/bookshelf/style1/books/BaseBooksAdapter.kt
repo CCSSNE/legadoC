@@ -8,7 +8,9 @@ import android.view.ViewConfiguration
 import android.view.ViewGroup
 import androidx.core.os.bundleOf
 import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.RecyclerView
 import androidx.viewbinding.ViewBinding
+import io.legado.app.R
 import io.legado.app.base.adapter.DiffRecyclerAdapter
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.data.entities.Book
@@ -266,6 +268,18 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
     fun notifySelectionChanged() {
         if (itemCount > 0) {
             notifyItemRangeChanged(0, itemCount, bundleOf(Pair(PAYLOAD_SELECTION, null)))
+        }
+    }
+
+    fun renderVisibleSelectionMarks(recyclerView: RecyclerView, callBack: CallBack) {
+        for (index in 0 until recyclerView.childCount) {
+            val child = recyclerView.getChildAt(index)
+            val position = recyclerView.getChildAdapterPosition(child)
+            if (position == RecyclerView.NO_POSITION) continue
+            val item = getItem(position) ?: continue
+            val outer = child.findViewById<View>(R.id.selection_outer) ?: continue
+            val dot = child.findViewById<View>(R.id.selection_dot) ?: continue
+            renderSelectionMark(outer, dot, item, callBack)
         }
     }
 

@@ -56,6 +56,7 @@ import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.max
 
 /**
@@ -90,7 +91,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
     private var itemCount = 0
     private var totalRows = 0
     private var collectionItems: List<BookCollectionShelfItem> = emptyList()
-    private var actionBook: Book? = null
+    private var actionItem: Any? = null
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         setSupportToolbar(binding.titleBar.toolbar)
@@ -107,7 +108,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
 
     private fun initBookActionBar() = binding.run {
         actionBookInfo.setOnClickListener {
-            actionBook?.let {
+            (actionItem as? Book)?.let {
                 openBookInfo(it)
                 clearBookActionBar()
             }
@@ -117,12 +118,11 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
         actionAddGroup.setOnClickListener {
         }
         actionDeleteBook.setOnClickListener {
-            actionBook?.let(::alertDeleteBook)
+            when (val item = actionItem) {
+                is Book -> alertDeleteBook(item)
+                is BookCollectionShelfItem -> deleteCollection(item)
+            }
         }
-        setActionEnabled(actionBookInfo, true)
-        setActionEnabled(actionAddCollection, false)
-        setActionEnabled(actionAddGroup, false)
-        setActionEnabled(actionDeleteBook, true)
         bookActionBar.isGone = true
     }
 
@@ -223,6 +223,9 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
         }
         booksFlowJob?.cancel()
         booksFlowJob = viewLifecycleOwner.lifecycleScope.launch {
+            withContext(Dispatchers.IO) {
+                appDb.bookCollectionDao.normalizeLocations()
+            }
             val booksFlow = appDb.bookDao.flowByGroup(groupId).map { list ->
                 //排序
                 when (AppConfig.getBookSortByGroupId(groupId)) {
@@ -299,7 +302,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
     }
 
     override fun back(): Boolean {
-        if (actionBook != null || !binding.bookActionBar.isGone) {
+        if (actionItem != null || !binding.bookActionBar.isGone) {
             clearBookActionBar()
             return true
         }
@@ -335,7 +338,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
 
     override fun onItemClick(item: Any) {
         if (!binding.bookActionBar.isGone) {
-            if (item is Book) {
+            if (item is Book || item is BookCollectionShelfItem) {
                 showBookActionBar(item)
             }
             return
@@ -360,22 +363,34 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
 
             is BookGroup -> showDialogFragment(GroupEditDialog(item))
 
-            is BookCollectionShelfItem -> startActivity<BookCollectionActivity> {
-                putExtra("collectionId", item.id)
-            }
+            is BookCollectionShelfItem -> showBookActionBar(item)
         }
     }
 
-    private fun showBookActionBar(book: Book) {
-        actionBook = book
+    private fun showBookActionBar(item: Any) {
+        actionItem = item
+        val isCollection = item is BookCollectionShelfItem
+        setActionEnabled(binding.actionBookInfo, item is Book)
+        setActionEnabled(binding.actionAddCollection, false)
+        setActionEnabled(binding.actionAddGroup, false)
+        setActionEnabled(binding.actionDeleteBook, item is Book || isCollection)
+        binding.actionBookInfo.isGone = isCollection
+        binding.tvDeleteAction.setText(
+            if (isCollection) {
+                R.string.delete_book_collection
+            } else {
+                R.string.remove_from_bookshelf
+            }
+        )
         binding.bookActionBar.isGone = false
         binding.bookActionBar.bringToFront()
         setMainBottomBarHidden(true)
     }
 
     private fun clearBookActionBar() {
-        actionBook = null
+        actionItem = null
         binding.bookActionBar.isGone = true
+        binding.actionBookInfo.isGone = false
         setMainBottomBarHidden(false)
     }
 
@@ -435,6 +450,15 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
             } else {
                 val source = appDb.bookSourceDao.getBookSource(book.origin)
                 SourceCallBack.callBackBook(SourceCallBack.DEL_BOOK_SHELF, source, book)
+            }
+        }
+    }
+
+    private fun deleteCollection(collection: BookCollectionShelfItem) {
+        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+            appDb.bookCollectionDao.deleteByIds(listOf(collection.id))
+            withContext(Dispatchers.Main) {
+                clearBookActionBar()
             }
         }
     }

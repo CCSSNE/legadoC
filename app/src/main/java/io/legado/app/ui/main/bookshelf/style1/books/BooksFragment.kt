@@ -639,7 +639,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     fun exitSelectionIfNeeded(): Boolean {
-        if (selectedBooks.isEmpty() && binding.bookActionBar.isGone) {
+        if (!hasSelection() && binding.bookActionBar.isGone) {
             return false
         }
         resetDraggingView()
@@ -675,7 +675,8 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     override fun onBookLongPressed(book: Book) {
-        selectBook(book, showActionBar = true, refreshItems = true)
+        selectBook(book, showActionBar = true, refreshItems = false)
+        booksAdapter.renderVisibleSelectionMarks(binding.rvBookshelf, this)
     }
 
     override fun onBookLongPressFinished() {
@@ -723,7 +724,8 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     override fun onCollectionLongPressed(collection: BookCollectionShelfItem) {
-        selectCollection(collection, showActionBar = true, refreshItems = true)
+        selectCollection(collection, showActionBar = true, refreshItems = false)
+        booksAdapter.renderVisibleSelectionMarks(binding.rvBookshelf, this)
     }
 
     override fun onCollectionTouchedForDrag(
