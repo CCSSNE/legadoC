@@ -95,6 +95,81 @@ BUILD SUCCESSFUL in 23s
 
 这一阶段覆盖的流程是：检查库模块元数据，生成和合并 appC 资源，处理导航资源，处理 appC 和库模块清单，编译库模块资源，解析本地资源，生成库模块 R 文件，最后处理 appC 资源。
 
+阶段 2 已验证可用：代码生成和代码编译。
+
+```powershell
+$OutputEncoding=[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+$env:JAVA_HOME='C:\Program Files\Eclipse Adoptium\jdk-17.0.19.10-hotspot'
+$env:ANDROID_HOME='D:\AI\audio\android-sdk'
+$env:ANDROID_SDK_ROOT='D:\AI\audio\android-sdk'
+$env:GRADLE_USER_HOME='D:\AI\audio\android-gradle-user-home'
+$env:Path = @(
+  "$env:JAVA_HOME\bin",
+  "$env:ANDROID_HOME\cmdline-tools\latest\bin",
+  "$env:ANDROID_HOME\platform-tools"
+) + ($env:Path -split ';') -join ';'
+
+$versionCode=10521
+$versionName='3.26.081117'
+.\gradlew.bat ':modules:book:compileDebugKotlin' ':modules:book:compileDebugJavaWithJavac' ':modules:rhino:compileDebugKotlin' ':modules:rhino:compileDebugJavaWithJavac' ':app:kspAppCKotlin' ':app:compileAppCKotlin' ':app:compileAppCJavaWithJavac' '-Pabi=arm64-v8a' "-PVERSION_CODE=$versionCode" "-PVERSION_NAME=$versionName" '-Dkotlin.incremental=false' '-Dkotlin.compiler.execution.strategy=in-process' --no-daemon --console=plain --warning-mode=summary --max-workers=1
+```
+
+2026-08-11 实测结果：
+
+```text
+BUILD SUCCESSFUL in 2m 52s
+45 actionable tasks: 2 executed, 1 from cache, 42 up-to-date
+```
+
+这一阶段覆盖的流程是：先确认资源和清单阶段已就绪，再处理库模块编译产物，运行 appC 的代码生成，编译 appC Kotlin，预编译 Java，编译 appC Java，最后复制 Room schema。实测会出现 Kotlin/Java 警告和 `Detected multiple Kotlin daemon sessions` 提示；只要退出码为 0，且没有错误堆栈，这一阶段通过。
+
+阶段 3 已验证可用：dex、资源合并、so 合并、签名和 APK 输出。
+
+```powershell
+$OutputEncoding=[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+$env:JAVA_HOME='C:\Program Files\Eclipse Adoptium\jdk-17.0.19.10-hotspot'
+$env:ANDROID_HOME='D:\AI\audio\android-sdk'
+$env:ANDROID_SDK_ROOT='D:\AI\audio\android-sdk'
+$env:GRADLE_USER_HOME='D:\AI\audio\android-gradle-user-home'
+$env:Path = @(
+  "$env:JAVA_HOME\bin",
+  "$env:ANDROID_HOME\cmdline-tools\latest\bin",
+  "$env:ANDROID_HOME\platform-tools"
+) + ($env:Path -split ';') -join ';'
+
+$versionCode=10521
+$versionName='3.26.081117'
+.\gradlew.bat ':app:packageAppC' ':app:createAppCApkListingFileRedirect' ':app:assembleAppC' '-Pabi=arm64-v8a' "-PVERSION_CODE=$versionCode" "-PVERSION_NAME=$versionName" '-Dkotlin.incremental=false' '-Dkotlin.compiler.execution.strategy=in-process' --no-daemon --console=plain --warning-mode=summary --max-workers=1
+```
+
+2026-08-11 实测结果：
+
+```text
+BUILD SUCCESSFUL in 1m 20s
+75 actionable tasks: 24 executed, 6 from cache, 45 up-to-date
+```
+
+这一阶段覆盖的流程是：合并 assets，压缩 assets，处理 desugar，构建 dex，合并 Java 资源，检查重复类，合并外部、库和项目 dex，合并 JNI 目录和 native so，处理 debug symbol，验证签名配置，写入 APK 元数据，打包 appC，生成 APK 列表，最后完成 assembleAppC。
+
+实测 `strip` 阶段会提示部分 so 无法剥离 debug symbol，并按原样打包，例如 `libarchive-jni.so`、`libimage_processing_util_jni.so`、`librenderscript-toolkit.so`、`librtmp-jni.so`、`libsurface_util_jni.so`。这不是打包失败；只要后续 `packageAppC`、`assembleAppC` 成功，且验证命令通过即可交付。
+
+2026-08-11 分阶段编译产物：
+
+```text
+D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_3.26.081117_10521.apk
+```
+
+验证通过的关键信息：
+
+```text
+package: name='io.legado.app.c' versionCode='10521' versionName='3.26.081117c'
+application-label-zh-CN:'阅读 C'
+application-label-zh-HK:'阅读 C'
+application-label-zh-TW:'阅读 C'
+native-code: 'arm64-v8a'
+Signer #1 certificate DN: C=US, O=Android, CN=Android Debug
+```
+
 PowerShell 监控注意事项：后台启动编译时，标准输出和错误输出不能重定向到同一个文件。必须使用两个不同日志文件，或者不要用后台启动方式；否则编译根本不会启动，后续循环只是在空进程上假监控。
 
 ## 失败处理
