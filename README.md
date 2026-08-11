@@ -1,8 +1,8 @@
 <table align="center">
   <tr>
-    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/Screenshot_2026-08-11-12-28-52-028_io.legado.app.c.jpg" width="100%" alt="界面截图 1" /></td>
-    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/Screenshot_2026-08-11-12-28-58-189_io.legado.app.c.jpg" width="100%" alt="界面截图 2" /></td>
-    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/Screenshot_2026-08-11-12-29-17-966_io.legado.app.c.jpg" width="100%" alt="界面截图 3" /></td>
+    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/PixPin_2026-08-11_12-39-35.png" width="100%" alt="界面截图 1" /></td>
+    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/PixPin_2026-08-11_12-40-52.png" width="100%" alt="界面截图 2" /></td>
+    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/PixPin_2026-08-11_12-42-01.png" width="100%" alt="界面截图 3" /></td>
   </tr>
 </table>
 
