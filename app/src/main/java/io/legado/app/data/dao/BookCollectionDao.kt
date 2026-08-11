@@ -89,8 +89,14 @@ interface BookCollectionDao {
     @Query("DELETE FROM book_collection_items WHERE bookUrl IN (:bookUrls)")
     fun deleteItemsByBookUrls(bookUrls: List<String>)
 
+    @Query("DELETE FROM book_collection_items WHERE collectionId = :collectionId")
+    fun deleteItemsByCollectionId(collectionId: Long)
+
     @Query("DELETE FROM book_collection_children WHERE childCollectionId IN (:childCollectionIds)")
     fun deleteParentsByChildCollectionIds(childCollectionIds: List<Long>)
+
+    @Query("DELETE FROM book_collection_children WHERE parentCollectionId = :collectionId")
+    fun deleteChildrenByParentCollectionId(collectionId: Long)
 
     @Query(
         """
@@ -211,9 +217,14 @@ interface BookCollectionDao {
         val bookUrls = bookUrlsInCollection(collectionId)
         val childIds = childCollectionIds(collectionId)
         val parentIds = parentCollectionIds(collectionId).filter { it > 0 && it != collectionId }
-        parentIds.forEach { parentId ->
-            addBookUrls(parentId, bookUrls)
-            addChildCollectionIds(parentId, childIds)
+        if (parentIds.isEmpty()) {
+            deleteItemsByCollectionId(collectionId)
+            deleteChildrenByParentCollectionId(collectionId)
+        } else {
+            parentIds.forEach { parentId ->
+                addBookUrls(parentId, bookUrls)
+                addChildCollectionIds(parentId, childIds)
+            }
         }
         deleteByIds(listOf(collectionId))
     }
