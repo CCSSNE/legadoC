@@ -132,6 +132,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     private var draggingOriginalTranslationX = 0f
     private var draggingOriginalTranslationY = 0f
     private var draggingOriginalElevation = 0f
+    private var selectionRefreshPosted = false
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         arguments?.let {
@@ -287,7 +288,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         selectedBooks.clear()
         binding.bookActionBar.gone()
         setMainBottomBarHidden(false)
-        booksAdapter.notifyDataSetChanged()
+        notifySelectionChanged()
     }
 
     private fun toggleSelection(book: Book) {
@@ -311,6 +312,16 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         setActionEnabled(binding.actionBookInfo, selectedBooks.size == 1)
         setMainBottomBarHidden(hasSelection)
         if (refreshItems) {
+            notifySelectionChanged()
+        }
+    }
+
+    private fun notifySelectionChanged() {
+        if (selectionRefreshPosted) return
+        selectionRefreshPosted = true
+        binding.rvBookshelf.post {
+            selectionRefreshPosted = false
+            if (!isAdded || this@BooksFragment.view == null) return@post
             booksAdapter.notifyDataSetChanged()
         }
     }

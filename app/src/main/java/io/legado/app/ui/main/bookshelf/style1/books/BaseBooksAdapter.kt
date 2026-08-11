@@ -4,6 +4,7 @@ import android.content.Context
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
+import android.view.ViewGroup
 import androidx.core.os.bundleOf
 import androidx.recyclerview.widget.DiffUtil
 import androidx.viewbinding.ViewBinding
@@ -142,6 +143,7 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
                     longPressRunnable = Runnable {
                         val pressedBook = bookProvider() ?: return@Runnable
                         longPressed = true
+                        view.clearPressedState()
                         view.parent?.requestDisallowInterceptTouchEvent(true)
                         callBack.onBookLongPressed(pressedBook)
                     }.also {
@@ -173,6 +175,7 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
                 MotionEvent.ACTION_UP -> {
                     longPressRunnable?.let(view::removeCallbacks)
                     longPressRunnable = null
+                    view.clearPressedState()
                     when {
                         dragging -> {
                             callBack.onBookDragEnd(book, event.rawX, event.rawY)
@@ -195,6 +198,7 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
                 MotionEvent.ACTION_CANCEL -> {
                     longPressRunnable?.let(view::removeCallbacks)
                     longPressRunnable = null
+                    view.clearPressedState()
                     if (dragging) {
                         callBack.onBookDragCancel()
                     } else if (longPressed) {
@@ -206,6 +210,16 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
                 }
 
                 else -> false
+            }
+        }
+    }
+
+    private fun View.clearPressedState() {
+        isPressed = false
+        jumpDrawablesToCurrentState()
+        if (this is ViewGroup) {
+            for (index in 0 until childCount) {
+                getChildAt(index).clearPressedState()
             }
         }
     }
