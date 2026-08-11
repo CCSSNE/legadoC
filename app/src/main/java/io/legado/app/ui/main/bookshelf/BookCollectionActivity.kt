@@ -2,6 +2,7 @@ package io.legado.app.ui.main.bookshelf
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.ViewGroup
 import android.widget.CheckBox
@@ -411,7 +412,11 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
     }
 
     override fun onBookLongPressed(book: Book) {
+        val enteringSelection = !hasSelection()
         selectBook(book, showActionBar = true, refreshItems = false)
+        if (enteringSelection) {
+            binding.root.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        }
         adapter.renderVisibleSelectionMarks(binding.rvBooks, this)
     }
 
@@ -419,7 +424,16 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
         updateSelectionBar(showActionBar = true, refreshItems = true)
     }
 
-    override fun onBookTouchedForDrag(book: Book, view: View, rawX: Float, rawY: Float) {
+    override fun onBookTouchedForDrag(
+        book: Book,
+        view: View,
+        rawX: Float,
+        rawY: Float,
+        enteredSelection: Boolean
+    ) {
+        if (!enteredSelection) {
+            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        }
         draggingBooks = if (selectedBooks.containsKey(book.bookUrl)) {
             selectedBookList()
         } else {
@@ -460,7 +474,11 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
     }
 
     override fun onCollectionLongPressed(collection: BookCollectionShelfItem) {
+        val enteringSelection = !hasSelection()
         selectCollection(collection, showActionBar = true, refreshItems = false)
+        if (enteringSelection) {
+            binding.root.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        }
         adapter.renderVisibleSelectionMarks(binding.rvBooks, this)
     }
 
@@ -468,8 +486,12 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
         collection: BookCollectionShelfItem,
         view: View,
         rawX: Float,
-        rawY: Float
+        rawY: Float,
+        enteredSelection: Boolean
     ) {
+        if (!enteredSelection) {
+            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        }
         draggingBooks = if (selectedCollections.containsKey(collection.id)) {
             selectedBookList()
         } else {
