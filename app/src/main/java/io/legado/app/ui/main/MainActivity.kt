@@ -267,7 +267,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 binding.viewPagerMain.currentItem = 0
                 return@addCallback
             }
-            (fragmentMap[getFragmentId(0)] as? BookshelfFragment2)?.let {
+            (fragmentMap[getFragmentId(0)] as? BaseBookshelfFragment)?.let {
                 if (it.back()) {
                     return@addCallback
                 }

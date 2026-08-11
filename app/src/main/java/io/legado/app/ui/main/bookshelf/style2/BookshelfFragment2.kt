@@ -247,7 +247,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
         }
     }
 
-    fun back(): Boolean {
+    override fun back(): Boolean {
         if (groupId != BookGroup.IdRoot) {
             groupId = BookGroup.IdRoot
             initBooksData()

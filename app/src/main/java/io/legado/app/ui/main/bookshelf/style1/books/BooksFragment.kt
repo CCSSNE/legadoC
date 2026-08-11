@@ -530,6 +530,15 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         return booksAdapter.itemCount
     }
 
+    fun exitSelectionIfNeeded(): Boolean {
+        if (selectedBooks.isEmpty() && binding.bookActionBar.isGone) {
+            return false
+        }
+        resetDraggingView()
+        clearSelection()
+        return true
+    }
+
     override fun onDestroyView() {
         setMainBottomBarHidden(false)
         super.onDestroyView()
@@ -601,7 +610,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         val targetGroupId = (parentFragment as? io.legado.app.ui.main.bookshelf.style1.BookshelfFragment1)
             ?.findSecondaryGroupIdAtRaw(rawX, rawY)
         when {
-            targetGroupId == null -> toastOnUi(R.string.book_drop_target_invalid)
+            targetGroupId == null -> Unit
             targetGroupId > 0 -> addBooksToGroup(books, targetGroupId, clearAfter = true)
             else -> toastOnUi(R.string.book_drop_system_group_invalid)
         }

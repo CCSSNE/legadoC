@@ -170,6 +170,10 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
         fragmentMap[selectedSecondaryGroupId]?.gotoTop()
     }
 
+    override fun back(): Boolean {
+        return fragmentMap[selectedSecondaryGroupId]?.exitSelectionIfNeeded() == true
+    }
+
     override fun onSearchPlacementChanged() {
         updateSearchButtonVisibility()
     }
