@@ -10,11 +10,36 @@
         android:layout_height="match_parent"
         android:orientation="vertical">
 
-        <io.legado.app.ui.widget.TitleBar
-            android:id="@+id/title_bar"
+        <FrameLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:title="@string/book_collection" />
+            android:layout_height="wrap_content">
+
+            <io.legado.app.ui.widget.TitleBar
+                android:id="@+id/title_bar"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:title="@string/book_collection" />
+
+            <TextView
+                android:id="@+id/btn_select_current_page"
+                android:layout_width="wrap_content"
+                android:layout_height="@dimen/bookshelf_action_button_size"
+                android:layout_gravity="end|center_vertical"
+                android:layout_marginEnd="16dp"
+                android:background="@drawable/bg_discover_embedded_action"
+                android:clickable="true"
+                android:elevation="8dp"
+                android:focusable="true"
+                android:gravity="center"
+                android:minWidth="@dimen/bookshelf_action_button_size"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:text="@string/select_all"
+                android:textColor="@color/primaryText"
+                android:textSize="15sp"
+                android:visibility="gone" />
+
+        </FrameLayout>
 
         <io.legado.app.ui.widget.recycler.scroller.FastScrollRecyclerView
             android:id="@+id/rv_books"
@@ -36,26 +61,6 @@
         android:layout_margin="16dp"
         android:gravity="center"
         android:text="@string/book_collection_empty"
-        android:visibility="gone" />
-
-    <TextView
-        android:id="@+id/btn_select_current_page"
-        android:layout_width="wrap_content"
-        android:layout_height="@dimen/bookshelf_action_button_size"
-        android:layout_gravity="top|end"
-        android:layout_marginTop="28dp"
-        android:layout_marginEnd="16dp"
-        android:background="@drawable/bg_discover_embedded_action"
-        android:clickable="true"
-        android:elevation="8dp"
-        android:focusable="true"
-        android:gravity="center"
-        android:minWidth="@dimen/bookshelf_action_button_size"
-        android:paddingStart="12dp"
-        android:paddingEnd="12dp"
-        android:text="@string/select_all"
-        android:textColor="@color/primaryText"
-        android:textSize="15sp"
         android:visibility="gone" />
 
     <View

@@ -81,6 +81,10 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
         binding.btnSelectCurrentPage.setOnClickListener {
             selectAllCurrentPage()
         }
+        binding.btnSelectCurrentPage.addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
+            val toolbar = binding.titleBar.toolbar
+            view.y = toolbar.y + (toolbar.height - view.height) / 2f
+        }
         onBackPressedDispatcher.addCallback(this) {
             if (hasSelection() || !binding.bookActionBar.isGone) {
                 resetDraggingView()
@@ -297,6 +301,10 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
     private fun selectAllCurrentPage() {
         val items = adapter.getItems()
         if (items.isEmpty()) return
+        if (items.all { isSelected(it) }) {
+            clearSelection()
+            return
+        }
         selectedBooks.clear()
         selectedCollections.clear()
         items.forEach { item ->

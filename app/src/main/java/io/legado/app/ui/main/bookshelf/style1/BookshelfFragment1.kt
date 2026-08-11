@@ -188,6 +188,7 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
     private fun updateSelectAllButtonVisibility() {
         val currentFragment = fragmentMap[selectedSecondaryGroupId]
         val selecting = currentFragment?.isSelecting() == true
+        binding.btnSelectAll.visibility = if (selecting) View.VISIBLE else View.GONE
         if (selecting) {
             binding.btnSecondaryTagsExpand.visibility = View.GONE
         } else {
