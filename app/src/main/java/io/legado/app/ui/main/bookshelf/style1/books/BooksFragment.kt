@@ -649,7 +649,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     override fun onBookLongPressed(book: Book) {
-        selectBook(book, showActionBar = false, refreshItems = false)
+        selectBook(book, showActionBar = true, refreshItems = false)
     }
 
     override fun onBookLongPressFinished() {
@@ -697,7 +697,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     override fun onCollectionLongPressed(collection: BookCollectionShelfItem) {
-        selectCollection(collection, showActionBar = false, refreshItems = false)
+        selectCollection(collection, showActionBar = true, refreshItems = false)
     }
 
     override fun onCollectionTouchedForDrag(
