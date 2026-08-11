@@ -1,5 +1,7 @@
 # 阅读 C 安卓编译记录
 
+第一规则：禁止使用 debug 编译，交付给用户安装时只能编译 `appC` 变体，产物必须来自 `app\build\outputs\apk\app\c`。
+
 ## 目标
 
 从 `D:\AI\audio\legadoC-own` 编译可与阅读 R、默认 debug 包共存的阅读 C APK。
