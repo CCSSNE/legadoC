@@ -75,10 +75,7 @@
     <string name="book_collection_empty">No books in this collection</string>
     <string name="book_collection_added">Added to collection</string>
     <string name="book_group_added">Added to group</string>
-    <string name="book_drop_target_invalid">No valid target hit</string>
     <string name="book_drop_system_group_invalid">System tags cannot be assigned. Choose a custom group.</string>
-    <string name="book_info_single_only">Details supports one book only</string>
-    <string name="book_group_custom_empty">No custom group available</string>
     <string name="selected_book_count">%d selected</string>
     <string name="book_collection_count">%d books</string>
     <string name="view">View</string>

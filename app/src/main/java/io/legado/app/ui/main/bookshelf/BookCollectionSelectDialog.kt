@@ -35,6 +35,13 @@ class BookCollectionSelectDialog() : BaseDialogFragment(R.layout.dialog_book_col
         }
     }
 
+    constructor(bookUrls: ArrayList<String>, openCreate: Boolean) : this() {
+        arguments = Bundle().apply {
+            putStringArrayList("bookUrls", bookUrls)
+            putBoolean("openCreate", openCreate)
+        }
+    }
+
     private val binding by viewBinding(DialogBookCollectionSelectBinding::bind)
     private val adapter by lazy { CollectionAdapter() }
     private val bookUrls: List<String>
@@ -64,6 +71,12 @@ class BookCollectionSelectDialog() : BaseDialogFragment(R.layout.dialog_book_col
         lifecycleScope.launch {
             appDb.bookCollectionDao.flowCollections().conflate().collect {
                 adapter.setItems(it)
+            }
+        }
+        if (arguments?.getBoolean("openCreate") == true) {
+            arguments?.putBoolean("openCreate", false)
+            binding.root.post {
+                showNewCollectionDialog()
             }
         }
     }

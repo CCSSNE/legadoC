@@ -4,6 +4,9 @@ import android.annotation.SuppressLint
 import android.graphics.Rect
 import android.os.Bundle
 import android.view.View
+import android.view.ViewGroup
+import android.widget.CheckBox
+import android.widget.LinearLayout
 import androidx.appcompat.widget.SearchView
 import androidx.core.view.isGone
 import androidx.lifecycle.Lifecycle
@@ -19,12 +22,16 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.FragmentBookshelf2Binding
+import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.config.LocalConfig
+import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.book.group.GroupEditDialog
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.search.SearchActivity
+import io.legado.app.ui.main.MainActivity
 import io.legado.app.ui.main.bookshelf.BaseBookshelfFragment
 import io.legado.app.ui.main.bookshelf.BookCollectionActivity
 import io.legado.app.ui.main.bookshelf.BookCollectionShelfItem
@@ -38,6 +45,8 @@ import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import io.legado.app.model.SourceCallBack
+import io.legado.app.model.localBook.LocalBook
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -81,12 +90,40 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
     private var itemCount = 0
     private var totalRows = 0
     private var collectionItems: List<BookCollectionShelfItem> = emptyList()
+    private var actionBook: Book? = null
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         setSupportToolbar(binding.titleBar.toolbar)
         initRecyclerView()
+        initBookActionBar()
         initBookGroupData()
         initBooksData()
+    }
+
+    override fun onDestroyView() {
+        setMainBottomBarHidden(false)
+        super.onDestroyView()
+    }
+
+    private fun initBookActionBar() = binding.run {
+        actionBookInfo.setOnClickListener {
+            actionBook?.let {
+                openBookInfo(it)
+                clearBookActionBar()
+            }
+        }
+        actionAddCollection.setOnClickListener {
+        }
+        actionAddGroup.setOnClickListener {
+        }
+        actionDeleteBook.setOnClickListener {
+            actionBook?.let(::alertDeleteBook)
+        }
+        setActionEnabled(actionBookInfo, true)
+        setActionEnabled(actionAddCollection, false)
+        setActionEnabled(actionAddGroup, false)
+        setActionEnabled(actionDeleteBook, true)
+        bookActionBar.isGone = true
     }
 
     private fun initRecyclerView() {
@@ -248,6 +285,10 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
     }
 
     override fun back(): Boolean {
+        if (actionBook != null || !binding.bookActionBar.isGone) {
+            clearBookActionBar()
+            return true
+        }
         if (groupId != BookGroup.IdRoot) {
             groupId = BookGroup.IdRoot
             initBooksData()
@@ -279,6 +320,12 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
     }
 
     override fun onItemClick(item: Any) {
+        if (!binding.bookActionBar.isGone) {
+            if (item is Book) {
+                showBookActionBar(item)
+            }
+            return
+        }
         when (item) {
             is Book -> startActivityForBook(item)
 
@@ -295,15 +342,86 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
 
     override fun onItemLongClick(item: Any) {
         when (item) {
-            is Book -> startActivity<BookInfoActivity> {
-                putExtra("name", item.name)
-                putExtra("author", item.author)
-            }
+            is Book -> showBookActionBar(item)
 
             is BookGroup -> showDialogFragment(GroupEditDialog(item))
 
             is BookCollectionShelfItem -> startActivity<BookCollectionActivity> {
                 putExtra("collectionId", item.id)
+            }
+        }
+    }
+
+    private fun showBookActionBar(book: Book) {
+        actionBook = book
+        binding.bookActionBar.isGone = false
+        binding.bookActionBar.bringToFront()
+        setMainBottomBarHidden(true)
+    }
+
+    private fun clearBookActionBar() {
+        actionBook = null
+        binding.bookActionBar.isGone = true
+        setMainBottomBarHidden(false)
+    }
+
+    private fun setMainBottomBarHidden(hidden: Boolean) {
+        (activity as? MainActivity)?.setBookshelfActionMode(hidden)
+    }
+
+    private fun setActionEnabled(view: View, enabled: Boolean) {
+        view.isEnabled = enabled
+        view.alpha = if (enabled) 1f else 0.38f
+        if (view is ViewGroup) {
+            for (index in 0 until view.childCount) {
+                view.getChildAt(index).isEnabled = enabled
+            }
+        }
+    }
+
+    private fun openBookInfo(book: Book) {
+        startActivity<BookInfoActivity> {
+            putExtra("name", book.name)
+            putExtra("author", book.author)
+        }
+    }
+
+    private fun alertDeleteBook(book: Book) {
+        alert(titleResource = R.string.draw, messageResource = R.string.sure_del) {
+            var checkBox: CheckBox? = null
+            if (book.isLocal) {
+                checkBox = CheckBox(requireContext()).apply {
+                    setText(R.string.delete_book_file)
+                    isChecked = LocalConfig.deleteBookOriginal
+                }
+                val view = LinearLayout(requireContext()).apply {
+                    setPadding(16.dpToPx(), 0, 16.dpToPx(), 0)
+                    addView(checkBox)
+                }
+                customView { view }
+            }
+            okButton {
+                checkBox?.let {
+                    LocalConfig.deleteBookOriginal = it.isChecked
+                }
+                deleteBook(book, LocalConfig.deleteBookOriginal)
+                clearBookActionBar()
+            }
+            noButton()
+        }
+    }
+
+    private fun deleteBook(book: Book, deleteOriginal: Boolean) {
+        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+            if (book.isLocal) {
+                LocalBook.clearBookShelfCache(book)
+            }
+            appDb.bookDao.delete(book)
+            if (book.isLocal) {
+                LocalBook.deleteBook(book, deleteOriginal)
+            } else {
+                val source = appDb.bookSourceDao.getBookSource(book.origin)
+                SourceCallBack.callBackBook(SourceCallBack.DEL_BOOK_SHELF, source, book)
             }
         }
     }

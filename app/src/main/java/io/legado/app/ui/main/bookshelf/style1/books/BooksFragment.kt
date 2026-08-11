@@ -5,6 +5,7 @@ import android.graphics.Rect
 import android.os.Bundle
 import android.view.View
 import android.view.ViewConfiguration
+import android.view.ViewGroup
 import android.widget.CheckBox
 import android.widget.LinearLayout
 import androidx.core.view.isGone
@@ -37,6 +38,7 @@ import io.legado.app.ui.main.MainActivity
 import io.legado.app.ui.main.MainViewModel
 import io.legado.app.ui.main.bookshelf.BookCollectionActivity
 import io.legado.app.ui.main.bookshelf.BookCollectionSelectDialog
+import io.legado.app.ui.main.bookshelf.BookGroupSelectDialog
 import io.legado.app.ui.main.bookshelf.BookCollectionShelfItem
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.applyMainBottomBarPadding
@@ -250,12 +252,10 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     private fun initBookActionBar() = binding.run {
         actionBookInfo.setOnClickListener {
             val selected = selectedBookList()
-            if (selected.size != 1) {
-                toastOnUi(R.string.book_info_single_only)
-                return@setOnClickListener
+            selected.singleOrNull()?.let {
+                openBookInfo(it)
+                clearSelection()
             }
-            openBookInfo(selected.first())
-            clearSelection()
         }
         actionAddCollection.setOnClickListener {
             val urls = selectedBookList().map { it.bookUrl }
@@ -264,7 +264,10 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             clearSelection()
         }
         actionAddGroup.setOnClickListener {
-            showAddToGroupDialog()
+            val urls = selectedBookList().map { it.bookUrl }
+            if (urls.isEmpty()) return@setOnClickListener
+            showDialogFragment(BookGroupSelectDialog(ArrayList(urls)))
+            clearSelection()
         }
         actionDeleteBook.setOnClickListener {
             alertDeleteSelectedBooks()
@@ -305,36 +308,25 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         if (hasSelection) {
             binding.bookActionBar.bringToFront()
         }
+        setActionEnabled(binding.actionBookInfo, selectedBooks.size == 1)
         setMainBottomBarHidden(hasSelection)
         if (refreshItems) {
             booksAdapter.notifyDataSetChanged()
         }
     }
 
-    private fun setMainBottomBarHidden(hidden: Boolean) {
-        (activity as? MainActivity)?.setBookshelfActionMode(hidden)
-    }
-
-    private fun showAddToGroupDialog() {
-        val books = selectedBookList()
-        if (books.isEmpty()) return
-        viewLifecycleOwner.lifecycleScope.launch {
-            val groups = withContext(Dispatchers.IO) {
-                appDb.bookGroupDao.all
-                    .filter { it.groupId > 0 }
-                    .sortedWith(compareBy({ it.order }, { it.groupId }))
-            }
-            if (groups.isEmpty()) {
-                toastOnUi(R.string.book_group_custom_empty)
-                return@launch
-            }
-            alert(titleResource = R.string.add_to_group) {
-                items(groups.map { it.groupName }) { dialog, index ->
-                    dialog.dismiss()
-                    addBooksToGroup(books, groups[index].groupId, clearAfter = true)
-                }
+    private fun setActionEnabled(view: View, enabled: Boolean) {
+        view.isEnabled = enabled
+        view.alpha = if (enabled) 1f else 0.38f
+        if (view is ViewGroup) {
+            for (index in 0 until view.childCount) {
+                view.getChildAt(index).isEnabled = enabled
             }
         }
+    }
+
+    private fun setMainBottomBarHidden(hidden: Boolean) {
+        (activity as? MainActivity)?.setBookshelfActionMode(hidden)
     }
 
     private fun alertDeleteSelectedBooks() {
@@ -607,6 +599,14 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             resetDraggingView()
             return
         }
+        val targetBook = findBookAt(rawX, rawY, books.mapTo(hashSetOf()) { it.bookUrl })
+        if (targetBook != null) {
+            val urls = (books + targetBook).distinctBy { it.bookUrl }.map { it.bookUrl }
+            showDialogFragment(BookCollectionSelectDialog(ArrayList(urls), openCreate = true))
+            resetDraggingView()
+            clearSelection()
+            return
+        }
         val targetGroupId = (parentFragment as? io.legado.app.ui.main.bookshelf.style1.BookshelfFragment1)
             ?.findSecondaryGroupIdAtRaw(rawX, rawY)
         when {
@@ -676,6 +676,32 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             if (position == RecyclerView.NO_POSITION) continue
             val item = booksAdapter.getItem(position)
             if (item is BookCollectionShelfItem) {
+                return item
+            }
+        }
+        return null
+    }
+
+    private fun findBookAt(rawX: Float, rawY: Float, excludedBookUrls: Set<String>): Book? {
+        val location = IntArray(2)
+        binding.rvBookshelf.getLocationOnScreen(location)
+        val x = rawX - location[0]
+        val y = rawY - location[1]
+        val hitRect = Rect()
+        for (index in binding.rvBookshelf.childCount - 1 downTo 0) {
+            val child = binding.rvBookshelf.getChildAt(index)
+            if (child == draggingBookView) continue
+            hitRect.set(
+                (child.left + child.translationX).roundToInt(),
+                (child.top + child.translationY).roundToInt(),
+                (child.right + child.translationX).roundToInt(),
+                (child.bottom + child.translationY).roundToInt()
+            )
+            if (!hitRect.contains(x.roundToInt(), y.roundToInt())) continue
+            val position = binding.rvBookshelf.getChildAdapterPosition(child)
+            if (position == RecyclerView.NO_POSITION) continue
+            val item = booksAdapter.getItem(position)
+            if (item is Book && item.bookUrl !in excludedBookUrls) {
                 return item
             }
         }
