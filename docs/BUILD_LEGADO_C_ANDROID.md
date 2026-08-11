@@ -36,7 +36,7 @@ io.legado.app.c
 4. `VERSION_NAME` 可以沿用当天主版本名，但 `VERSION_CODE` 必须递增。
 5. 如果只是跑普通 debug 编译验证，不交付给用户安装，必须明确说明那不是覆盖安装包。
 6. 禁止把 `app\build\outputs\apk\app\debug` 的 `.debug` 包当成阅读 C 包交付。
-7. 已交付的 `3.26.062205c` 是 `10491`；当前最新测试包是 `3.26.081107c` / `10493`，后续覆盖包必须从 `10494` 起步。
+7. 已交付的 `3.26.062205c` 是 `10491`；当前最新测试包是 `3.26.081107c` / `10494`，后续覆盖包必须从 `10495` 起步。
 
 当前阅读 C 使用独立包名，构建类型是 `c`，最终包名后缀是 `.c`。版本号沿用正常递增线，不要随手写超大版本号。
 
@@ -56,7 +56,7 @@ $env:Path = @(
   "$env:ANDROID_HOME\platform-tools"
 ) + ($env:Path -split ';') -join ';'
 
-$versionCode=10493
+$versionCode=10494
 $versionName='3.26.081107'
 .\gradlew.bat ':app:assembleAppC' '-Pabi=arm64-v8a' "-PVERSION_CODE=$versionCode" "-PVERSION_NAME=$versionName" '-Dkotlin.incremental=false' '-Dkotlin.compiler.execution.strategy=in-process' --no-daemon --console=plain --warning-mode=summary
 ```
@@ -69,18 +69,24 @@ $versionName='3.26.081107'
 2. 删除项目内生成目录：`app\build`、`modules\book\build`、`modules\rhino\build`。
 3. 用上面的无 daemon、关闭 Kotlin 增量编译命令重跑。
 
+如果 Kotlin 编译阶段出现 `Native memory allocation failed`、`Kotlin daemon has been unexpectedly lost` 或 `Connection reset`：
+
+1. 先确认并停止当前仓库相关的 Gradle/Kotlin daemon，避免旧的 6G 构建进程继续占内存。
+2. 保持 `appC` 变体和递增后的 `VERSION_CODE` 不变。
+3. 在编译命令后追加 `--max-workers=1` 重跑；这会慢一点，但能降低并发内存占用。
+
 ## 验证
 
 APK 预期路径：
 
 ```text
-D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_3.26.081107_10493.apk
+D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_3.26.081107_10494.apk
 ```
 
 检查包名、版本、ABI：
 
 ```powershell
-$apk='D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_3.26.081107_10493.apk'
+$apk='D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_3.26.081107_10494.apk'
 & "$env:ANDROID_HOME\build-tools\36.0.0\aapt.exe" dump badging $apk
 ```
 
@@ -88,7 +94,7 @@ $apk='D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_3.26.081107
 
 ```text
 package: name='io.legado.app.c'
-versionCode='10493'
+versionCode='10494'
 versionName='3.26.081107c'
 application-label-zh-CN:'阅读 C'
 application-label-zh-HK:'阅读 C'

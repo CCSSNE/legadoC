@@ -334,7 +334,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
             booksAdapter.notification(it)
         }
         observeEvent<String>(EventBus.BOOKSHELF_REFRESH) {
-            booksAdapter.notifyDataSetChanged()
+            initBooksData()
         }
     }
 }

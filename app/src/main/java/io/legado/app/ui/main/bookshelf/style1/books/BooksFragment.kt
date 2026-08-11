@@ -636,6 +636,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             appDb.bookCollectionDao.addBookUrls(collectionId, books.map { it.bookUrl })
             withContext(Dispatchers.Main) {
                 toastOnUi(R.string.book_collection_added)
+                upRecyclerData()
                 clearSelection()
             }
         }
@@ -684,7 +685,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             booksAdapter.notification(it)
         }
         observeEvent<String>(EventBus.BOOKSHELF_REFRESH) {
-            booksAdapter.notifyDataSetChanged()
+            upRecyclerData()
             startLastUpdateTimeJob()
             upFastScrollerBar()
         }

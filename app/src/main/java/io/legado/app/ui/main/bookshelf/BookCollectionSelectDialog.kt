@@ -1,27 +1,24 @@
 package io.legado.app.ui.main.bookshelf
 
 import android.os.Bundle
-import android.view.MenuItem
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.EditText
-import androidx.appcompat.widget.Toolbar
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
+import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookCollectionWithBooks
-import io.legado.app.databinding.DialogBookGroupPickerBinding
+import io.legado.app.databinding.DialogBookCollectionSelectBinding
 import io.legado.app.databinding.ItemBookCollectionSelectBinding
 import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.theme.accentColor
-import io.legado.app.lib.theme.primaryColor
-import io.legado.app.ui.widget.recycler.VerticalDivider
-import io.legado.app.utils.applyUiMenuStyle
-import io.legado.app.utils.gone
+import io.legado.app.utils.postEvent
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -30,8 +27,7 @@ import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class BookCollectionSelectDialog() : BaseDialogFragment(R.layout.dialog_book_group_picker),
-    Toolbar.OnMenuItemClickListener {
+class BookCollectionSelectDialog() : BaseDialogFragment(R.layout.dialog_book_collection_select) {
 
     constructor(bookUrls: ArrayList<String>) : this() {
         arguments = Bundle().apply {
@@ -39,42 +35,37 @@ class BookCollectionSelectDialog() : BaseDialogFragment(R.layout.dialog_book_gro
         }
     }
 
-    private val binding by viewBinding(DialogBookGroupPickerBinding::bind)
+    private val binding by viewBinding(DialogBookCollectionSelectBinding::bind)
     private val adapter by lazy { CollectionAdapter() }
     private val bookUrls: List<String>
         get() = arguments?.getStringArrayList("bookUrls").orEmpty()
 
     override fun onStart() {
         super.onStart()
-        setLayout(0.92f, 0.82f)
+        dialog?.window?.let { window ->
+            val attrs = window.attributes
+            attrs.gravity = Gravity.BOTTOM
+            attrs.width = WindowManager.LayoutParams.MATCH_PARENT
+            window.attributes = attrs
+        }
+        setLayout(ViewGroup.LayoutParams.MATCH_PARENT, 0.58f)
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.setBackgroundColor(primaryColor)
-        binding.toolBar.title = getString(R.string.select_book_collection)
-        binding.toolBar.inflateMenu(R.menu.book_group_manage)
-        binding.toolBar.menu.applyUiMenuStyle(requireContext())
-        binding.toolBar.setOnMenuItemClickListener(this)
-        binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
-        binding.recyclerView.addItemDecoration(VerticalDivider(requireContext()))
-        binding.recyclerView.adapter = adapter
-        binding.tvCancel.setOnClickListener {
+        view.setBackgroundResource(R.drawable.bg_book_collection_sheet)
+        binding.btnClose.setOnClickListener {
             dismissAllowingStateLoss()
         }
-        binding.tvOk.setTextColor(requireContext().accentColor)
-        binding.tvOk.gone()
+        binding.tvNewCollection.setOnClickListener {
+            showNewCollectionDialog()
+        }
+        binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
+        binding.recyclerView.adapter = adapter
         lifecycleScope.launch {
             appDb.bookCollectionDao.flowCollections().conflate().collect {
                 adapter.setItems(it)
             }
         }
-    }
-
-    override fun onMenuItemClick(item: MenuItem?): Boolean {
-        if (item?.itemId == R.id.menu_add) {
-            showNewCollectionDialog()
-        }
-        return true
     }
 
     private fun showNewCollectionDialog() {
@@ -91,6 +82,7 @@ class BookCollectionSelectDialog() : BaseDialogFragment(R.layout.dialog_book_gro
                     val collectionId = appDb.bookCollectionDao.createCollection(name)
                     appDb.bookCollectionDao.addBookUrls(collectionId, bookUrls)
                     withContext(Dispatchers.Main) {
+                        postEvent(EventBus.BOOKSHELF_REFRESH, "")
                         toastOnUi(R.string.book_collection_added)
                         dismissAllowingStateLoss()
                     }
@@ -104,6 +96,7 @@ class BookCollectionSelectDialog() : BaseDialogFragment(R.layout.dialog_book_gro
         lifecycleScope.launch(Dispatchers.IO) {
             appDb.bookCollectionDao.addBookUrls(item.collection.collectionId, bookUrls)
             withContext(Dispatchers.Main) {
+                postEvent(EventBus.BOOKSHELF_REFRESH, "")
                 toastOnUi(R.string.book_collection_added)
                 dismissAllowingStateLoss()
             }

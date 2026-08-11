@@ -5,7 +5,7 @@
     android:background="@color/background_card"
     android:baselineAligned="false"
     android:orientation="vertical"
-    android:padding="3dp">
+    android:padding="4dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -18,7 +18,7 @@
             android:id="@+id/iv_cover1"
             android:layout_width="0dp"
             android:layout_height="match_parent"
-            android:layout_margin="1dp"
+            android:layout_margin="2dp"
             android:layout_weight="1"
             android:scaleType="centerCrop"
             android:src="@drawable/image_cover_default" />
@@ -27,7 +27,7 @@
             android:id="@+id/iv_cover2"
             android:layout_width="0dp"
             android:layout_height="match_parent"
-            android:layout_margin="1dp"
+            android:layout_margin="2dp"
             android:layout_weight="1"
             android:scaleType="centerCrop"
             android:src="@drawable/image_cover_default" />
@@ -45,7 +45,7 @@
             android:id="@+id/iv_cover3"
             android:layout_width="0dp"
             android:layout_height="match_parent"
-            android:layout_margin="1dp"
+            android:layout_margin="2dp"
             android:layout_weight="1"
             android:scaleType="centerCrop"
             android:src="@drawable/image_cover_default" />
@@ -54,7 +54,7 @@
             android:id="@+id/iv_cover4"
             android:layout_width="0dp"
             android:layout_height="match_parent"
-            android:layout_margin="1dp"
+            android:layout_margin="2dp"
             android:layout_weight="1"
             android:scaleType="centerCrop"
             android:src="@drawable/image_cover_default" />
