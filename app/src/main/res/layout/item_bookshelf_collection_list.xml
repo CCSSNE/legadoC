@@ -5,9 +5,8 @@
     android:id="@+id/cv_content"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="@drawable/bg_item_focused_on_tv"
     android:clickable="true"
-    android:focusable="true"
+    android:focusable="false"
     android:minHeight="96dp">
 
     <include
@@ -77,13 +76,5 @@
         app:layout_constraintStart_toStartOf="@+id/tv_name"
         app:layout_constraintTop_toBottomOf="@+id/tv_name"
         tools:text="共4本" />
-
-    <View
-        android:id="@+id/vw_foreground"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:background="?android:attr/selectableItemBackground"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
