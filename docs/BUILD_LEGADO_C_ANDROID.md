@@ -31,11 +31,12 @@ io.legado.app.c
 每次编译给用户安装的阅读 C APK，都按覆盖升级处理：
 
 1. 只编译 `appC` 变体，产物目录必须是 `app\build\outputs\apk\app\c`。
-2. 每次重新编译安装包前，先查看该目录现有 APK 或 `output-metadata.json` 的最大 `versionCode`。
-3. 新包的 `VERSION_CODE` 必须在现有最大值基础上加 1；不能复用旧值。
+2. 每次重新编译安装包前，先确认用户手机已安装版本的 `versionCode`。能连设备时用 `adb shell dumpsys package io.legado.app.c` 查；不能连设备时，用最近一次已交付 APK 的 `versionCode` 做基线。
+3. 新包的 `VERSION_CODE` 必须大于用户手机已安装版本；不能只看当前输出目录，更不能复用旧值。
 4. `VERSION_NAME` 可以沿用当天主版本名，但 `VERSION_CODE` 必须递增。
 5. 如果只是跑普通 debug 编译验证，不交付给用户安装，必须明确说明那不是覆盖安装包。
 6. 禁止把 `app\build\outputs\apk\app\debug` 的 `.debug` 包当成阅读 C 包交付。
+7. 已交付的 `3.26.062205c` 是 `10491`，后续覆盖包必须从 `10492` 起步。
 
 当前阅读 C 使用独立包名，构建类型是 `c`，最终包名后缀是 `.c`。版本号沿用正常递增线，不要随手写超大版本号。
 
@@ -55,7 +56,7 @@ $env:Path = @(
   "$env:ANDROID_HOME\platform-tools"
 ) + ($env:Path -split ';') -join ';'
 
-$versionCode=10005
+$versionCode=10492
 $versionName='3.26.081107'
 .\gradlew.bat ':app:assembleAppC' '-Pabi=arm64-v8a' "-PVERSION_CODE=$versionCode" "-PVERSION_NAME=$versionName" '-Dkotlin.incremental=false' '-Dkotlin.compiler.execution.strategy=in-process' --no-daemon --console=plain --warning-mode=summary
 ```
@@ -73,13 +74,13 @@ $versionName='3.26.081107'
 APK 预期路径：
 
 ```text
-D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_3.26.081107_10005.apk
+D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_3.26.081107_10492.apk
 ```
 
 检查包名、版本、ABI：
 
 ```powershell
-$apk='D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_3.26.081107_10005.apk'
+$apk='D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_3.26.081107_10492.apk'
 & "$env:ANDROID_HOME\build-tools\36.0.0\aapt.exe" dump badging $apk
 ```
 
@@ -87,7 +88,7 @@ $apk='D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_3.26.081107
 
 ```text
 package: name='io.legado.app.c'
-versionCode='10005'
+versionCode='10492'
 versionName='3.26.081107c'
 application-label-zh-CN:'阅读 C'
 application-label-zh-HK:'阅读 C'
