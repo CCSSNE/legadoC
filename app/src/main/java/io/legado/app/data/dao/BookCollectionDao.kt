@@ -145,6 +145,30 @@ interface BookCollectionDao {
 
     @Query(
         """
+        WITH RECURSIVE collection_tree(collectionId, depth) AS (
+            SELECT :collectionId, 0
+            UNION
+            SELECT book_collection_children.childCollectionId, collection_tree.depth + 1
+            FROM book_collection_children
+            INNER JOIN collection_tree
+                ON book_collection_children.parentCollectionId = collection_tree.collectionId
+            WHERE book_collection_children.childCollectionId != book_collection_children.parentCollectionId
+        )
+        SELECT books.* FROM books
+        INNER JOIN book_collection_items
+            ON books.bookUrl = book_collection_items.bookUrl
+        INNER JOIN collection_tree
+            ON book_collection_items.collectionId = collection_tree.collectionId
+        ORDER BY collection_tree.depth,
+            book_collection_items.`order`,
+            book_collection_items.addedTime
+        LIMIT :limit
+        """
+    )
+    fun previewBooksInCollection(collectionId: Long, limit: Int): List<Book>
+
+    @Query(
+        """
         WITH RECURSIVE descendants(collectionId) AS (
             SELECT childCollectionId
             FROM book_collection_children

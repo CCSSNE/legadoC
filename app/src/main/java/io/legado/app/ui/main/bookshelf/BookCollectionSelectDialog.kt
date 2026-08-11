@@ -27,6 +27,8 @@ import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -67,6 +69,11 @@ class BookCollectionSelectDialog() : BaseDialogFragment(R.layout.dialog_book_col
         get() = arguments?.getLongArray("collectionIds")?.toList().orEmpty()
     private val parentCollectionId: Long
         get() = arguments?.getLong("parentCollectionId") ?: 0L
+
+    private data class CollectionSelectItem(
+        val source: BookCollectionWithItems,
+        val previewBooks: List<io.legado.app.data.entities.Book>
+    )
 
     override fun onStart() {
         super.onStart()
@@ -113,11 +120,23 @@ class BookCollectionSelectDialog() : BaseDialogFragment(R.layout.dialog_book_col
             }
         }).attachToRecyclerView(binding.recyclerView)
         lifecycleScope.launch {
-            appDb.bookCollectionDao.flowCollections().conflate().collect {
-                adapter.setItems(it.filter { item ->
-                    item.collection.collectionId !in collectionIds
-                })
-            }
+            appDb.bookCollectionDao.flowCollections()
+                .map { collections ->
+                    collections
+                        .filter { item -> item.collection.collectionId !in collectionIds }
+                        .map { item ->
+                            CollectionSelectItem(
+                                source = item,
+                                previewBooks = appDb.bookCollectionDao.previewBooksInCollection(
+                                    item.collection.collectionId,
+                                    4
+                                )
+                            )
+                        }
+                }
+                .flowOn(Dispatchers.IO)
+                .conflate()
+                .collect(adapter::setItems)
         }
         if (arguments?.getBoolean("openCreate") == true) {
             arguments?.putBoolean("openCreate", false)
@@ -143,10 +162,10 @@ class BookCollectionSelectDialog() : BaseDialogFragment(R.layout.dialog_book_col
         }
     }
 
-    private fun deleteCollection(item: BookCollectionWithItems) {
+    private fun deleteCollection(item: CollectionSelectItem) {
         lifecycleScope.launch(Dispatchers.IO) {
             appDb.bookCollectionDao.deleteCollectionsAndRelease(
-                listOf(item.collection.collectionId)
+                listOf(item.source.collection.collectionId)
             )
             withContext(Dispatchers.Main) {
                 postEvent(EventBus.BOOKSHELF_REFRESH, "")
@@ -185,11 +204,11 @@ class BookCollectionSelectDialog() : BaseDialogFragment(R.layout.dialog_book_col
         }
     }
 
-    private fun addToCollection(item: BookCollectionWithItems) {
+    private fun addToCollection(item: CollectionSelectItem) {
         lifecycleScope.launch(Dispatchers.IO) {
-            appDb.bookCollectionDao.addBookUrls(item.collection.collectionId, bookUrls)
+            appDb.bookCollectionDao.addBookUrls(item.source.collection.collectionId, bookUrls)
             appDb.bookCollectionDao.addChildCollectionIds(
-                item.collection.collectionId,
+                item.source.collection.collectionId,
                 collectionIds
             )
             withContext(Dispatchers.Main) {
@@ -201,7 +220,7 @@ class BookCollectionSelectDialog() : BaseDialogFragment(R.layout.dialog_book_col
     }
 
     private inner class CollectionAdapter :
-        RecyclerAdapter<BookCollectionWithItems, ItemBookCollectionSelectBinding>(requireContext()) {
+        RecyclerAdapter<CollectionSelectItem, ItemBookCollectionSelectBinding>(requireContext()) {
 
         override fun getViewBinding(parent: ViewGroup): ItemBookCollectionSelectBinding {
             return ItemBookCollectionSelectBinding.inflate(inflater, parent, false)
@@ -210,20 +229,21 @@ class BookCollectionSelectDialog() : BaseDialogFragment(R.layout.dialog_book_col
         override fun convert(
             holder: ItemViewHolder,
             binding: ItemBookCollectionSelectBinding,
-            item: BookCollectionWithItems,
+            item: CollectionSelectItem,
             payloads: MutableList<Any>
         ) = binding.run {
-            tvName.text = item.collection.name
+            val source = item.source
+            tvName.text = source.collection.name
             tvCount.text = context.getString(
                 R.string.book_collection_count,
-                item.books.size + item.childCollections.size
+                source.books.size + source.childCollections.size
             )
             listOf(
                 coverMosaic.ivCover1,
                 coverMosaic.ivCover2,
                 coverMosaic.ivCover3,
                 coverMosaic.ivCover4
-            ).loadCollectionCovers(item.books.take(4), this@BookCollectionSelectDialog, lifecycle)
+            ).loadCollectionCovers(item.previewBooks, this@BookCollectionSelectDialog, lifecycle)
         }
 
         override fun registerListener(
