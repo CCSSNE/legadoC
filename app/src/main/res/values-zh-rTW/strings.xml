@@ -97,7 +97,7 @@
         \u3000\u3000這是一款使用Kotlin全新開發的開源的閱讀軟體，歡迎您的加入。
     </string>
     <string name="app_share_description">
-        閱讀 C 下載網址：\nhttps://github.com/CCSSNE/legadoC/releases
+        閱讀 C\nhttps://github.com/CCSSNE/legadoC
     </string>
     <string name="version_name">Version %s</string>
     <string name="pt_background_verification">後臺校驗書源</string>
@@ -694,7 +694,7 @@
     <string name="toc_updateing">更新目錄中</string>
     <string name="media_button_on_exit_title">全程響應耳機按鍵</string>
     <string name="media_button_on_exit_summary">即使退出軟體也響應耳機按鍵</string>
-    <string name="contributors">開發人員</string>
+    <string name="contributors">GitHub 倉庫</string>
     <string name="contact">聯繫我們</string>
     <string name="license">開源許可</string>
     <string name="other">其它</string>
@@ -958,8 +958,8 @@
     <string name="scope_content">作用於正文</string>
     <string name="join_qq_channel">加入QQ頻道</string>
     <string name="qq_channel_summary">點擊加入閱讀QQ頻道</string>
-    <string name="join_telegram_channel">加入我的 QQ 群</string>
-    <string name="telegram_channel_summary">點擊加入 QQ 群，長按複製群號</string>
+    <string name="join_telegram_channel">加入我的 QQ 群 1101873338</string>
+    <string name="telegram_channel_summary">點擊加入 QQ 群</string>
     <string name="menu_refresh_dur">重新整理目前章節</string>
     <string name="menu_refresh_after">重新整理之後章節</string>
     <string name="menu_refresh_all">重新整理全部章節</string>
