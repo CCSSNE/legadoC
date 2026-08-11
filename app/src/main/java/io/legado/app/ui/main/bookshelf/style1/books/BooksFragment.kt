@@ -280,7 +280,10 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             clearSelection()
         }
         actionDeleteBook.setOnClickListener {
-            alertDeleteSelectedBooks()
+            when {
+                selectedCollections.isNotEmpty() && selectedBooks.isEmpty() -> deleteSelectedCollections()
+                selectedBooks.isNotEmpty() && selectedCollections.isEmpty() -> alertDeleteSelectedBooks()
+            }
         }
         bookActionBar.gone()
     }
@@ -359,9 +362,18 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             binding.actionAddGroup,
             selectedBooks.isNotEmpty() && selectedCollections.isEmpty()
         )
-        setActionEnabled(
-            binding.actionDeleteBook,
-            selectedBooks.isNotEmpty() && selectedCollections.isEmpty()
+        val canDeleteBooks = selectedBooks.isNotEmpty() && selectedCollections.isEmpty()
+        val canDeleteCollections = selectedCollections.isNotEmpty() && selectedBooks.isEmpty()
+        setActionEnabled(binding.actionDeleteBook, canDeleteBooks || canDeleteCollections)
+        val collectionOnly = selectedCollections.isNotEmpty() && selectedBooks.isEmpty()
+        binding.actionBookInfo.isGone = collectionOnly
+        binding.actionAddGroup.isGone = collectionOnly
+        binding.tvDeleteAction.setText(
+            if (canDeleteCollections) {
+                R.string.delete_book_collection
+            } else {
+                R.string.remove_from_bookshelf
+            }
         )
         setMainBottomBarHidden(hasSelection && showActionBar)
         if (refreshItems) {
@@ -434,6 +446,17 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
                     val source = appDb.bookSourceDao.getBookSource(it.origin)
                     SourceCallBack.callBackBook(SourceCallBack.DEL_BOOK_SHELF, source, it)
                 }
+            }
+        }
+    }
+
+    private fun deleteSelectedCollections() {
+        val collectionIds = selectedCollectionList().map { it.id }
+        if (collectionIds.isEmpty()) return
+        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+            appDb.bookCollectionDao.deleteByIds(collectionIds)
+            withContext(Dispatchers.Main) {
+                clearSelection()
             }
         }
     }

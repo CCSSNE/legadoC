@@ -68,6 +68,9 @@ interface BookCollectionDao {
     @Delete
     fun delete(vararg collection: BookCollection)
 
+    @Query("DELETE FROM book_collections WHERE collectionId IN (:collectionIds)")
+    fun deleteByIds(collectionIds: List<Long>)
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     fun insertItems(items: List<BookCollectionItem>)
 

@@ -73,6 +73,7 @@
     <string name="book_collection_name_hint">请输入合集名称</string>
     <string name="book_collection_empty">合集里还没有书籍</string>
     <string name="book_collection_added">已加入合集</string>
+    <string name="delete_book_collection">删除合集</string>
     <string name="book_group_added">已加入分组</string>
     <string name="book_drop_system_group_invalid">系统标签不能加入，请选择自定义分组</string>
     <string name="selected_book_count">已选择 %d 本书</string>
