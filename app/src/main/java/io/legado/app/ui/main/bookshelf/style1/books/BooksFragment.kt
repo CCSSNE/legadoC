@@ -513,6 +513,9 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     private fun upRecyclerData() {
         booksFlowJob?.cancel()
         booksFlowJob = viewLifecycleOwner.lifecycleScope.launch {
+            withContext(Dispatchers.IO) {
+                appDb.bookCollectionDao.normalizeLocations()
+            }
             val userGroupIds = appDb.bookGroupDao.idsSum
             val booksFlow = appDb.bookDao.flowByGroup(groupId).map { list ->
                 //排序
@@ -672,7 +675,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     override fun onBookLongPressed(book: Book) {
-        selectBook(book, showActionBar = true, refreshItems = false)
+        selectBook(book, showActionBar = true, refreshItems = true)
     }
 
     override fun onBookLongPressFinished() {
@@ -720,7 +723,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     override fun onCollectionLongPressed(collection: BookCollectionShelfItem) {
-        selectCollection(collection, showActionBar = true, refreshItems = false)
+        selectCollection(collection, showActionBar = true, refreshItems = true)
     }
 
     override fun onCollectionTouchedForDrag(

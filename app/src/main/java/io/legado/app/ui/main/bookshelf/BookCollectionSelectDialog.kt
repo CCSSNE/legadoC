@@ -45,12 +45,14 @@ class BookCollectionSelectDialog() : BaseDialogFragment(R.layout.dialog_book_col
     constructor(
         bookUrls: ArrayList<String>,
         collectionIds: LongArray,
-        openCreate: Boolean = false
+        openCreate: Boolean = false,
+        parentCollectionId: Long = 0L
     ) : this() {
         arguments = Bundle().apply {
             putStringArrayList("bookUrls", bookUrls)
             putLongArray("collectionIds", collectionIds)
             putBoolean("openCreate", openCreate)
+            putLong("parentCollectionId", parentCollectionId)
         }
     }
 
@@ -60,6 +62,8 @@ class BookCollectionSelectDialog() : BaseDialogFragment(R.layout.dialog_book_col
         get() = arguments?.getStringArrayList("bookUrls").orEmpty()
     private val collectionIds: List<Long>
         get() = arguments?.getLongArray("collectionIds")?.toList().orEmpty()
+    private val parentCollectionId: Long
+        get() = arguments?.getLong("parentCollectionId") ?: 0L
 
     override fun onStart() {
         super.onStart()
@@ -111,6 +115,12 @@ class BookCollectionSelectDialog() : BaseDialogFragment(R.layout.dialog_book_col
                     val collectionId = appDb.bookCollectionDao.createCollection(name)
                     appDb.bookCollectionDao.addBookUrls(collectionId, bookUrls)
                     appDb.bookCollectionDao.addChildCollectionIds(collectionId, collectionIds)
+                    if (parentCollectionId > 0) {
+                        appDb.bookCollectionDao.addChildCollectionIds(
+                            parentCollectionId,
+                            listOf(collectionId)
+                        )
+                    }
                     withContext(Dispatchers.Main) {
                         postEvent(EventBus.BOOKSHELF_REFRESH, "")
                         toastOnUi(R.string.book_collection_added)

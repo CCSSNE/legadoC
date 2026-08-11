@@ -77,6 +77,48 @@ interface BookCollectionDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     fun insertChildren(children: List<BookCollectionChild>)
 
+    @Query("DELETE FROM book_collection_items WHERE bookUrl IN (:bookUrls)")
+    fun deleteItemsByBookUrls(bookUrls: List<String>)
+
+    @Query("DELETE FROM book_collection_children WHERE childCollectionId IN (:childCollectionIds)")
+    fun deleteParentsByChildCollectionIds(childCollectionIds: List<Long>)
+
+    @Query(
+        """
+        DELETE FROM book_collection_items
+        WHERE EXISTS (
+            SELECT 1 FROM book_collection_items AS newer
+            WHERE newer.bookUrl = book_collection_items.bookUrl
+                AND (
+                    newer.addedTime > book_collection_items.addedTime
+                    OR (
+                        newer.addedTime = book_collection_items.addedTime
+                        AND newer.collectionId > book_collection_items.collectionId
+                    )
+                )
+        )
+        """
+    )
+    fun deleteDuplicateBookItems()
+
+    @Query(
+        """
+        DELETE FROM book_collection_children
+        WHERE EXISTS (
+            SELECT 1 FROM book_collection_children AS newer
+            WHERE newer.childCollectionId = book_collection_children.childCollectionId
+                AND (
+                    newer.addedTime > book_collection_children.addedTime
+                    OR (
+                        newer.addedTime = book_collection_children.addedTime
+                        AND newer.parentCollectionId > book_collection_children.parentCollectionId
+                    )
+                )
+        )
+        """
+    )
+    fun deleteDuplicateChildCollections()
+
     @Query("SELECT COALESCE(MAX(`order`), 0) FROM book_collections")
     fun maxCollectionOrder(): Int
 
@@ -124,11 +166,13 @@ interface BookCollectionDao {
 
     @Transaction
     fun addBookUrls(collectionId: Long, bookUrls: List<String>) {
-        if (bookUrls.isEmpty()) return
+        val uniqueBookUrls = bookUrls.distinct()
+        if (uniqueBookUrls.isEmpty()) return
         val now = System.currentTimeMillis()
+        deleteItemsByBookUrls(uniqueBookUrls)
         val startOrder = maxItemOrder(collectionId) + 1
         insertItems(
-            bookUrls.distinct().mapIndexed { index, bookUrl ->
+            uniqueBookUrls.mapIndexed { index, bookUrl ->
                 BookCollectionItem(
                     collectionId = collectionId,
                     bookUrl = bookUrl,
@@ -141,6 +185,12 @@ interface BookCollectionDao {
     }
 
     @Transaction
+    fun normalizeLocations() {
+        deleteDuplicateBookItems()
+        deleteDuplicateChildCollections()
+    }
+
+    @Transaction
     fun addChildCollectionIds(parentCollectionId: Long, childCollectionIds: List<Long>) {
         if (parentCollectionId <= 0 || childCollectionIds.isEmpty()) return
         val validChildIds = childCollectionIds.distinct().filter { childCollectionId ->
@@ -150,6 +200,7 @@ interface BookCollectionDao {
         }
         if (validChildIds.isEmpty()) return
         val now = System.currentTimeMillis()
+        deleteParentsByChildCollectionIds(validChildIds)
         val startOrder = maxChildOrder(parentCollectionId) + 1
         insertChildren(
             validChildIds.mapIndexed { index, childCollectionId ->

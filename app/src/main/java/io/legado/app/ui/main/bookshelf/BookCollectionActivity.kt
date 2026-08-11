@@ -90,6 +90,9 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
             }
         }
         lifecycleScope.launch {
+            withContext(Dispatchers.IO) {
+                appDb.bookCollectionDao.normalizeLocations()
+            }
             combine(
                 appDb.bookCollectionDao.flowBooks(collectionId),
                 appDb.bookCollectionDao.flowChildCollections(collectionId)
@@ -121,7 +124,13 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
             val urls = selectedBookList().map { it.bookUrl }
             val collectionIds = selectedCollectionList().map { it.id }.toLongArray()
             if (urls.isEmpty() && collectionIds.isEmpty()) return@setOnClickListener
-            showDialogFragment(BookCollectionSelectDialog(ArrayList(urls), collectionIds))
+            showDialogFragment(
+                BookCollectionSelectDialog(
+                    ArrayList(urls),
+                    collectionIds,
+                    parentCollectionId = collectionId
+                )
+            )
             clearSelection()
         }
         actionAddGroup.setOnClickListener {
@@ -354,7 +363,7 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
     }
 
     override fun onBookLongPressed(book: Book) {
-        selectBook(book, showActionBar = true, refreshItems = false)
+        selectBook(book, showActionBar = true, refreshItems = true)
     }
 
     override fun onBookLongPressFinished() {
@@ -402,7 +411,7 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
     }
 
     override fun onCollectionLongPressed(collection: BookCollectionShelfItem) {
-        selectCollection(collection, showActionBar = true, refreshItems = false)
+        selectCollection(collection, showActionBar = true, refreshItems = true)
     }
 
     override fun onCollectionTouchedForDrag(
@@ -506,7 +515,12 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
             val urls = (books + targetBook).distinctBy { it.bookUrl }.map { it.bookUrl }
             val collectionIds = collections.map { it.id }.toLongArray()
             showDialogFragment(
-                BookCollectionSelectDialog(ArrayList(urls), collectionIds, openCreate = true)
+                BookCollectionSelectDialog(
+                    ArrayList(urls),
+                    collectionIds,
+                    openCreate = true,
+                    parentCollectionId = collectionId
+                )
             )
             resetDraggingView()
             clearSelection()
