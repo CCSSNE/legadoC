@@ -1,8 +1,10 @@
-<p align="center">
-  <img src="https://github.com/CCSSNE/legadoC/raw/own/docs/Screenshot_2026-08-11-12-28-52-028_io.legado.app.c.jpg" width="33%" alt="界面截图 1" />
-  <img src="https://github.com/CCSSNE/legadoC/raw/own/docs/Screenshot_2026-08-11-12-28-58-189_io.legado.app.c.jpg" width="33%" alt="界面截图 2" />
-  <img src="https://github.com/CCSSNE/legadoC/raw/own/docs/Screenshot_2026-08-11-12-29-17-966_io.legado.app.c.jpg" width="33%" alt="界面截图 3" />
-</p>
+<table align="center">
+  <tr>
+    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/Screenshot_2026-08-11-12-28-52-028_io.legado.app.c.jpg" width="100%" alt="界面截图 1" /></td>
+    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/Screenshot_2026-08-11-12-28-58-189_io.legado.app.c.jpg" width="100%" alt="界面截图 2" /></td>
+    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/Screenshot_2026-08-11-12-29-17-966_io.legado.app.c.jpg" width="100%" alt="界面截图 3" /></td>
+  </tr>
+</table>
 
 **交流群 有bug 或者建议可以加入 1101873338 主要优化听书体验**
 
