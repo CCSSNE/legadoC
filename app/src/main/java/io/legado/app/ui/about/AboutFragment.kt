@@ -1,6 +1,5 @@
 package io.legado.app.ui.about
 
-import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.view.View
@@ -39,6 +38,11 @@ class AboutFragment : PreferenceFragmentCompat() {
         addPreferencesFromResource(R.xml.about)
         findPreference<Preference>("update_log")?.summary =
             "${getString(R.string.version)} ${appInfo.versionName}"
+        findPreference<Preference>("telegram")?.setOnPreferenceLongClickListener {
+            requireContext().sendToClip(getString(R.string.qq_group_number))
+            toastOnUi(R.string.qq_group_number_copied)
+            true
+        }
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -49,8 +53,8 @@ class AboutFragment : PreferenceFragmentCompat() {
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
         when (preference.key) {
             "contributors" -> openUrl(R.string.contributors_url)
-            "telegram" -> openUrl(R.string.telegram_channel_url)
-            "update_log" -> showMdFile(getString(R.string.update_log), "updateLog.md")
+            "telegram" -> openUrl(R.string.qq_group_url)
+            "update_log" -> showMdFile(getString(R.string.update_log), "README.md")
             "mail" -> requireContext().sendMail(getString(R.string.email))
             "license" -> showMdFile(getString(R.string.license), "LICENSE.md")
             "disclaimer" -> showMdFile(getString(R.string.disclaimer), "disclaimer.md")
@@ -74,24 +78,6 @@ class AboutFragment : PreferenceFragmentCompat() {
     private fun showMdFile(title: String, fileName: String) {
         val mdText = String(requireContext().assets.open(fileName).readBytes())
         showDialogFragment(TextDialog(title, mdText, TextDialog.Mode.MD))
-    }
-
-    /**
-     * 加入qq群
-     */
-    private fun joinQQGroup(key: String): Boolean {
-        val intent = Intent()
-        intent.data =
-            Uri.parse("mqqopensdkapi://bizAgent/qm/qr?url=http%3A%2F%2Fqm.qq.com%2Fcgi-bin%2Fqm%2Fqr%3Ffrom%3Dapp%26p%3Dandroid%26k%3D$key")
-        // 此Flag可根据具体产品需要自定义，如设置，则在加群界面按返回，返回手Q主界面，不设置，按返回会返回到呼起产品界面
-        // intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        kotlin.runCatching {
-            startActivity(intent)
-            return true
-        }.onFailure {
-            toastOnUi("添加失败,请手动添加")
-        }
-        return false
     }
 
     private fun saveLog() {
