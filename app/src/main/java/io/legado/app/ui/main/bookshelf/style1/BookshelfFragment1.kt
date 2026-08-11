@@ -307,7 +307,8 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
         if (index !in primaryGroups.indices) return
         currentGroupIndex = index
         AppConfig.saveTabPosition = index
-        fragmentMap.clear()
+        val newGroupId = selectedPrimaryGroup?.groupId
+        fragmentMap.entries.removeAll { it.value.groupId != newGroupId }
         adapter.notifyDataSetChanged()
         renderSecondaryGroups()
         val targetSecondaryGroupId = BookGroup.IdAll.takeIf { it in secondaryGroupIds }
@@ -475,6 +476,11 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
             }
             fragmentMap[secondaryGroupId] = fragment
             return fragment
+        }
+
+        override fun destroyItem(container: ViewGroup, position: Int, any: Any) {
+            fragmentMap.entries.removeAll { it.value == any }
+            super.destroyItem(container, position, any)
         }
 
     }
