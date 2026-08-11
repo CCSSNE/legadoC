@@ -570,7 +570,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     override fun onBookLongPressed(book: Book) {
-        selectBook(book)
+        selectBook(book, refreshItems = false)
     }
 
     override fun onBookLongPressFinished() {

@@ -77,6 +77,7 @@
     <string name="book_group_added">Added to group</string>
     <string name="book_drop_system_group_invalid">System tags cannot be assigned. Choose a custom group.</string>
     <string name="selected_book_count">%d selected</string>
+    <string name="selected">Selected</string>
     <string name="book_collection_count">%d books</string>
     <string name="view">View</string>
     <string name="book_library">Library</string>

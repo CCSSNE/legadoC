@@ -44,8 +44,8 @@
 
     <FrameLayout
         android:id="@+id/selection_outer"
-        android:layout_width="22dp"
-        android:layout_height="22dp"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
         android:layout_marginTop="3dp"
         android:layout_marginEnd="3dp"
         android:background="@drawable/bg_bookshelf_selection_ring"
@@ -54,13 +54,17 @@
         app:layout_constraintTop_toTopOf="@+id/iv_cover"
         tools:visibility="visible">
 
-        <View
+        <androidx.appcompat.widget.AppCompatImageView
             android:id="@+id/selection_dot"
-            android:layout_width="11dp"
-            android:layout_height="11dp"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
             android:layout_gravity="center"
             android:background="@drawable/bg_bookshelf_selection_dot"
+            android:contentDescription="@string/selected"
+            android:padding="5dp"
+            android:src="@drawable/ic_bookshelf_selection_check"
             android:visibility="gone"
+            app:tint="@color/white"
             tools:visibility="visible" />
 
     </FrameLayout>
