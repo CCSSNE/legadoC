@@ -44,6 +44,8 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
         holder.itemView.alpha = 1f
         if (item is BookCollectionShelfItem && binding is ItemBookshelfCollectionGridBinding) {
             binding.run {
+                renderSelectionMark(selectionOuter, selectionDot, item, callBack)
+                if (isSelectionPayload(payloads)) return
                 tvName.text = item.name
                 listOf(
                     coverMosaic.ivCover1,
@@ -154,13 +156,13 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
                 getItem(holder.layoutPosition)?.let {
                     when (it) {
                         is Book -> callBack.onBookClickInSelection(it)
-                        is BookCollectionShelfItem -> callBack.openCollection(it)
+                        is BookCollectionShelfItem -> callBack.onCollectionClickInSelection(it)
                     }
                 }
             }
 
-            bindBookTouch(
-                bookProvider = { getItem(holder.layoutPosition) as? Book },
+            bindShelfTouch(
+                itemProvider = { getItem(holder.layoutPosition) },
                 callBack = callBack
             )
         }

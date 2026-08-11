@@ -40,6 +40,7 @@ import io.legado.app.ui.main.bookshelf.BookCollectionActivity
 import io.legado.app.ui.main.bookshelf.BookCollectionSelectDialog
 import io.legado.app.ui.main.bookshelf.BookGroupSelectDialog
 import io.legado.app.ui.main.bookshelf.BookCollectionShelfItem
+import io.legado.app.data.entities.BookCollectionWithItems
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.applyMainBottomBarPadding
 import io.legado.app.utils.dpToPx
@@ -125,14 +126,21 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     private var itemCount = 0
     private var totalRows = 0
     private val selectedBooks = linkedMapOf<String, Book>()
-    private var draggingBookView: View? = null
+    private val selectedCollections = linkedMapOf<Long, BookCollectionShelfItem>()
+    private val draggingViewStates = mutableListOf<DraggingViewState>()
     private var draggingBooks: List<Book> = emptyList()
+    private var draggingCollections: List<BookCollectionShelfItem> = emptyList()
     private var draggingStartRawX = 0f
     private var draggingStartRawY = 0f
-    private var draggingOriginalTranslationX = 0f
-    private var draggingOriginalTranslationY = 0f
-    private var draggingOriginalElevation = 0f
     private var selectionRefreshPosted = false
+
+    private data class DraggingViewState(
+        val view: View,
+        val translationX: Float,
+        val translationY: Float,
+        val elevation: Float,
+        val alpha: Float
+    )
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         arguments?.let {
@@ -174,6 +182,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             binding.rvBookshelf.setRecycledViewPool(activityViewModel.booksListRecycledViewPool)
         }
         booksAdapter.stateRestorationPolicy = StateRestorationPolicy.PREVENT_WHEN_EMPTY
+        binding.rvBookshelf.itemAnimator = null
         binding.rvBookshelf.adapter = booksAdapter
         /**
          * 应该是当初没有使用override val keepScrollPosition = true 加的代码
@@ -260,13 +269,14 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         }
         actionAddCollection.setOnClickListener {
             val urls = selectedBookList().map { it.bookUrl }
-            if (urls.isEmpty()) return@setOnClickListener
-            showDialogFragment(BookCollectionSelectDialog(ArrayList(urls)))
+            val collectionIds = selectedCollectionList().map { it.id }.toLongArray()
+            if (urls.isEmpty() && collectionIds.isEmpty()) return@setOnClickListener
+            showDialogFragment(BookCollectionSelectDialog(ArrayList(urls), collectionIds))
             clearSelection()
         }
         actionAddGroup.setOnClickListener {
             val urls = selectedBookList().map { it.bookUrl }
-            if (urls.isEmpty()) return@setOnClickListener
+            if (urls.isEmpty() || selectedCollections.isNotEmpty()) return@setOnClickListener
             showDialogFragment(BookGroupSelectDialog(ArrayList(urls)))
             clearSelection()
         }
@@ -280,12 +290,21 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         return selectedBooks.values.toList()
     }
 
+    private fun selectedCollectionList(): List<BookCollectionShelfItem> {
+        return selectedCollections.values.toList()
+    }
+
+    private fun hasSelection(): Boolean {
+        return selectedBooks.isNotEmpty() || selectedCollections.isNotEmpty()
+    }
+
     private fun clearSelection() {
-        if (selectedBooks.isEmpty() && binding.bookActionBar.isGone) {
+        if (!hasSelection() && binding.bookActionBar.isGone) {
             setMainBottomBarHidden(false)
             return
         }
         selectedBooks.clear()
+        selectedCollections.clear()
         binding.bookActionBar.gone()
         setMainBottomBarHidden(false)
         notifySelectionChanged()
@@ -298,19 +317,54 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         updateSelectionBar()
     }
 
-    private fun selectBook(book: Book, refreshItems: Boolean = true) {
-        selectedBooks[book.bookUrl] = book
-        updateSelectionBar(refreshItems)
+    private fun toggleSelection(collection: BookCollectionShelfItem) {
+        if (selectedCollections.remove(collection.id) == null) {
+            selectedCollections[collection.id] = collection
+        }
+        updateSelectionBar()
     }
 
-    private fun updateSelectionBar(refreshItems: Boolean = true) {
-        val hasSelection = selectedBooks.isNotEmpty()
-        binding.bookActionBar.isGone = !hasSelection
-        if (hasSelection) {
+    private fun selectBook(
+        book: Book,
+        showActionBar: Boolean = true,
+        refreshItems: Boolean = true
+    ) {
+        selectedBooks[book.bookUrl] = book
+        updateSelectionBar(showActionBar, refreshItems)
+    }
+
+    private fun selectCollection(
+        collection: BookCollectionShelfItem,
+        showActionBar: Boolean = true,
+        refreshItems: Boolean = true
+    ) {
+        selectedCollections[collection.id] = collection
+        updateSelectionBar(showActionBar, refreshItems)
+    }
+
+    private fun updateSelectionBar(
+        showActionBar: Boolean = true,
+        refreshItems: Boolean = true
+    ) {
+        val hasSelection = hasSelection()
+        binding.bookActionBar.isGone = !hasSelection || !showActionBar
+        if (hasSelection && showActionBar) {
             binding.bookActionBar.bringToFront()
         }
-        setActionEnabled(binding.actionBookInfo, selectedBooks.size == 1)
-        setMainBottomBarHidden(hasSelection)
+        setActionEnabled(
+            binding.actionBookInfo,
+            selectedBooks.size == 1 && selectedCollections.isEmpty()
+        )
+        setActionEnabled(binding.actionAddCollection, hasSelection)
+        setActionEnabled(
+            binding.actionAddGroup,
+            selectedBooks.isNotEmpty() && selectedCollections.isEmpty()
+        )
+        setActionEnabled(
+            binding.actionDeleteBook,
+            selectedBooks.isNotEmpty() && selectedCollections.isEmpty()
+        )
+        setMainBottomBarHidden(hasSelection && showActionBar)
         if (refreshItems) {
             notifySelectionChanged()
         }
@@ -322,7 +376,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         binding.rvBookshelf.post {
             selectionRefreshPosted = false
             if (!isAdded || this@BooksFragment.view == null) return@post
-            booksAdapter.notifyDataSetChanged()
+            booksAdapter.notifySelectionChanged()
         }
     }
 
@@ -468,18 +522,17 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
                 }
                 list to filteredList
             }
-            booksFlow.combine(appDb.bookCollectionDao.flowCollections()) { bookData, collections ->
+            combine(
+                booksFlow,
+                appDb.bookCollectionDao.flowRootCollections(),
+                appDb.bookCollectionDao.flowCollectedBookUrls()
+            ) { bookData, collections, collectedBookUrls ->
                 val (allBooks, filteredBooks) = bookData
                 val visibleBookUrls = filteredBooks.mapTo(hashSetOf()) { it.bookUrl }
-                val collectionItems = collections.mapNotNull { item ->
-                    val visibleBooks = item.books.filter { it.bookUrl in visibleBookUrls }
-                    if (visibleBooks.isEmpty()) {
-                        null
-                    } else {
-                        BookCollectionShelfItem(item.collection, visibleBooks)
-                    }
-                }
-                Triple(allBooks, filteredBooks, collectionItems + filteredBooks)
+                val collectedBookUrlSet = collectedBookUrls.toHashSet()
+                val rootBooks = filteredBooks.filter { it.bookUrl !in collectedBookUrlSet }
+                val collectionItems = buildCollectionShelfItems(collections, visibleBookUrls)
+                Triple(allBooks, filteredBooks, collectionItems + rootBooks)
             }.flowWithLifecycleAndDatabaseChangeFirst(
                 viewLifecycleOwner.lifecycle,
                 Lifecycle.State.RESUMED,
@@ -498,6 +551,34 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
                 binding.refreshLayout.isEnabled = enableRefresh && list.isNotEmpty()
                 booksAdapter.setItems(items)
                 delay(100)
+            }
+        }
+    }
+
+    private fun buildCollectionShelfItems(
+        collections: List<BookCollectionWithItems>,
+        visibleBookUrls: Set<String>
+    ): List<BookCollectionShelfItem> {
+        val visibleBooksByCollectionId = collections.associate { item ->
+            item.collection.collectionId to item.books.filter { it.bookUrl in visibleBookUrls }
+        }
+        return collections.mapNotNull { item ->
+            val visibleBooks = visibleBooksByCollectionId[item.collection.collectionId].orEmpty()
+            val childPreviewBooks = item.childCollections.flatMap { childCollection ->
+                visibleBooksByCollectionId[childCollection.collectionId].orEmpty()
+            }
+            val previewBooks = (visibleBooks + childPreviewBooks)
+                .distinctBy { it.bookUrl }
+                .take(4)
+            if (visibleBooks.isEmpty() && item.childCollections.isEmpty()) {
+                null
+            } else {
+                BookCollectionShelfItem(
+                    collection = item.collection,
+                    books = visibleBooks,
+                    childCollections = item.childCollections,
+                    previewBooks = previewBooks
+                )
             }
         }
     }
@@ -570,11 +651,11 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     override fun onBookLongPressed(book: Book) {
-        selectBook(book, refreshItems = false)
+        selectBook(book, showActionBar = false)
     }
 
     override fun onBookLongPressFinished() {
-        updateSelectionBar(refreshItems = true)
+        updateSelectionBar(showActionBar = true, refreshItems = false)
     }
 
     override fun onBookTouchedForDrag(book: Book, view: View, rawX: Float, rawY: Float) {
@@ -583,52 +664,25 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         } else {
             listOf(book)
         }
-        draggingBookView = view
-        draggingStartRawX = rawX
-        draggingStartRawY = rawY
-        draggingOriginalTranslationX = view.translationX
-        draggingOriginalTranslationY = view.translationY
-        draggingOriginalElevation = view.elevation
-        binding.bookActionBar.gone()
-        setMainBottomBarHidden(true)
-        view.alpha = 0.45f
-        view.elevation = 24.dpToPx().toFloat()
+        draggingCollections = if (selectedBooks.containsKey(book.bookUrl)) {
+            selectedCollectionList()
+        } else {
+            emptyList()
+        }
+        startDragging(view, rawX, rawY)
     }
 
     override fun onBookDragMove(rawX: Float, rawY: Float) {
-        draggingBookView?.let {
-            it.translationX = draggingOriginalTranslationX + rawX - draggingStartRawX
-            it.translationY = draggingOriginalTranslationY + rawY - draggingStartRawY
+        val dx = rawX - draggingStartRawX
+        val dy = rawY - draggingStartRawY
+        draggingViewStates.forEach {
+            it.view.translationX = it.translationX + dx
+            it.view.translationY = it.translationY + dy
         }
     }
 
     override fun onBookDragEnd(book: Book, rawX: Float, rawY: Float) {
-        val books = draggingBooks.ifEmpty { listOf(book) }
-        val collection = findCollectionAt(rawX, rawY)
-        if (collection != null) {
-            addBooksToCollection(books, collection.id)
-            resetDraggingView()
-            return
-        }
-        val targetBook = findBookAt(rawX, rawY, books.mapTo(hashSetOf()) { it.bookUrl })
-        if (targetBook != null) {
-            val urls = (books + targetBook).distinctBy { it.bookUrl }.map { it.bookUrl }
-            showDialogFragment(BookCollectionSelectDialog(ArrayList(urls), openCreate = true))
-            resetDraggingView()
-            clearSelection()
-            return
-        }
-        val targetGroupId = (parentFragment as? io.legado.app.ui.main.bookshelf.style1.BookshelfFragment1)
-            ?.findSecondaryGroupIdAtRaw(rawX, rawY)
-        when {
-            targetGroupId == null -> Unit
-            targetGroupId > 0 -> addBooksToGroup(books, targetGroupId, clearAfter = true)
-            else -> toastOnUi(R.string.book_drop_system_group_invalid)
-        }
-        resetDraggingView()
-        if (targetGroupId == null || targetGroupId <= 0) {
-            clearSelection()
-        }
+        finishDragging(rawX, rawY)
     }
 
     override fun onBookDragCancel() {
@@ -637,28 +691,155 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     override fun onBookClickInSelection(book: Book) {
-        if (selectedBooks.isEmpty()) {
+        if (!hasSelection()) {
             open(book)
         } else {
             toggleSelection(book)
         }
     }
 
-    override fun isInSelectionMode(): Boolean {
-        return selectedBooks.isNotEmpty()
+    override fun onCollectionLongPressed(collection: BookCollectionShelfItem) {
+        selectCollection(collection, showActionBar = false)
     }
 
-    override fun isSelected(book: Book): Boolean {
-        return selectedBooks.containsKey(book.bookUrl)
+    override fun onCollectionTouchedForDrag(
+        collection: BookCollectionShelfItem,
+        view: View,
+        rawX: Float,
+        rawY: Float
+    ) {
+        draggingBooks = if (selectedCollections.containsKey(collection.id)) {
+            selectedBookList()
+        } else {
+            emptyList()
+        }
+        draggingCollections = if (selectedCollections.containsKey(collection.id)) {
+            selectedCollectionList()
+        } else {
+            listOf(collection)
+        }
+        startDragging(view, rawX, rawY)
+    }
+
+    override fun onCollectionDragEnd(
+        collection: BookCollectionShelfItem,
+        rawX: Float,
+        rawY: Float
+    ) {
+        finishDragging(rawX, rawY)
+    }
+
+    override fun onCollectionClickInSelection(collection: BookCollectionShelfItem) {
+        if (!hasSelection()) {
+            openCollection(collection)
+        } else {
+            toggleSelection(collection)
+        }
+    }
+
+    override fun isInSelectionMode(): Boolean {
+        return hasSelection()
+    }
+
+    override fun isSelected(item: Any): Boolean {
+        return when (item) {
+            is Book -> selectedBooks.containsKey(item.bookUrl)
+            is BookCollectionShelfItem -> selectedCollections.containsKey(item.id)
+            else -> false
+        }
     }
 
     override fun isUpdate(bookUrl: String): Boolean {
         return activityViewModel.isUpdate(bookUrl)
     }
 
-    private fun addBooksToCollection(books: List<Book>, collectionId: Long) {
+    private fun startDragging(view: View, rawX: Float, rawY: Float) {
+        draggingStartRawX = rawX
+        draggingStartRawY = rawY
+        binding.bookActionBar.gone()
+        setMainBottomBarHidden(true)
+        val draggingBookUrls = draggingBooks.mapTo(hashSetOf()) { it.bookUrl }
+        val draggingCollectionIds = draggingCollections.mapTo(hashSetOf()) { it.id }
+        draggingViewStates.clear()
+        for (index in 0 until binding.rvBookshelf.childCount) {
+            val child = binding.rvBookshelf.getChildAt(index)
+            val position = binding.rvBookshelf.getChildAdapterPosition(child)
+            if (position == RecyclerView.NO_POSITION) continue
+            val item = booksAdapter.getItem(position)
+            val shouldDrag = when (item) {
+                is Book -> item.bookUrl in draggingBookUrls
+                is BookCollectionShelfItem -> item.id in draggingCollectionIds
+                else -> false
+            }
+            if (shouldDrag) {
+                draggingViewStates.add(child.toDraggingViewState())
+            }
+        }
+        if (draggingViewStates.none { it.view == view }) {
+            draggingViewStates.add(view.toDraggingViewState())
+        }
+        draggingViewStates.forEach {
+            it.view.alpha = 0.45f
+            it.view.elevation = 24.dpToPx().toFloat()
+        }
+    }
+
+    private fun View.toDraggingViewState(): DraggingViewState {
+        return DraggingViewState(
+            view = this,
+            translationX = translationX,
+            translationY = translationY,
+            elevation = elevation,
+            alpha = alpha
+        )
+    }
+
+    private fun finishDragging(rawX: Float, rawY: Float) {
+        val books = draggingBooks
+        val collections = draggingCollections
+        val collection = findCollectionAt(rawX, rawY)
+        if (collection != null) {
+            addItemsToCollection(books, collections, collection.id)
+            resetDraggingView()
+            return
+        }
+        val targetBook = findBookAt(rawX, rawY, books.mapTo(hashSetOf()) { it.bookUrl })
+        if (targetBook != null) {
+            val urls = (books + targetBook).distinctBy { it.bookUrl }.map { it.bookUrl }
+            val collectionIds = collections.map { it.id }.toLongArray()
+            showDialogFragment(
+                BookCollectionSelectDialog(ArrayList(urls), collectionIds, openCreate = true)
+            )
+            resetDraggingView()
+            clearSelection()
+            return
+        }
+        val targetGroupId = (parentFragment as? io.legado.app.ui.main.bookshelf.style1.BookshelfFragment1)
+            ?.findSecondaryGroupIdAtRaw(rawX, rawY)
+        when {
+            targetGroupId == null -> Unit
+            targetGroupId > 0 && collections.isEmpty() -> addBooksToGroup(
+                books,
+                targetGroupId,
+                clearAfter = true
+            )
+
+            targetGroupId <= 0 && collections.isEmpty() -> toastOnUi(R.string.book_drop_system_group_invalid)
+        }
+        resetDraggingView()
+        if (targetGroupId == null || targetGroupId <= 0 || collections.isNotEmpty()) {
+            clearSelection()
+        }
+    }
+
+    private fun addItemsToCollection(
+        books: List<Book>,
+        collections: List<BookCollectionShelfItem>,
+        collectionId: Long
+    ) {
         viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
             appDb.bookCollectionDao.addBookUrls(collectionId, books.map { it.bookUrl })
+            appDb.bookCollectionDao.addChildCollectionIds(collectionId, collections.map { it.id })
             withContext(Dispatchers.Main) {
                 toastOnUi(R.string.book_collection_added)
                 upRecyclerData()
@@ -675,7 +856,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         val hitRect = Rect()
         for (index in binding.rvBookshelf.childCount - 1 downTo 0) {
             val child = binding.rvBookshelf.getChildAt(index)
-            if (child == draggingBookView) continue
+            if (draggingViewStates.any { it.view == child }) continue
             hitRect.set(
                 (child.left + child.translationX).roundToInt(),
                 (child.top + child.translationY).roundToInt(),
@@ -686,7 +867,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             val position = binding.rvBookshelf.getChildAdapterPosition(child)
             if (position == RecyclerView.NO_POSITION) continue
             val item = booksAdapter.getItem(position)
-            if (item is BookCollectionShelfItem) {
+            if (item is BookCollectionShelfItem && draggingCollections.none { it.id == item.id }) {
                 return item
             }
         }
@@ -701,7 +882,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         val hitRect = Rect()
         for (index in binding.rvBookshelf.childCount - 1 downTo 0) {
             val child = binding.rvBookshelf.getChildAt(index)
-            if (child == draggingBookView) continue
+            if (draggingViewStates.any { it.view == child }) continue
             hitRect.set(
                 (child.left + child.translationX).roundToInt(),
                 (child.top + child.translationY).roundToInt(),
@@ -720,14 +901,15 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     private fun resetDraggingView() {
-        draggingBookView?.let {
-            it.alpha = 1f
-            it.translationX = draggingOriginalTranslationX
-            it.translationY = draggingOriginalTranslationY
-            it.elevation = draggingOriginalElevation
+        draggingViewStates.forEach {
+            it.view.alpha = it.alpha
+            it.view.translationX = it.translationX
+            it.view.translationY = it.translationY
+            it.view.elevation = it.elevation
         }
-        draggingBookView = null
+        draggingViewStates.clear()
         draggingBooks = emptyList()
+        draggingCollections = emptyList()
     }
 
     private fun Book.isInSecondaryGroup(groupId: Long, userGroupIds: Long): Boolean {

@@ -5,10 +5,11 @@ import io.legado.app.data.entities.BookCollection
 
 data class BookCollectionShelfItem(
     val collection: BookCollection,
-    val books: List<Book>
+    val books: List<Book>,
+    val childCollections: List<BookCollection> = emptyList(),
+    val previewBooks: List<Book> = books.take(4),
+    val count: Int = books.size + childCollections.size
 ) {
     val id: Long get() = collection.collectionId
     val name: String get() = collection.name
-    val count: Int get() = books.size
-    val previewBooks: List<Book> get() = books.take(4)
 }

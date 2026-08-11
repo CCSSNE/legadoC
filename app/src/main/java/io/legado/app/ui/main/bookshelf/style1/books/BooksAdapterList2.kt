@@ -49,6 +49,8 @@ class BooksAdapterList2(
         holder.itemView.alpha = 1f
         if (item is BookCollectionShelfItem && binding is ItemBookshelfCollectionListBinding) {
             binding.run {
+                renderSelectionMark(selectionOuter, selectionDot, item, callBack)
+                if (isSelectionPayload(payloads)) return
                 tvName.text = item.name
                 tvCount.text = context.getString(R.string.book_collection_count, item.count)
                 listOf(
@@ -130,13 +132,13 @@ class BooksAdapterList2(
                 getItem(holder.layoutPosition)?.let {
                     when (it) {
                         is Book -> callBack.onBookClickInSelection(it)
-                        is BookCollectionShelfItem -> callBack.openCollection(it)
+                        is BookCollectionShelfItem -> callBack.onCollectionClickInSelection(it)
                     }
                 }
             }
 
-            bindBookTouch(
-                bookProvider = { getItem(holder.layoutPosition) as? Book },
+            bindShelfTouch(
+                itemProvider = { getItem(holder.layoutPosition) },
                 callBack = callBack
             )
         }

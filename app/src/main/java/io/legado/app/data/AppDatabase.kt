@@ -37,6 +37,7 @@ import io.legado.app.data.dao.TxtTocRuleDao
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookCollection
+import io.legado.app.data.entities.BookCollectionChild
 import io.legado.app.data.entities.BookCollectionItem
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookSource
@@ -75,10 +76,10 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 93,
+    version = 94,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
-        BookCollection::class, BookCollectionItem::class,
+        BookCollection::class, BookCollectionItem::class, BookCollectionChild::class,
         ReplaceRule::class, SearchBook::class, SearchKeyword::class, Cookie::class,
         RssSource::class, Bookmark::class, RssArticle::class, RssReadRecord::class,
         RssStar::class, TxtTocRule::class, ReadRecord::class, ReadRecordDaily::class,

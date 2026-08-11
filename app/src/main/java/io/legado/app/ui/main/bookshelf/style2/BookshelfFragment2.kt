@@ -247,21 +247,35 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
                     }
                 }
             }
-            booksFlow.combine(appDb.bookCollectionDao.flowCollections()) { list, collections ->
+            combine(
+                booksFlow,
+                appDb.bookCollectionDao.flowRootCollections(),
+                appDb.bookCollectionDao.flowCollectedBookUrls()
+            ) { list, collections, collectedBookUrls ->
                 val shelfCollections = if (groupId == BookGroup.IdRoot) {
                     val visibleBookUrls = list.mapTo(hashSetOf()) { it.bookUrl }
                     collections.mapNotNull { item ->
                         val visibleBooks = item.books.filter { it.bookUrl in visibleBookUrls }
-                        if (visibleBooks.isEmpty()) {
+                        if (visibleBooks.isEmpty() && item.childCollections.isEmpty()) {
                             null
                         } else {
-                            BookCollectionShelfItem(item.collection, visibleBooks)
+                            BookCollectionShelfItem(
+                                collection = item.collection,
+                                books = visibleBooks,
+                                childCollections = item.childCollections
+                            )
                         }
                     }
                 } else {
                     emptyList()
                 }
-                list to shelfCollections
+                val visibleBooks = if (groupId == BookGroup.IdRoot) {
+                    val collectedBookUrlSet = collectedBookUrls.toHashSet()
+                    list.filter { it.bookUrl !in collectedBookUrlSet }
+                } else {
+                    list
+                }
+                visibleBooks to shelfCollections
             }.flowWithLifecycleAndDatabaseChangeFirst(
                 viewLifecycleOwner.lifecycle,
                 Lifecycle.State.RESUMED,

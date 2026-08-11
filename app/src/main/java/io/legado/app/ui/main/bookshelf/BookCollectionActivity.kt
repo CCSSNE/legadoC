@@ -10,6 +10,7 @@ import io.legado.app.base.BaseActivity
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookCollectionWithItems
 import io.legado.app.databinding.ActivityBookCollectionBinding
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfig
@@ -22,6 +23,7 @@ import io.legado.app.utils.startActivity
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
@@ -50,19 +52,14 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
             }
         }
         lifecycleScope.launch {
-            appDb.bookCollectionDao.flowBooks(collectionId).map { list ->
-                val visibleBooks = list.filterNot { it.isNotShelf }
-                when (AppConfig.bookshelfSort) {
-                    1 -> visibleBooks.sortedByDescending { it.latestChapterTime }
-                    2 -> visibleBooks.sortedWith { o1, o2 -> o1.name.cnCompare(o2.name) }
-                    3 -> visibleBooks.sortedBy { it.order }
-                    4 -> visibleBooks.sortedByDescending {
-                        max(it.latestChapterTime, it.durChapterTime)
-                    }
-
-                    5 -> visibleBooks.sortedWith { o1, o2 -> o1.author.cnCompare(o2.author) }
-                    else -> visibleBooks
-                }
+            combine(
+                appDb.bookCollectionDao.flowBooks(collectionId),
+                appDb.bookCollectionDao.flowChildCollections(collectionId)
+            ) { list, childCollections ->
+                val sortedBooks = sortBooks(list.filterNot { it.isNotShelf })
+                val visibleBookUrls = sortedBooks.mapTo(hashSetOf()) { it.bookUrl }
+                val childItems = buildCollectionShelfItems(childCollections, visibleBookUrls)
+                childItems + sortedBooks
             }.catch {
                 AppLog.put("合集详情更新出错", it)
             }.flowOn(Dispatchers.IO).conflate().collect {
@@ -75,11 +72,49 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
         }
     }
 
+    private fun sortBooks(books: List<Book>): List<Book> {
+        return when (AppConfig.bookshelfSort) {
+            1 -> books.sortedByDescending { it.latestChapterTime }
+            2 -> books.sortedWith { o1, o2 -> o1.name.cnCompare(o2.name) }
+            3 -> books.sortedBy { it.order }
+            4 -> books.sortedByDescending {
+                max(it.latestChapterTime, it.durChapterTime)
+            }
+
+            5 -> books.sortedWith { o1, o2 -> o1.author.cnCompare(o2.author) }
+            else -> books
+        }
+    }
+
+    private fun buildCollectionShelfItems(
+        collections: List<BookCollectionWithItems>,
+        visibleBookUrls: Set<String>
+    ): List<BookCollectionShelfItem> {
+        return collections.mapNotNull { item ->
+            val visibleBooks = item.books.filter {
+                it.bookUrl in visibleBookUrls || !it.isNotShelf
+            }
+            if (visibleBooks.isEmpty() && item.childCollections.isEmpty()) {
+                null
+            } else {
+                BookCollectionShelfItem(
+                    collection = item.collection,
+                    books = visibleBooks,
+                    childCollections = item.childCollections,
+                    previewBooks = visibleBooks.take(4)
+                )
+            }
+        }
+    }
+
     override fun open(book: Book) {
         startActivityForBook(book)
     }
 
     override fun openCollection(collection: BookCollectionShelfItem) {
+        startActivity<BookCollectionActivity> {
+            putExtra("collectionId", collection.id)
+        }
     }
 
     override fun openBookInfo(book: Book) {
@@ -112,9 +147,32 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
         open(book)
     }
 
+    override fun onCollectionLongPressed(collection: BookCollectionShelfItem) {
+        openCollection(collection)
+    }
+
+    override fun onCollectionTouchedForDrag(
+        collection: BookCollectionShelfItem,
+        view: View,
+        rawX: Float,
+        rawY: Float
+    ) {
+    }
+
+    override fun onCollectionDragEnd(
+        collection: BookCollectionShelfItem,
+        rawX: Float,
+        rawY: Float
+    ) {
+    }
+
+    override fun onCollectionClickInSelection(collection: BookCollectionShelfItem) {
+        openCollection(collection)
+    }
+
     override fun isInSelectionMode(): Boolean = false
 
-    override fun isSelected(book: Book): Boolean = false
+    override fun isSelected(item: Any): Boolean = false
 
     override fun isUpdate(bookUrl: String): Boolean = false
 }

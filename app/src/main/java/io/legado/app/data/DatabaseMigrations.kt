@@ -20,8 +20,28 @@ object DatabaseMigrations {
             migration_31_32, migration_32_33, migration_33_34, migration_34_35,
             migration_35_36, migration_36_37, migration_37_38, migration_38_39,
             migration_39_40, migration_40_41, migration_41_42, migration_42_43,
-            migration_90_91, migration_91_92, migration_92_93,
+            migration_90_91, migration_91_92, migration_92_93, migration_93_94,
         )
+    }
+
+    private val migration_93_94 = object : Migration(93, 94) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `book_collection_children` (
+                    `parentCollectionId` INTEGER NOT NULL,
+                    `childCollectionId` INTEGER NOT NULL,
+                    `order` INTEGER NOT NULL DEFAULT 0,
+                    `addedTime` INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY(`parentCollectionId`, `childCollectionId`),
+                    FOREIGN KEY(`parentCollectionId`) REFERENCES `book_collections`(`collectionId`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                    FOREIGN KEY(`childCollectionId`) REFERENCES `book_collections`(`collectionId`) ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_book_collection_children_parentCollectionId` ON `book_collection_children` (`parentCollectionId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_book_collection_children_childCollectionId` ON `book_collection_children` (`childCollectionId`)")
+        }
     }
 
     private val migration_92_93 = object : Migration(92, 93) {

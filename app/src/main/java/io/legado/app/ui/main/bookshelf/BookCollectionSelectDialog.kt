@@ -14,7 +14,7 @@ import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
-import io.legado.app.data.entities.BookCollectionWithBooks
+import io.legado.app.data.entities.BookCollectionWithItems
 import io.legado.app.databinding.DialogBookCollectionSelectBinding
 import io.legado.app.databinding.ItemBookCollectionSelectBinding
 import io.legado.app.lib.dialogs.alert
@@ -42,10 +42,24 @@ class BookCollectionSelectDialog() : BaseDialogFragment(R.layout.dialog_book_col
         }
     }
 
+    constructor(
+        bookUrls: ArrayList<String>,
+        collectionIds: LongArray,
+        openCreate: Boolean = false
+    ) : this() {
+        arguments = Bundle().apply {
+            putStringArrayList("bookUrls", bookUrls)
+            putLongArray("collectionIds", collectionIds)
+            putBoolean("openCreate", openCreate)
+        }
+    }
+
     private val binding by viewBinding(DialogBookCollectionSelectBinding::bind)
     private val adapter by lazy { CollectionAdapter() }
     private val bookUrls: List<String>
         get() = arguments?.getStringArrayList("bookUrls").orEmpty()
+    private val collectionIds: List<Long>
+        get() = arguments?.getLongArray("collectionIds")?.toList().orEmpty()
 
     override fun onStart() {
         super.onStart()
@@ -70,7 +84,9 @@ class BookCollectionSelectDialog() : BaseDialogFragment(R.layout.dialog_book_col
         binding.recyclerView.adapter = adapter
         lifecycleScope.launch {
             appDb.bookCollectionDao.flowCollections().conflate().collect {
-                adapter.setItems(it)
+                adapter.setItems(it.filter { item ->
+                    item.collection.collectionId !in collectionIds
+                })
             }
         }
         if (arguments?.getBoolean("openCreate") == true) {
@@ -94,6 +110,7 @@ class BookCollectionSelectDialog() : BaseDialogFragment(R.layout.dialog_book_col
                 lifecycleScope.launch(Dispatchers.IO) {
                     val collectionId = appDb.bookCollectionDao.createCollection(name)
                     appDb.bookCollectionDao.addBookUrls(collectionId, bookUrls)
+                    appDb.bookCollectionDao.addChildCollectionIds(collectionId, collectionIds)
                     withContext(Dispatchers.Main) {
                         postEvent(EventBus.BOOKSHELF_REFRESH, "")
                         toastOnUi(R.string.book_collection_added)
@@ -105,9 +122,13 @@ class BookCollectionSelectDialog() : BaseDialogFragment(R.layout.dialog_book_col
         }
     }
 
-    private fun addToCollection(item: BookCollectionWithBooks) {
+    private fun addToCollection(item: BookCollectionWithItems) {
         lifecycleScope.launch(Dispatchers.IO) {
             appDb.bookCollectionDao.addBookUrls(item.collection.collectionId, bookUrls)
+            appDb.bookCollectionDao.addChildCollectionIds(
+                item.collection.collectionId,
+                collectionIds
+            )
             withContext(Dispatchers.Main) {
                 postEvent(EventBus.BOOKSHELF_REFRESH, "")
                 toastOnUi(R.string.book_collection_added)
@@ -117,7 +138,7 @@ class BookCollectionSelectDialog() : BaseDialogFragment(R.layout.dialog_book_col
     }
 
     private inner class CollectionAdapter :
-        RecyclerAdapter<BookCollectionWithBooks, ItemBookCollectionSelectBinding>(requireContext()) {
+        RecyclerAdapter<BookCollectionWithItems, ItemBookCollectionSelectBinding>(requireContext()) {
 
         override fun getViewBinding(parent: ViewGroup): ItemBookCollectionSelectBinding {
             return ItemBookCollectionSelectBinding.inflate(inflater, parent, false)
@@ -126,11 +147,14 @@ class BookCollectionSelectDialog() : BaseDialogFragment(R.layout.dialog_book_col
         override fun convert(
             holder: ItemViewHolder,
             binding: ItemBookCollectionSelectBinding,
-            item: BookCollectionWithBooks,
+            item: BookCollectionWithItems,
             payloads: MutableList<Any>
         ) = binding.run {
             tvName.text = item.collection.name
-            tvCount.text = context.getString(R.string.book_collection_count, item.books.size)
+            tvCount.text = context.getString(
+                R.string.book_collection_count,
+                item.books.size + item.childCollections.size
+            )
             listOf(
                 coverMosaic.ivCover1,
                 coverMosaic.ivCover2,

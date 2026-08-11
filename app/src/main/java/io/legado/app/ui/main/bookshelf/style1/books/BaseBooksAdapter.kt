@@ -1,6 +1,7 @@
 package io.legado.app.ui.main.bookshelf.style1.books
 
 import android.content.Context
+import android.os.Bundle
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
@@ -19,6 +20,7 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
     protected companion object {
         const val VIEW_TYPE_BOOK = 0
         const val VIEW_TYPE_COLLECTION = 1
+        const val PAYLOAD_SELECTION = "selection"
     }
 
     override val keepScrollPosition = true
@@ -121,8 +123,8 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
         holder.itemView.setOnTouchListener(null)
     }
 
-    protected fun View.bindBookTouch(
-        bookProvider: () -> Book?,
+    protected fun View.bindShelfTouch(
+        itemProvider: () -> Any?,
         callBack: CallBack
     ) {
         val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
@@ -133,7 +135,7 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
         var dragging = false
         var longPressRunnable: Runnable? = null
         setOnTouchListener { view, event ->
-            val book = bookProvider() ?: return@setOnTouchListener false
+            val item = itemProvider() ?: return@setOnTouchListener false
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     downX = event.rawX
@@ -141,11 +143,14 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
                     longPressed = false
                     dragging = false
                     longPressRunnable = Runnable {
-                        val pressedBook = bookProvider() ?: return@Runnable
+                        val pressedItem = itemProvider() ?: return@Runnable
                         longPressed = true
                         view.clearPressedState()
                         view.parent?.requestDisallowInterceptTouchEvent(true)
-                        callBack.onBookLongPressed(pressedBook)
+                        when (pressedItem) {
+                            is Book -> callBack.onBookLongPressed(pressedItem)
+                            is BookCollectionShelfItem -> callBack.onCollectionLongPressed(pressedItem)
+                        }
                     }.also {
                         view.postDelayed(it, longPressTimeout)
                     }
@@ -163,7 +168,21 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
                     if (longPressed && movedEnough) {
                         if (!dragging) {
                             dragging = true
-                            callBack.onBookTouchedForDrag(book, view, event.rawX, event.rawY)
+                            when (item) {
+                                is Book -> callBack.onBookTouchedForDrag(
+                                    item,
+                                    view,
+                                    event.rawX,
+                                    event.rawY
+                                )
+
+                                is BookCollectionShelfItem -> callBack.onCollectionTouchedForDrag(
+                                    item,
+                                    view,
+                                    event.rawX,
+                                    event.rawY
+                                )
+                            }
                         }
                         callBack.onBookDragMove(event.rawX, event.rawY)
                         true
@@ -178,7 +197,14 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
                     view.clearPressedState()
                     when {
                         dragging -> {
-                            callBack.onBookDragEnd(book, event.rawX, event.rawY)
+                            when (item) {
+                                is Book -> callBack.onBookDragEnd(item, event.rawX, event.rawY)
+                                is BookCollectionShelfItem -> callBack.onCollectionDragEnd(
+                                    item,
+                                    event.rawX,
+                                    event.rawY
+                                )
+                            }
                             longPressed = false
                             dragging = false
                             true
@@ -237,10 +263,22 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
         notifyItemRangeChanged(0, itemCount, bundleOf(Pair("lastUpdateTime", null)))
     }
 
-    protected fun renderSelectionMark(outer: View, dot: View, book: Book, callBack: CallBack) {
+    fun notifySelectionChanged() {
+        if (itemCount > 0) {
+            notifyItemRangeChanged(0, itemCount, bundleOf(Pair(PAYLOAD_SELECTION, null)))
+        }
+    }
+
+    protected fun isSelectionPayload(payloads: MutableList<Any>): Boolean {
+        return payloads.isNotEmpty() && payloads.all {
+            it is Bundle && it.containsKey(PAYLOAD_SELECTION)
+        }
+    }
+
+    protected fun renderSelectionMark(outer: View, dot: View, item: Any, callBack: CallBack) {
         val selectionMode = callBack.isInSelectionMode()
         outer.visibility = if (selectionMode) View.VISIBLE else View.GONE
-        dot.visibility = if (selectionMode && callBack.isSelected(book)) View.VISIBLE else View.GONE
+        dot.visibility = if (selectionMode && callBack.isSelected(item)) View.VISIBLE else View.GONE
     }
 
     interface CallBack {
@@ -254,8 +292,17 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
         fun onBookDragEnd(book: Book, rawX: Float, rawY: Float)
         fun onBookDragCancel()
         fun onBookClickInSelection(book: Book)
+        fun onCollectionLongPressed(collection: BookCollectionShelfItem)
+        fun onCollectionTouchedForDrag(
+            collection: BookCollectionShelfItem,
+            view: android.view.View,
+            rawX: Float,
+            rawY: Float
+        )
+        fun onCollectionDragEnd(collection: BookCollectionShelfItem, rawX: Float, rawY: Float)
+        fun onCollectionClickInSelection(collection: BookCollectionShelfItem)
         fun isInSelectionMode(): Boolean
-        fun isSelected(book: Book): Boolean
+        fun isSelected(item: Any): Boolean
         fun isUpdate(bookUrl: String): Boolean
     }
 }

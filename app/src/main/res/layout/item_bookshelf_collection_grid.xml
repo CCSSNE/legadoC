@@ -42,6 +42,33 @@
 
     </LinearLayout>
 
+    <FrameLayout
+        android:id="@+id/selection_outer"
+        android:layout_width="26dp"
+        android:layout_height="26dp"
+        android:layout_marginTop="6dp"
+        android:layout_marginEnd="6dp"
+        android:background="@drawable/bg_bookshelf_selection_ring"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="@+id/content"
+        app:layout_constraintTop_toTopOf="@+id/content"
+        tools:visibility="visible">
+
+        <androidx.appcompat.widget.AppCompatImageView
+            android:id="@+id/selection_dot"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_gravity="center"
+            android:background="@drawable/bg_bookshelf_selection_dot"
+            android:contentDescription="@string/selected"
+            android:padding="5dp"
+            android:src="@drawable/ic_bookshelf_selection_check"
+            android:visibility="gone"
+            app:tint="@color/white"
+            tools:visibility="visible" />
+
+    </FrameLayout>
+
     <View
         android:id="@+id/vw_foreground"
         android:layout_width="match_parent"

@@ -21,6 +21,33 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
+    <FrameLayout
+        android:id="@+id/selection_outer"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
+        android:layout_marginTop="3dp"
+        android:layout_marginEnd="3dp"
+        android:background="@drawable/bg_bookshelf_selection_ring"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="@+id/cover_mosaic"
+        app:layout_constraintTop_toTopOf="@+id/cover_mosaic"
+        tools:visibility="visible">
+
+        <androidx.appcompat.widget.AppCompatImageView
+            android:id="@+id/selection_dot"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_gravity="center"
+            android:background="@drawable/bg_bookshelf_selection_dot"
+            android:contentDescription="@string/selected"
+            android:padding="5dp"
+            android:src="@drawable/ic_bookshelf_selection_check"
+            android:visibility="gone"
+            app:tint="@color/white"
+            tools:visibility="visible" />
+
+    </FrameLayout>
+
     <TextView
         android:id="@+id/tv_name"
         android:layout_width="0dp"
