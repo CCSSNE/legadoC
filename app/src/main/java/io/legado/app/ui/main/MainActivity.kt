@@ -263,14 +263,14 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 closeSideNavigation()
                 return@addCallback
             }
-            if (pagePosition != 0) {
-                binding.viewPagerMain.currentItem = 0
-                return@addCallback
-            }
-            (fragmentMap[getFragmentId(0)] as? BaseBookshelfFragment)?.let {
+            (fragmentMap[getFragmentId(pagePosition)] as? BaseBookshelfFragment)?.let {
                 if (it.back()) {
                     return@addCallback
                 }
+            }
+            if (pagePosition != 0) {
+                binding.viewPagerMain.currentItem = 0
+                return@addCallback
             }
             if (System.currentTimeMillis() - exitTime > EXIT_INTERVAL) {
                 toastOnUi(R.string.double_click_exit)
