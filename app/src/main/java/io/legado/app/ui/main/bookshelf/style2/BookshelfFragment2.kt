@@ -282,7 +282,10 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
             }.flowWithLifecycleAndDatabaseChangeFirst(
                 viewLifecycleOwner.lifecycle,
                 Lifecycle.State.RESUMED,
-                AppDatabase.BOOK_TABLE_NAME
+                AppDatabase.BOOK_TABLE_NAME,
+                AppDatabase.BOOK_COLLECTION_TABLE_NAME,
+                AppDatabase.BOOK_COLLECTION_ITEM_TABLE_NAME,
+                AppDatabase.BOOK_COLLECTION_CHILD_TABLE_NAME
             ).catch {
                 AppLog.put("书架更新出错", it)
             }.conflate().flowOn(Dispatchers.Default).collect { (list, collections) ->

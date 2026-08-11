@@ -169,6 +169,9 @@ abstract class AppDatabase : RoomDatabase() {
         const val DATABASE_NAME = "legado.db"
 
         const val BOOK_TABLE_NAME = "books"
+        const val BOOK_COLLECTION_TABLE_NAME = "book_collections"
+        const val BOOK_COLLECTION_ITEM_TABLE_NAME = "book_collection_items"
+        const val BOOK_COLLECTION_CHILD_TABLE_NAME = "book_collection_children"
         const val BOOK_SOURCE_TABLE_NAME = "book_sources"
         const val RSS_SOURCE_TABLE_NAME = "rssSources"
 
