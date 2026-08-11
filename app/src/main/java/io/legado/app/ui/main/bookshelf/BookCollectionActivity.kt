@@ -447,11 +447,9 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
         anchor.view.translationX = anchorBaseX + dx - anchor.view.left
         anchor.view.translationY = anchorBaseY + dy - anchor.view.top
         draggingViewStates.drop(1).forEach { state ->
-            state.view.animate()
-                .translationX(anchorBaseX + dx + state.stackOffsetX - state.view.left)
-                .translationY(anchorBaseY + dy + state.stackOffsetY - state.view.top)
-                .setDuration(120)
-                .start()
+            state.view.animate().cancel()
+            state.view.translationX = anchorBaseX + dx + state.stackOffsetX - state.view.left
+            state.view.translationY = anchorBaseY + dy + state.stackOffsetY - state.view.top
         }
     }
 
@@ -564,11 +562,8 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
         draggingViewStates.forEach { state ->
             if (state === anchorState) return@forEach
             state.view.elevation = 20.dpToPx().toFloat()
-            state.view.animate()
-                .translationX(anchorBaseX + state.stackOffsetX - state.view.left)
-                .translationY(anchorBaseY + state.stackOffsetY - state.view.top)
-                .setDuration(180)
-                .start()
+            state.view.translationX = anchorBaseX + state.stackOffsetX - state.view.left
+            state.view.translationY = anchorBaseY + state.stackOffsetY - state.view.top
         }
     }
 
