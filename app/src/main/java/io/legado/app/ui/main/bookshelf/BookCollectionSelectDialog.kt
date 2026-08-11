@@ -149,12 +149,7 @@ class BookCollectionSelectDialog() : BaseDialogFragment(R.layout.dialog_book_col
     private fun moveToRoot() {
         if (bookUrls.isEmpty() && collectionIds.isEmpty()) return
         lifecycleScope.launch(Dispatchers.IO) {
-            if (bookUrls.isNotEmpty()) {
-                appDb.bookCollectionDao.deleteItemsByBookUrls(bookUrls)
-            }
-            if (collectionIds.isNotEmpty()) {
-                appDb.bookCollectionDao.deleteParentsByChildCollectionIds(collectionIds)
-            }
+            appDb.bookCollectionDao.moveItemsToRoot(bookUrls, collectionIds)
             withContext(Dispatchers.Main) {
                 postEvent(EventBus.BOOKSHELF_REFRESH, "")
                 dismissAllowingStateLoss()

@@ -93,6 +93,9 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
         binding.btnSecondaryTagsExpand.setOnClickListener {
             showSecondaryGroupSelector()
         }
+        binding.btnSelectCurrentPage.setOnClickListener {
+            fragmentMap[selectedSecondaryGroupId]?.selectAllCurrentPage()
+        }
         binding.tabLayout.setOnTagClickListener { index ->
             val secondaryGroupId = secondaryGroupIds.getOrNull(index) ?: BookGroup.IdAll
             if (secondaryGroupId == selectedSecondaryGroupId) {
@@ -120,6 +123,7 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
                     selectedSecondaryGroupId = secondaryGroupId
                     updateOnlyUpdateRead()
                     binding.tabLayout.setSelectedIndex(position, smooth = true)
+                    updateSelectAllButtonVisibility()
                 }
             }
         )
@@ -175,6 +179,23 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
                 fragmentMap.values.any { it.exitSelectionIfNeeded() }
     }
 
+    fun onChildSelectionChanged(fragment: BooksFragment, hasSelection: Boolean) {
+        if (fragmentMap[selectedSecondaryGroupId] == fragment) {
+            updateSelectAllButtonVisibility()
+        }
+    }
+
+    private fun updateSelectAllButtonVisibility() {
+        val currentFragment = fragmentMap[selectedSecondaryGroupId]
+        val selecting = currentFragment?.isSelecting() == true
+        binding.btnSelectCurrentPage.visibility = if (selecting) View.VISIBLE else View.GONE
+        if (selecting) {
+            binding.btnSecondaryTagsExpand.visibility = View.GONE
+        } else {
+            updateSecondaryTagsExpandVisibility()
+        }
+    }
+
     override fun onSearchPlacementChanged() {
         updateSearchButtonVisibility()
     }
@@ -216,6 +237,11 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
             },
             secondaryGroupIds.indexOf(selectedSecondaryGroupId).takeIf { it >= 0 } ?: 0
         )
+        updateSecondaryTagsExpandVisibility()
+        updateSelectAllButtonVisibility()
+    }
+
+    private fun updateSecondaryTagsExpandVisibility() {
         binding.btnSecondaryTagsExpand.visibility =
             if (secondaryGroupIds.size >= ExpandableTagSelector.EXPAND_THRESHOLD) {
                 View.VISIBLE
@@ -289,6 +315,7 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
             ?: firstSecondaryGroupId()
         selectSecondaryGroup(targetSecondaryGroupId, smooth = false)
         updateHeaderTitle()
+        updateSelectAllButtonVisibility()
     }
 
     private fun firstSecondaryGroupId(): Long {

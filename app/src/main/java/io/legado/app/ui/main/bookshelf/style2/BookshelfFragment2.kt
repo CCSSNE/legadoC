@@ -7,6 +7,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.CheckBox
 import android.widget.LinearLayout
+import androidx.activity.addCallback
 import androidx.appcompat.widget.SearchView
 import androidx.core.view.isGone
 import androidx.lifecycle.Lifecycle
@@ -40,6 +41,7 @@ import io.legado.app.utils.cnCompare
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChangeFirst
 import io.legado.app.utils.observeEvent
+import io.legado.app.utils.postEvent
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
@@ -95,10 +97,22 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         setSupportToolbar(binding.titleBar.toolbar)
+        initBackHandler()
         initRecyclerView()
         initBookActionBar()
         initBookGroupData()
         initBooksData()
+    }
+
+    private fun initBackHandler() {
+        requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner) {
+            if (back()) {
+                return@addCallback
+            }
+            isEnabled = false
+            requireActivity().onBackPressedDispatcher.onBackPressed()
+            isEnabled = true
+        }
     }
 
     override fun onDestroyView() {
@@ -473,6 +487,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
             appDb.bookCollectionDao.deleteCollectionsAndRelease(listOf(collection.id))
             withContext(Dispatchers.Main) {
                 clearBookActionBar()
+                postEvent(EventBus.BOOKSHELF_REFRESH, "")
             }
         }
     }

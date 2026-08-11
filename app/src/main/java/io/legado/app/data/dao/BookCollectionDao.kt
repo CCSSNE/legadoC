@@ -140,6 +140,9 @@ interface BookCollectionDao {
     @Query("UPDATE book_collections SET updatedTime = :updatedTime WHERE collectionId = :collectionId")
     fun updateCollectionTime(collectionId: Long, updatedTime: Long)
 
+    @Query("UPDATE book_collections SET updatedTime = :updatedTime")
+    fun updateAllCollectionTimes(updatedTime: Long)
+
     @Query("SELECT DISTINCT bookUrl FROM book_collection_items")
     fun flowCollectedBookUrls(): Flow<List<String>>
 
@@ -215,12 +218,28 @@ interface BookCollectionDao {
             }
         )
         updateCollectionTime(collectionId, now)
+        updateAllCollectionTimes(now)
     }
 
     @Transaction
     fun normalizeLocations() {
         deleteDuplicateBookItems()
         deleteDuplicateChildCollections()
+        updateAllCollectionTimes(System.currentTimeMillis())
+    }
+
+    @Transaction
+    fun moveItemsToRoot(bookUrls: List<String>, collectionIds: List<Long>) {
+        val uniqueBookUrls = bookUrls.distinct()
+        val uniqueCollectionIds = collectionIds.distinct().filter { it > 0 }
+        if (uniqueBookUrls.isEmpty() && uniqueCollectionIds.isEmpty()) return
+        if (uniqueBookUrls.isNotEmpty()) {
+            deleteItemsByBookUrls(uniqueBookUrls)
+        }
+        if (uniqueCollectionIds.isNotEmpty()) {
+            deleteParentsByChildCollectionIds(uniqueCollectionIds)
+        }
+        updateAllCollectionTimes(System.currentTimeMillis())
     }
 
     @Transaction
@@ -228,6 +247,7 @@ interface BookCollectionDao {
         collectionIds.distinct().filter { it > 0 }.forEach { collectionId ->
             deleteCollectionAndRelease(collectionId)
         }
+        updateAllCollectionTimes(System.currentTimeMillis())
     }
 
     @Transaction
@@ -265,5 +285,6 @@ interface BookCollectionDao {
             }
         )
         updateCollectionTime(parentCollectionId, now)
+        updateAllCollectionTimes(now)
     }
 }

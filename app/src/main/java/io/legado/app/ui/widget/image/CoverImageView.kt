@@ -15,6 +15,7 @@ import android.view.ViewGroup
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
+import com.bumptech.glide.Glide
 import com.bumptech.glide.load.DecodeFormat
 import com.bumptech.glide.Priority
 import com.bumptech.glide.load.DataSource
@@ -319,6 +320,18 @@ class CoverImageView @JvmOverloads constructor(
             null,
             true
         )
+    }
+
+    fun clearCoverToDefault() {
+        currentJob?.cancel()
+        currentJob = null
+        loadKey = null
+        loadedKey = null
+        bitmapPath = null
+        name = null
+        author = null
+        Glide.with(this).clear(this)
+        setImageResource(io.legado.app.R.drawable.image_cover_default)
     }
 
     fun load(

@@ -38,6 +38,26 @@
         android:text="@string/book_collection_empty"
         android:visibility="gone" />
 
+    <TextView
+        android:id="@+id/btn_select_current_page"
+        android:layout_width="wrap_content"
+        android:layout_height="@dimen/bookshelf_action_button_size"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="28dp"
+        android:layout_marginEnd="16dp"
+        android:background="@drawable/bg_discover_embedded_action"
+        android:clickable="true"
+        android:elevation="8dp"
+        android:focusable="true"
+        android:gravity="center"
+        android:minWidth="@dimen/bookshelf_action_button_size"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:text="@string/select_all"
+        android:textColor="@color/primaryText"
+        android:textSize="15sp"
+        android:visibility="gone" />
+
     <View
         android:id="@+id/root_drop_target"
         android:layout_width="56dp"

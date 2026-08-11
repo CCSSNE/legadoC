@@ -8,6 +8,7 @@ import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.widget.CheckBox
 import android.widget.LinearLayout
+import androidx.activity.addCallback
 import androidx.core.view.isGone
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
@@ -47,6 +48,7 @@ import io.legado.app.utils.dpToPx
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChangeFirst
 import io.legado.app.utils.gone
 import io.legado.app.utils.observeEvent
+import io.legado.app.utils.postEvent
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
@@ -152,9 +154,21 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             secondaryGroupFilterId = secondaryGroupId
             binding.refreshLayout.isEnabled = enableRefresh
         }
+        initBackHandler()
         initRecyclerView()
         initBookActionBar()
         upRecyclerData()
+    }
+
+    private fun initBackHandler() {
+        requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner) {
+            if (exitSelectionIfNeeded()) {
+                return@addCallback
+            }
+            isEnabled = false
+            requireActivity().onBackPressedDispatcher.onBackPressed()
+            isEnabled = true
+        }
     }
 
     private fun initRecyclerView() {
@@ -310,6 +324,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         binding.bookActionBar.gone()
         setMainBottomBarHidden(false)
         notifySelectionChanged()
+        notifyParentSelectionChanged()
     }
 
     private fun toggleSelection(book: Book) {
@@ -379,6 +394,12 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         if (refreshItems) {
             notifySelectionChanged()
         }
+        notifyParentSelectionChanged()
+    }
+
+    private fun notifyParentSelectionChanged() {
+        (parentFragment as? io.legado.app.ui.main.bookshelf.style1.BookshelfFragment1)
+            ?.onChildSelectionChanged(this, hasSelection())
     }
 
     private fun notifySelectionChanged() {
@@ -464,6 +485,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             appDb.bookCollectionDao.deleteCollectionsAndRelease(collectionIds)
             withContext(Dispatchers.Main) {
                 clearSelection()
+                postEvent(EventBus.BOOKSHELF_REFRESH, "")
             }
         }
     }
@@ -652,6 +674,24 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         resetDraggingView()
         clearSelection()
         return true
+    }
+
+    fun isSelecting(): Boolean {
+        return hasSelection()
+    }
+
+    fun selectAllCurrentPage() {
+        val items = booksAdapter.getItems()
+        if (items.isEmpty()) return
+        selectedBooks.clear()
+        selectedCollections.clear()
+        items.forEach { item ->
+            when (item) {
+                is Book -> selectedBooks[item.bookUrl] = item
+                is BookCollectionShelfItem -> selectedCollections[item.id] = item
+            }
+        }
+        updateSelectionBar()
     }
 
     override fun onDestroyView() {
@@ -881,6 +921,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
                 toastOnUi(R.string.book_collection_added)
                 upRecyclerData()
                 clearSelection()
+                postEvent(EventBus.BOOKSHELF_REFRESH, "")
             }
         }
     }
@@ -893,15 +934,11 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
             val bookUrls = books.map { it.bookUrl }
             val collectionIds = collections.map { it.id }
-            if (bookUrls.isNotEmpty()) {
-                appDb.bookCollectionDao.deleteItemsByBookUrls(bookUrls)
-            }
-            if (collectionIds.isNotEmpty()) {
-                appDb.bookCollectionDao.deleteParentsByChildCollectionIds(collectionIds)
-            }
+            appDb.bookCollectionDao.moveItemsToRoot(bookUrls, collectionIds)
             withContext(Dispatchers.Main) {
                 upRecyclerData()
                 clearSelection()
+                postEvent(EventBus.BOOKSHELF_REFRESH, "")
             }
         }
     }
