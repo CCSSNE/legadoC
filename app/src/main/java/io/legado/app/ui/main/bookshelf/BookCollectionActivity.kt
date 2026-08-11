@@ -338,7 +338,7 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
         val collectionIds = selectedCollectionList().map { it.id }
         if (collectionIds.isEmpty()) return
         lifecycleScope.launch(Dispatchers.IO) {
-            appDb.bookCollectionDao.deleteByIds(collectionIds)
+            appDb.bookCollectionDao.deleteCollectionsAndRelease(collectionIds)
             withContext(Dispatchers.Main) {
                 clearSelection()
             }

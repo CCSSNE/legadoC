@@ -456,7 +456,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
 
     private fun deleteCollection(collection: BookCollectionShelfItem) {
         viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
-            appDb.bookCollectionDao.deleteByIds(listOf(collection.id))
+            appDb.bookCollectionDao.deleteCollectionsAndRelease(listOf(collection.id))
             withContext(Dispatchers.Main) {
                 clearBookActionBar()
             }

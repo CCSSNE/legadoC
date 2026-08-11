@@ -71,6 +71,15 @@ interface BookCollectionDao {
     @Query("DELETE FROM book_collections WHERE collectionId IN (:collectionIds)")
     fun deleteByIds(collectionIds: List<Long>)
 
+    @Query("SELECT bookUrl FROM book_collection_items WHERE collectionId = :collectionId ORDER BY `order`, addedTime")
+    fun bookUrlsInCollection(collectionId: Long): List<String>
+
+    @Query("SELECT childCollectionId FROM book_collection_children WHERE parentCollectionId = :collectionId ORDER BY `order`, addedTime")
+    fun childCollectionIds(collectionId: Long): List<Long>
+
+    @Query("SELECT parentCollectionId FROM book_collection_children WHERE childCollectionId = :collectionId")
+    fun parentCollectionIds(collectionId: Long): List<Long>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     fun insertItems(items: List<BookCollectionItem>)
 
@@ -188,6 +197,25 @@ interface BookCollectionDao {
     fun normalizeLocations() {
         deleteDuplicateBookItems()
         deleteDuplicateChildCollections()
+    }
+
+    @Transaction
+    fun deleteCollectionsAndRelease(collectionIds: List<Long>) {
+        collectionIds.distinct().filter { it > 0 }.forEach { collectionId ->
+            deleteCollectionAndRelease(collectionId)
+        }
+    }
+
+    @Transaction
+    fun deleteCollectionAndRelease(collectionId: Long) {
+        val bookUrls = bookUrlsInCollection(collectionId)
+        val childIds = childCollectionIds(collectionId)
+        val parentIds = parentCollectionIds(collectionId).filter { it > 0 && it != collectionId }
+        parentIds.forEach { parentId ->
+            addBookUrls(parentId, bookUrls)
+            addChildCollectionIds(parentId, childIds)
+        }
+        deleteByIds(listOf(collectionId))
     }
 
     @Transaction

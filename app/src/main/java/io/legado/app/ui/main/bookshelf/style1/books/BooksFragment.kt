@@ -454,7 +454,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         val collectionIds = selectedCollectionList().map { it.id }
         if (collectionIds.isEmpty()) return
         viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
-            appDb.bookCollectionDao.deleteByIds(collectionIds)
+            appDb.bookCollectionDao.deleteCollectionsAndRelease(collectionIds)
             withContext(Dispatchers.Main) {
                 clearSelection()
             }
