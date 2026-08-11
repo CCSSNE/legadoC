@@ -27,6 +27,7 @@ import io.legado.app.utils.delete
 import io.legado.app.utils.find
 import io.legado.app.utils.getFile
 import io.legado.app.utils.list
+import io.legado.app.utils.sendToClip
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
@@ -62,6 +63,7 @@ class CrashLogsDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
     override fun onMenuItemClick(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.menu_clear -> viewModel.clearCrashLog()
+            R.id.menu_copy_all -> viewModel.copyAllLogs(adapter.getItems())
         }
         return true
     }
@@ -158,6 +160,18 @@ class CrashLogsDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
                 context.toastOnUi(it.localizedMessage)
             }.onFinally {
                 initData()
+            }
+        }
+
+        fun copyAllLogs(logs: List<FileDoc>) {
+            execute {
+                logs.joinToString("\n\n") { file ->
+                    "${file.name}\n${file.readText()}"
+                }
+            }.onSuccess {
+                context.sendToClip(it)
+            }.onError {
+                context.toastOnUi(it.localizedMessage)
             }
         }
 

@@ -11,7 +11,7 @@
 
     <item
         android:id="@+id/menu_copy_all"
-        android:title="@string/copy_all"
+        android:title="@string/copy"
         app:showAsAction="always" />
 
 </menu>

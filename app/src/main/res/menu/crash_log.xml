@@ -9,4 +9,9 @@
         android:title="@string/clear"
         app:showAsAction="always" />
 
+    <item
+        android:id="@+id/menu_copy_all"
+        android:title="@string/copy"
+        app:showAsAction="always" />
+
 </menu>

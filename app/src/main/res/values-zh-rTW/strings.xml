@@ -968,6 +968,7 @@
     <string name="book_change_source">整書換源</string>
     <string name="sort_by_time">時間排序</string>
     <string name="enable_record">開啟記錄</string>
+    <string name="copy">複製</string>
     <string name="copy_all">複製所有</string>
     <string name="auto_complete">自動補全</string>
     <string name="sort_by_size">大小排序</string>
