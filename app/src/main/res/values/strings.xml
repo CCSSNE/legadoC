@@ -1283,7 +1283,7 @@
     <string name="join_qq_channel">Join QQ channel</string>
     <string name="qq_channel_summary">点击加入阅读QQ频道</string>
     <string name="join_telegram_channel">加入我的 QQ 群 1101873338</string>
-    <string name="telegram_channel_summary">点击加入 QQ 群</string>
+    <string name="telegram_channel_summary">长按复制 QQ 群号</string>
     <string name="qq_group_url">https://qun.qq.com/universal-share/share?ac=1&amp;authKey=DjJiNVMOKfQWe3Tz2pQhpzCWV79FiKXtG0ApFXK2xrW%2BMjMDk%2BXZT784JjNJq8TY&amp;busi_data=eyJncm91cENvZGUiOiIxMTAxODczMzM4IiwidG9rZW4iOiJOeVdUYWtZaUI1bG9oM21NNkUyUFFuc2hmODY5NUUxVjFkVmMrd0hYeDMyN1dyNXptWlp5UEVPOHA3dDRENGVSIiwidWluIjoiMjgzMTgzNTgzMSJ9&amp;data=kNYZB_IOxrKSE7bIMccDv9yiYlaW0blrCKX2ZIbs1RTo5SoT3tryoyBSOKOq6meXNocy0JYPuZW5qmJDtoCmAA&amp;svctype=4&amp;tempid=h5_group_info</string>
     <string name="qq_group_number">1101873338</string>
     <string name="qq_group_number_copied">群号已复制</string>
