@@ -2,12 +2,15 @@ package io.legado.app.ui.main.bookshelf
 
 import android.os.Bundle
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.EditText
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.base.adapter.ItemViewHolder
@@ -86,6 +89,29 @@ class BookCollectionSelectDialog() : BaseDialogFragment(R.layout.dialog_book_col
         }
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
+        binding.recyclerView.setOnTouchListener { recyclerView, event ->
+            if (event.action == MotionEvent.ACTION_UP &&
+                (recyclerView as RecyclerView).findChildViewUnder(event.x, event.y) == null
+            ) {
+                moveToRoot()
+                true
+            } else {
+                false
+            }
+        }
+        ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(0, ItemTouchHelper.LEFT) {
+            override fun onMove(
+                recyclerView: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder,
+                target: RecyclerView.ViewHolder
+            ): Boolean = false
+
+            override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
+                val position = viewHolder.bindingAdapterPosition
+                if (position == RecyclerView.NO_POSITION) return
+                adapter.getItem(position)?.let(::deleteCollection)
+            }
+        }).attachToRecyclerView(binding.recyclerView)
         lifecycleScope.launch {
             appDb.bookCollectionDao.flowCollections().conflate().collect {
                 adapter.setItems(it.filter { item ->
@@ -97,6 +123,33 @@ class BookCollectionSelectDialog() : BaseDialogFragment(R.layout.dialog_book_col
             arguments?.putBoolean("openCreate", false)
             binding.root.post {
                 showNewCollectionDialog()
+            }
+        }
+    }
+
+    private fun moveToRoot() {
+        if (bookUrls.isEmpty() && collectionIds.isEmpty()) return
+        lifecycleScope.launch(Dispatchers.IO) {
+            if (bookUrls.isNotEmpty()) {
+                appDb.bookCollectionDao.deleteItemsByBookUrls(bookUrls)
+            }
+            if (collectionIds.isNotEmpty()) {
+                appDb.bookCollectionDao.deleteParentsByChildCollectionIds(collectionIds)
+            }
+            withContext(Dispatchers.Main) {
+                postEvent(EventBus.BOOKSHELF_REFRESH, "")
+                dismissAllowingStateLoss()
+            }
+        }
+    }
+
+    private fun deleteCollection(item: BookCollectionWithItems) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            appDb.bookCollectionDao.deleteCollectionsAndRelease(
+                listOf(item.collection.collectionId)
+            )
+            withContext(Dispatchers.Main) {
+                postEvent(EventBus.BOOKSHELF_REFRESH, "")
             }
         }
     }
