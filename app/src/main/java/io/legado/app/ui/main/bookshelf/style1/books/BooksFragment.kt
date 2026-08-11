@@ -567,7 +567,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     override fun onBookLongPressed(book: Book) {
-        selectBook(book, refreshItems = false)
+        selectBook(book)
     }
 
     override fun onBookLongPressFinished() {
@@ -631,6 +631,10 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         } else {
             toggleSelection(book)
         }
+    }
+
+    override fun isInSelectionMode(): Boolean {
+        return selectedBooks.isNotEmpty()
     }
 
     override fun isSelected(book: Book): Boolean {

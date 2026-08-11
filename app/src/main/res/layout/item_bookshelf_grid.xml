@@ -80,6 +80,29 @@
                 app:loading_width="2dp"
                 tools:ignore="RtlHardcoded" />
 
+            <FrameLayout
+                android:id="@+id/selection_outer"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_marginTop="7dp"
+                android:layout_marginEnd="7dp"
+                android:background="@drawable/bg_bookshelf_selection_ring"
+                android:visibility="gone"
+                app:layout_constraintEnd_toEndOf="@+id/iv_cover"
+                app:layout_constraintTop_toTopOf="@+id/iv_cover"
+                tools:visibility="visible">
+
+                <View
+                    android:id="@+id/selection_dot"
+                    android:layout_width="12dp"
+                    android:layout_height="12dp"
+                    android:layout_gravity="center"
+                    android:background="@drawable/bg_bookshelf_selection_dot"
+                    android:visibility="gone"
+                    tools:visibility="visible" />
+
+            </FrameLayout>
+
         </androidx.constraintlayout.widget.ConstraintLayout>
 
         <TextView
@@ -111,6 +134,5 @@
         tools:layout_editor_absoluteX="0dp" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
-
 
 

@@ -46,7 +46,7 @@ class BooksAdapterList2(
         item: Any,
         payloads: MutableList<Any>
     ) {
-        holder.itemView.alpha = if (item is Book && callBack.isSelected(item)) 0.62f else 1f
+        holder.itemView.alpha = 1f
         if (item is BookCollectionShelfItem && binding is ItemBookshelfCollectionListBinding) {
             binding.run {
                 tvName.text = item.name
@@ -62,38 +62,39 @@ class BooksAdapterList2(
         }
         if (item !is Book || binding !is ItemBookshelfList2Binding) return
         binding.run {
-        if (payloads.isEmpty()) {
-            tvName.text = item.name
-            tvAuthor.text = item.author
-            tvRead.text = item.durChapterTitle
-            tvLast.text = item.latestChapterTitle
-            ivCover.loadThumb(item, false, fragment, lifecycle)
-            ivLocal.visible(AppConfig.showLocalBookIcon && item.isLocal)
-            upRefresh(binding, item)
-            upLastUpdateTime(binding, item)
-        } else {
-            for (i in payloads.indices) {
-                val bundle = payloads[i] as Bundle
-                bundle.keySet().forEach {
-                    when (it) {
-                        "name" -> tvName.text = item.name
-                        "author" -> tvAuthor.text = item.author
-                        "dur" -> tvRead.text = item.durChapterTitle
-                        "last" -> tvLast.text = item.latestChapterTitle
-                        "cover" -> ivCover.loadThumb(
-                            item,
-                            false,
-                            fragment,
-                            lifecycle
-                        )
+            renderSelectionMark(selectionOuter, selectionDot, item, callBack)
+            if (payloads.isEmpty()) {
+                tvName.text = item.name
+                tvAuthor.text = item.author
+                tvRead.text = item.durChapterTitle
+                tvLast.text = item.latestChapterTitle
+                ivCover.loadThumb(item, false, fragment, lifecycle)
+                ivLocal.visible(AppConfig.showLocalBookIcon && item.isLocal)
+                upRefresh(binding, item)
+                upLastUpdateTime(binding, item)
+            } else {
+                for (i in payloads.indices) {
+                    val bundle = payloads[i] as Bundle
+                    bundle.keySet().forEach {
+                        when (it) {
+                            "name" -> tvName.text = item.name
+                            "author" -> tvAuthor.text = item.author
+                            "dur" -> tvRead.text = item.durChapterTitle
+                            "last" -> tvLast.text = item.latestChapterTitle
+                            "cover" -> ivCover.loadThumb(
+                                item,
+                                false,
+                                fragment,
+                                lifecycle
+                            )
 
-                        "refresh" -> upRefresh(binding, item)
-                        "lastUpdateTime" -> upLastUpdateTime(binding, item)
-                        "local" -> ivLocal.visible(AppConfig.showLocalBookIcon && item.isLocal)
+                            "refresh" -> upRefresh(binding, item)
+                            "lastUpdateTime" -> upLastUpdateTime(binding, item)
+                            "local" -> ivLocal.visible(AppConfig.showLocalBookIcon && item.isLocal)
+                        }
                     }
                 }
             }
-        }
         }
     }
 

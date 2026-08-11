@@ -223,6 +223,12 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
         notifyItemRangeChanged(0, itemCount, bundleOf(Pair("lastUpdateTime", null)))
     }
 
+    protected fun renderSelectionMark(outer: View, dot: View, book: Book, callBack: CallBack) {
+        val selectionMode = callBack.isInSelectionMode()
+        outer.visibility = if (selectionMode) View.VISIBLE else View.GONE
+        dot.visibility = if (selectionMode && callBack.isSelected(book)) View.VISIBLE else View.GONE
+    }
+
     interface CallBack {
         fun open(book: Book)
         fun openCollection(collection: BookCollectionShelfItem)
@@ -234,6 +240,7 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
         fun onBookDragEnd(book: Book, rawX: Float, rawY: Float)
         fun onBookDragCancel()
         fun onBookClickInSelection(book: Book)
+        fun isInSelectionMode(): Boolean
         fun isSelected(book: Book): Boolean
         fun isUpdate(bookUrl: String): Boolean
     }

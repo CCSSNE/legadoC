@@ -41,7 +41,7 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
         item: Any,
         payloads: MutableList<Any>
     ) {
-        holder.itemView.alpha = if (item is Book && callBack.isSelected(item)) 0.62f else 1f
+        holder.itemView.alpha = 1f
         if (item is BookCollectionShelfItem && binding is ItemBookshelfCollectionGridBinding) {
             binding.run {
                 tvName.text = item.name
@@ -57,6 +57,7 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
         if (item !is Book) return
         when (binding) {
             is ItemBookshelfGridBinding -> binding.run {
+                renderSelectionMark(selectionOuter, selectionDot, item, callBack)
                 if (payloads.isEmpty()) {
                     if (showBookname == 0) {
                         tvName.visible()
@@ -86,6 +87,7 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
                 }
             }
             is ItemBookshelfGrid2Binding -> binding.run {
+                renderSelectionMark(selectionOuter, selectionDot, item, callBack)
                 if (payloads.isEmpty()) {
                     tvName.text = item.name
                     ivCover.loadThumb(item, false)

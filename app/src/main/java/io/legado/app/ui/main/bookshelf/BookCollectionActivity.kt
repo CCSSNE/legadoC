@@ -112,6 +112,8 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
         open(book)
     }
 
+    override fun isInSelectionMode(): Boolean = false
+
     override fun isSelected(book: Book): Boolean = false
 
     override fun isUpdate(bookUrl: String): Boolean = false
