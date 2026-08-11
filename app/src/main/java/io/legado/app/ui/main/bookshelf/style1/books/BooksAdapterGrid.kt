@@ -46,12 +46,7 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
                 renderSelectionMark(selectionOuter, selectionDot, item, callBack)
                 if (isSelectionPayload(payloads)) return
                 tvName.text = item.name
-                listOf(
-                    coverMosaic.ivCover1,
-                    coverMosaic.ivCover2,
-                    coverMosaic.ivCover3,
-                    coverMosaic.ivCover4
-                ).loadCollectionCovers(item.previewBooks)
+                coverMosaic.loadCollectionCovers(item.previewBooks)
             }
             return
         }

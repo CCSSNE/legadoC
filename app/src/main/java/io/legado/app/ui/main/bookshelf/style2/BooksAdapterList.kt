@@ -76,12 +76,7 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
         fun onBind(item: BookCollectionShelfItem) = binding.run {
             tvName.text = item.name
             tvCount.text = context.getString(R.string.book_collection_count, item.count)
-            listOf(
-                coverMosaic.ivCover1,
-                coverMosaic.ivCover2,
-                coverMosaic.ivCover3,
-                coverMosaic.ivCover4
-            ).loadCollectionCovers(item.previewBooks)
+            coverMosaic.loadCollectionCovers(item.previewBooks)
         }
 
         fun registerListener(item: Any) {

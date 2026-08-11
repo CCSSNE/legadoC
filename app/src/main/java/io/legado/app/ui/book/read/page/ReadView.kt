@@ -782,6 +782,7 @@ class ReadView(context: Context, attrs: AttributeSet) :
      */
     suspend fun aloudStartSelect() {
         val selectStartPos = curPage.selectStartPos
+        ReadBook.attachReadAloudPage()
         var pagePos = selectStartPos.relativePagePos
         val line = selectStartPos.lineIndex
         val column = selectStartPos.columnIndex

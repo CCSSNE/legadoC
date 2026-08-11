@@ -10,14 +10,19 @@ import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.BookType
 import io.legado.app.databinding.ActivityTranslucenceBinding
+import io.legado.app.data.appDb
 import io.legado.app.exception.InvalidBooksDirException
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.book.addType
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
+import io.legado.app.model.localBook.LocalBook
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.utils.FileUtils
+import io.legado.app.utils.FileDoc
 import io.legado.app.utils.buildMainHandler
 import io.legado.app.utils.canRead
 import io.legado.app.utils.checkWrite
@@ -131,6 +136,36 @@ class FileAssociationActivity :
     }
 
     private fun importBook(uri: Uri) {
+        when (AppConfig.fileOpenAutoImport) {
+            "no" -> {
+                openBookDirectly(uri)
+            }
+
+            "ask" -> alert(title = getString(R.string.file_open_auto_import_title)) {
+                setMessage(R.string.file_open_auto_import_ask_dialog)
+                okButton {
+                    importBookWithTreeSelection(uri, forceSelectTree = true)
+                }
+                noButton {
+                    openBookDirectly(uri)
+                }
+                onCancelled {
+                    finish()
+                }
+            }
+
+            else -> importBookWithTreeSelection(uri, forceSelectTree = false)
+        }
+    }
+
+    private fun importBookWithTreeSelection(uri: Uri, forceSelectTree: Boolean) {
+        if (forceSelectTree) {
+            localBookTreeSelect.launch {
+                title = getString(R.string.select_book_folder)
+                mode = HandleFileContract.DIR_SYS
+            }
+            return
+        }
         if (uri.isContentScheme()) {
             if (tryTakePersistableReadPermission(uri)) {
                 importBook(null, uri)
@@ -147,6 +182,41 @@ class FileAssociationActivity :
             }
         } else {
             importBook(null, uri)
+        }
+    }
+
+    /**
+     * 不导入书架，直接打开阅读
+     */
+    private fun openBookDirectly(uri: Uri) {
+        lifecycleScope.launch {
+            runCatching {
+                withContext(IO) {
+                    val bookUrl = FileDoc.fromUri(uri, false).toString()
+                    val notShelf = appDb.bookDao.getBook(bookUrl) == null
+                    val book = LocalBook.importFile(uri)
+                    if (notShelf) {
+                        book.addType(BookType.notShelf)
+                        book.save()
+                    }
+                    book to notShelf
+                }
+            }.onSuccess { (book, notShelf) ->
+                binding.rotateLoading.gone()
+                startActivityForBook(book) {
+                    putExtra("inBookshelf", !notShelf)
+                    putExtra("skipAddToShelfAlert", notShelf)
+                }
+                finish()
+            }.onFailure {
+                val msg = "导入书籍失败\n${it.localizedMessage}"
+                AppLog.put(msg, it)
+                binding.rotateLoading.gone()
+                toastOnUi(msg)
+                handler.postDelayed(2000) {
+                    finish()
+                }
+            }
         }
     }
 

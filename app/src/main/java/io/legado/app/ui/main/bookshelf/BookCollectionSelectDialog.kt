@@ -233,12 +233,7 @@ class BookCollectionSelectDialog() : BaseDialogFragment(R.layout.dialog_book_col
                 R.string.book_collection_count,
                 source.books.size + source.childCollections.size
             )
-            listOf(
-                coverMosaic.ivCover1,
-                coverMosaic.ivCover2,
-                coverMosaic.ivCover3,
-                coverMosaic.ivCover4
-            ).loadCollectionCovers(item.previewBooks, this@BookCollectionSelectDialog, lifecycle)
+            coverMosaic.loadCollectionCovers(item.previewBooks, this@BookCollectionSelectDialog, lifecycle)
         }
 
         override fun registerListener(

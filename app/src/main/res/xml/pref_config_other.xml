@@ -67,6 +67,14 @@
             android:summary="@string/book_tree_uri_s"
             android:title="@string/book_tree_uri_t" />
 
+        <io.legado.app.lib.prefs.NameListPreference
+            android:defaultValue="yes"
+            android:key="fileOpenAutoImport"
+            android:title="@string/file_open_auto_import_title"
+            app:entries="@array/file_open_auto_import_entries"
+            app:entryValues="@array/file_open_auto_import_values"
+            app:iconSpaceReserved="false" />
+
         <io.legado.app.lib.prefs.Preference
             android:key="sourceEditMaxLine"
             android:title="@string/source_edit_text_max_line" />

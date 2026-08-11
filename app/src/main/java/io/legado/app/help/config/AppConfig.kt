@@ -321,6 +321,13 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             }
         }
 
+    // 由阅读打开的文件是否自动加入书架: yes 自动导入 / no 不导入直接读 / ask 每次询问
+    var fileOpenAutoImport: String
+        get() = appCtx.getPrefString(PreferKey.fileOpenAutoImport) ?: "yes"
+        set(value) {
+            appCtx.putPrefString(PreferKey.fileOpenAutoImport, value)
+        }
+
     val showDiscovery: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.showDiscovery, true)
 

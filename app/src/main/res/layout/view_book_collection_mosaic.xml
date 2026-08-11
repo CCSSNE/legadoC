@@ -8,6 +8,7 @@
     android:padding="4dp">
 
     <LinearLayout
+        android:id="@+id/row1"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
@@ -35,6 +36,7 @@
     </LinearLayout>
 
     <LinearLayout
+        android:id="@+id/row2"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"

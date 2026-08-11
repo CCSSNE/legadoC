@@ -52,12 +52,7 @@ class BooksAdapterList2(
                 if (isSelectionPayload(payloads)) return
                 tvName.text = item.name
                 tvCount.text = context.getString(R.string.book_collection_count, item.count)
-                listOf(
-                    coverMosaic.ivCover1,
-                    coverMosaic.ivCover2,
-                    coverMosaic.ivCover3,
-                    coverMosaic.ivCover4
-                ).loadCollectionCovers(item.previewBooks, fragment, lifecycle)
+                coverMosaic.loadCollectionCovers(item.previewBooks, fragment, lifecycle)
             }
             return
         }

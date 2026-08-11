@@ -70,6 +70,7 @@ object ReadBook : CoroutineScope by MainScope() {
     var book: Book? = null
     var callBack: CallBack? = null
     var inBookshelf = false
+    var skipAddToShelfAlert = false
     var chapterSize = 0
     var simulatedChapterSize = 0
     var durChapterIndex = 0

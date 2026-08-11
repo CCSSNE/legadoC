@@ -1984,7 +1984,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             callBackBookEnd()
             return super.finish()
         }
-        if (!AppConfig.showAddToShelfAlert) {
+        if (!AppConfig.showAddToShelfAlert || ReadBook.skipAddToShelfAlert) {
             callBackBookEnd()
             viewModel.removeFromBookshelf { super.finish() }
         } else {

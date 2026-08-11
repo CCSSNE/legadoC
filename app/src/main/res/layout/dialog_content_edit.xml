@@ -16,12 +16,13 @@
         app:titleTextAppearance="@style/ToolbarTitle"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <io.legado.app.lib.theme.view.ThemeEditText
-        android:id="@+id/content_view"
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rv_content"
         android:layout_width="match_parent"
         android:layout_height="0dp"
+        android:clipToPadding="false"
         android:padding="12dp"
-        android:importantForAutofill="no"
+        android:scrollbars="vertical"
         app:layout_constraintTop_toBottomOf="@+id/tool_bar"
         app:layout_constraintBottom_toBottomOf="parent" />
 
