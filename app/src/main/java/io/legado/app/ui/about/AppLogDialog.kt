@@ -17,6 +17,7 @@ import io.legado.app.databinding.ItemAppLogBinding
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.LogUtils
+import io.legado.app.utils.sendToClip
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -53,6 +54,14 @@ class AppLogDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
             R.id.menu_clear -> {
                 AppLog.clear()
                 adapter.clearItems()
+            }
+            R.id.menu_copy_all -> {
+                val logText = AppLog.logs.joinToString("\n\n") { log ->
+                    val time = LogUtils.logTimeFormat.format(Date(log.first))
+                    val stack = log.third?.let { "\n${it.stackTraceToString()}" } ?: ""
+                    "$time\n${log.second}$stack"
+                }
+                requireContext().sendToClip(logText)
             }
         }
         return true

@@ -150,8 +150,11 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
                         view.clearPressedState()
                         view.parent?.requestDisallowInterceptTouchEvent(true)
                         when (pressedItem) {
-                            is Book -> callBack.onBookLongPressed(pressedItem)
-                            is BookCollectionShelfItem -> callBack.onCollectionLongPressed(pressedItem)
+                            is Book -> callBack.onBookLongPressed(pressedItem, view)
+                            is BookCollectionShelfItem -> callBack.onCollectionLongPressed(
+                                pressedItem,
+                                view
+                            )
                         }
                     }.also {
                         view.postDelayed(it, longPressTimeout)
@@ -299,14 +302,17 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
         fun open(book: Book)
         fun openCollection(collection: BookCollectionShelfItem)
         fun openBookInfo(book: Book)
-        fun onBookLongPressed(book: Book)
+        fun onBookLongPressed(book: Book, view: android.view.View)
         fun onBookLongPressFinished()
         fun onBookTouchedForDrag(book: Book, view: android.view.View, rawX: Float, rawY: Float)
         fun onBookDragMove(rawX: Float, rawY: Float)
         fun onBookDragEnd(book: Book, rawX: Float, rawY: Float)
         fun onBookDragCancel()
         fun onBookClickInSelection(book: Book)
-        fun onCollectionLongPressed(collection: BookCollectionShelfItem)
+        fun onCollectionLongPressed(
+            collection: BookCollectionShelfItem,
+            view: android.view.View
+        )
         fun onCollectionTouchedForDrag(
             collection: BookCollectionShelfItem,
             view: android.view.View,

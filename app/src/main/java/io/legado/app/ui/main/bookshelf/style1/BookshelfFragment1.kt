@@ -185,6 +185,10 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
         }
     }
 
+    fun setSelectAllButtonText(text: CharSequence) {
+        binding.btnSelectAll.text = text
+    }
+
     private fun updateSelectAllButtonVisibility() {
         val currentFragment = fragmentMap[selectedSecondaryGroupId]
         val selecting = currentFragment?.isSelecting() == true
