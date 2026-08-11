@@ -1,7 +1,7 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/CCSSNE/legadoC/own/docs/Screenshot_2026-08-11-12-28-52-028_io.legado.app.c.jpg" width="33%" alt="界面截图 1" />
-  <img src="https://raw.githubusercontent.com/CCSSNE/legadoC/own/docs/Screenshot_2026-08-11-12-28-58-189_io.legado.app.c.jpg" width="33%" alt="界面截图 2" />
-  <img src="https://raw.githubusercontent.com/CCSSNE/legadoC/own/docs/Screenshot_2026-08-11-12-29-17-966_io.legado.app.c.jpg" width="33%" alt="界面截图 3" />
+  <img src="https://github.com/CCSSNE/legadoC/raw/own/docs/Screenshot_2026-08-11-12-28-52-028_io.legado.app.c.jpg" width="33%" alt="界面截图 1" />
+  <img src="https://github.com/CCSSNE/legadoC/raw/own/docs/Screenshot_2026-08-11-12-28-58-189_io.legado.app.c.jpg" width="33%" alt="界面截图 2" />
+  <img src="https://github.com/CCSSNE/legadoC/raw/own/docs/Screenshot_2026-08-11-12-29-17-966_io.legado.app.c.jpg" width="33%" alt="界面截图 3" />
 </p>
 
 **交流群 有bug 或者建议可以加入 1101873338 主要优化听书体验**
