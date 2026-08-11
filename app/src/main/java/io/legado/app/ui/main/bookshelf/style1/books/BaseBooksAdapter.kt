@@ -135,7 +135,6 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
         var downY = 0f
         var longPressed = false
         var dragging = false
-        var longPressEnteredSelection = false
         var longPressRunnable: Runnable? = null
         setOnTouchListener { view, event ->
             val item = itemProvider() ?: return@setOnTouchListener false
@@ -145,19 +144,15 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
                     downY = event.rawY
                     longPressed = false
                     dragging = false
-                    longPressEnteredSelection = false
                     longPressRunnable = Runnable {
                         val pressedItem = itemProvider() ?: return@Runnable
                         longPressed = true
                         view.clearPressedState()
                         view.parent?.requestDisallowInterceptTouchEvent(true)
-                        val wasSelecting = callBack.isInSelectionMode()
                         when (pressedItem) {
                             is Book -> callBack.onBookLongPressed(pressedItem)
                             is BookCollectionShelfItem -> callBack.onCollectionLongPressed(pressedItem)
                         }
-                        longPressEnteredSelection =
-                            !wasSelecting && callBack.isInSelectionMode()
                     }.also {
                         view.postDelayed(it, longPressTimeout)
                     }
@@ -175,22 +170,19 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
                     if (longPressed && movedEnough) {
                         if (!dragging) {
                             dragging = true
-                            val enteredSelection = longPressEnteredSelection
                             when (item) {
                                 is Book -> callBack.onBookTouchedForDrag(
                                     item,
                                     view,
                                     event.rawX,
-                                    event.rawY,
-                                    enteredSelection
+                                    event.rawY
                                 )
 
                                 is BookCollectionShelfItem -> callBack.onCollectionTouchedForDrag(
                                     item,
                                     view,
                                     event.rawX,
-                                    event.rawY,
-                                    enteredSelection
+                                    event.rawY
                                 )
                             }
                         }
@@ -309,13 +301,7 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
         fun openBookInfo(book: Book)
         fun onBookLongPressed(book: Book)
         fun onBookLongPressFinished()
-        fun onBookTouchedForDrag(
-            book: Book,
-            view: android.view.View,
-            rawX: Float,
-            rawY: Float,
-            enteredSelection: Boolean
-        )
+        fun onBookTouchedForDrag(book: Book, view: android.view.View, rawX: Float, rawY: Float)
         fun onBookDragMove(rawX: Float, rawY: Float)
         fun onBookDragEnd(book: Book, rawX: Float, rawY: Float)
         fun onBookDragCancel()
@@ -325,8 +311,7 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
             collection: BookCollectionShelfItem,
             view: android.view.View,
             rawX: Float,
-            rawY: Float,
-            enteredSelection: Boolean
+            rawY: Float
         )
         fun onCollectionDragEnd(collection: BookCollectionShelfItem, rawX: Float, rawY: Float)
         fun onCollectionClickInSelection(collection: BookCollectionShelfItem)

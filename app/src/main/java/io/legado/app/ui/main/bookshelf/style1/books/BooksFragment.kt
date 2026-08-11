@@ -141,7 +141,9 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         val view: View,
         val translationX: Float,
         val translationY: Float,
-        val elevation: Float
+        val elevation: Float,
+        val stackOffsetX: Float,
+        val stackOffsetY: Float
     )
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
@@ -727,11 +729,8 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     override fun onBookLongPressed(book: Book) {
-        val enteringSelection = !hasSelection()
         selectBook(book, showActionBar = true, refreshItems = false)
-        if (enteringSelection) {
-            binding.root.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-        }
+        binding.root.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
         booksAdapter.renderVisibleSelectionMarks(binding.rvBookshelf, this)
     }
 
@@ -739,16 +738,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         updateSelectionBar(showActionBar = true, refreshItems = true)
     }
 
-    override fun onBookTouchedForDrag(
-        book: Book,
-        view: View,
-        rawX: Float,
-        rawY: Float,
-        enteredSelection: Boolean
-    ) {
-        if (!enteredSelection) {
-            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-        }
+    override fun onBookTouchedForDrag(book: Book, view: View, rawX: Float, rawY: Float) {
         draggingBooks = if (selectedBooks.containsKey(book.bookUrl)) {
             selectedBookList()
         } else {
@@ -765,9 +755,18 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     override fun onBookDragMove(rawX: Float, rawY: Float) {
         val dx = rawX - draggingStartRawX
         val dy = rawY - draggingStartRawY
-        draggingViewStates.forEach {
-            it.view.translationX = it.translationX + dx
-            it.view.translationY = it.translationY + dy
+        val anchor = draggingViewStates.firstOrNull() ?: return
+        val anchorBaseX = anchor.view.left + anchor.translationX
+        val anchorBaseY = anchor.view.top + anchor.translationY
+        anchor.view.animate().cancel()
+        anchor.view.translationX = anchorBaseX + dx - anchor.view.left
+        anchor.view.translationY = anchorBaseY + dy - anchor.view.top
+        draggingViewStates.drop(1).forEach { state ->
+            state.view.animate()
+                .translationX(anchorBaseX + dx + state.stackOffsetX - state.view.left)
+                .translationY(anchorBaseY + dy + state.stackOffsetY - state.view.top)
+                .setDuration(120)
+                .start()
         }
     }
 
@@ -789,11 +788,8 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     override fun onCollectionLongPressed(collection: BookCollectionShelfItem) {
-        val enteringSelection = !hasSelection()
         selectCollection(collection, showActionBar = true, refreshItems = false)
-        if (enteringSelection) {
-            binding.root.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-        }
+        binding.root.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
         booksAdapter.renderVisibleSelectionMarks(binding.rvBookshelf, this)
     }
 
@@ -801,12 +797,8 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         collection: BookCollectionShelfItem,
         view: View,
         rawX: Float,
-        rawY: Float,
-        enteredSelection: Boolean
+        rawY: Float
     ) {
-        if (!enteredSelection) {
-            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-        }
         draggingBooks = if (selectedCollections.containsKey(collection.id)) {
             selectedBookList()
         } else {
@@ -861,8 +853,13 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         val draggingBookUrls = draggingBooks.mapTo(hashSetOf()) { it.bookUrl }
         val draggingCollectionIds = draggingCollections.mapTo(hashSetOf()) { it.id }
         draggingViewStates.clear()
+        val anchorState = view.toDraggingViewState()
+        draggingViewStates.add(anchorState)
+        val stackStep = 12.dpToPx().toFloat()
+        var stackIndex = 1
         for (index in 0 until binding.rvBookshelf.childCount) {
             val child = binding.rvBookshelf.getChildAt(index)
+            if (child == view) continue
             val position = binding.rvBookshelf.getChildAdapterPosition(child)
             if (position == RecyclerView.NO_POSITION) continue
             val item = booksAdapter.getItem(position)
@@ -871,15 +868,25 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
                 is BookCollectionShelfItem -> item.id in draggingCollectionIds
                 else -> false
             }
-            if (shouldDrag) {
-                draggingViewStates.add(child.toDraggingViewState())
-            }
+            if (!shouldDrag) continue
+            val state = child.toDraggingViewState().copy(
+                stackOffsetX = stackIndex * stackStep,
+                stackOffsetY = stackIndex * stackStep
+            )
+            draggingViewStates.add(state)
+            stackIndex++
         }
-        if (draggingViewStates.none { it.view == view }) {
-            draggingViewStates.add(view.toDraggingViewState())
-        }
-        draggingViewStates.forEach {
-            it.view.elevation = 24.dpToPx().toFloat()
+        anchorState.view.elevation = 24.dpToPx().toFloat()
+        val anchorBaseX = anchorState.view.left + anchorState.translationX
+        val anchorBaseY = anchorState.view.top + anchorState.translationY
+        draggingViewStates.forEach { state ->
+            if (state === anchorState) return@forEach
+            state.view.elevation = 20.dpToPx().toFloat()
+            state.view.animate()
+                .translationX(anchorBaseX + state.stackOffsetX - state.view.left)
+                .translationY(anchorBaseY + state.stackOffsetY - state.view.top)
+                .setDuration(180)
+                .start()
         }
     }
 
@@ -888,7 +895,9 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             view = this,
             translationX = translationX,
             translationY = translationY,
-            elevation = elevation
+            elevation = elevation,
+            stackOffsetX = 0f,
+            stackOffsetY = 0f
         )
     }
 
@@ -1039,10 +1048,11 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
 
     private fun resetDraggingView() {
         binding.rootDropTarget.gone()
-        draggingViewStates.forEach {
-            it.view.translationX = it.translationX
-            it.view.translationY = it.translationY
-            it.view.elevation = it.elevation
+        draggingViewStates.forEach { state ->
+            state.view.animate().cancel()
+            state.view.translationX = state.translationX
+            state.view.translationY = state.translationY
+            state.view.elevation = state.elevation
         }
         draggingViewStates.clear()
         draggingBooks = emptyList()
