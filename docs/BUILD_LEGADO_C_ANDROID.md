@@ -63,6 +63,40 @@ $versionName='3.26.081116'
 .\gradlew.bat ':app:assembleAppC' '-Pabi=arm64-v8a' "-PVERSION_CODE=$versionCode" "-PVERSION_NAME=$versionName" '-Dkotlin.incremental=false' '-Dkotlin.compiler.execution.strategy=in-process' --no-daemon --console=plain --warning-mode=summary --max-workers=1
 ```
 
+## 分阶段编译记录
+
+如果不想把整条编译压成一个黑盒，可以先跑前置资源和清单阶段，确认资源合并、清单处理、R 文件生成没有问题，再继续代码编译和打包阶段。
+
+阶段 1 已验证可用：资源和清单处理。
+
+```powershell
+$OutputEncoding=[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+$env:JAVA_HOME='C:\Program Files\Eclipse Adoptium\jdk-17.0.19.10-hotspot'
+$env:ANDROID_HOME='D:\AI\audio\android-sdk'
+$env:ANDROID_SDK_ROOT='D:\AI\audio\android-sdk'
+$env:GRADLE_USER_HOME='D:\AI\audio\android-gradle-user-home'
+$env:Path = @(
+  "$env:JAVA_HOME\bin",
+  "$env:ANDROID_HOME\cmdline-tools\latest\bin",
+  "$env:ANDROID_HOME\platform-tools"
+) + ($env:Path -split ';') -join ';'
+
+$versionCode=10521
+$versionName='3.26.081117'
+.\gradlew.bat ':app:processAppCResources' '-Pabi=arm64-v8a' "-PVERSION_CODE=$versionCode" "-PVERSION_NAME=$versionName" '-Dkotlin.incremental=false' '-Dkotlin.compiler.execution.strategy=in-process' --no-daemon --console=plain --warning-mode=summary --max-workers=1
+```
+
+2026-08-11 实测结果：
+
+```text
+BUILD SUCCESSFUL in 23s
+32 actionable tasks: 9 executed, 23 from cache
+```
+
+这一阶段覆盖的流程是：检查库模块元数据，生成和合并 appC 资源，处理导航资源，处理 appC 和库模块清单，编译库模块资源，解析本地资源，生成库模块 R 文件，最后处理 appC 资源。
+
+PowerShell 监控注意事项：后台启动编译时，标准输出和错误输出不能重定向到同一个文件。必须使用两个不同日志文件，或者不要用后台启动方式；否则编译根本不会启动，后续循环只是在空进程上假监控。
+
 ## 失败处理
 
 如果出现 Kotlin 增量缓存已注册冲突，或资源合并阶段提示某个 `build\intermediates` 目录删不掉：
