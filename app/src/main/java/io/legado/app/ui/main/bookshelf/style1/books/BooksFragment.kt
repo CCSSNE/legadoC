@@ -680,9 +680,13 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         return hasSelection()
     }
 
-    fun selectAllCurrentPage() {
+    fun toggleSelectAll() {
         val items = booksAdapter.getItems()
         if (items.isEmpty()) return
+        if (items.all { isSelected(it) }) {
+            clearSelection()
+            return
+        }
         selectedBooks.clear()
         selectedCollections.clear()
         items.forEach { item ->

@@ -93,8 +93,8 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
         binding.btnSecondaryTagsExpand.setOnClickListener {
             showSecondaryGroupSelector()
         }
-        binding.btnSelectCurrentPage.setOnClickListener {
-            fragmentMap[selectedSecondaryGroupId]?.selectAllCurrentPage()
+        binding.btnSelectAll.setOnClickListener {
+            fragmentMap[selectedSecondaryGroupId]?.toggleSelectAll()
         }
         binding.tabLayout.setOnTagClickListener { index ->
             val secondaryGroupId = secondaryGroupIds.getOrNull(index) ?: BookGroup.IdAll
@@ -188,7 +188,6 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
     private fun updateSelectAllButtonVisibility() {
         val currentFragment = fragmentMap[selectedSecondaryGroupId]
         val selecting = currentFragment?.isSelecting() == true
-        binding.btnSelectCurrentPage.visibility = if (selecting) View.VISIBLE else View.GONE
         if (selecting) {
             binding.btnSecondaryTagsExpand.visibility = View.GONE
         } else {
