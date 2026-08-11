@@ -143,7 +143,7 @@ class FileAssociationActivity :
 
             "ask" -> alert(title = getString(R.string.file_open_auto_import_title)) {
                 setMessage(R.string.file_open_auto_import_ask_dialog)
-                okButton {
+                yesButton {
                     importBookWithTreeSelection(uri, forceSelectTree = true)
                 }
                 noButton {
