@@ -1,5 +1,6 @@
 package io.legado.app.ui.main.bookshelf
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
@@ -359,9 +360,12 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
     }
 
     override fun openCollection(collection: BookCollectionShelfItem) {
-        startActivity<BookCollectionActivity> {
-            putExtra("collectionId", collection.id)
-        }
+        startActivity(
+            Intent(this, BookCollectionActivity::class.java).putExtra(
+                "collectionId",
+                collection.id
+            )
+        )
     }
 
     override fun openBookInfo(book: Book) {
