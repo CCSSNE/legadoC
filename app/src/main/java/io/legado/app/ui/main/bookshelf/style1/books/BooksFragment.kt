@@ -33,6 +33,7 @@ import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.book.info.BookInfoActivity
+import io.legado.app.ui.main.MainActivity
 import io.legado.app.ui.main.MainViewModel
 import io.legado.app.ui.main.bookshelf.BookCollectionActivity
 import io.legado.app.ui.main.bookshelf.BookCollectionSelectDialog
@@ -123,6 +124,11 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     private val selectedBooks = linkedMapOf<String, Book>()
     private var draggingBookView: View? = null
     private var draggingBooks: List<Book> = emptyList()
+    private var draggingStartRawX = 0f
+    private var draggingStartRawY = 0f
+    private var draggingOriginalTranslationX = 0f
+    private var draggingOriginalTranslationY = 0f
+    private var draggingOriginalElevation = 0f
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         arguments?.let {
@@ -142,6 +148,9 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
 
     private fun initRecyclerView() {
         binding.rvBookshelf.setEdgeEffectColor(primaryColor)
+        binding.root.clipChildren = false
+        binding.refreshLayout.clipChildren = false
+        binding.rvBookshelf.clipChildren = false
         binding.rvBookshelf.clipToPadding = false
         binding.rvBookshelf.applyMainBottomBarPadding(
             usePaddingForRecyclerView = true
@@ -267,9 +276,13 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     private fun clearSelection() {
-        if (selectedBooks.isEmpty() && binding.bookActionBar.isGone) return
+        if (selectedBooks.isEmpty() && binding.bookActionBar.isGone) {
+            setMainBottomBarHidden(false)
+            return
+        }
         selectedBooks.clear()
         binding.bookActionBar.gone()
+        setMainBottomBarHidden(false)
         booksAdapter.notifyDataSetChanged()
     }
 
@@ -280,14 +293,25 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         updateSelectionBar()
     }
 
-    private fun selectBook(book: Book) {
+    private fun selectBook(book: Book, refreshItems: Boolean = true) {
         selectedBooks[book.bookUrl] = book
-        updateSelectionBar()
+        updateSelectionBar(refreshItems)
     }
 
-    private fun updateSelectionBar() {
-        binding.bookActionBar.isGone = selectedBooks.isEmpty()
-        booksAdapter.notifyDataSetChanged()
+    private fun updateSelectionBar(refreshItems: Boolean = true) {
+        val hasSelection = selectedBooks.isNotEmpty()
+        binding.bookActionBar.isGone = !hasSelection
+        if (hasSelection) {
+            binding.bookActionBar.bringToFront()
+        }
+        setMainBottomBarHidden(hasSelection)
+        if (refreshItems) {
+            booksAdapter.notifyDataSetChanged()
+        }
+    }
+
+    private fun setMainBottomBarHidden(hidden: Boolean) {
+        (activity as? MainActivity)?.setBookshelfActionMode(hidden)
     }
 
     private fun showAddToGroupDialog() {
@@ -506,6 +530,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     override fun onDestroyView() {
+        setMainBottomBarHidden(false)
         super.onDestroyView()
         /**
          * 将 RecyclerView 中的视图全部回收到 RecycledViewPool 中
@@ -532,21 +557,36 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     override fun onBookLongPressed(book: Book) {
-        selectBook(book)
+        selectBook(book, refreshItems = false)
     }
 
-    override fun onBookTouchedForDrag(book: Book, view: View) {
+    override fun onBookLongPressFinished() {
+        updateSelectionBar(refreshItems = true)
+    }
+
+    override fun onBookTouchedForDrag(book: Book, view: View, rawX: Float, rawY: Float) {
         draggingBooks = if (selectedBooks.containsKey(book.bookUrl)) {
             selectedBookList()
         } else {
             listOf(book)
         }
         draggingBookView = view
+        draggingStartRawX = rawX
+        draggingStartRawY = rawY
+        draggingOriginalTranslationX = view.translationX
+        draggingOriginalTranslationY = view.translationY
+        draggingOriginalElevation = view.elevation
         binding.bookActionBar.gone()
+        setMainBottomBarHidden(true)
         view.alpha = 0.45f
+        view.elevation = 24.dpToPx().toFloat()
     }
 
     override fun onBookDragMove(rawX: Float, rawY: Float) {
+        draggingBookView?.let {
+            it.translationX = draggingOriginalTranslationX + rawX - draggingStartRawX
+            it.translationY = draggingOriginalTranslationY + rawY - draggingStartRawY
+        }
     }
 
     override fun onBookDragEnd(book: Book, rawX: Float, rawY: Float) {
@@ -565,10 +605,14 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             else -> toastOnUi(R.string.book_drop_system_group_invalid)
         }
         resetDraggingView()
+        if (targetGroupId == null || targetGroupId <= 0) {
+            clearSelection()
+        }
     }
 
     override fun onBookDragCancel() {
         resetDraggingView()
+        clearSelection()
     }
 
     override fun onBookClickInSelection(book: Book) {
@@ -610,7 +654,12 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     private fun resetDraggingView() {
-        draggingBookView?.alpha = 1f
+        draggingBookView?.let {
+            it.alpha = 1f
+            it.translationX = draggingOriginalTranslationX
+            it.translationY = draggingOriginalTranslationY
+            it.elevation = draggingOriginalElevation
+        }
         draggingBookView = null
         draggingBooks = emptyList()
     }

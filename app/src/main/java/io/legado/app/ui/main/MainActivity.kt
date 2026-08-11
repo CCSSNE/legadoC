@@ -145,6 +145,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     private var sideNavigationBackgroundKey: String? = null
     private var sideNavigationBackgroundBitmap: Bitmap? = null
     private var bottomNavigationConfigSignature: String? = null
+    private var bookshelfActionMode = false
     private val sidebarTouchSlop by lazy {
         ViewConfiguration.get(this).scaledTouchSlop
     }
@@ -565,7 +566,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     private fun applyBottomLayoutMode() = binding.run {
         val sidebarMode = isSidebarMode()
         viewPagerMain.swipeEnabled = !sidebarMode
-        bottomControls.isVisible = !sidebarMode
+        bottomControls.isVisible = !sidebarMode && !bookshelfActionMode
         sideNavigationPanel.isVisible = sidebarMode
         applySearchPlacementPreference()
         if (sidebarMode) {
@@ -593,6 +594,12 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             sideNavigationPanel.visibility = View.GONE
             bottomNavigationView.menu.findItem(getBottomNavigationItemId(pagePosition))?.isChecked = true
         }
+    }
+
+    fun setBookshelfActionMode(enabled: Boolean) {
+        if (bookshelfActionMode == enabled) return
+        bookshelfActionMode = enabled
+        binding.bottomControls.isVisible = !isSidebarMode() && !bookshelfActionMode
     }
 
     private fun applySearchPlacementPreference() = binding.run {
@@ -1893,6 +1900,9 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
         override fun onPageSelected(position: Int) {
             pagePosition = position
+            if (position != 0) {
+                setBookshelfActionMode(false)
+            }
             binding.bottomNavigationView.menu.findItem(getBottomNavigationItemId(position))?.isChecked = true
             updateSideNavigationItems()
             updateBottomNavigationIndicator(animate = true)

@@ -125,16 +125,12 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
         callBack: CallBack
     ) {
         val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+        val longPressTimeout = ViewConfiguration.getLongPressTimeout().toLong()
         var downX = 0f
         var downY = 0f
         var longPressed = false
         var dragging = false
-        setOnLongClickListener {
-            val book = bookProvider() ?: return@setOnLongClickListener false
-            longPressed = true
-            callBack.onBookLongPressed(book)
-            true
-        }
+        var longPressRunnable: Runnable? = null
         setOnTouchListener { view, event ->
             val book = bookProvider() ?: return@setOnTouchListener false
             when (event.actionMasked) {
@@ -143,6 +139,14 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
                     downY = event.rawY
                     longPressed = false
                     dragging = false
+                    longPressRunnable = Runnable {
+                        val pressedBook = bookProvider() ?: return@Runnable
+                        longPressed = true
+                        view.parent?.requestDisallowInterceptTouchEvent(true)
+                        callBack.onBookLongPressed(pressedBook)
+                    }.also {
+                        view.postDelayed(it, longPressTimeout)
+                    }
                     false
                 }
 
@@ -150,10 +154,14 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
                     val dx = event.rawX - downX
                     val dy = event.rawY - downY
                     val movedEnough = dx * dx + dy * dy > touchSlop * touchSlop
+                    if (!longPressed && movedEnough) {
+                        longPressRunnable?.let(view::removeCallbacks)
+                        longPressRunnable = null
+                    }
                     if (longPressed && movedEnough) {
                         if (!dragging) {
                             dragging = true
-                            callBack.onBookTouchedForDrag(book, view)
+                            callBack.onBookTouchedForDrag(book, view, event.rawX, event.rawY)
                         }
                         callBack.onBookDragMove(event.rawX, event.rawY)
                         true
@@ -163,6 +171,8 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
                 }
 
                 MotionEvent.ACTION_UP -> {
+                    longPressRunnable?.let(view::removeCallbacks)
+                    longPressRunnable = null
                     when {
                         dragging -> {
                             callBack.onBookDragEnd(book, event.rawX, event.rawY)
@@ -172,15 +182,23 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
                         }
 
                         else -> {
+                            val handled = longPressed
+                            if (longPressed) {
+                                callBack.onBookLongPressFinished()
+                            }
                             longPressed = false
-                            false
+                            handled
                         }
                     }
                 }
 
                 MotionEvent.ACTION_CANCEL -> {
+                    longPressRunnable?.let(view::removeCallbacks)
+                    longPressRunnable = null
                     if (dragging) {
                         callBack.onBookDragCancel()
+                    } else if (longPressed) {
+                        callBack.onBookLongPressFinished()
                     }
                     longPressed = false
                     dragging = false
@@ -210,7 +228,8 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
         fun openCollection(collection: BookCollectionShelfItem)
         fun openBookInfo(book: Book)
         fun onBookLongPressed(book: Book)
-        fun onBookTouchedForDrag(book: Book, view: android.view.View)
+        fun onBookLongPressFinished()
+        fun onBookTouchedForDrag(book: Book, view: android.view.View, rawX: Float, rawY: Float)
         fun onBookDragMove(rawX: Float, rawY: Float)
         fun onBookDragEnd(book: Book, rawX: Float, rawY: Float)
         fun onBookDragCancel()

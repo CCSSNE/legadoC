@@ -93,7 +93,10 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
         openBookInfo(book)
     }
 
-    override fun onBookTouchedForDrag(book: Book, view: View) {
+    override fun onBookLongPressFinished() {
+    }
+
+    override fun onBookTouchedForDrag(book: Book, view: View, rawX: Float, rawY: Float) {
     }
 
     override fun onBookDragMove(rawX: Float, rawY: Float) {
