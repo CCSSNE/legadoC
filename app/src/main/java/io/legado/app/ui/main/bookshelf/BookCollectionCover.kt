@@ -16,12 +16,14 @@ fun ViewBookCollectionMosaicBinding.loadCollectionCovers(
     covers.forEachIndexed { index, imageView ->
         val book = books.getOrNull(index)
         if (book == null) {
-            imageView.visibility = View.GONE
+            // 缺书的空位保持占位，不显示封面也不放大已有封面
+            imageView.visibility = View.INVISIBLE
         } else {
             imageView.visibility = View.VISIBLE
             imageView.loadThumb(book, false, fragment, lifecycle)
         }
     }
-    row1.visibility = if (books.isEmpty()) View.GONE else View.VISIBLE
-    row2.visibility = if (books.size > 2) View.VISIBLE else View.GONE
+    // 行始终占位，避免剩余封面被放大填充空位
+    row1.visibility = View.VISIBLE
+    row2.visibility = View.VISIBLE
 }
