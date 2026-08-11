@@ -78,7 +78,6 @@
                 app:tint="@color/primaryText" />
 
             <TextView
-                android:id="@+id/tv_delete_action"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
@@ -157,6 +156,7 @@
                 app:tint="@color/error" />
 
             <TextView
+                android:id="@+id/tv_delete_action"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
