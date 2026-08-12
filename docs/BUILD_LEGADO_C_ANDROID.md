@@ -2,6 +2,8 @@
 
 第一规则：禁止使用 debug 编译，交付给用户安装时只能编译 `appC` 变体，产物必须来自 `app\build\outputs\apk\app\c`。
 
+> 已加构建钩子（2026-08-12）：任何 assemble/bundle/install/package 类 debug 任务都会在执行前被拦截并中止构建，提示重新阅读本文档。
+
 ## 目标
 
 从 `D:\AI\audio\legadoC-own` 编译可与阅读 R、默认 debug 包共存的阅读 C APK。

@@ -355,3 +355,22 @@ dependencies {
     implementation(libs.soraEditor.core)
     implementation(libs.soraEditor.language.textmate)
 }
+
+// ===== 禁止 debug 构建钩子（2026-08-12 新增）=====
+// 任何打包/安装类 debug 任务一旦进入执行图，立即中止构建并提示阅读构建文档，
+// 防止误产出 app\build\outputs\apk\app\debug 下的 .debug 包。
+gradle.taskGraph.whenReady { graph ->
+    graph.allTasks.findAll { task ->
+        task.project == project && task.name ==~ /(assemble|bundle|install|package).*Debug/
+    }.each { task ->
+        throw new GradleException(
+            "============================================================\n" +
+            "DEBUG BUILD IS BLOCKED. See docs/BUILD_LEGADO_C_ANDROID.md\n" +
+            "已拦截 DEBUG 构建！本项目禁止生成 debug 包，构建已中止。\n" +
+            "请停止构建，重新阅读构建文档：docs/BUILD_LEGADO_C_ANDROID.md\n" +
+            "正确做法：只编译 appC 变体，例如\n" +
+            "  gradlew :app:assembleAppC -PVERSION_CODE=<新版本号> -PVERSION_NAME=3.26.MMddHH\n" +
+            "============================================================"
+        )
+    }
+}
