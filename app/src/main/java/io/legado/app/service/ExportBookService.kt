@@ -2,6 +2,12 @@ package io.legado.app.service
 
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Typeface
+import android.graphics.pdf.PdfDocument
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
@@ -28,6 +34,7 @@ import io.legado.app.help.book.isLocalModified
 import io.legado.app.help.illustration.IllustrationHelp
 import io.legado.app.help.illustration.imageSrcsFromJson
 import io.legado.app.help.config.AppConfig
+import io.legado.app.model.ImageProvider
 import io.legado.app.model.ReadBook
 import io.legado.app.model.localBook.EpubFile
 import io.legado.app.model.localBook.LocalBook
@@ -58,6 +65,8 @@ import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.writeFile
 import io.legado.app.utils.externalCache
 import java.io.File
+import java.io.FileOutputStream
+import kotlin.math.ceil
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
@@ -299,7 +308,9 @@ class ExportBookService : BaseService() {
                         waitExportBooks.size
                     )
                     upExportNotification()
-                    if (exportConfig.type == "epub") {
+                    if (exportConfig.type == "pdf") {
+                        exportPdf(exportConfig.path, book, exportConfig)
+                    } else if (exportConfig.type == "epub") {
                         exportEpub(exportConfig.path, book, exportConfig)
                     } else {
                         exportTxt(exportConfig.path, book, exportConfig)
@@ -453,6 +464,323 @@ class ExportBookService : BaseService() {
         } finally {
             FileUtils.delete(tmpRoot)
         }
+    }
+
+    /**
+     * 导出 PDF：无配图时导出纯 PDF；带配图时导出压缩包（PDF + illustrations.json）。
+     * PDF 页面坐标以 0..1 归一化记录在 JSON 中，供再导入时定位与裁切。
+     */
+    private suspend fun exportPdf(path: String, book: Book, config: ExportConfig) {
+        exportMsg.remove(book.bookUrl)
+        postEvent(EventBus.EXPORT_BOOK, book.bookUrl)
+        val fileDoc = FileDoc.fromDir(path)
+        exportPdf(fileDoc, book, config)
+    }
+
+    private suspend fun exportPdf(fileDoc: FileDoc, book: Book, config: ExportConfig) {
+        val pdfName = book.getLiteralExportFileName("pdf", config.bookExportFileName)
+        val illustrations = appDb.bookIllustrationDao.getByBook(book.bookUrl)
+        val tmpRoot = FileUtils.createFolderIfNotExist(appCtx.externalCache, "ExportPdf")
+        FileUtils.delete(tmpRoot)
+        FileUtils.createFolderIfNotExist(tmpRoot.absolutePath)
+        val tmpPdf = File(tmpRoot, pdfName)
+        try {
+            val exportItems = renderPdf(book, config, illustrations, tmpPdf)
+            if (illustrations.isEmpty()) {
+                val doc = fileDoc.createFileIfNotExistWithMime(pdfName, "application/pdf")
+                doc.openOutputStream(truncate = true).getOrThrow().use { out ->
+                    tmpPdf.inputStream().use { it.copyTo(out) }
+                }
+                if (config.toWebDav) {
+                    AppWebDav.exportWebDav(doc.uri, pdfName)
+                }
+            } else {
+                val zipName = pdfName.removeSuffix(".pdf") + ".zip"
+                fileDoc.find(zipName)?.delete()
+                val jsonText = IllustrationHelp.buildPdfExportJson(book, pdfName, exportItems)
+                val tmpJson = File(tmpRoot, IllustrationHelp.EXPORT_JSON_NAME)
+                tmpJson.writeText(jsonText, Charsets.UTF_8)
+                val tmpZip = File(tmpRoot, zipName)
+                ZipUtils.zipFiles(listOf(tmpPdf, tmpJson), tmpZip, null)
+                val zipDoc = fileDoc.createFileIfNotExistWithMime(zipName, "application/zip")
+                zipDoc.openOutputStream(truncate = true).getOrThrow().use { out ->
+                    tmpZip.inputStream().use { it.copyTo(out) }
+                }
+                if (config.toWebDav) {
+                    AppWebDav.exportWebDav(zipDoc.uri, zipName)
+                }
+            }
+        } finally {
+            FileUtils.delete(tmpRoot)
+        }
+    }
+
+    /**
+     * 把书籍排版成 PDF 页：A4 页、逐段折行、段间插入配图，
+     * 并返回带 PDF 页码/归一化坐标的导出项。
+     */
+    private fun renderPdf(
+        book: Book,
+        config: ExportConfig,
+        illustrations: List<BookIllustration>,
+        outFile: File
+    ): List<IllustrationHelp.PdfExportItem> {
+        val document = PdfDocument()
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textSize = 12f
+            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+        }
+        val pageWidth = 595f
+        val pageHeight = 842f
+        val margin = 40f
+        val contentWidth = pageWidth - margin * 2
+        val lineHeight = 15f
+        val paragraphGap = 7f
+        var page: PdfDocument.Page? = null
+        var y = margin
+        val exportItems = arrayListOf<IllustrationHelp.PdfExportItem>()
+        val placedIds = hashSetOf<Long>()
+        val illustrationsByChapter = illustrations.groupBy { it.chapterIndex }
+
+        fun currentPageIndex(): Int = document.pages.size
+
+        fun ensurePage() {
+            if (page == null || y > pageHeight - margin) {
+                if (page != null) {
+                    document.finishPage(page)
+                }
+                val info = PdfDocument.PageInfo.Builder(
+                    pageWidth.toInt(),
+                    pageHeight.toInt(),
+                    document.pages.size
+                ).create()
+                page = document.startPage(info)
+                y = margin
+            }
+        }
+
+        fun newPage() {
+            if (page != null) {
+                document.finishPage(page)
+                page = null
+            }
+        }
+
+        fun drawParagraph(text: String) {
+            if (text.isBlank()) {
+                y += lineHeight * 0.5f
+                return
+            }
+            val lines = wrapPdfText(paint, text, contentWidth)
+            for (line in lines) {
+                if (y + lineHeight > pageHeight - margin) {
+                    newPage()
+                    ensurePage()
+                }
+                page?.canvas?.drawText(line, margin, y + paint.textSize, paint)
+                y += lineHeight
+            }
+            y += paragraphGap
+        }
+
+        fun drawIllustrationGroup(
+            srcs: List<String>,
+            layoutType: String,
+            displayHeight: Int
+        ): Pair<Float, List<String>>? {
+            val images = arrayListOf<Pair<String, Bitmap>>()
+            srcs.forEach { src ->
+                val file = IllustrationHelp.getImageFile(book, src)
+                if (file.exists()) {
+                    val size = kotlin.runCatching {
+                        android.graphics.BitmapFactory.Options().apply {
+                            inJustDecodeBounds = true
+                        }.let { opts ->
+                            android.graphics.BitmapFactory.decodeFile(file.absolutePath, opts)
+                            opts.outWidth to opts.outHeight
+                        }
+                    }.getOrNull()
+                    if (size != null && size.first > 0 && size.second > 0) {
+                        val targetWidth = (contentWidth * 1.5f).toInt().coerceAtLeast(1)
+                        val targetHeight = (pageHeight * 1.5f).toInt().coerceAtLeast(1)
+                        val bitmap = ImageProvider.getImage(book, src, targetWidth, targetHeight)
+                        if (bitmap.width > 0 && bitmap.height > 0) {
+                            images.add(src to bitmap)
+                        }
+                    }
+                }
+            }
+            if (images.isEmpty()) return null
+            val gap = 6f
+            val n = images.size
+            var cellWidth: Float
+            var rowHeight: Float
+            if (layoutType == BookIllustration.LAYOUT_SINGLE && displayHeight > 0) {
+                val (_, bmp) = images[0]
+                rowHeight = displayHeight * 0.75f
+                cellWidth = rowHeight * bmp.width.toFloat() / bmp.height.toFloat()
+            } else {
+                cellWidth = (contentWidth - gap * (n - 1)) / n
+                val naturalHeights = images.map {
+                    it.second.height.toFloat() * cellWidth / it.second.width.toFloat()
+                }
+                rowHeight = naturalHeights.max()
+            }
+            var totalWidth = cellWidth * n + gap * (n - 1)
+            if (totalWidth > contentWidth) {
+                val scale = contentWidth / totalWidth
+                cellWidth *= scale
+                rowHeight *= scale
+            }
+            if (rowHeight > pageHeight - margin * 2) {
+                val scale = (pageHeight - margin * 2) / rowHeight
+                cellWidth *= scale
+                rowHeight *= scale
+            }
+            if (rowHeight <= 0f) return null
+            ensurePage()
+            if (y + rowHeight > pageHeight - margin) {
+                newPage()
+                ensurePage()
+            }
+            val rowWidth = cellWidth * n + gap * (n - 1)
+            var x = margin + (contentWidth - rowWidth) / 2f
+            val top = y
+            val rects = arrayListOf<String>()
+            images.forEach { (src, bmp) ->
+                val left = x
+                val right = x + cellWidth
+                val bottom = top + rowHeight
+                page?.canvas?.drawBitmap(
+                    bmp,
+                    null as android.graphics.Rect?,
+                    android.graphics.RectF(left, top, right, bottom),
+                    null
+                )
+                rects.add(
+                    "${left / pageWidth},${top / pageHeight},${cellWidth / pageWidth},${rowHeight / pageHeight}"
+                )
+                x += cellWidth + gap
+            }
+            y = top + rowHeight + paragraphGap
+            return rowHeight to rects
+        }
+
+        fun insertIllustrations(items: List<BookIllustration>) {
+            items.sortedBy { it.sortOrder }.forEach { illustration ->
+                val srcs = illustration.imageSrcsFromJson()
+                if (srcs.isEmpty()) return@forEach
+                if (illustration.pageBreak) newPage()
+                val cellCount = when (illustration.layoutType) {
+                    BookIllustration.LAYOUT_DOUBLE -> 2
+                    BookIllustration.LAYOUT_TRIPLE -> 3
+                    BookIllustration.LAYOUT_QUAD -> 4
+                    else -> 1
+                }
+                val allRects = arrayListOf<String>()
+                srcs.chunked(cellCount).forEach { group ->
+                    drawIllustrationGroup(
+                        group,
+                        illustration.layoutType,
+                        illustration.displayHeight
+                    )?.let { (_, rects) ->
+                        allRects.addAll(rects)
+                    }
+                }
+                if (allRects.isNotEmpty()) {
+                    exportItems.add(
+                        IllustrationHelp.PdfExportItem(
+                            chapterIndex = illustration.chapterIndex,
+                            chapterName = illustration.chapterName,
+                            anchorType = illustration.anchorType,
+                            anchorPos = illustration.anchorPos,
+                            frontParagraphText = illustration.frontParagraphText,
+                            backParagraphText = illustration.backParagraphText,
+                            frontFingerprint = illustration.frontFingerprint,
+                            backFingerprint = illustration.backFingerprint,
+                            srcs = srcs,
+                            layoutType = illustration.layoutType,
+                            displayHeight = illustration.displayHeight,
+                            pageBreak = illustration.pageBreak,
+                            sortOrder = illustration.sortOrder,
+                            pdfPage = currentPageIndex(),
+                            pdfRects = allRects
+                        )
+                    )
+                }
+                if (illustration.pageBreak) newPage()
+            }
+        }
+
+        val useReplace = config.useReplace && book.getUseReplaceRule()
+        val contentProcessor = ContentProcessor.get(book.name, book.origin)
+        val chapterList = appDb.bookChapterDao.getChapterList(book.bookUrl)
+        chapterList.forEach { chapter ->
+            val content = BookHelp.getContent(book, chapter).withoutReadableContentVersionFlag()
+            val paragraphs = contentProcessor
+                .getContent(
+                    book,
+                    chapter,
+                    content ?: if (chapter.isVolume) "" else "null",
+                    includeTitle = false,
+                    useReplace = useReplace,
+                    chineseConvert = false,
+                    reSegment = false
+                ).toString().split("\n")
+            val chapterIllustrations = illustrationsByChapter[chapter.index].orEmpty()
+            paragraphs.forEachIndexed { index, paragraph ->
+                if (index > 0) {
+                    val frontText = paragraphs[index - 1]
+                    val backText = paragraph
+                    val frontFp = IllustrationHelp.fingerprint(frontText, false)
+                    val backFp = IllustrationHelp.fingerprint(backText, true)
+                    val matched = chapterIllustrations
+                        .filter {
+                            it.id !in placedIds &&
+                                it.anchorType == BookIllustration.ANCHOR_BETWEEN_PARAGRAPHS &&
+                                it.frontFingerprint == frontFp &&
+                                it.backFingerprint == backFp
+                        }
+                        .sortedBy { it.sortOrder }
+                    matched.forEach {
+                        placedIds.add(it.id)
+                        insertIllustrations(listOf(it))
+                    }
+                }
+                drawParagraph(paragraph)
+            }
+            val remaining = chapterIllustrations
+                .filter { it.id !in placedIds }
+                .sortedBy { it.sortOrder }
+            insertIllustrations(remaining)
+            remaining.forEach { placedIds.add(it.id) }
+        }
+        newPage()
+        FileOutputStream(outFile).use { document.writeTo(it) }
+        document.close()
+        return exportItems
+    }
+
+    private fun wrapPdfText(paint: Paint, text: String, width: Float): List<String> {
+        val lines = arrayListOf<String>()
+        text.split("\n").forEach { segment ->
+            if (segment.isEmpty()) {
+                lines.add("")
+                return@forEach
+            }
+            val sb = StringBuilder()
+            for (ch in segment) {
+                val candidate = sb.toString() + ch
+                if (sb.isNotEmpty() && paint.measureText(candidate) > width) {
+                    lines.add(sb.toString())
+                    sb.setLength(0)
+                }
+                sb.append(ch)
+            }
+            if (sb.isNotEmpty()) lines.add(sb.toString())
+        }
+        return lines
     }
 
     private suspend fun getAllContents(

@@ -495,7 +495,8 @@ object LocalBook {
                 archiveFileDoc,
                 filter = { name ->
                     name == IllustrationHelp.EXPORT_JSON_NAME ||
-                        name.startsWith("${IllustrationHelp.EXPORT_IMAGES_DIR}/")
+                        name.startsWith("${IllustrationHelp.EXPORT_IMAGES_DIR}/") ||
+                        name.matches(AppPattern.bookFileRegex)
                 }
             )
             val jsonFile = files.firstOrNull { it.name == IllustrationHelp.EXPORT_JSON_NAME }
@@ -509,7 +510,11 @@ object LocalBook {
             val book = importedBooks.firstOrNull { it.originName == json.bookFile }
                 ?: importedBooks.firstOrNull()
             if (book != null) {
-                IllustrationHelp.restoreFromExport(book, jsonFile.readText(), files)
+                val jsonText = jsonFile.readText()
+                val restored = IllustrationHelp.restoreFromExport(book, jsonText, files)
+                if (!restored && book.isPdf) {
+                    IllustrationHelp.restoreFromPdfExport(book, book, jsonText)
+                }
             }
         }.onFailure { e ->
             AppLog.put("还原配图数据失败\n${e.localizedMessage}", e)

@@ -26,6 +26,11 @@ import io.legado.app.help.PaperInkHelper
 import io.legado.app.help.book.isOnLineTxt
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.illustration.IllustrationHelp
+import io.legado.app.help.illustration.imageSrcsFromJson
+import io.legado.app.help.illustration.pdfRectsFromJson
+import io.legado.app.help.book.isPdf
+import io.legado.app.data.appDb
+import io.legado.app.data.entities.BookIllustration
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.model.ReadBook
 import io.legado.app.model.localBook.EpubFile
@@ -718,9 +723,12 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
             return true
         }
         var handled = false
-        touch(x, y) { _, textPos, _, _, column ->
+        touch(x, y) { _, textPos, _, textLine, column ->
             when (column) {
-                is ImageColumn -> callBack.onImageLongPress(x, y, column.src)
+                is ImageColumn -> {
+                    val pdfHit = hitPdfIllustration(x, y, textLine, column)
+                    callBack.onImageLongPress(x, y, pdfHit?.second ?: column.src)
+                }
                 is TextColumn -> {
                     if (!selectAble) return@touch
                     column.selected = true
@@ -736,6 +744,42 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
             }
         }
         return handled
+    }
+
+    /**
+     * PDF 阅读页热区命中：整页位图内按归一化坐标匹配配图记录，
+     * 返回 (配图记录, 命中的配图 src)。
+     */
+    private fun hitPdfIllustration(
+        x: Float,
+        y: Float,
+        textLine: TextLine,
+        column: ImageColumn
+    ): Pair<BookIllustration, String>? {
+        val book = ReadBook.book ?: return null
+        if (!book.isPdf) return null
+        val page = column.src.toIntOrNull() ?: return null
+        val width = (column.end - column.start).coerceAtLeast(1f)
+        val height = (textLine.lineBottom - textLine.lineTop).coerceAtLeast(1f)
+        val relX = (x - column.start) / width
+        val relY = (y - textLine.lineTop) / height
+        val records = appDb.bookIllustrationDao.getByBook(book.bookUrl)
+            .filter { it.pdfPage == page }
+        records.forEach { record ->
+            val rects = record.pdfRectsFromJson()
+            val srcs = record.imageSrcsFromJson()
+            rects.forEachIndexed { index, rect ->
+                val parts = rect.split(",").mapNotNull { it.trim().toFloatOrNull() }
+                if (parts.size == 4) {
+                    val (rx, ry, rw, rh) = parts
+                    if (relX >= rx && relX <= rx + rw && relY >= ry && relY <= ry + rh) {
+                        val src = srcs.getOrNull(index) ?: srcs.firstOrNull()
+                        if (src != null) return record to src
+                    }
+                }
+            }
+        }
+        return null
     }
 
     /**
@@ -775,11 +819,17 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
                     handled = true
                 }
 
-                is ImageColumn -> if (column.src.startsWith(IllustrationHelp.SRC_PREFIX)) {
-                    // 配图：点击直接全屏查看
-                    activity?.showDialogFragment(PhotoDialog(column.src, isBook = true))
-                    handled = true
-                } else when (AppConfig.clickImgWay) {
+                is ImageColumn -> {
+                    val pdfHit = hitPdfIllustration(x, y, textLine, column)
+                    if (pdfHit != null) {
+                        // PDF 页内配图热区：点击全屏查看
+                        activity?.showDialogFragment(PhotoDialog(pdfHit.second, isBook = true))
+                        handled = true
+                    } else if (column.src.startsWith(IllustrationHelp.SRC_PREFIX)) {
+                        // 配图：点击直接全屏查看
+                        activity?.showDialogFragment(PhotoDialog(column.src, isBook = true))
+                        handled = true
+                    } else when (AppConfig.clickImgWay) {
                     "1" -> { //预览图片
                         activity?.showDialogFragment(PhotoDialog(column.src, isBook = true))
                         handled = true
@@ -821,6 +871,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
                             }
                         }
                     }
+                }
                 }
                 is TextHtmlColumn -> {
                     column.linkUrl?.let {

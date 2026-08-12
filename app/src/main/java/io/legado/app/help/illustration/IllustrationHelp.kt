@@ -2,6 +2,9 @@ package io.legado.app.help.illustration
 
 import android.content.ContentValues
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Color
+import android.graphics.pdf.PdfRenderer
 import android.media.MediaScannerConnection
 import android.os.Build
 import android.os.Environment
@@ -9,6 +12,7 @@ import android.provider.MediaStore
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookIllustration
+import io.legado.app.help.book.BookHelp
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
@@ -18,6 +22,7 @@ import io.legado.app.utils.getFile
 import io.legado.app.utils.writeBytes
 import splitties.init.appCtx
 import java.io.File
+import java.io.ByteArrayOutputStream
 import java.io.FileOutputStream
 import java.util.UUID
 
@@ -296,6 +301,129 @@ object IllustrationHelp {
         return "../${epubImageHref(src)}"
     }
 
+    // ---------- PDF 导出 / 再导入 ----------
+
+    data class PdfExportItem(
+        val chapterIndex: Int = 0,
+        val chapterName: String = "",
+        val anchorType: String = BookIllustration.ANCHOR_BETWEEN_PARAGRAPHS,
+        val anchorPos: Int = -1,
+        val frontParagraphText: String = "",
+        val backParagraphText: String = "",
+        val frontFingerprint: String = "",
+        val backFingerprint: String = "",
+        val srcs: List<String> = emptyList(),
+        val layoutType: String = BookIllustration.LAYOUT_SINGLE,
+        val displayHeight: Int = 0,
+        val pageBreak: Boolean = false,
+        val sortOrder: Int = 0,
+        val pdfPage: Int = -1,
+        val pdfRects: List<String> = emptyList()
+    )
+
+    data class PdfIllustrationJson(
+        val version: Int = EXPORT_JSON_VERSION,
+        val bookFile: String = "",
+        val records: List<PdfExportItem> = emptyList()
+    )
+
+    fun buildPdfExportJson(
+        book: Book,
+        pdfFileName: String,
+        items: List<PdfExportItem>
+    ): String {
+        return GSON.toJson(PdfIllustrationJson(bookFile = pdfFileName, records = items))
+    }
+
+    /**
+     * 从自导出的 PDF 压缩包还原配图：按 PDF 页坐标裁切出配图原图，
+     * 保存到配图目录并写入记录（pdfPage/pdfRect 用于阅读页热区）。
+     */
+    fun restoreFromPdfExport(
+        book: Book,
+        pdfBook: Book,
+        jsonText: String,
+        context: Context = appCtx
+    ): Boolean {
+        val json = kotlin.runCatching {
+            GSON.fromJson(jsonText, PdfIllustrationJson::class.java)
+        }.getOrNull() ?: return false
+        if (json.records.isEmpty()) return false
+        val records = arrayListOf<BookIllustration>()
+        json.records.forEachIndexed { index, item ->
+            val srcs = arrayListOf<String>()
+            val rects = arrayListOf<String>()
+            item.srcs.forEachIndexed { i, src ->
+                val rect = item.pdfRects.getOrNull(i)
+                val bytes = cropPdfRegion(pdfBook, item.pdfPage, rect)
+                if (bytes != null) {
+                    saveImage(book, src, bytes)
+                    srcs.add(src)
+                    if (rect != null) rects.add(rect)
+                }
+            }
+            if (srcs.isEmpty()) return@forEachIndexed
+            records.add(
+                BookIllustration(
+                    bookUrl = book.bookUrl,
+                    chapterIndex = item.chapterIndex,
+                    chapterName = item.chapterName,
+                    anchorType = item.anchorType,
+                    anchorPos = item.anchorPos,
+                    frontParagraphText = item.frontParagraphText,
+                    backParagraphText = item.backParagraphText,
+                    frontFingerprint = item.frontFingerprint,
+                    backFingerprint = item.backFingerprint,
+                    imageSrcs = imageSrcsToJson(srcs),
+                    layoutType = item.layoutType,
+                    displayHeight = item.displayHeight,
+                    pageBreak = item.pageBreak,
+                    sortOrder = item.sortOrder,
+                    pdfPage = item.pdfPage,
+                    pdfRect = imageSrcsToJson(rects)
+                )
+            )
+        }
+        if (records.isEmpty()) return false
+        appDb.bookIllustrationDao.deleteByBook(book.bookUrl)
+        appDb.bookIllustrationDao.insert(*records.toTypedArray())
+        return true
+    }
+
+    private fun cropPdfRegion(
+        pdfBook: Book,
+        pageIndex: Int,
+        rectStr: String?
+    ): ByteArray? {
+        if (rectStr == null || pageIndex < 0) return null
+        val parts = rectStr.split(",").mapNotNull { it.trim().toFloatOrNull() }
+        if (parts.size != 4) return null
+        val (x, y, w, h) = parts
+        return kotlin.runCatching {
+            val pfd = BookHelp.getBookPFD(pdfBook) ?: return null
+            PdfRenderer(pfd).use { renderer ->
+                if (pageIndex >= renderer.pageCount) return null
+                renderer.openPage(pageIndex).use { page ->
+                    val scale = 2f
+                    val pageW = (page.width * scale).toInt().coerceAtLeast(1)
+                    val pageH = (page.height * scale).toInt().coerceAtLeast(1)
+                    val bitmap = Bitmap.createBitmap(pageW, pageH, Bitmap.Config.ARGB_8888)
+                    bitmap.eraseColor(Color.WHITE)
+                    page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                    val left = (x * pageW).toInt().coerceIn(0, pageW - 1)
+                    val top = (y * pageH).toInt().coerceIn(0, pageH - 1)
+                    val right = ((x + w) * pageW).toInt().coerceIn(left + 1, pageW)
+                    val bottom = ((y + h) * pageH).toInt().coerceIn(top + 1, pageH)
+                    val crop = Bitmap.createBitmap(bitmap, left, top, right - left, bottom - top)
+                    ByteArrayOutputStream().use { out ->
+                        crop.compress(Bitmap.CompressFormat.PNG, 90, out)
+                        out.toByteArray()
+                    }
+                }
+            }
+        }.getOrNull()
+    }
+
     private fun getSuffixOf(src: String): String {
         return src.substringAfterLast('.', "jpg").ifBlank { "jpg" }
     }
@@ -305,6 +433,15 @@ fun BookIllustration.imageSrcsFromJson(): List<String> {
     return kotlin.runCatching {
         GSON.fromJson(
             imageSrcs,
+            Array<String>::class.java
+        ).toList()
+    }.getOrDefault(emptyList())
+}
+
+fun BookIllustration.pdfRectsFromJson(): List<String> {
+    return kotlin.runCatching {
+        GSON.fromJson(
+            pdfRect,
             Array<String>::class.java
         ).toList()
     }.getOrDefault(emptyList())
