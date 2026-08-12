@@ -110,6 +110,8 @@ class BookmarkAdapter(private val context: Context, val callback: Callback) :
                 binding.tvBookText.text = item.bookText
                 binding.tvContent.gone(item.content.isEmpty())
                 binding.tvContent.text = item.content
+                binding.vStyleColor.background.setTint(styleColor(item))
+                binding.tvStyle.text = styleText(item)
                 upSelectionUi(binding.selectionOuter, binding.selectionDot, selectionMode, selected)
                 binding.root.setOnClickListener {
                     if (selectionMode) toggleSelect(item) else callback.onClick(item)

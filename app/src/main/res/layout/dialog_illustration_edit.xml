@@ -59,6 +59,7 @@
 
                 <LinearLayout
                     style="@style/ReadColorRow"
+                    android:layout_height="wrap_content"
                     android:layout_marginTop="8dp">
 
                     <TextView
@@ -74,8 +75,7 @@
                         android:gravity="end"
                         android:hint="@string/illustration_height_hint"
                         android:inputType="number"
-                        android:maxLines="1"
-                        android:singleLine="true"
+                        android:maxLines="2"
                         android:textColor="@color/primaryText"
                         android:textSize="14sp" />
                 </LinearLayout>
