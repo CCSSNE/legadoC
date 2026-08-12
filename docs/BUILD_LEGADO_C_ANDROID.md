@@ -34,16 +34,17 @@ io.legado.app.c
 
 1. 只编译 `appC` 变体，产物目录必须是 `app\build\outputs\apk\app\c`。
 2. 每次重新编译安装包前，先确认用户手机已安装版本的 `versionCode`。能连设备时用 `adb shell dumpsys package io.legado.app.c` 查；不能连设备时，用第 7 条的“最近一次已交付”基线。
-3. 新包的 `VERSION_CODE` 必须大于用户手机已安装版本；不能只看当前输出目录，更不能复用旧值。按已交付线每次 `+1`（当前基线 `10525` → 下一包 `10526`）。
+3. 新包的 `VERSION_CODE` 必须大于用户手机已安装版本；不能只看当前输出目录，更不能复用旧值。按已交付线每次 `+1`（当前基线 `10526` → 下一包 `10527`）。
 4. `VERSION_NAME` 格式是 `3.26.MMddHH`（默认按 GMT+8 编译时刻生成，例如 08-11 23 时 → `081123`），并且每次交付必须大于上一包。也可以沿用/顺延上一包名加一（如 `081123` → `081124`），本次 `3.26.081123` 就是按基线顺延取名、而非当天实际时刻。
 5. 如果只是跑普通 debug 编译验证，不交付给用户安装，必须明确说明那不是覆盖安装包。
 6. 禁止把 `app\build\outputs\apk\app\debug` 的 `.debug` 包当成阅读 C 包交付。
 7. 已交付基线（新 → 旧）：
+   - `3.26.081124c` / `10526`：2026-08-12 编译交付（从 `F:\下载\base.apk` 读取上包 `10525 / 3.26.081123c` 后 +1）。
    - `3.26.081123c` / `10525`：2026-08-12 编译交付。
    - `3.26.081122c` / `10524`：2026-08-11 交付。
    - `3.26.081121c` / `10523`：2026-08-11 交付。
    - `3.26.062205c` / `10491`：更早交付。
-   后续覆盖包必须从 `3.26.081124c` / `10526` 起步（实际编译时刻的 `MMddHH` 更大时取实际值）。
+   后续覆盖包必须从 `3.26.081125c` / `10527` 起步（实际编译时刻的 `MMddHH` 更大时取实际值）。
 8. 删除旧包本身不提供版本号：删除动作只负责清空产物目录，版本号必须在删除前从 adb 或第 7 条基线确认好。第 7 条是“最近一次已交付”的唯一持久记录，每次交付后必须当场更新，否则下一包会复用旧值、破坏单调递增。
 
 当前阅读 C 使用独立包名，构建类型是 `c`，最终包名后缀是 `.c`。版本号沿用正常递增线，不要随手写超大版本号。
@@ -73,10 +74,19 @@ $env:Path = @(
   "$env:ANDROID_HOME\platform-tools"
 ) + ($env:Path -split ';') -join ';'
 
-$versionCode=10525
-$versionName='3.26.081123'
+$versionCode=10526
+$versionName='3.26.081124'
 .\gradlew.bat ':app:assembleAppC' '-Pabi=arm64-v8a' "-PVERSION_CODE=$versionCode" "-PVERSION_NAME=$versionName" '-Dkotlin.incremental=false' '-Dkotlin.compiler.execution.strategy=in-process' --no-daemon --console=plain --warning-mode=summary --max-workers=1
 ```
+
+2026-08-12 实测结果（`VERSION_CODE=10526`、`VERSION_NAME=3.26.081124`）：
+
+```text
+BUILD SUCCESSFUL in 3m 28s
+75 actionable tasks: 13 executed, 62 up-to-date
+```
+
+产物 `legado_app_3.26.081124_10526.apk` 验证通过：包名 `io.legado.app.c`、`versionCode=10526`、`versionName=3.26.081124c`、中文名 `阅读 C`、`native-code: arm64-v8a`、签名 `CN=Android Debug`；已安装到雷电模拟器验证可覆盖升级、可启动。
 
 ## 分阶段编译记录
 
@@ -224,13 +234,13 @@ BUILD SUCCESSFUL in 4m 17s
 APK 预期路径：
 
 ```text
-D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_3.26.081123_10525.apk
+D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_3.26.081124_10526.apk
 ```
 
 检查包名、版本、ABI：
 
 ```powershell
-$apk='D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_3.26.081123_10525.apk'
+$apk='D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_3.26.081124_10526.apk'
 & "$env:ANDROID_HOME\build-tools\36.0.0\aapt.exe" dump badging $apk
 ```
 
@@ -238,8 +248,8 @@ $apk='D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_3.26.081123
 
 ```text
 package: name='io.legado.app.c'
-versionCode='10525'
-versionName='3.26.081123c'
+versionCode='10526'
+versionName='3.26.081124c'
 application-label-zh-CN:'阅读 C'
 application-label-zh-HK:'阅读 C'
 application-label-zh-TW:'阅读 C'
