@@ -33,12 +33,18 @@ io.legado.app.c
 每次编译给用户安装的阅读 C APK，都按覆盖升级处理：
 
 1. 只编译 `appC` 变体，产物目录必须是 `app\build\outputs\apk\app\c`。
-2. 每次重新编译安装包前，先确认用户手机已安装版本的 `versionCode`。能连设备时用 `adb shell dumpsys package io.legado.app.c` 查；不能连设备时，用最近一次已交付 APK 的 `versionCode` 做基线。
-3. 新包的 `VERSION_CODE` 必须大于用户手机已安装版本；不能只看当前输出目录，更不能复用旧值。
-4. `VERSION_NAME` 也必须每次交付递增，不能沿用上一包的可见版本名。
+2. 每次重新编译安装包前，先确认用户手机已安装版本的 `versionCode`。能连设备时用 `adb shell dumpsys package io.legado.app.c` 查；不能连设备时，用第 7 条的“最近一次已交付”基线。
+3. 新包的 `VERSION_CODE` 必须大于用户手机已安装版本；不能只看当前输出目录，更不能复用旧值。按已交付线每次 `+1`（当前基线 `10525` → 下一包 `10526`）。
+4. `VERSION_NAME` 格式是 `3.26.MMddHH`（默认按 GMT+8 编译时刻生成，例如 08-11 23 时 → `081123`），并且每次交付必须大于上一包。也可以沿用/顺延上一包名加一（如 `081123` → `081124`），本次 `3.26.081123` 就是按基线顺延取名、而非当天实际时刻。
 5. 如果只是跑普通 debug 编译验证，不交付给用户安装，必须明确说明那不是覆盖安装包。
 6. 禁止把 `app\build\outputs\apk\app\debug` 的 `.debug` 包当成阅读 C 包交付。
-7. 已交付的 `3.26.062205c` 是 `10491`；`3.26.081121c` / `10523` 已交付；当前最新测试包是 `3.26.081122c` / `10524`（2026-08-11），后续覆盖包必须从 `3.26.081123c` / `10525` 起步。
+7. 已交付基线（新 → 旧）：
+   - `3.26.081123c` / `10525`：2026-08-12 编译交付。
+   - `3.26.081122c` / `10524`：2026-08-11 交付。
+   - `3.26.081121c` / `10523`：2026-08-11 交付。
+   - `3.26.062205c` / `10491`：更早交付。
+   后续覆盖包必须从 `3.26.081124c` / `10526` 起步（实际编译时刻的 `MMddHH` 更大时取实际值）。
+8. 删除旧包本身不提供版本号：删除动作只负责清空产物目录，版本号必须在删除前从 adb 或第 7 条基线确认好。第 7 条是“最近一次已交付”的唯一持久记录，每次交付后必须当场更新，否则下一包会复用旧值、破坏单调递增。
 
 当前阅读 C 使用独立包名，构建类型是 `c`，最终包名后缀是 `.c`。版本号沿用正常递增线，不要随手写超大版本号。
 
@@ -47,10 +53,13 @@ io.legado.app.c
 - 编译之前，必须删除原来的安装包。
 - 禁止把老的安装包改为新的包名。
 - 必须完全删除老的安装包。
+- 删除前先按版本规则确认好版本号（adb 或第 7 条基线）；删除动作本身不提供版本号来源，删完旧包后基线只能靠第 7 条。
 
 ## 编译命令
 
 PowerShell 必须显式使用 UTF-8，并把 Gradle 缓存放在 D 盘，避免 Windows 下 KSP/增量缓存跨盘路径问题。
+
+版本号必须按“覆盖编译版本号规则”取最新值，下面的数值是最近一次实际使用的值，不要照抄。
 
 ```powershell
 $OutputEncoding=[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
@@ -64,8 +73,8 @@ $env:Path = @(
   "$env:ANDROID_HOME\platform-tools"
 ) + ($env:Path -split ';') -join ';'
 
-$versionCode=10524
-$versionName='3.26.081122'
+$versionCode=10525
+$versionName='3.26.081123'
 .\gradlew.bat ':app:assembleAppC' '-Pabi=arm64-v8a' "-PVERSION_CODE=$versionCode" "-PVERSION_NAME=$versionName" '-Dkotlin.incremental=false' '-Dkotlin.compiler.execution.strategy=in-process' --no-daemon --console=plain --warning-mode=summary --max-workers=1
 ```
 
@@ -178,6 +187,24 @@ Signer #1 certificate DN: C=US, O=Android, CN=Android Debug
 
 PowerShell 监控注意事项：后台启动编译时，标准输出和错误输出不能重定向到同一个文件。必须使用两个不同日志文件，或者不要用后台启动方式；否则编译根本不会启动，后续循环只是在空进程上假监控。
 
+## 2026-08-12 整包编译实测
+
+用“编译命令”整条跑 `assembleAppC`（`VERSION_CODE=10525`、`VERSION_NAME=3.26.081123`），一次跑通：
+
+```text
+BUILD SUCCESSFUL in 4m 17s
+75 actionable tasks: 32 executed, 9 from cache, 34 up-to-date
+```
+
+实测经验：
+
+- 编译前 `app\build\outputs\apk\app\c` 目录为空，没有旧 APK 可删，版本号基线完全来自本文档第 7 条。这验证了“删除旧包不等于知道版本号”：版本号必须以 adb 或第 7 条基线为准，且每次交付后第 7 条必须当场更新。
+- 后台启动编译并轮询日志可行：用 `Start-Process` 拉起 `gradlew.bat`，标准输出和错误输出分别重定向到两个文件，编译结束后退出码写文件，轮询该文件判断完成；不要用固定短超时死等。
+- 本次只有 Kotlin/Java 弃用警告（`ProgressDialog`、表达式体返回类型等）和 `Detected multiple Kotlin daemon sessions` 提示，无错误堆栈，退出码 0。
+- `stripAppCDebugSymbols` 依旧提示 5 个 so 无法剥离 debug symbol（`libarchive-jni.so`、`libimage_processing_util_jni.so`、`librenderscript-toolkit.so`、`librtmp-jni.so`、`libsurface_util_jni.so`），按原样打包，不影响交付。
+- 产物 `legado_app_3.26.081123_10525.apk` 验证通过：包名 `io.legado.app.c`、`versionCode=10525`、`versionName=3.26.081123c`、中文名 `阅读 C`、`native-code: arm64-v8a`、签名 `CN=Android Debug`（apksigner 退出码 0，`META-INF` 未受签名保护警告为正常现象）。
+- 编译前后 `git status` 干净：本次没有源码改动，Room schema 无变化；临时构建脚本和日志在验证后已清理。
+
 ## 失败处理
 
 如果出现 Kotlin 增量缓存已注册冲突，或资源合并阶段提示某个 `build\intermediates` 目录删不掉：
@@ -197,13 +224,13 @@ PowerShell 监控注意事项：后台启动编译时，标准输出和错误输
 APK 预期路径：
 
 ```text
-D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_3.26.081122_10524.apk
+D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_3.26.081123_10525.apk
 ```
 
 检查包名、版本、ABI：
 
 ```powershell
-$apk='D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_3.26.081122_10524.apk'
+$apk='D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_3.26.081123_10525.apk'
 & "$env:ANDROID_HOME\build-tools\36.0.0\aapt.exe" dump badging $apk
 ```
 
@@ -211,8 +238,8 @@ $apk='D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_3.26.081122
 
 ```text
 package: name='io.legado.app.c'
-versionCode='10524'
-versionName='3.26.081122c'
+versionCode='10525'
+versionName='3.26.081123c'
 application-label-zh-CN:'阅读 C'
 application-label-zh-HK:'阅读 C'
 application-label-zh-TW:'阅读 C'
