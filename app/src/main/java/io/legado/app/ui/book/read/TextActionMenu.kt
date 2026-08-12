@@ -53,10 +53,10 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
     private val expandTextMenu get() = context.getPrefBoolean(PreferKey.expandTextMenu)
     var illustrationEnabled: Boolean = false
         set(value) {
-            if (field != value) {
-                field = value
-                upMenu()
-            }
+            // 每次赋值都重建菜单项，保证"配图"只按当前选区状态出现/隐藏，
+            // 不依赖前后两次值是否变化，避免旧状态残留导致闪现
+            field = value
+            upMenu()
         }
 
     private val configuredActionIds: Set<String>
@@ -199,7 +199,15 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
         } else {
             (selectionBottomY + margin).coerceAtMost((windowHeight - popupHeight - margin).coerceAtLeast(margin))
         }
-        showAtLocation(view, Gravity.TOP or Gravity.START, x, y)
+        if (isShowing) {
+            // 已显示时原地更新位置与尺寸，避免重建窗口造成闪动
+            update(x, y, popupWidth, popupHeight)
+        } else {
+            // 重新弹出前清掉上次布局残留的子项，避免首帧闪出旧菜单内容
+            binding.recyclerView.removeAllViews()
+            binding.recyclerViewMore.removeAllViews()
+            showAtLocation(view, Gravity.TOP or Gravity.START, x, y)
+        }
     }
 
     inner class Adapter(context: Context) :
