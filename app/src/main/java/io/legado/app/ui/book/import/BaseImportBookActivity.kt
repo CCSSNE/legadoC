@@ -21,15 +21,12 @@ import io.legado.app.utils.applyTint
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlin.coroutines.resume
 
 abstract class BaseImportBookActivity<VM : ViewModel> :
     VMBaseActivity<ActivityImportBookBinding, VM>() {
 
     final override val binding by viewBinding(ActivityImportBookBinding::inflate)
 
-    private var localBookTreeSelectListener: ((Boolean) -> Unit)? = null
     protected val searchView: SearchView by lazy {
         binding.titleBar.findViewById(R.id.search_view)
     }
@@ -37,47 +34,12 @@ abstract class BaseImportBookActivity<VM : ViewModel> :
     val localBookTreeSelect = registerForActivityResult(HandleFileContract()) {
         it.uri?.let { treeUri ->
             AppConfig.defaultBookTreeUri = treeUri.toString()
-            localBookTreeSelectListener?.invoke(true)
-        } ?: localBookTreeSelectListener?.invoke(false)
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         initSearchView()
-    }
-
-    /**
-     * 设置书籍保存位置
-     */
-    protected suspend fun setBookStorage() = suspendCancellableCoroutine sc@{ block ->
-        localBookTreeSelectListener = {
-            localBookTreeSelectListener = null
-            block.resume(it)
-        }
-        //测试书籍保存位置是否设置
-        if (!AppConfig.defaultBookTreeUri.isNullOrBlank()) {
-            localBookTreeSelectListener = null
-            block.resume(true)
-            return@sc
-        }
-        //测试读写??
-        val storageHelp = String(assets.open("storageHelp.md").readBytes())
-        val hint = getString(R.string.select_book_folder)
-        alert(hint, storageHelp) {
-            okButton {
-                localBookTreeSelect.launch {
-                    title = hint
-                }
-            }
-            cancelButton {
-                localBookTreeSelectListener = null
-                block.resume(false)
-            }
-            onCancelled {
-                localBookTreeSelectListener = null
-                block.resume(false)
-            }
-        }
     }
 
     abstract fun onSearchTextChange(newText: String?)

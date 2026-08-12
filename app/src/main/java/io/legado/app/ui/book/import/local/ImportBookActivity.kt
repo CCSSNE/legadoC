@@ -69,14 +69,12 @@ class ImportBookActivity : BaseImportBookActivity<ImportBookViewModel>(),
                 finish()
             }
         }
-        lifecycleScope.launch {
-            initView()
-            initEvent()
-            if (setBookStorage() && AppConfig.importBookPath.isNullOrBlank()) {
-                AppConfig.importBookPath = AppConfig.defaultBookTreeUri
-            }
-            initData()
+        initView()
+        initEvent()
+        if (AppConfig.importBookPath.isNullOrBlank()) {
+            AppConfig.importBookPath = AppConfig.defaultBookTreeUri
         }
+        initData()
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {

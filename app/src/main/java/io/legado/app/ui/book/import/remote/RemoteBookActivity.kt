@@ -49,24 +49,18 @@ class RemoteBookActivity : BaseImportBookActivity<RemoteBookViewModel>(),
                 finish()
             }
         }
+        initView()
+        initEvent()
         lifecycleScope.launch {
-            if (!setBookStorage()) {
-                finish()
-                return@launch
+            viewModel.dataFlow.conflate().collect { sortedRemoteBooks ->
+                binding.refreshProgressBar.isAutoLoading = false
+                binding.tvEmptyMsg.isGone = sortedRemoteBooks.isNotEmpty()
+                adapter.setItems(sortedRemoteBooks)
+                delay(500)
             }
-            initView()
-            initEvent()
-            launch {
-                viewModel.dataFlow.conflate().collect { sortedRemoteBooks ->
-                    binding.refreshProgressBar.isAutoLoading = false
-                    binding.tvEmptyMsg.isGone = sortedRemoteBooks.isNotEmpty()
-                    adapter.setItems(sortedRemoteBooks)
-                    delay(500)
-                }
-            }
-            viewModel.initData {
-                upPath()
-            }
+        }
+        viewModel.initData {
+            upPath()
         }
     }
 
