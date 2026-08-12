@@ -2041,6 +2041,10 @@ Selected text or question:
     <string name="illustration_save_all">保存所有</string>
     <string name="illustration_saved_to_album">已保存到相册</string>
     <string name="illustration_save_failed">保存失败</string>
+    <string name="illustration_multi_select">多选</string>
+    <string name="illustration_select_all">全选</string>
+    <string name="illustration_done">完成</string>
+    <string name="illustration_delete_selected">删除所选</string>
     <string name="illustration_delete">删除配图</string>
     <string name="illustration_deleted">配图已删除</string>
     <string name="illustration_empty">本书暂无配图</string>

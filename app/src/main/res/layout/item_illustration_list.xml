@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
@@ -50,11 +51,41 @@
             tools:text="第 3 章 章节名" />
     </LinearLayout>
 
-    <ImageView
-        android:id="@+id/iv_thumb"
+    <FrameLayout
         android:layout_width="88dp"
         android:layout_height="66dp"
-        android:layout_marginStart="12dp"
-        android:scaleType="centerCrop"
-        android:src="@drawable/image_loading_error" />
+        android:layout_marginStart="12dp">
+
+        <ImageView
+            android:id="@+id/iv_thumb"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="centerCrop"
+            android:src="@drawable/image_loading_error" />
+
+        <FrameLayout
+            android:id="@+id/selection_outer"
+            android:layout_width="26dp"
+            android:layout_height="26dp"
+            android:layout_gravity="top|end"
+            android:layout_marginTop="2dp"
+            android:layout_marginEnd="2dp"
+            android:background="@drawable/bg_bookshelf_selection_ring"
+            android:visibility="gone"
+            tools:visibility="visible">
+
+            <androidx.appcompat.widget.AppCompatImageView
+                android:id="@+id/selection_dot"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:layout_gravity="center"
+                android:background="@drawable/bg_bookshelf_selection_dot"
+                android:contentDescription="@string/selected"
+                android:padding="5dp"
+                android:src="@drawable/ic_bookshelf_selection_check"
+                android:visibility="gone"
+                app:tint="@color/white"
+                tools:visibility="visible" />
+        </FrameLayout>
+    </FrameLayout>
 </LinearLayout>

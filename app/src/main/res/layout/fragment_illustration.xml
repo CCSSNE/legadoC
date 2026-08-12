@@ -6,17 +6,52 @@
     android:layout_height="match_parent"
     android:orientation="vertical">
 
-    <TextView
-        android:id="@+id/tv_mode"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="40dp"
-        android:background="?attr/selectableItemBackground"
         android:gravity="center_vertical"
-        android:paddingStart="14dp"
-        android:paddingEnd="14dp"
-        android:text="@string/illustration_list_mode"
-        android:textColor="@color/secondaryText"
-        android:textSize="13sp" />
+        android:orientation="horizontal"
+        android:paddingStart="4dp"
+        android:paddingEnd="4dp">
+
+        <TextView
+            android:id="@+id/tv_mode"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:background="?attr/selectableItemBackground"
+            android:gravity="center"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:text="@string/illustration_list_mode"
+            android:textColor="@color/primaryText"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/tv_multi_select"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:layout_marginStart="4dp"
+            android:background="?attr/selectableItemBackground"
+            android:gravity="center"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:text="@string/illustration_multi_select"
+            android:textColor="@color/primaryText"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/tv_select_all"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:layout_marginStart="4dp"
+            android:background="?attr/selectableItemBackground"
+            android:gravity="center"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:text="@string/illustration_select_all"
+            android:textColor="@color/primaryText"
+            android:textSize="13sp" />
+    </LinearLayout>
 
     <FrameLayout
         android:layout_width="match_parent"

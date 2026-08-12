@@ -3,6 +3,7 @@ package io.legado.app.ui.book.toc
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
@@ -17,7 +18,8 @@ import io.legado.app.utils.visible
 class IllustrationAdapter(
     private val book: Book,
     private val onClick: (BookIllustration) -> Unit,
-    private val onLongClick: (BookIllustration) -> Unit
+    private val onLongClick: (BookIllustration) -> Unit,
+    private val onSelectionLongClick: (BookIllustration) -> Unit
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     companion object {
@@ -34,10 +36,53 @@ class IllustrationAdapter(
         }
 
     private val items = arrayListOf<BookIllustration>()
+    private val selectedIds = linkedSetOf<Long>()
+
+    /** 多选模式：开启后点击切换选中，关闭时清空选中 */
+    var selectionMode = false
+        set(value) {
+            if (field != value) {
+                field = value
+                if (!value) {
+                    selectedIds.clear()
+                }
+                notifyDataSetChanged()
+            }
+        }
+
+    fun selectedItems(): List<BookIllustration> {
+        return items.filter { it.id in selectedIds }
+    }
+
+    fun isAllSelected(): Boolean {
+        return items.isNotEmpty() && selectedIds.size == items.size
+    }
+
+    fun toggleSelect(item: BookIllustration) {
+        if (!selectedIds.remove(item.id)) {
+            selectedIds.add(item.id)
+        }
+        val position = items.indexOf(item)
+        if (position >= 0) {
+            notifyItemChanged(position)
+        }
+    }
+
+    fun toggleSelectAll() {
+        if (isAllSelected()) {
+            selectedIds.clear()
+        } else {
+            selectedIds.addAll(items.map { it.id })
+        }
+        notifyDataSetChanged()
+    }
 
     fun setItems(list: List<BookIllustration>?) {
         items.clear()
         if (list != null) items.addAll(list)
+        if (selectionMode) {
+            selectedIds.retainAll(items.map { it.id })
+        }
         notifyDataSetChanged()
     }
 
@@ -62,6 +107,7 @@ class IllustrationAdapter(
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         val item = items[position]
+        val selected = selectedIds.contains(item.id)
         when (holder) {
             is ListHolder -> {
                 val chapterName = "第 ${item.chapterIndex + 1} 章  ${item.chapterName}"
@@ -79,18 +125,26 @@ class IllustrationAdapter(
                     }
                 }
                 loadThumb(holder.ivThumb, item)
-                holder.itemView.setOnClickListener { onClick(item) }
+                holder.selectionOuter.visible(selectionMode)
+                holder.selectionDot.visible(selectionMode && selected)
+                holder.itemView.setOnClickListener {
+                    if (selectionMode) toggleSelect(item) else onClick(item)
+                }
                 holder.itemView.setOnLongClickListener {
-                    onLongClick(item)
+                    if (selectionMode) onSelectionLongClick(item) else onLongClick(item)
                     true
                 }
             }
             is GridHolder -> {
                 holder.tvChapter.text = "第 ${item.chapterIndex + 1} 章  ${item.chapterName}"
                 loadThumb(holder.ivThumb, item)
-                holder.itemView.setOnClickListener { onClick(item) }
+                holder.selectionOuter.visible(selectionMode)
+                holder.selectionDot.visible(selectionMode && selected)
+                holder.itemView.setOnClickListener {
+                    if (selectionMode) toggleSelect(item) else onClick(item)
+                }
                 holder.itemView.setOnLongClickListener {
-                    onLongClick(item)
+                    if (selectionMode) onSelectionLongClick(item) else onLongClick(item)
                     true
                 }
             }
@@ -116,10 +170,14 @@ class IllustrationAdapter(
         val tvBack: TextView = view.findViewById(R.id.tv_back)
         val tvChapter: TextView = view.findViewById(R.id.tv_chapter)
         val ivThumb: ImageView = view.findViewById(R.id.iv_thumb)
+        val selectionOuter: FrameLayout = view.findViewById(R.id.selection_outer)
+        val selectionDot: ImageView = view.findViewById(R.id.selection_dot)
     }
 
     class GridHolder(view: View) : RecyclerView.ViewHolder(view) {
         val tvChapter: TextView = view.findViewById(R.id.tv_chapter)
         val ivThumb: ImageView = view.findViewById(R.id.iv_thumb)
+        val selectionOuter: FrameLayout = view.findViewById(R.id.selection_outer)
+        val selectionDot: ImageView = view.findViewById(R.id.selection_dot)
     }
 }

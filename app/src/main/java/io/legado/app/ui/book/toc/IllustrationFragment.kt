@@ -50,11 +50,20 @@ class IllustrationFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_illu
         binding.tvMode.setOnClickListener {
             showModeSelector()
         }
+        binding.tvMultiSelect.setOnClickListener {
+            toggleSelectionMode()
+        }
+        binding.tvSelectAll.setOnClickListener {
+            selectAllToggle()
+        }
         viewModel.bookData.observe(this) { book ->
             val adapter = IllustrationAdapter(
                 book,
                 onClick = { illustration -> openIllustration(illustration) },
-                onLongClick = { illustration -> showItemMenu(book, illustration) }
+                onLongClick = { illustration -> showItemMenu(book, illustration) },
+                onSelectionLongClick = { illustration ->
+                    showSelectionMenu(book, illustration)
+                }
             )
             this.adapter = adapter
             this.book = book
@@ -110,6 +119,55 @@ class IllustrationFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_illu
         adapter?.grid = isGrid
     }
 
+    /** 多选开关：进入/退出多选模式 */
+    private fun toggleSelectionMode() {
+        val adapter = adapter ?: return
+        if (adapter.itemCount == 0 && !adapter.selectionMode) return
+        adapter.selectionMode = !adapter.selectionMode
+        upSelectionUi()
+    }
+
+    /** 全选开关：未选满则全选，已选满则全部取消；未进入多选时先进入多选 */
+    private fun selectAllToggle() {
+        val adapter = adapter ?: return
+        if (adapter.itemCount == 0) return
+        if (!adapter.selectionMode) {
+            adapter.selectionMode = true
+            upSelectionUi()
+        }
+        adapter.toggleSelectAll()
+    }
+
+    private fun upSelectionUi() {
+        binding.tvMultiSelect.text = getString(
+            if (adapter?.selectionMode == true) {
+                R.string.illustration_done
+            } else {
+                R.string.illustration_multi_select
+            }
+        )
+    }
+
+    /** 多选模式长按：保存（单张）/ 保存所有（所选）/ 删除所选 */
+    private fun showSelectionMenu(book: Book, illustration: BookIllustration) {
+        showActionBottomSheet(
+            requireContext(),
+            listOf(
+                SelectItem(getString(R.string.illustration_save_to_album), "save"),
+                SelectItem(getString(R.string.illustration_save_all), "saveAll"),
+                SelectItem(getString(R.string.illustration_delete_selected), "deleteSelected")
+            )
+        ) { action ->
+            when (action) {
+                "save" -> illustration.imageSrcsFromJson().firstOrNull()?.let {
+                    saveToAlbum(book, it)
+                }
+                "saveAll" -> saveAllIllustrations(book, adapter?.selectedItems().orEmpty())
+                "deleteSelected" -> deleteSelected(book)
+            }
+        }
+    }
+
     /** 目录页长按配图：底部菜单，保存在前、删除在后；单图显示"保存到相册"，多图显示"保存所有" */
     private fun showItemMenu(book: Book, illustration: BookIllustration) {
         val multi = illustration.imageSrcsFromJson().size >= 2
@@ -127,15 +185,27 @@ class IllustrationFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_illu
             )
         ) { action ->
             when (action) {
-                "save" -> saveAllIllustrations(book, illustration)
+                "save" -> saveAllIllustrations(book, listOf(illustration))
                 "delete" -> deleteIllustration(book, illustration)
             }
         }
     }
 
-    private fun saveAllIllustrations(book: Book, illustration: BookIllustration) {
+    private fun saveToAlbum(book: Book, src: String) {
         lifecycleScope.launch(IO) {
-            val srcs = illustration.imageSrcsFromJson()
+            val ok = IllustrationHelp.saveToAlbum(requireContext(), book, src)
+            withContext(Main) {
+                toastOnUi(
+                    if (ok) R.string.illustration_saved_to_album else R.string.illustration_save_failed
+                )
+            }
+        }
+    }
+
+    private fun saveAllIllustrations(book: Book, illustrations: List<BookIllustration>) {
+        if (illustrations.isEmpty()) return
+        lifecycleScope.launch(IO) {
+            val srcs = illustrations.flatMap { it.imageSrcsFromJson() }.distinct()
             var ok = true
             srcs.forEach { src ->
                 if (!IllustrationHelp.saveToAlbum(requireContext(), book, src)) {
@@ -148,6 +218,18 @@ class IllustrationFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_illu
                 )
             }
         }
+    }
+
+    private fun deleteSelected(book: Book) {
+        val selected = adapter?.selectedItems().orEmpty()
+        if (selected.isEmpty()) return
+        selected.forEach { illustration ->
+            appDb.bookIllustrationDao.delete(illustration)
+            IllustrationHelp.deleteImages(book, illustration.imageSrcsFromJson())
+        }
+        toastOnUi(R.string.illustration_deleted)
+        adapter?.selectionMode = false
+        upSelectionUi()
     }
 
     private fun deleteIllustration(book: Book, illustration: BookIllustration) {
