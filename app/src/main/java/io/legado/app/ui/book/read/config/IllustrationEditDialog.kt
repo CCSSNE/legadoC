@@ -141,12 +141,7 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
             // 按文件名扩展名 → MIME → 文件头嗅探三级判断，确保视频/音频不会落成 jpg
             val name = IllustrationHelp.queryDisplayName(requireContext(), uri)
             val mime = requireContext().contentResolver.getType(uri)
-            android.util.Log.d(
-                "ILL_SAVE_DEBUG",
-                "uri=$uri name=$name mime=$mime bytesSize=${bytes.size} first=${bytes.take(8).joinToString { it.toString(16) }}"
-            )
             val ext = IllustrationHelp.resolveMediaExt(name, mime, bytes)
-            android.util.Log.d("ILL_SAVE_DEBUG", "ext=$ext")
             if (ext !in IllustrationHelp.VIDEO_EXTS &&
                 ext !in IllustrationHelp.AUDIO_EXTS &&
                 ext !in IllustrationHelp.IMAGE_EXTS

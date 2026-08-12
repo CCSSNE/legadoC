@@ -59,7 +59,9 @@ object IllustrationHelp {
     private const val FINGERPRINT_LENGTH = 24
 
     fun newSrc(ext: String): String {
-        val safeExt = ext.substringAfter('.', "jpg").ifBlank { "jpg" }
+        // 入参可能是 "png"/"mp4"（无点号），substringAfterLast 找不到分隔符时返回原串，
+        // 不能像旧实现那样默认成 jpg，否则视频/音频全部被存成图片扩展名
+        val safeExt = ext.substringAfterLast('.').lowercase().ifBlank { "jpg" }
         return "$SRC_PREFIX${UUID.randomUUID()}.$safeExt"
     }
 
