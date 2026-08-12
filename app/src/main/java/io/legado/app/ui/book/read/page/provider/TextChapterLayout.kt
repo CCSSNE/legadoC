@@ -24,6 +24,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookIllustration
 import io.legado.app.data.entities.Bookmark
+import io.legado.app.data.entities.BookmarkStyle
 import io.legado.app.help.book.BookContent
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.getBookSource
@@ -2720,6 +2721,7 @@ class TextChapterLayout(
         if (chapterBookmarks.isEmpty()) return
         val lineStart = textLine.chapterPosition
         var offset = 0
+        val styleColorsCache = HashMap<Long, Map<Int, Int>>()
         for (column in textLine.columns) {
             val colLen = if (column is TextBaseColumn) column.charData.length else 1
             val colStartAbs = lineStart + offset
@@ -2741,6 +2743,9 @@ class TextChapterLayout(
                     column.bookmarkStyle = hit.style
                     column.bookmarkColor = hit.color
                     column.bookmarkTime = hit.time
+                    column.bookmarkStyleColors = styleColorsCache.getOrPut(hit.time) {
+                        BookmarkStyle.parseStyleColors(hit.styleColors)
+                    }
                     if (hit.style != 0) {
                         textLine.bookmarkColumnCount++
                     }

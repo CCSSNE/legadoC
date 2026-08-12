@@ -1198,6 +1198,7 @@
     <string name="bookmark_select_style_title">選擇顯示效果</string>
     <string name="bookmark_edit_remark_hint">輸入備註內容</string>
     <string name="bookmark_empty">暫無書簽</string>
+    <string name="bookmark_overlap_tip">與已有書簽重疊，請調整選擇範圍</string>
     <string name="change_source_delay">换源间隔</string>
     <string name="change_source_progress">" 結果 %1$d, 當前進度 %2$d / %3$d: %4$s"</string>
     <string name="open_book_info_by_click_title">点击书名打开详情</string>

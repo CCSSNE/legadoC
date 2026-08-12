@@ -27,6 +27,7 @@ data class TextColumn(
     var bookmarkStyle: Int = 0,
     var bookmarkColor: Int = 0,
     var bookmarkTime: Long = 0,
+    var bookmarkStyleColors: Map<Int, Int> = emptyMap(),
 ) : TextBaseColumn {
 
     override var textLine: TextLine = emptyTextLine
@@ -65,7 +66,7 @@ data class TextColumn(
         val textColor = when {
             textLine.isReadAloud || isSearchResult -> ReadBookConfig.textAccentColor
             styleMask and io.legado.app.data.entities.BookmarkStyle.TEXT_COLOR != 0 -> {
-                if (bookmarkColor != 0) bookmarkColor else appCtx.accentColor
+                effectColor(io.legado.app.data.entities.BookmarkStyle.TEXT_COLOR)
             }
             else -> ReadBookConfig.textColor
         }
@@ -97,7 +98,7 @@ data class TextColumn(
     }
 
     private fun drawHighlightBackground(canvas: Canvas) {
-        val color = if (bookmarkColor != 0) bookmarkColor else appCtx.accentColor
+        val color = effectColor(io.legado.app.data.entities.BookmarkStyle.HIGHLIGHT)
         val red = Color.red(color)
         val green = Color.green(color)
         val blue = Color.blue(color)
@@ -109,8 +110,8 @@ data class TextColumn(
     }
 
     private fun drawBookmarkDecoration(canvas: Canvas) {
-        val color = if (bookmarkColor != 0) bookmarkColor else appCtx.accentColor
         if (bookmarkStyle and io.legado.app.data.entities.BookmarkStyle.SINGLE_UNDERLINE != 0) {
+            val color = effectColor(io.legado.app.data.entities.BookmarkStyle.SINGLE_UNDERLINE)
             val paint = Paint().apply {
                 this.color = color
                 strokeWidth = 1.5f.dpToPx()
@@ -121,6 +122,7 @@ data class TextColumn(
         }
 
         if (bookmarkStyle and io.legado.app.data.entities.BookmarkStyle.DOUBLE_UNDERLINE != 0) {
+            val color = effectColor(io.legado.app.data.entities.BookmarkStyle.DOUBLE_UNDERLINE)
             val paint = Paint().apply {
                 this.color = color
                 strokeWidth = 1.5f.dpToPx()
@@ -133,6 +135,7 @@ data class TextColumn(
         }
 
         if (bookmarkStyle and io.legado.app.data.entities.BookmarkStyle.WAVE_UNDERLINE != 0) {
+            val color = effectColor(io.legado.app.data.entities.BookmarkStyle.WAVE_UNDERLINE)
             val paint = Paint().apply {
                 this.color = color
                 strokeWidth = 1.5f.dpToPx()
@@ -162,6 +165,7 @@ data class TextColumn(
         }
 
         if (bookmarkStyle and io.legado.app.data.entities.BookmarkStyle.STRIKETHROUGH != 0) {
+            val color = effectColor(io.legado.app.data.entities.BookmarkStyle.STRIKETHROUGH)
             val paint = Paint().apply {
                 this.color = color
                 strokeWidth = 1.5f.dpToPx()
@@ -182,6 +186,14 @@ data class TextColumn(
     private fun underlineY(): Float {
         val baseline = textLine.lineBase - textLine.lineTop
         return baseline + 2f.dpToPx()
+    }
+
+    /**
+     * 效果颜色优先级：该效果的独立颜色 > 书签全局颜色 > 主题强调色
+     */
+    private fun effectColor(styleBit: Int): Int {
+        bookmarkStyleColors[styleBit]?.let { if (it != 0) return it }
+        return if (bookmarkColor != 0) bookmarkColor else appCtx.accentColor
     }
 
 }

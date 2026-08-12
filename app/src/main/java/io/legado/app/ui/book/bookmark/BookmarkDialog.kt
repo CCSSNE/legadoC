@@ -1,12 +1,16 @@
 package io.legado.app.ui.book.bookmark
 
 import android.os.Bundle
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.lifecycle.lifecycleScope
 import com.jaredrummler.android.colorpicker.ColorPickerDialog
 import com.jaredrummler.android.colorpicker.ColorPickerDialogListener
 import com.jaredrummler.android.colorpicker.ColorShape
+import com.jaredrummler.android.colorpicker.ColorPanelView
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.constant.EventBus
@@ -17,6 +21,8 @@ import io.legado.app.databinding.DialogBookmarkBinding
 import io.legado.app.lib.prefs.ColorPreference
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryColor
+import io.legado.app.utils.dpToPx
+import io.legado.app.utils.getCompatColor
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -39,6 +45,7 @@ class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark, true),
 
     private val binding by viewBinding(DialogBookmarkBinding::bind)
     private var selectedColor = 0
+    private val effectColorMap = mutableMapOf<Int, Int>()
 
     override fun onStart() {
         super.onStart()
@@ -60,8 +67,11 @@ class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark, true),
         }
         val editPos = arguments.getInt("editPos", -1)
         selectedColor = bookmark.color
+        effectColorMap.clear()
+        effectColorMap.putAll(BookmarkStyle.parseStyleColors(bookmark.styleColors))
         checkStyleBoxes(bookmark.style)
         initStyleCheckBoxes()
+        rebuildEffectColorRows()
         upColorPanel()
         binding.tvFooterLeft.visible(editPos >= 0)
         binding.run {
@@ -69,7 +79,7 @@ class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark, true),
             editBookText.setText(bookmark.bookText)
             editContent.setText(bookmark.content)
             colorPanel.onClick {
-                showColorPicker()
+                showColorPicker(0)
             }
             tvColorDefault.onClick {
                 selectedColor = 0
@@ -83,6 +93,7 @@ class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark, true),
                 bookmark.content = editContent.text?.toString() ?: ""
                 bookmark.style = getCheckedStyles()
                 bookmark.color = selectedColor
+                bookmark.styleColors = BookmarkStyle.toStyleColorsJson(effectColorMap)
                 lifecycleScope.launch {
                     withContext(IO) {
                         appDb.bookmarkDao.insert(bookmark)
@@ -132,14 +143,83 @@ class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark, true),
                 if (checked) {
                     styleBoxes.forEach { it.isChecked = false }
                 }
+                rebuildEffectColorRows()
             }
             styleBoxes.forEach { box ->
                 box.setOnCheckedChangeListener { _, checked ->
                     if (checked) {
                         cbStyleNone.isChecked = false
                     }
+                    rebuildEffectColorRows()
                 }
             }
+        }
+    }
+
+    /**
+     * 为每个已勾选的效果生成一行颜色设置（色块点击设置，默认恢复）
+     */
+    private fun rebuildEffectColorRows() {
+        binding.llEffectColors.removeAllViews()
+        val effectBits = listOf(
+            BookmarkStyle.SINGLE_UNDERLINE to R.string.bookmark_style_single,
+            BookmarkStyle.DOUBLE_UNDERLINE to R.string.bookmark_style_double,
+            BookmarkStyle.WAVE_UNDERLINE to R.string.bookmark_style_wave,
+            BookmarkStyle.HIGHLIGHT to R.string.bookmark_style_highlight,
+            BookmarkStyle.TEXT_COLOR to R.string.bookmark_style_text_color,
+            BookmarkStyle.STRIKETHROUGH to R.string.bookmark_style_strikethrough
+        )
+        effectBits.forEach { (bit, nameRes) ->
+            val checked = when (bit) {
+                BookmarkStyle.SINGLE_UNDERLINE -> binding.cbStyleSingle.isChecked
+                BookmarkStyle.DOUBLE_UNDERLINE -> binding.cbStyleDouble.isChecked
+                BookmarkStyle.WAVE_UNDERLINE -> binding.cbStyleWave.isChecked
+                BookmarkStyle.HIGHLIGHT -> binding.cbStyleHighlight.isChecked
+                BookmarkStyle.TEXT_COLOR -> binding.cbStyleTextColor.isChecked
+                else -> binding.cbStyleStrikethrough.isChecked
+            }
+            if (!checked) return@forEach
+            val row = LinearLayout(requireContext()).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                val pad = 6.dpToPx()
+                setPadding(pad, pad, pad, pad)
+            }
+            row.addView(
+                TextView(requireContext()).apply {
+                    text = getString(nameRes)
+                    textSize = 13f
+                    setTextColor(requireContext().getCompatColor(R.color.secondaryText))
+                    layoutParams = LinearLayout.LayoutParams(
+                        0,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        1f
+                    )
+                }
+            )
+            val colorPanel = ColorPanelView(requireContext()).apply {
+                color = effectColorMap[bit]
+                    ?: selectedColor.takeIf { it != 0 }
+                    ?: appCtx.accentColor
+                layoutParams = LinearLayout.LayoutParams(32.dpToPx(), 32.dpToPx())
+                setOnClickListener {
+                    showColorPicker(bit)
+                }
+            }
+            row.addView(colorPanel)
+            row.addView(
+                TextView(requireContext()).apply {
+                    text = getString(R.string.bookmark_color_default)
+                    textSize = 12f
+                    setTextColor(requireContext().getCompatColor(R.color.secondaryText))
+                    setPadding(8.dpToPx(), 8.dpToPx(), 8.dpToPx(), 8.dpToPx())
+                    setOnClickListener {
+                        effectColorMap.remove(bit)
+                        rebuildEffectColorRows()
+                    }
+                }
+            )
+            binding.llEffectColors.addView(row)
         }
     }
 
@@ -160,7 +240,12 @@ class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark, true),
         binding.colorPanel.color = if (selectedColor != 0) selectedColor else appCtx.accentColor
     }
 
-    private fun showColorPicker() {
+    private fun showColorPicker(dialogId: Int) {
+        val color = if (dialogId == 0) {
+            selectedColor.takeIf { it != 0 } ?: appCtx.accentColor
+        } else {
+            effectColorMap[dialogId] ?: selectedColor.takeIf { it != 0 } ?: appCtx.accentColor
+        }
         val dialog = ColorPreference.ColorPickerDialogCompat.newBuilder()
             .setDialogType(ColorPickerDialog.TYPE_PRESETS)
             .setDialogTitle(R.string.bookmark_color)
@@ -171,20 +256,30 @@ class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark, true),
             .setShowAlphaSlider(false)
             .setShowColorShades(true)
             .setShowDefaultColorButton(true)
-            .setColor(if (selectedColor != 0) selectedColor else appCtx.accentColor)
-            .setDialogId(1)
+            .setColor(color)
+            .setDialogId(dialogId)
             .create()
         dialog.setColorPickerDialogListener(this)
         dialog.show(childFragmentManager, "bookmark_color_picker")
     }
 
     override fun onColorSelected(dialogId: Int, color: Int) {
-        selectedColor = if (color == ColorPreference.ColorPickerDialogCompat.DEFAULT_COLOR) {
+        val value = if (color == ColorPreference.ColorPickerDialogCompat.DEFAULT_COLOR) {
             0
         } else {
             color
         }
-        upColorPanel()
+        if (dialogId == 0) {
+            selectedColor = value
+            upColorPanel()
+        } else {
+            if (value == 0) {
+                effectColorMap.remove(dialogId)
+            } else {
+                effectColorMap[dialogId] = value
+            }
+            rebuildEffectColorRows()
+        }
     }
 
     override fun onDialogDismissed(dialogId: Int) {

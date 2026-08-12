@@ -21,8 +21,15 @@ object DatabaseMigrations {
             migration_35_36, migration_36_37, migration_37_38, migration_38_39,
             migration_39_40, migration_40_41, migration_41_42, migration_42_43,
             migration_90_91, migration_91_92, migration_92_93, migration_93_94,
-            migration_94_95, migration_95_96, migration_96_97,
+            migration_94_95, migration_95_96, migration_96_97, migration_97_98,
         )
+    }
+
+    private val migration_97_98 = object : Migration(97, 98) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // 书签每个效果可独立设置颜色（JSON：效果位 -> 颜色）
+            db.execSQL("ALTER TABLE bookmarks ADD COLUMN styleColors TEXT NOT NULL DEFAULT ''")
+        }
     }
 
     private val migration_96_97 = object : Migration(96, 97) {

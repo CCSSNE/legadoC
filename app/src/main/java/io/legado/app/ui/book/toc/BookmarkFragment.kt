@@ -345,7 +345,10 @@ class BookmarkFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_bookmark
                 if (cbHighlight.isChecked) styles = styles or BookmarkStyle.HIGHLIGHT
                 if (cbTextColor.isChecked) styles = styles or BookmarkStyle.TEXT_COLOR
                 if (cbStrikethrough.isChecked) styles = styles or BookmarkStyle.STRIKETHROUGH
-                batchUpdate(selected) { it.style = styles }
+                batchUpdate(selected) {
+                    it.style = styles
+                    it.styleColors = ""
+                }
             }
             noButton()
         }
@@ -376,7 +379,10 @@ class BookmarkFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_bookmark
         val targets = batchColorTargets
         if (targets.isEmpty()) return
         val value = if (color == ColorPreference.ColorPickerDialogCompat.DEFAULT_COLOR) 0 else color
-        batchUpdate(targets) { it.color = value }
+        batchUpdate(targets) {
+            it.color = value
+            it.styleColors = ""
+        }
         batchColorTargets = emptyList()
     }
 

@@ -1453,16 +1453,38 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         val page = relativePage(selectStart.relativePagePos)
         page.getTextChapter().let { chapter ->
             ReadBook.book?.let { book ->
-                return book.createBookMark().apply {
+                val bookmark = book.createBookMark().apply {
                     chapterIndex = page.chapterIndex
                     chapterPos = chapter.getReadLength(page.index) +
                             page.getPosByLineColumn(selectStart.lineIndex, selectStart.columnIndex)
                     chapterName = chapter.title
                     bookText = getSelectedText()
                 }
+                return checkBookmarkOverlap(bookmark)
             }
         }
         return null
+    }
+
+    /**
+     * 书签区间不允许与其他书签嵌套或交叉：
+     * 选择内容完全位于某个已有书签内部时返回该书签（用于直接编辑属性），
+     * 与已有书签交叉或包含已有书签时拒绝创建。
+     */
+    private fun checkBookmarkOverlap(newBookmark: Bookmark): Bookmark? {
+        val newStart = newBookmark.chapterPos
+        val newEnd = newBookmark.chapterPos + newBookmark.bookText.length
+        for (existing in bookmarks) {
+            val oldStart = existing.chapterPos
+            val oldEnd = existing.chapterPos + existing.bookText.length
+            if (newStart >= oldEnd || newEnd <= oldStart) continue
+            if (newStart >= oldStart && newEnd <= oldEnd) {
+                return existing
+            }
+            context.toastOnUi(R.string.bookmark_overlap_tip)
+            return null
+        }
+        return newBookmark
     }
 
     /**
@@ -1494,12 +1516,13 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
                     context.toastOnUi(R.string.paragraph_bookmark_trimmed)
                 }
                 val text = chapter.getContent().substring(bmStart, bmEnd)
-                return book.createBookMark().apply {
+                val bookmark = book.createBookMark().apply {
                     chapterIndex = startPage.chapterIndex
                     chapterPos = bmStart
                     chapterName = chapter.title
                     bookText = text
                 }
+                return checkBookmarkOverlap(bookmark)
             }
         }
         return null
