@@ -17,17 +17,22 @@ class FileAssociationViewModel(application: Application) : BaseAssociationViewMo
     val notSupportedLiveData = MutableLiveData<Pair<Uri, String>>()
 
     fun dispatchIntent(uri: Uri) {
+        android.util.Log.d("FA_DEBUG", "dispatchIntent uri=$uri")
         execute {
             //如果是普通的url，需要根据返回的内容判断是什么
             if (uri.isContentScheme() || uri.isFileScheme()) {
                 val fileDoc = FileDoc.fromUri(uri, false)
                 val fileName = fileDoc.name
+                android.util.Log.d(
+                    "FA_DEBUG",
+                    "fileName=$fileName archiveMatch=${fileName.matches(AppPattern.archiveFileRegex)}"
+                )
                 if (fileName.matches(AppPattern.archiveFileRegex)) {
-                    ArchiveUtils.deCompress(fileDoc, ArchiveUtils.TEMP_PATH) {
+                    val extracted = ArchiveUtils.deCompress(fileDoc, ArchiveUtils.TEMP_PATH) {
                         it.matches(bookFileRegex)
-                    }.forEach {
-                        dispatch(FileDoc.fromFile(it))
                     }
+                    android.util.Log.d("FA_DEBUG", "extracted=${extracted.map { it.name }}")
+                    extracted.forEach { dispatch(FileDoc.fromFile(it)) }
                 } else {
                     dispatch(fileDoc)
                 }
