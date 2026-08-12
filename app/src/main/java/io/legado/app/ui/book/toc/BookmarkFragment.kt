@@ -33,7 +33,7 @@ class BookmarkFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_bookmark
     TocViewModel.BookmarkCallBack {
     override val viewModel by activityViewModels<TocViewModel>()
     private val binding by viewBinding(FragmentBookmarkBinding::bind)
-    private val mLayoutManager by lazy { UpLinearLayoutManager(requireContext()) }
+    private var mLayoutManager: UpLinearLayoutManager? = null
     private val adapter by lazy { BookmarkAdapter(requireContext(), this) }
     private var durChapterIndex = 0
 
@@ -47,8 +47,11 @@ class BookmarkFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_bookmark
     }
 
     private fun initRecyclerView() {
+        // 每次视图重建都新建 LayoutManager，避免复用已绑定旧 RecyclerView 的实例导致崩溃
+        val layoutManager = UpLinearLayoutManager(requireContext())
+        mLayoutManager = layoutManager
         binding.recyclerView.setEdgeEffectColor(primaryColor)
-        binding.recyclerView.layoutManager = mLayoutManager
+        binding.recyclerView.layoutManager = layoutManager
         binding.recyclerView.addItemDecoration(VerticalDivider(requireContext()))
         binding.recyclerView.adapter = adapter
         binding.recyclerView.applyNavigationBarPadding()
@@ -73,7 +76,7 @@ class BookmarkFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_bookmark
                         scrollPos = index
                     }
                 }
-                mLayoutManager.scrollToPositionWithOffset(scrollPos, 0)
+                mLayoutManager?.scrollToPositionWithOffset(scrollPos, 0)
             }
         }
     }

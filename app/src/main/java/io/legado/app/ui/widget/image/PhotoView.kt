@@ -476,6 +476,14 @@ class PhotoView @JvmOverloads constructor(
         return if (isEnable) {
             val action = event.actionMasked
             if (event.pointerCount >= 2) hasMultiTouch = true
+            // 双指缩放或图片放大后，禁止父容器（如 ViewPager2）拦截手势，
+            // 避免缩放/平移过程中事件被抢走导致卡顿或误翻页
+            if (event.pointerCount >= 2 || isZoonUp || mScale > 1f) {
+                parent?.requestDisallowInterceptTouchEvent(true)
+            } else if (action == MotionEvent.ACTION_DOWN) {
+                // 未放大且单指按下时恢复父容器拦截，保证未放大状态下可以左右滑动翻页
+                parent?.requestDisallowInterceptTouchEvent(false)
+            }
             mDetector.onTouchEvent(event)
             if (isRotateEnable) {
                 mRotateDetector.onTouchEvent(event)

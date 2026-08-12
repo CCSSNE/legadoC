@@ -159,7 +159,7 @@
                         android:paddingStart="20dp"
                         android:paddingEnd="20dp"
                         android:text="@string/cancel"
-                        android:textColor="@color/secondaryText"
+                        android:textColor="@color/primaryText"
                         android:textSize="15sp" />
 
                     <TextView
@@ -172,7 +172,7 @@
                         android:paddingStart="20dp"
                         android:paddingEnd="20dp"
                         android:text="@string/illustration_save"
-                        android:textColor="@color/primary"
+                        android:textColor="@color/primaryText"
                         android:textSize="15sp" />
                 </LinearLayout>
             </LinearLayout>

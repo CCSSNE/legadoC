@@ -1855,14 +1855,20 @@ class ReadBookActivity : BaseReadBookActivity(),
      */
     @SuppressLint("RtlHardcoded")
     override fun onImageLongPress(x: Float, y: Float, src: String) {
-        val items = arrayListOf(
-            SelectItem(getString(R.string.show), "show"),
-            SelectItem(getString(R.string.refresh), "refresh")
-        )
+        val items = arrayListOf<SelectItem<String>>()
         if (src.startsWith(IllustrationHelp.SRC_PREFIX)) {
+            // 配图：只保留保存（前）与删除（后），多图时增加"保存所有"
             items.add(SelectItem(getString(R.string.illustration_save_to_album), "saveToAlbum"))
+            if (illustrationImageCount(src) >= 2) {
+                items.add(
+                    SelectItem(getString(R.string.illustration_save_all), "saveAllIllustrations")
+                )
+            }
             items.add(SelectItem(getString(R.string.illustration_delete), "deleteIllustration"))
         } else {
+            // 普通图片：完全保留原始菜单
+            items.add(SelectItem(getString(R.string.show), "show"))
+            items.add(SelectItem(getString(R.string.refresh), "refresh"))
             items.add(SelectItem(getString(R.string.action_save), "save"))
             items.add(SelectItem(getString(R.string.menu), "menu"))
             items.add(SelectItem(getString(R.string.select_folder), "selectFolder"))
@@ -1873,6 +1879,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                 "show" -> showDialogFragment(PhotoDialog(src, isBook = true))
                 "refresh" -> viewModel.refreshImage(src)
                 "saveToAlbum" -> saveIllustrationToAlbum(src)
+                "saveAllIllustrations" -> saveAllIllustrations(src)
                 "deleteIllustration" -> deleteIllustration(src)
                 "save" -> {
                     val path = ACache.get().getAsString(AppConst.imagePathKey)
@@ -1899,10 +1906,38 @@ class ReadBookActivity : BaseReadBookActivity(),
         )
     }
 
+    /** src 所属配图记录包含的图片总数（多图判定） */
+    private fun illustrationImageCount(src: String): Int {
+        val book = ReadBook.book ?: return 0
+        return appDb.bookIllustrationDao.getByBook(book.bookUrl)
+            .filter { it.imageSrcsFromJson().contains(src) }
+            .sumOf { it.imageSrcsFromJson().size }
+    }
+
     private fun saveIllustrationToAlbum(src: String) {
         val book = ReadBook.book ?: return
         lifecycleScope.launch(IO) {
             val ok = IllustrationHelp.saveToAlbum(this@ReadBookActivity, book, src)
+            withContext(Main) {
+                toastOnUi(
+                    if (ok) R.string.illustration_saved_to_album else R.string.illustration_save_failed
+                )
+            }
+        }
+    }
+
+    private fun saveAllIllustrations(src: String) {
+        val book = ReadBook.book ?: return
+        lifecycleScope.launch(IO) {
+            val records = appDb.bookIllustrationDao.getByBook(book.bookUrl)
+                .filter { it.imageSrcsFromJson().contains(src) }
+            val srcs = records.flatMap { it.imageSrcsFromJson() }.distinct()
+            var ok = true
+            srcs.forEach { s ->
+                if (!IllustrationHelp.saveToAlbum(this@ReadBookActivity, book, s)) {
+                    ok = false
+                }
+            }
             withContext(Main) {
                 toastOnUi(
                     if (ok) R.string.illustration_saved_to_album else R.string.illustration_save_failed

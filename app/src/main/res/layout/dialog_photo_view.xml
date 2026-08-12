@@ -2,14 +2,12 @@
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/background">
+    android:background="#000000">
 
-    <io.legado.app.ui.widget.image.PhotoView
-        android:id="@+id/photo_view"
+    <androidx.viewpager2.widget.ViewPager2
+        android:id="@+id/photo_pager"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:scaleType="centerInside" />
+        android:background="#000000" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
-
-

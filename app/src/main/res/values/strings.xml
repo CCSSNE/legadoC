@@ -2038,6 +2038,7 @@ Selected text or question:
     <string name="illustration_inserted">配图已插入</string>
     <string name="illustration_invalid_selection">请选择恰好两段文本，或该章最后一段</string>
     <string name="illustration_save_to_album">保存到相册</string>
+    <string name="illustration_save_all">保存所有</string>
     <string name="illustration_saved_to_album">已保存到相册</string>
     <string name="illustration_save_failed">保存失败</string>
     <string name="illustration_delete">删除配图</string>

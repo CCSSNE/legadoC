@@ -16,7 +16,8 @@ import io.legado.app.utils.visible
 
 class IllustrationAdapter(
     private val book: Book,
-    private val onClick: (BookIllustration) -> Unit
+    private val onClick: (BookIllustration) -> Unit,
+    private val onLongClick: (BookIllustration) -> Unit
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     companion object {
@@ -79,11 +80,19 @@ class IllustrationAdapter(
                 }
                 loadThumb(holder.ivThumb, item)
                 holder.itemView.setOnClickListener { onClick(item) }
+                holder.itemView.setOnLongClickListener {
+                    onLongClick(item)
+                    true
+                }
             }
             is GridHolder -> {
                 holder.tvChapter.text = "第 ${item.chapterIndex + 1} 章  ${item.chapterName}"
                 loadThumb(holder.ivThumb, item)
                 holder.itemView.setOnClickListener { onClick(item) }
+                holder.itemView.setOnLongClickListener {
+                    onLongClick(item)
+                    true
+                }
             }
         }
     }

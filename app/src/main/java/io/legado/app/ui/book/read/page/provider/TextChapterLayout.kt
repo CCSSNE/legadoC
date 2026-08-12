@@ -871,6 +871,11 @@ class TextChapterLayout(
             rowHeight *= scale
         }
         if (rowHeight <= 0f) return
+        // 图片放不下当前页剩余空间时，不缩放，直接换到下一页完整显示；
+        // 只有图片比整页还大（已在上方缩放至一页可容纳）时保持当前页显示
+        if (pendingTextPage.lines.isNotEmpty() && visibleHeight - durY < rowHeight) {
+            prepareNextPageIfNeed()
+        }
         val rowWidth = cellWidth * n + gap * (n - 1)
         val startX = (visibleWidth - rowWidth) / 2f
         val textLine = TextLine(isImage = true)
