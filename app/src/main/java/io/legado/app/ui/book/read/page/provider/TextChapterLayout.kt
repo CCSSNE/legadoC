@@ -2329,6 +2329,7 @@ class TextChapterLayout(
                 textLine.isLeftLine = absStartX < viewWidth / 2
             }
             calcTextLinePosition(textPages, textLine, stringBuilder.length)
+            applyBookmarksToLine(textLine)
             stringBuilder.append(lineText)
             textLine.upTopBottom(durY, textHeight, fontMetrics)
             val textPage = pendingTextPage
@@ -2610,7 +2611,6 @@ class TextChapterLayout(
             }
         }
         exceed(absStartX, textLine, words)
-        applyBookmarksToLine(textLine)
     }
 
     /**
@@ -2645,7 +2645,6 @@ class TextChapterLayout(
             }
         }
         exceed(absStartX, textLine, words)
-        applyBookmarksToLine(textLine)
     }
 
     /**
