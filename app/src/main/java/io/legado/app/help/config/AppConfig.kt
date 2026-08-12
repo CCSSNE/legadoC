@@ -55,13 +55,13 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var editTemeAuto = appCtx.getPrefBoolean(PreferKey.editTemeAuto)
     var isEInkMode = appCtx.getPrefString(PreferKey.themeMode) == "3"
     var clickActionTL = appCtx.getPrefInt(PreferKey.clickActionTL, 2)
-    var clickActionTC = appCtx.getPrefInt(PreferKey.clickActionTC, 2)
+    var clickActionTC = appCtx.getPrefInt(PreferKey.clickActionTC, 0)
     var clickActionTR = appCtx.getPrefInt(PreferKey.clickActionTR, 1)
     var clickActionML = appCtx.getPrefInt(PreferKey.clickActionML, 2)
     var clickActionMC = appCtx.getPrefInt(PreferKey.clickActionMC, 0)
     var clickActionMR = appCtx.getPrefInt(PreferKey.clickActionMR, 1)
     var clickActionBL = appCtx.getPrefInt(PreferKey.clickActionBL, 2)
-    var clickActionBC = appCtx.getPrefInt(PreferKey.clickActionBC, 1)
+    var clickActionBC = appCtx.getPrefInt(PreferKey.clickActionBC, 0)
     var clickActionBR = appCtx.getPrefInt(PreferKey.clickActionBR, 1)
     var themeMode = appCtx.getPrefString(PreferKey.themeMode, "0")
     var useDefaultCover = appCtx.getPrefBoolean(PreferKey.useDefaultCover, false)
@@ -94,7 +94,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
                 appCtx.getPrefInt(PreferKey.clickActionTL, 2)
 
             PreferKey.clickActionTC -> clickActionTC =
-                appCtx.getPrefInt(PreferKey.clickActionTC, 2)
+                appCtx.getPrefInt(PreferKey.clickActionTC, 0)
 
             PreferKey.clickActionTR -> clickActionTR =
                 appCtx.getPrefInt(PreferKey.clickActionTR, 1)
@@ -112,7 +112,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
                 appCtx.getPrefInt(PreferKey.clickActionBL, 2)
 
             PreferKey.clickActionBC -> clickActionBC =
-                appCtx.getPrefInt(PreferKey.clickActionBC, 1)
+                appCtx.getPrefInt(PreferKey.clickActionBC, 0)
 
             PreferKey.clickActionBR -> clickActionBR =
                 appCtx.getPrefInt(PreferKey.clickActionBR, 1)
