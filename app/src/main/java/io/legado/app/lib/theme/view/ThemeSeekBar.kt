@@ -9,7 +9,7 @@ import io.legado.app.utils.applyTint
 /**
  * @author Aidan Follestad (afollestad)
  */
-class ThemeSeekBar(context: Context, attrs: AttributeSet) : AppCompatSeekBar(context, attrs) {
+class ThemeSeekBar(context: Context, attrs: AttributeSet? = null) : AppCompatSeekBar(context, attrs) {
 
     init {
         if (!isInEditMode) {
