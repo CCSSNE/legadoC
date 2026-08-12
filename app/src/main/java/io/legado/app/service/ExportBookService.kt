@@ -147,6 +147,8 @@ class ExportBookService : BaseService() {
     private val waitExportBooks = linkedMapOf<String, ExportConfig>()
     private var exportJob: Job? = null
     private var notificationContentText = appCtx.getString(R.string.service_starting)
+    @Volatile
+    private var lastExportFileName = ""
 
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -330,7 +332,7 @@ class ExportBookService : BaseService() {
     }
 
     private fun finishExportNotification() {
-        notificationContentText = "导出完成"
+        notificationContentText = "导出完成：$lastExportFileName"
         if (LifecycleHelp.isAppVisible()) {
             exportFinishedNotificationVisible = false
             notificationManager.cancel(NotificationId.ExportBook)
@@ -403,6 +405,7 @@ class ExportBookService : BaseService() {
             // 导出到webdav
             AppWebDav.exportWebDav(bookDoc.uri, filename)
         }
+        lastExportFileName = filename
     }
 
     /**
@@ -462,6 +465,7 @@ class ExportBookService : BaseService() {
             if (config.toWebDav) {
                 AppWebDav.exportWebDav(zipDoc.uri, zipName)
             }
+            lastExportFileName = zipName
         } finally {
             FileUtils.delete(tmpRoot)
         }
@@ -495,6 +499,7 @@ class ExportBookService : BaseService() {
                 if (config.toWebDav) {
                     AppWebDav.exportWebDav(doc.uri, pdfName)
                 }
+                lastExportFileName = pdfName
             } else {
                 val zipName = pdfName.removeSuffix(".pdf") + ".zip"
                 fileDoc.find(zipName)?.delete()
@@ -526,6 +531,7 @@ class ExportBookService : BaseService() {
                 if (config.toWebDav) {
                     AppWebDav.exportWebDav(zipDoc.uri, zipName)
                 }
+                lastExportFileName = zipName
             }
         } finally {
             FileUtils.delete(tmpRoot)
@@ -1011,6 +1017,7 @@ class ExportBookService : BaseService() {
             // 导出到webdav
             AppWebDav.exportWebDav(bookDoc.uri, filename)
         }
+        lastExportFileName = filename
     }
 
     private fun saveEpubBook(

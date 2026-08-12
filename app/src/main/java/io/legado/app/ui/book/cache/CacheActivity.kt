@@ -418,6 +418,12 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
                 rowEpubEmbedFont.isEnabled = !epubFontPath().isNullOrBlank()
                 tvEpubEmbedFontValue.isEnabled = rowEpubEmbedFont.isEnabled
             }
+            // 导出路径行：点击重新选择保存文件夹，避免默认路径导出后不知道文件在哪
+            rowExportPath.setOnClickListener {
+                pendingExportPathBinding = this
+                pendingExportConfig = null
+                selectExportFolder()
+            }
             rowCustomExport.setOnClickListener { }
             rowEpubTitleColor.setOnClickListener {
                 showEpubColorPicker(EPUB_TITLE_COLOR, tvEpubTitleColorValue.text?.toString())

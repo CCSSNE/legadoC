@@ -4,6 +4,7 @@ import android.app.Application
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern.bookFileRegex
+import io.legado.app.constant.AppPattern.archiveFileRegex
 import io.legado.app.constant.PreferKey
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.model.localBook.LocalBook
@@ -318,7 +319,8 @@ class ImportBookViewModel(application: Application) : BaseViewModel(application)
         return when {
             name.startsWith(".") -> false
             isDir -> true
-            else -> name.matches(bookFileRegex)
+            // 压缩包（本应用导出的配图 TXT/PDF 包）也要显示，点进去按压缩包导入
+            else -> name.matches(bookFileRegex) || name.matches(archiveFileRegex)
         }
     }
 
