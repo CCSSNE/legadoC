@@ -44,6 +44,7 @@ class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark, true),
 
     private val binding by viewBinding(DialogBookmarkBinding::bind)
     private val effectColorMap = mutableMapOf<Int, Int>()
+    private var bookmark: Bookmark? = null
 
     override fun onStart() {
         super.onStart()
@@ -63,6 +64,7 @@ class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark, true),
             dismiss()
             return
         }
+        this.bookmark = bookmark
         val editPos = arguments.getInt("editPos", -1)
         effectColorMap.clear()
         effectColorMap.putAll(BookmarkStyle.parseStyleColors(bookmark.styleColors))
@@ -187,7 +189,7 @@ class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark, true),
             )
             val colorPanel = ColorPanelView(requireContext()).apply {
                 color = effectColorMap[bit]
-                    ?: bookmark.color.takeIf { it != 0 }
+                    ?: bookmark?.color?.takeIf { it != 0 }
                     ?: appCtx.accentColor
                 layoutParams = LinearLayout.LayoutParams(32.dpToPx(), 32.dpToPx())
                 setOnClickListener {

@@ -41,6 +41,7 @@ io.legado.app.c
 5. 如果只是跑普通 debug 编译验证，不交付给用户安装，必须明确说明那不是覆盖安装包。
 6. 禁止把 `app\build\outputs\apk\app\debug` 的 `.debug` 包当成阅读 C 包交付。
 7. 已交付基线（新 → 旧）：
+   - `3.26.081129c` / `10531`：2026-08-12 编译交付（配图扩展为图片/视频/音频：选择器多选媒体、音频独立块播放、视频全屏播放/滑走停止/单视频禁滑+横屏、目录页视频帧与音频音符+时长、PDF/EPUB/TXT 导出媒体并再导入恢复）。
    - `3.26.081128c` / `10530`：2026-08-12 编译交付（配图目录多选/全选、单图/双图/一行三张/一行四张/两行两列四宫格、点击区域中间竖排默认菜单、文本菜单配图项杜绝闪现，并修复四宫格与书签导出相关编译错误）。
    - `3.26.081127c` / `10529`：2026-08-12 编译交付（书签功能：正文样式渲染修复、段落书签、备注气泡、文字变色、删除线、气泡透明度设置）。
    - `3.26.081126c` / `10528`：2026-08-12 编译交付（配图功能第二轮修复：图片多选、全屏黑色背景、缩放卡顿手势冲突、单图按钮文案、目录标签切换崩溃）。
@@ -49,7 +50,7 @@ io.legado.app.c
    - `3.26.081122c` / `10524`：2026-08-11 交付。
    - `3.26.081121c` / `10523`：2026-08-11 交付。
    - `3.26.062205c` / `10491`：更早交付。
-   后续覆盖包必须从 `3.26.081129c` / `10531` 起步（实际编译时刻的 `MMddHH` 更大时取实际值）。
+   后续覆盖包必须从 `3.26.081130c` / `10532` 起步（实际编译时刻的 `MMddHH` 更大时取实际值）。
 8. 删除旧包本身不提供版本号：删除动作只负责清空产物目录，版本号必须在删除前从 adb 或第 7 条基线确认好。第 7 条是“最近一次已交付”的唯一持久记录，每次交付后必须当场更新，否则下一包会复用旧值、破坏单调递增。
 
 当前阅读 C 使用独立包名，构建类型是 `c`，最终包名后缀是 `.c`。版本号沿用正常递增线，不要随手写超大版本号。
@@ -79,10 +80,19 @@ $env:Path = @(
   "$env:ANDROID_HOME\platform-tools"
 ) + ($env:Path -split ';') -join ';'
 
-$versionCode=10530
-$versionName='3.26.081128'
+$versionCode=10531
+$versionName='3.26.081129'
 .\gradlew.bat ':app:assembleAppC' '-Pabi=arm64-v8a' "-PVERSION_CODE=$versionCode" "-PVERSION_NAME=$versionName" '-Dkotlin.incremental=false' '-Dkotlin.compiler.execution.strategy=in-process' --no-daemon --console=plain --warning-mode=summary --max-workers=1
 ```
+
+2026-08-12 实测结果（`VERSION_CODE=10531`、`VERSION_NAME=3.26.081129`）：
+
+```text
+BUILD SUCCESSFUL in 4m 52s
+75 actionable tasks: 9 executed, 66 up-to-date
+```
+
+产物 `legado_app_3.26.081129_10531.apk` 验证通过：包名 `io.legado.app.c`、`versionCode=10531`、`versionName=3.26.081129c`；已安装到雷电模拟器 `emulator-5554` 覆盖升级成功。
 
 2026-08-12 实测结果（`VERSION_CODE=10530`、`VERSION_NAME=3.26.081128`）：
 

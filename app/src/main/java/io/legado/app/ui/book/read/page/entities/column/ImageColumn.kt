@@ -213,7 +213,7 @@ data class ImageColumn(
     }
 
     private fun drawPlayTriangle(canvas: Canvas, cx: Float, cy: Float, size: Float, color: Int) {
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = color }
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color }
         val path = Path().apply {
             moveTo(cx - size * 0.6f, cy - size)
             lineTo(cx - size * 0.6f, cy + size)

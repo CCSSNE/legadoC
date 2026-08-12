@@ -863,7 +863,7 @@ class TextChapterLayout(
         var rowHeight: Float
         if (n == 1 && media[0].third == "audio") {
             // 音频块：整行、固定高度
-            cellWidth = visibleWidth
+            cellWidth = visibleWidth.toFloat()
             rowHeight = audioBlockHeight
         } else if (layoutType == BookIllustration.LAYOUT_SINGLE && displayHeight > 0f &&
             media[0].third == "image"

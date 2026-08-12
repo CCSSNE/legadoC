@@ -62,7 +62,7 @@ object AudioBlockPlayer {
             playWhenReady = true
             addListener(object : Player.Listener {
                 override fun onIsPlayingChanged(playing: Boolean) {
-                    isPlaying = playing
+                    this@AudioBlockPlayer.isPlaying = playing
                     updateProgress()
                     onStateChange?.invoke()
                     if (playing) {
@@ -77,7 +77,7 @@ object AudioBlockPlayer {
                         updateProgress()
                         onStateChange?.invoke()
                     } else if (playbackState == Player.STATE_ENDED) {
-                        isPlaying = false
+                        this@AudioBlockPlayer.isPlaying = false
                         handler.removeCallbacks(tick)
                         onStateChange?.invoke()
                     }
