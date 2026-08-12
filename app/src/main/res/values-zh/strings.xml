@@ -1345,7 +1345,6 @@
     <string name="bookmark_style_text_color">文字变色</string>
     <string name="bookmark_style_strikethrough">删除线</string>
     <string name="bookmark_color">颜色</string>
-    <string name="bookmark_color_default">默认</string>
     <string name="paragraph_bookmark">段落书签</string>
     <string name="paragraph_bookmark_trimmed">段落超过1000字，已截取保存</string>
     <string name="bookmark_note_bubble_show_all">显示书签备注气泡</string>

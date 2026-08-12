@@ -147,7 +147,7 @@ class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark, true),
     }
 
     /**
-     * 为每个已勾选的效果生成一行颜色设置（色块点击设置，默认恢复）
+     * 为每个已勾选的效果生成一行颜色设置（点击色块弹出颜色选择器）
      */
     private fun rebuildEffectColorRows() {
         binding.llEffectColors.removeAllViews()
@@ -197,18 +197,6 @@ class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark, true),
                 }
             }
             row.addView(colorPanel)
-            row.addView(
-                TextView(requireContext()).apply {
-                    text = getString(R.string.bookmark_color_default)
-                    textSize = 12f
-                    setTextColor(requireContext().getCompatColor(R.color.secondaryText))
-                    setPadding(8.dpToPx(), 8.dpToPx(), 8.dpToPx(), 8.dpToPx())
-                    setOnClickListener {
-                        effectColorMap.remove(bit)
-                        rebuildEffectColorRows()
-                    }
-                }
-            )
             binding.llEffectColors.addView(row)
         }
     }
@@ -241,7 +229,7 @@ class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark, true),
             .setAllowCustom(true)
             .setShowAlphaSlider(false)
             .setShowColorShades(true)
-            .setShowDefaultColorButton(true)
+            .setShowDefaultColorButton(false)
             .setColor(color)
             .setDialogId(dialogId)
             .create()

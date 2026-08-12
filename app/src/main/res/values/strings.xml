@@ -1519,7 +1519,6 @@
     <string name="bookmark_style_text_color">Text color</string>
     <string name="bookmark_style_strikethrough">Strikethrough</string>
     <string name="bookmark_color">Color</string>
-    <string name="bookmark_color_default">Default</string>
     <string name="paragraph_bookmark">Paragraph bookmark</string>
     <string name="paragraph_bookmark_trimmed">Paragraph exceeds 1000 chars, saved as truncated paragraph</string>
     <string name="bookmark_note_bubble_show_all">Show bookmark note bubbles</string>

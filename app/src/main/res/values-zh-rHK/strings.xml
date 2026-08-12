@@ -1173,7 +1173,6 @@
     <string name="bookmark_style_text_color">文字變色</string>
     <string name="bookmark_style_strikethrough">刪除線</string>
     <string name="bookmark_color">顏色</string>
-    <string name="bookmark_color_default">默認</string>
     <string name="paragraph_bookmark">段落書簽</string>
     <string name="paragraph_bookmark_trimmed">段落超過1000字，已截取保存</string>
     <string name="bookmark_note_bubble_show_all">顯示書簽備註氣泡</string>
