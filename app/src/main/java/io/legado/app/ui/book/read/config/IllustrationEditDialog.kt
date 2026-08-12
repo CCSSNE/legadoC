@@ -29,7 +29,7 @@ import io.legado.app.utils.visible
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
 /**
- * 插入配图对话框：选择图片、设置显示高度、布局、独占一页。
+ * 插入媒体对话框：选择图片、视频或音频，设置显示高度、布局、独占一页。
  */
 class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration_edit, true) {
 

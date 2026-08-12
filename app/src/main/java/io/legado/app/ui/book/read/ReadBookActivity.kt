@@ -160,7 +160,6 @@ import io.legado.app.model.analyzeRule.AnalyzeUrl.Companion.paramPattern
 import java.lang.ref.WeakReference
 import io.legado.app.ui.login.SourceLoginJsExtensions
 import kotlinx.coroutines.CoroutineStart
-import kotlin.math.max
 import kotlin.math.min
 
 /**
@@ -927,8 +926,9 @@ class ReadBookActivity : BaseReadBookActivity(),
     /**
      * 计算选区对应的配图插入锚点。
      *
-     * 规则：恰好选中两段（A 段一部分 + B 段一部分）时，插入 A/B 段边界；
-     * 单独选中该章最后一段时，插入该章末尾；其余情况不出现配图选项。
+     * 规则：任意文本选区都以第一段为插入边界，插到第一段与下一段之间；
+     * 跨多段时（如选中 1/2/3 段）仍只取第一段，插到 1~2 段之间；
+     * 第一段是该章最后一段时，插入该章末尾。
      */
     private fun computeIllustrationAnchor(): IllustrationAnchor? {
         val book = ReadBook.book ?: return null
@@ -944,10 +944,10 @@ class ReadBookActivity : BaseReadBookActivity(),
         if (startParaNum <= 0 || endParaNum <= 0) return null
         val chapterParagraphs = chapter.paragraphs
         val lastParaNum = chapterParagraphs.lastOrNull()?.num ?: return null
-        if (startParaNum == endParaNum) {
-            // 单段：仅当是该章最后一段时，配到章末
-            if (startParaNum != lastParaNum) return null
-            val paragraph = chapterParagraphs.getOrNull(startParaNum - 1) ?: return null
+        val frontNum = min(startParaNum, endParaNum)
+        if (frontNum == lastParaNum) {
+            // 第一段已是章末：插入该章末尾
+            val paragraph = chapterParagraphs.getOrNull(frontNum - 1) ?: return null
             return IllustrationAnchor(
                 anchorType = BookIllustration.ANCHOR_CHAPTER_END,
                 anchorPos = -1,
@@ -955,11 +955,8 @@ class ReadBookActivity : BaseReadBookActivity(),
                 backParagraph = ""
             )
         }
-        val frontNum = min(startParaNum, endParaNum)
-        val backNum = max(startParaNum, endParaNum)
-        if (backNum != frontNum + 1) return null
         val frontParagraph = chapterParagraphs.getOrNull(frontNum - 1) ?: return null
-        val backParagraph = chapterParagraphs.getOrNull(backNum - 1) ?: return null
+        val backParagraph = chapterParagraphs.getOrNull(frontNum) ?: return null
         val anchorPos = frontParagraph.lastLine.chapterPosition +
             frontParagraph.lastLine.charSize +
             if (frontParagraph.isParagraphEnd) 1 else 0

@@ -2045,9 +2045,9 @@ Selected text or question:
 %6$s</string>
 
     <!--配图（插图）-->
-    <string name="menu_illustration">配图</string>
-    <string name="illustration_title">插入配图</string>
-    <string name="illustration_pick_images">选择图片</string>
+    <string name="menu_illustration">插入</string>
+    <string name="illustration_title">插入</string>
+    <string name="illustration_pick_images">选择图片、视频或者音频</string>
     <string name="illustration_height">显示高度</string>
     <string name="illustration_height_hint">单位 dp，留空按图片原始高度</string>
     <string name="illustration_layout">布局</string>
@@ -2060,9 +2060,8 @@ Selected text or question:
     <string name="illustration_grid_three">三宫格</string>
     <string name="illustration_page_break">独占一页</string>
     <string name="illustration_save">插入</string>
-    <string name="illustration_no_images">请先选择图片</string>
-    <string name="illustration_inserted">配图已插入</string>
-    <string name="illustration_invalid_selection">请选择恰好两段文本，或该章最后一段</string>
+    <string name="illustration_no_images">请先选择图片、视频或音频</string>
+    <string name="illustration_inserted">已插入</string>
     <string name="illustration_save_to_album">保存到相册</string>
     <string name="illustration_save_all">保存所有</string>
     <string name="illustration_saved_to_album">已保存到相册</string>
