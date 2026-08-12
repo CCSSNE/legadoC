@@ -54,6 +54,9 @@ interface BookmarkDao {
     @Update
     fun update(bookmark: Bookmark)
 
+    @Update
+    fun update(vararg bookmark: Bookmark)
+
     @Delete
     fun delete(vararg bookmark: Bookmark)
 
