@@ -59,10 +59,11 @@ class SelectImagesContract : ActivityResultContract<Int?, SelectImagesContract.R
     override fun createIntent(context: Context, input: Int?): Intent {
         requestCode = input
         // 统一文件选择器：图片/视频/音频一次多选（系统相册选择器不支持音频）
+        // 只设 */* 不设 EXTRA_MIME_TYPES：部分 ROM 会把 MIME 过滤组合解析成"仅图片/视频"，
+        // 导致音频选不到；放开 */* 后所有媒体文件都能访问
         return Intent(Intent.ACTION_OPEN_DOCUMENT)
             .addCategory(Intent.CATEGORY_OPENABLE)
             .setType("*/*")
-            .putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("image/*", "video/*", "audio/*"))
             .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
     }
 

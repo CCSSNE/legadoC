@@ -128,6 +128,17 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
         val displayHeight = heightText.toIntOrNull() ?: 0
         val pageBreak = binding.cbPageBreak.isChecked
         val cellCount = layoutCellCount()
+        // 选择器放开 */* 后可能选到非媒体文件，先统一校验，避免中途保存一半
+        selectedUris.forEach { uri ->
+            val mime = requireContext().contentResolver.getType(uri)
+            val isMedia = mime?.startsWith("image/") == true ||
+                mime?.startsWith("video/") == true ||
+                mime?.startsWith("audio/") == true
+            if (!isMedia) {
+                toastOnUi("仅支持图片、视频、音频文件")
+                return
+            }
+        }
         // 先读取所有媒体并保存，记录选择顺序与是否音频
         val media = arrayListOf<Pair<String, Boolean>>() // src to isAudio
         selectedUris.forEach { uri ->
@@ -135,7 +146,7 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
                 requireContext().contentResolver.openInputStream(uri)?.use { it.readBytes() }
             }.getOrNull()
             if (bytes == null || bytes.isEmpty()) {
-                toastOnUi("读取图片失败")
+                toastOnUi("读取媒体文件失败")
                 return
             }
             val mime = requireContext().contentResolver.getType(uri)
