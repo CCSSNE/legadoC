@@ -326,7 +326,7 @@ class MoreConfigDialog : BasePrefDialogFragment() {
                 textSize = 14f
                 setTextColor(requireContext().getCompatColor(R.color.primaryText))
             }
-            val seekBar = ThemeSeekBar(requireContext()).apply {
+            val seekBar = ThemeSeekBar(requireContext(), null).apply {
                 max = 100
                 progress = current
                 setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
