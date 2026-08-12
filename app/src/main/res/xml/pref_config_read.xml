@@ -259,17 +259,12 @@
         app:iconSpaceReserved="false"
         app:isBottomBackground="true" />
 
-    <io.legado.app.lib.prefs.SeekBarPreference
-        android:clickable="false"
-        android:defaultValue="100"
+    <io.legado.app.lib.prefs.Preference
         android:key="bookmarkNoteBubbleBgAlpha"
         android:summary="@string/bookmark_note_bubble_bg_alpha_summary"
         android:title="@string/bookmark_note_bubble_bg_alpha"
-        app:MaxValue="100"
-        app:MinValue="0"
         app:iconSpaceReserved="false"
-        app:isBottomBackground="true"
-        app:selectable="false" />
+        app:isBottomBackground="true" />
 
     <io.legado.app.lib.prefs.SwitchPreference
         android:defaultValue="true"

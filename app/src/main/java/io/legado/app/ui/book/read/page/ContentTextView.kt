@@ -106,7 +106,6 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     private val bubblePadding = 10f.dpToPx()
     private val bubbleGap = 6f.dpToPx()
     private val bubbleMaxWidth = 280f.dpToPx()
-    private val bubbleMinWidth = 120f.dpToPx()
     private val bubbleArrowSize = 6f.dpToPx()
     var isMainView = false
     var longScreenshot = false
@@ -266,7 +265,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         val pageWidth = rightBound - leftBound
         val maxBubbleWidth = min(
             bubbleMaxWidth,
-            (pageWidth - bubblePadding * 2 - 2 * bubbleGap).coerceAtLeast(bubbleMinWidth)
+            (pageWidth - bubblePadding * 2 - 2 * bubbleGap).coerceAtLeast(1f)
         )
         // 缓存气泡布局与尺寸，滚动时避免每帧重建 StaticLayout/测量文本
         val bubbleW: Float
@@ -274,7 +273,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         val cachedLayout = bubbleLayoutCache[bookmark.time]
         if (cachedLayout != null) {
             bubbleW = (cachedLayout.width + bubblePadding * 2)
-                .coerceIn(bubbleMinWidth, maxBubbleWidth)
+                .coerceAtMost(maxBubbleWidth)
             bubbleH = cachedLayout.height + bubblePadding * 2
         } else {
             bubbleTextPaint.textSize = 13f.spToPx()
@@ -282,13 +281,13 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
             bubbleTextPaint.isAntiAlias = true
             val idealTextWidth =
                 bookmark.content.lines().maxOfOrNull { bubbleTextPaint.measureText(it) } ?: 0f
-            val w = (idealTextWidth + bubblePadding * 2).coerceIn(bubbleMinWidth, maxBubbleWidth)
+            val w = (idealTextWidth + bubblePadding * 2).coerceAtMost(maxBubbleWidth)
             val layout = buildBubbleLayout(
                 bookmark.content,
                 (w - bubblePadding * 2).toInt().coerceAtLeast(1)
             )
             bubbleLayoutCache[bookmark.time] = layout
-            bubbleW = (layout.width + bubblePadding * 2).coerceIn(bubbleMinWidth, maxBubbleWidth)
+            bubbleW = (layout.width + bubblePadding * 2).coerceAtMost(maxBubbleWidth)
             bubbleH = layout.height + bubblePadding * 2
         }
 

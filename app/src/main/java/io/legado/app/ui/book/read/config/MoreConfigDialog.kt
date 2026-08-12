@@ -12,6 +12,8 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.SeekBar
+import android.widget.TextView
 import androidx.preference.Preference
 import io.legado.app.R
 import io.legado.app.base.BasePrefDialogFragment
@@ -19,17 +21,22 @@ import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
+import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.prefs.fragment.PreferenceFragment
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.primaryColor
+import io.legado.app.lib.theme.view.ThemeSeekBar
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.read.page.provider.ChapterProvider
 import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.utils.canvasrecorder.CanvasRecorderFactory
 import io.legado.app.utils.dpToPx
+import io.legado.app.utils.getCompatColor
 import io.legado.app.utils.getPrefBoolean
+import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.postEvent
+import io.legado.app.utils.putPrefInt
 import io.legado.app.utils.removePref
 import io.legado.app.utils.setEdgeEffectColor
 
@@ -301,8 +308,73 @@ class MoreConfigDialog : BasePrefDialogFragment() {
                             )
                         }
                 }
+
+                PreferKey.bookmarkNoteBubbleBgAlpha -> showBubbleBgAlphaDialog()
             }
             return super.onPreferenceTreeClick(preference)
+        }
+
+        /**
+         * 备注气泡背景透明度：弹窗内滑动选择百分比（与项目其他百分比设置一致）
+         */
+        private fun showBubbleBgAlphaDialog() {
+            val current = requireContext()
+                .getPrefInt(PreferKey.bookmarkNoteBubbleBgAlpha, 100)
+                .coerceIn(0, 100)
+            val valueView = TextView(requireContext()).apply {
+                text = "$current%"
+                textSize = 14f
+                setTextColor(requireContext().getCompatColor(R.color.primaryText))
+            }
+            val seekBar = ThemeSeekBar(requireContext()).apply {
+                max = 100
+                progress = current
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(
+                        seekBar: SeekBar?,
+                        progress: Int,
+                        fromUser: Boolean
+                    ) {
+                        valueView.text = "$progress%"
+                    }
+
+                    override fun onStartTrackingTouch(seekBar: SeekBar?) {
+                    }
+
+                    override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                    }
+                })
+            }
+            val container = LinearLayout(requireContext()).apply {
+                orientation = LinearLayout.VERTICAL
+                val pad = 16.dpToPx()
+                setPadding(pad, pad, pad, pad)
+                addView(
+                    valueView,
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                )
+                addView(
+                    seekBar,
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                )
+            }
+            alert(getString(R.string.bookmark_note_bubble_bg_alpha)) {
+                customView { container }
+                okButton {
+                    requireContext().putPrefInt(
+                        PreferKey.bookmarkNoteBubbleBgAlpha,
+                        seekBar.progress
+                    )
+                    // 返回阅读页时 onResume 会重新注入书签数据，气泡按新透明度刷新
+                }
+                noButton()
+            }
         }
 
         @Suppress("SameParameterValue")
