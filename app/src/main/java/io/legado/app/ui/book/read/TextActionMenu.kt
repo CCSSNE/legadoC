@@ -137,6 +137,10 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
         visibleMenuItems.clear()
         moreMenuItems.clear()
         val filteredItems = filteredMenuItems()
+        android.util.Log.d(
+            "ILLUSTRATION_DEBUG",
+            "upMenu enabled=$illustrationEnabled items=${filteredItems.joinToString { it.title.toString() }}"
+        )
         visibleMenuItems.addAll(filteredItems)
         if (expandTextMenu) {
             adapter.setItems(filteredItems)
