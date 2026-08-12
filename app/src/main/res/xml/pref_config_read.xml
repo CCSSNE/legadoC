@@ -245,6 +245,22 @@
 
     <io.legado.app.lib.prefs.SwitchPreference
         android:defaultValue="true"
+        android:key="bookmarkNoteBubbleShowAll"
+        android:summary="@string/bookmark_note_bubble_show_all_summary"
+        android:title="@string/bookmark_note_bubble_show_all"
+        app:iconSpaceReserved="false"
+        app:isBottomBackground="true" />
+
+    <io.legado.app.lib.prefs.SwitchPreference
+        android:defaultValue="true"
+        android:key="bookmarkNoteBubbleOnNoStyleClick"
+        android:summary="@string/bookmark_note_bubble_no_style_click_summary"
+        android:title="@string/bookmark_note_bubble_no_style_click"
+        app:iconSpaceReserved="false"
+        app:isBottomBackground="true" />
+
+    <io.legado.app.lib.prefs.SwitchPreference
+        android:defaultValue="true"
         android:key="showReadTitleAddition"
         android:title="@string/show_read_title_addition" />
 

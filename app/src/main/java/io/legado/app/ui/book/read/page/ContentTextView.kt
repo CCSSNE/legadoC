@@ -3,17 +3,25 @@ package io.legado.app.ui.book.read.page
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.DashPathEffect
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RectF
+import android.os.Build
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
 import android.widget.ScrollView
 import android.widget.TextView
+import android.text.Layout
+import android.text.StaticLayout
+import android.text.TextPaint
 import io.legado.app.R
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.PreferKey
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.Bookmark
+import io.legado.app.data.entities.BookmarkStyle
 import io.legado.app.help.PaperInkHelper
 import io.legado.app.help.book.isOnLineTxt
 import io.legado.app.help.config.AppConfig
@@ -38,10 +46,15 @@ import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.utils.activity
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.getCompatColor
+import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.setHtml
 import io.legado.app.utils.showDialogFragment
+import io.legado.app.utils.spToPx
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
+import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.backgroundColor
+import splitties.init.appCtx
 import java.util.concurrent.Executors
 import kotlin.math.max
 import kotlin.math.min
@@ -65,6 +78,19 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         private set
     var bookmarks: List<Bookmark> = emptyList()
         private set
+    private val bubbleDismissed = mutableSetOf<Long>()
+    private val bubbleShown = mutableSetOf<Long>()
+    private val bubbleOffsets = mutableMapOf<Long, Pair<Float, Float>>()
+    private val bubbleBgPaint = Paint()
+    private val bubbleStrokePaint = Paint()
+    private val bubbleArrowPaint = Paint()
+    private val bubbleTextPaint = TextPaint()
+    private val bubbleCornerRadius = 8f.dpToPx()
+    private val bubblePadding = 10f.dpToPx()
+    private val bubbleGap = 6f.dpToPx()
+    private val bubbleMaxWidth = 280f.dpToPx()
+    private val bubbleMinWidth = 120f.dpToPx()
+    private val bubbleArrowSize = 6f.dpToPx()
     var isMainView = false
     var longScreenshot = false
     var reverseStartCursor = false
@@ -117,10 +143,357 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     }
 
     fun setBookmarks(list: List<Bookmark>) {
-        if (bookmarks != list) {
-            bookmarks = list
-            invalidate()
+        bookmarks = list
+        invalidate()
+    }
+
+    // ==================== 书签备注气泡 ====================
+
+    private data class BubbleData(
+        val bookmark: Bookmark,
+        val rect: RectF,
+        val anchor: RectF
+    )
+
+    private val bubbleShowAllPref: Boolean
+        get() = context.getPrefBoolean(PreferKey.bookmarkNoteBubbleShowAll, true)
+
+    private val bubbleNoStyleClickPref: Boolean
+        get() = context.getPrefBoolean(PreferKey.bookmarkNoteBubbleOnNoStyleClick, true)
+
+    private fun shouldShowBubble(bookmark: Bookmark): Boolean {
+        if (bookmark.content.isBlank()) return false
+        return if (bubbleShowAllPref) {
+            !bubbleDismissed.contains(bookmark.time)
+        } else {
+            bubbleShown.contains(bookmark.time)
         }
+    }
+
+    private fun onBookmarkBodyClick(bookmark: Bookmark) {
+        if (shouldShowBubble(bookmark)) {
+            bubbleDismissed.add(bookmark.time)
+            bubbleShown.remove(bookmark.time)
+            bubbleOffsets.remove(bookmark.time)
+        } else {
+            if (bookmark.style == BookmarkStyle.NONE && !bubbleNoStyleClickPref) return
+            bubbleDismissed.remove(bookmark.time)
+            bubbleShown.add(bookmark.time)
+            bubbleOffsets.remove(bookmark.time)
+        }
+        invalidate()
+    }
+
+    private fun onBubbleClick(bookmark: Bookmark) {
+        bubbleDismissed.add(bookmark.time)
+        bubbleShown.remove(bookmark.time)
+        bubbleOffsets.remove(bookmark.time)
+        invalidate()
+    }
+
+    private fun drawBookmarkBubbles(canvas: Canvas) {
+        if (bookmarks.isEmpty()) return
+        val bubbles = collectBubbles()
+        bubbles.forEach { drawBubble(canvas, it) }
+    }
+
+    private fun collectBubbles(): List<BubbleData> {
+        val result = arrayListOf<BubbleData>()
+        if (bookmarks.isEmpty()) return result
+        val last = if (callBack.isScroll) 2 else 0
+        for (rel in 0..last) {
+            val offset = relativeOffset(rel)
+            if (rel > 0 && offset >= ChapterProvider.visibleHeight) break
+            val page = relativePage(rel)
+            for (bookmark in bookmarks) {
+                if (!shouldShowBubble(bookmark)) continue
+                val anchor = findBookmarkAnchorRect(page, bookmark.time, offset) ?: continue
+                val rect = findBubbleRect(page, anchor, bookmark, offset, result)
+                result.add(BubbleData(bookmark, rect, anchor))
+            }
+        }
+        return result
+    }
+
+    private fun findBookmarkAnchorRect(page: TextPage, time: Long, offset: Float): RectF? {
+        for (line in page.lines) {
+            for (column in line.columns) {
+                if (column is TextColumn && column.bookmarkTime == time) {
+                    return RectF(
+                        column.start,
+                        line.lineTop + offset,
+                        column.end,
+                        line.lineBottom + offset
+                    )
+                }
+            }
+        }
+        return null
+    }
+
+    private fun findBubbleRect(
+        page: TextPage,
+        anchor: RectF,
+        bookmark: Bookmark,
+        offset: Float,
+        bubbles: List<BubbleData>
+    ): RectF {
+        val leftBound = visibleRect.left
+        val topBound = visibleRect.top
+        val rightBound = visibleRect.right
+        val bottomBound = visibleRect.bottom
+        val pageWidth = rightBound - leftBound
+        val maxTextWidth = (min(bubbleMaxWidth, pageWidth - bubblePadding * 2 - 2 * bubbleGap)).toInt()
+            .coerceAtLeast((bubbleMinWidth - bubblePadding * 2).toInt())
+        val layout = buildBubbleLayout(bookmark.content, maxTextWidth)
+        val bubbleW = (layout.width + bubblePadding * 2).coerceIn(bubbleMinWidth, bubbleMaxWidth)
+        val bubbleH = layout.height + bubblePadding * 2
+
+        // 已确定过位置的书签，保持其与正文的相对偏移，滚动/翻页时仅随正文平移
+        bubbleOffsets[bookmark.time]?.let { (dx, dy) ->
+            return RectF(
+                anchor.left + dx,
+                anchor.top + dy,
+                anchor.left + dx + bubbleW,
+                anchor.top + dy + bubbleH
+            )
+        }
+
+        fun clamp(rect: RectF): RectF {
+            val x = rect.left.coerceIn(leftBound, (rightBound - rect.width()).coerceAtLeast(leftBound))
+            val y = rect.top.coerceIn(topBound, (bottomBound - rect.height()).coerceAtLeast(topBound))
+            return RectF(x, y, x + rect.width(), y + rect.height())
+        }
+
+        fun free(rect: RectF): Boolean {
+            if (rect.left < leftBound || rect.top < topBound ||
+                rect.right > rightBound || rect.bottom > bottomBound
+            ) {
+                return false
+            }
+            if (overlapsText(page, rect, offset)) return false
+            bubbles.forEach {
+                if (RectF.intersects(it.rect, rect)) return false
+            }
+            return true
+        }
+
+        val candidates = arrayListOf<RectF>()
+        // 上方：左、中、右
+        candidates.add(
+            RectF(
+                anchor.left,
+                anchor.top - bubbleH - bubbleGap,
+                anchor.left + bubbleW,
+                anchor.top - bubbleGap
+            )
+        )
+        candidates.add(
+            RectF(
+                anchor.centerX() - bubbleW / 2,
+                anchor.top - bubbleH - bubbleGap,
+                anchor.centerX() + bubbleW / 2,
+                anchor.top - bubbleGap
+            )
+        )
+        candidates.add(
+            RectF(
+                anchor.right - bubbleW,
+                anchor.top - bubbleH - bubbleGap,
+                anchor.right,
+                anchor.top - bubbleGap
+            )
+        )
+        // 下方：左、中、右
+        candidates.add(
+            RectF(
+                anchor.left,
+                anchor.bottom + bubbleGap,
+                anchor.left + bubbleW,
+                anchor.bottom + bubbleGap + bubbleH
+            )
+        )
+        candidates.add(
+            RectF(
+                anchor.centerX() - bubbleW / 2,
+                anchor.bottom + bubbleGap,
+                anchor.centerX() + bubbleW / 2,
+                anchor.bottom + bubbleGap + bubbleH
+            )
+        )
+        candidates.add(
+            RectF(
+                anchor.right - bubbleW,
+                anchor.bottom + bubbleGap,
+                anchor.right,
+                anchor.bottom + bubbleGap + bubbleH
+            )
+        )
+        // 左侧、右侧（垂直居中）
+        candidates.add(
+            RectF(
+                anchor.left - bubbleW - bubbleGap,
+                anchor.centerY() - bubbleH / 2,
+                anchor.left - bubbleGap,
+                anchor.centerY() + bubbleH / 2
+            )
+        )
+        candidates.add(
+            RectF(
+                anchor.right + bubbleGap,
+                anchor.centerY() - bubbleH / 2,
+                anchor.right + bubbleGap + bubbleW,
+                anchor.centerY() + bubbleH / 2
+            )
+        )
+
+        for (candidate in candidates) {
+            val clamped = clamp(candidate)
+            if (free(clamped)) {
+                bubbleOffsets[bookmark.time] = (clamped.left - anchor.left) to (clamped.top - anchor.top)
+                return clamped
+            }
+        }
+        // 找不到空位：允许重叠，放在锚点正上方
+        val fallback = clamp(
+            RectF(
+                anchor.centerX() - bubbleW / 2,
+                anchor.top - bubbleH - bubbleGap,
+                anchor.centerX() + bubbleW / 2,
+                anchor.top - bubbleGap
+            )
+        )
+        bubbleOffsets[bookmark.time] = (fallback.left - anchor.left) to (fallback.top - anchor.top)
+        return fallback
+    }
+
+    private fun overlapsText(page: TextPage, rect: RectF, offset: Float): Boolean {
+        for (line in page.lines) {
+            val lineRect = RectF(
+                line.lineStart,
+                line.lineTop + offset,
+                line.lineEnd,
+                line.lineBottom + offset
+            )
+            if (!RectF.intersects(lineRect, rect)) continue
+            for (column in line.columns) {
+                val columnRect = RectF(
+                    column.start,
+                    line.lineTop + offset,
+                    column.end,
+                    line.lineBottom + offset
+                )
+                if (RectF.intersects(columnRect, rect)) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    private fun buildBubbleLayout(text: String, maxWidth: Int): StaticLayout {
+        bubbleTextPaint.textSize = 13f.spToPx()
+        bubbleTextPaint.color = context.getCompatColor(R.color.primaryText)
+        bubbleTextPaint.isAntiAlias = true
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            StaticLayout.Builder.obtain(text, 0, text.length, bubbleTextPaint, maxWidth)
+                .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+                .setLineSpacing(0f, 1.05f)
+                .build()
+        } else {
+            @Suppress("DEPRECATION")
+            StaticLayout(text, bubbleTextPaint, maxWidth, Layout.Alignment.ALIGN_NORMAL, 1.05f, 0f, false)
+        }
+    }
+
+    private fun drawBubble(canvas: Canvas, data: BubbleData) {
+        val rect = data.rect
+        bubbleBgPaint.color = appCtx.backgroundColor
+        bubbleBgPaint.style = Paint.Style.FILL
+        bubbleBgPaint.isAntiAlias = true
+        canvas.drawRoundRect(rect, bubbleCornerRadius, bubbleCornerRadius, bubbleBgPaint)
+
+        bubbleStrokePaint.color = appCtx.accentColor
+        bubbleStrokePaint.style = Paint.Style.STROKE
+        bubbleStrokePaint.strokeWidth = 1f.dpToPx()
+        bubbleStrokePaint.isAntiAlias = true
+        canvas.drawRoundRect(rect, bubbleCornerRadius, bubbleCornerRadius, bubbleStrokePaint)
+
+        val layout = buildBubbleLayout(
+            data.bookmark.content,
+            (rect.width() - bubblePadding * 2).toInt().coerceAtLeast(1)
+        )
+        canvas.save()
+        canvas.translate(rect.left + bubblePadding, rect.top + bubblePadding)
+        layout.draw(canvas)
+        canvas.restore()
+
+        drawBubbleArrow(canvas, rect, data.anchor)
+    }
+
+    private fun drawBubbleArrow(canvas: Canvas, bubble: RectF, anchor: RectF) {
+        val startX: Float
+        val startY: Float
+        val endX = anchor.centerX()
+        val endY: Float
+        if (bubble.bottom <= anchor.top) {
+            startX = bubble.centerX()
+            startY = bubble.bottom
+            endY = anchor.top
+        } else if (bubble.top >= anchor.bottom) {
+            startX = bubble.centerX()
+            startY = bubble.top
+            endY = anchor.bottom
+        } else if (bubble.right <= anchor.left) {
+            startX = bubble.right
+            startY = bubble.centerY()
+            endY = anchor.left
+        } else {
+            startX = bubble.left
+            startY = bubble.centerY()
+            endY = anchor.right
+        }
+        bubbleArrowPaint.color = appCtx.accentColor
+        bubbleArrowPaint.style = Paint.Style.STROKE
+        bubbleArrowPaint.strokeWidth = 1.5f.dpToPx()
+        bubbleArrowPaint.pathEffect = DashPathEffect(floatArrayOf(5f.dpToPx(), 4f.dpToPx()), 0f)
+        bubbleArrowPaint.isAntiAlias = true
+        canvas.drawLine(startX, startY, endX, endY, bubbleArrowPaint)
+        // 箭头小三角
+        val angle = Math.atan2((endY - startY).toDouble(), (endX - startX).toDouble())
+        val size = bubbleArrowSize
+        val path = Path()
+        path.moveTo(endX, endY)
+        path.lineTo(
+            (endX - size * Math.cos(angle - Math.PI / 6)).toFloat(),
+            (endY - size * Math.sin(angle - Math.PI / 6)).toFloat()
+        )
+        path.lineTo(
+            (endX - size * Math.cos(angle + Math.PI / 6)).toFloat(),
+            (endY - size * Math.sin(angle + Math.PI / 6)).toFloat()
+        )
+        path.close()
+        bubbleArrowPaint.pathEffect = null
+        bubbleArrowPaint.style = Paint.Style.FILL
+        canvas.drawPath(path, bubbleArrowPaint)
+    }
+
+    private fun findBubbleAt(x: Float, y: Float): Bookmark? {
+        val bubbles = collectBubbles()
+        bubbles.forEach {
+            if (it.rect.contains(x, y)) return it.bookmark
+        }
+        return null
+    }
+
+    private fun findBookmarkAt(x: Float, y: Float): Bookmark? {
+        var result: Bookmark? = null
+        touch(x, y) { _, _, _, _, column ->
+            if (column is TextColumn && column.bookmarkTime != 0L) {
+                result = bookmarks.firstOrNull { it.time == column.bookmarkTime }
+            }
+        }
+        return result
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -145,6 +518,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
             canvas.clipRect(visibleRect)
         }
         drawPage(canvas)
+        drawBookmarkBubbles(canvas)
     }
 
     /**
@@ -369,6 +743,15 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
             !doubleClick
         } else {
             false
+        }
+        // 书签备注气泡与书签正文的点击优先级最高
+        findBubbleAt(x, y)?.let {
+            onBubbleClick(it)
+            return true
+        }
+        findBookmarkAt(x, y)?.let {
+            onBookmarkBodyClick(it)
+            return true
         }
         handleEpubNoteClick(x, y)?.let { return it }
         var handled = false

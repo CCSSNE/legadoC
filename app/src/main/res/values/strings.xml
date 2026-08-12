@@ -1520,6 +1520,10 @@
     <string name="bookmark_color_default">Default</string>
     <string name="paragraph_bookmark">Paragraph bookmark</string>
     <string name="paragraph_bookmark_trimmed">Paragraph exceeds 1000 chars, saved as truncated paragraph</string>
+    <string name="bookmark_note_bubble_show_all">Show bookmark note bubbles</string>
+    <string name="bookmark_note_bubble_show_all_summary">When off, bubbles are hidden by default; tapping the bookmark text still shows them</string>
+    <string name="bookmark_note_bubble_no_style_click">Tap no-effect bookmarks to show notes</string>
+    <string name="bookmark_note_bubble_no_style_click_summary">Allow tapping bookmark text without any visual style to show its note bubble</string>
     <string name="change_source_delay">Change source delay</string>
     <string name="change_source_progress">Result %1$d, Progress %2$d / %3$d: %4$s</string>
     <string name="open_book_info_by_click_title">Click on the book title to open details</string>
