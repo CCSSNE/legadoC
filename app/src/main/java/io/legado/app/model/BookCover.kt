@@ -75,7 +75,12 @@ object BookCover {
         }
         defaultDrawable = runCatching {
             BitmapUtils.decodeBitmap(path!!, 600, 800)!!.toDrawable(appCtx.resources)
-        }.getOrDefault(appCtx.resources.getDrawable(R.drawable.image_cover_default, null))
+        }.getOrDefault(
+            appCtx.resources.getDrawable(
+                if (isNightTheme) R.drawable.image_cover_default_night else R.drawable.image_cover_default,
+                null
+            )
+        )
     }
 
     /**
