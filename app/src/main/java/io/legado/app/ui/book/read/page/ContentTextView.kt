@@ -833,8 +833,11 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
             return true
         }
         findBookmarkAt(x, y)?.let {
-            onBookmarkBodyClick(it)
-            return true
+            // 无备注的书签不劫持点击，保持原有的点击行为（翻页/区域点击等）
+            if (it.content.isNotBlank()) {
+                onBookmarkBodyClick(it)
+                return true
+            }
         }
         handleEpubNoteClick(x, y)?.let { return it }
         var handled = false
@@ -1453,38 +1456,40 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         val page = relativePage(selectStart.relativePagePos)
         page.getTextChapter().let { chapter ->
             ReadBook.book?.let { book ->
-                val bookmark = book.createBookMark().apply {
+                val startPos = chapter.getReadLength(page.index) +
+                    page.getPosByLineColumn(selectStart.lineIndex, selectStart.columnIndex)
+                val text = getSelectedText()
+                // 选中的文字命中已有书签时，直接进入该书签的设置页面
+                findHitBookmark(startPos, startPos + text.length)?.let { return it }
+                return book.createBookMark().apply {
                     chapterIndex = page.chapterIndex
-                    chapterPos = chapter.getReadLength(page.index) +
-                            page.getPosByLineColumn(selectStart.lineIndex, selectStart.columnIndex)
+                    chapterPos = startPos
                     chapterName = chapter.title
-                    bookText = getSelectedText()
+                    bookText = text
                 }
-                return checkBookmarkOverlap(bookmark)
             }
         }
         return null
     }
 
     /**
-     * 书签区间不允许与其他书签嵌套或交叉：
-     * 选择内容完全位于某个已有书签内部时返回该书签（用于直接编辑属性），
-     * 与已有书签交叉或包含已有书签时拒绝创建。
+     * 选中的文字与已有书签重叠时，按“重叠更多 > 书签更短 > 创建更晚”的优先级
+     * 选出一个书签，用于直接进入其设置页面；未命中返回 null。
      */
-    private fun checkBookmarkOverlap(newBookmark: Bookmark): Bookmark? {
-        val newStart = newBookmark.chapterPos
-        val newEnd = newBookmark.chapterPos + newBookmark.bookText.length
-        for (existing in bookmarks) {
-            val oldStart = existing.chapterPos
-            val oldEnd = existing.chapterPos + existing.bookText.length
-            if (newStart >= oldEnd || newEnd <= oldStart) continue
-            if (newStart >= oldStart && newEnd <= oldEnd) {
-                return existing
+    private fun findHitBookmark(selStart: Int, selEnd: Int): Bookmark? {
+        return bookmarks
+            .mapNotNull { existing ->
+                val oldStart = existing.chapterPos
+                val oldEnd = existing.chapterPos + existing.bookText.length
+                val overlap = min(selEnd, oldEnd) - max(selStart, oldStart)
+                if (overlap <= 0) null else existing to overlap
             }
-            context.toastOnUi(R.string.bookmark_overlap_tip)
-            return null
-        }
-        return newBookmark
+            .sortedWith(
+                compareByDescending<Pair<Bookmark, Int>> { it.second }
+                    .thenBy { it.first.bookText.length }
+                    .thenByDescending { it.first.time }
+            )
+            .firstOrNull()?.first
     }
 
     /**
@@ -1501,6 +1506,8 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
                     startPage.getPosByLineColumn(selectStart.lineIndex, selectStart.columnIndex)
                 val selEnd = chapter.getReadLength(endPage.index) +
                     endPage.getPosByLineColumn(selectEnd.lineIndex, selectEnd.columnIndex)
+                // 选中的文字命中已有书签时，直接进入该书签的设置页面
+                findHitBookmark(selStart, selEnd)?.let { return it }
                 val paragraphs = chapter.paragraphs
                 val startParagraph = paragraphs.firstOrNull { selStart in it.chapterIndices }
                 val endParagraph = paragraphs.firstOrNull { selEnd in it.chapterIndices }
@@ -1522,7 +1529,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
                     chapterName = chapter.title
                     bookText = text
                 }
-                return checkBookmarkOverlap(bookmark)
+                return bookmark
             }
         }
         return null
