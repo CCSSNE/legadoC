@@ -1517,6 +1517,7 @@
     <string name="bookmark_style_wave">Wave underline</string>
     <string name="bookmark_style_highlight">Highlight</string>
     <string name="bookmark_style_text_color">Text color</string>
+    <string name="bookmark_style_strikethrough">Strikethrough</string>
     <string name="bookmark_color">Color</string>
     <string name="bookmark_color_default">Default</string>
     <string name="paragraph_bookmark">Paragraph bookmark</string>

@@ -1171,6 +1171,7 @@
     <string name="bookmark_style_wave">波浪線</string>
     <string name="bookmark_style_highlight">高亮</string>
     <string name="bookmark_style_text_color">文字變色</string>
+    <string name="bookmark_style_strikethrough">刪除線</string>
     <string name="bookmark_color">顏色</string>
     <string name="bookmark_color_default">默認</string>
     <string name="paragraph_bookmark">段落書簽</string>

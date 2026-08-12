@@ -84,7 +84,8 @@ data class TextColumn(
         if (
             bookmarkStyleValue == io.legado.app.data.entities.BookmarkStyle.SINGLE_UNDERLINE ||
             bookmarkStyleValue == io.legado.app.data.entities.BookmarkStyle.DOUBLE_UNDERLINE ||
-            bookmarkStyleValue == io.legado.app.data.entities.BookmarkStyle.WAVE_UNDERLINE
+            bookmarkStyleValue == io.legado.app.data.entities.BookmarkStyle.WAVE_UNDERLINE ||
+            bookmarkStyleValue == io.legado.app.data.entities.BookmarkStyle.STRIKETHROUGH
         ) {
             drawBookmarkDecoration(canvas)
         }
@@ -157,6 +158,23 @@ data class TextColumn(
                     up = !up
                 }
                 canvas.drawPath(path, paint)
+            }
+
+            io.legado.app.data.entities.BookmarkStyle.STRIKETHROUGH -> {
+                val paint = Paint().apply {
+                    this.color = color
+                    strokeWidth = 1.5f.dpToPx()
+                    style = Paint.Style.STROKE
+                }
+                val baseline = textLine.lineBase - textLine.lineTop
+                val fontMetrics = if (textLine.isTitle) {
+                    ChapterProvider.titlePaint.fontMetrics
+                } else {
+                    ChapterProvider.contentPaint.fontMetrics
+                }
+                // 删除线画在文字中线（基线向上半个 ascent 处），与系统删除线位置一致
+                val y = baseline + fontMetrics.ascent * 0.5f
+                canvas.drawLine(start, y, end, y, paint)
             }
         }
     }

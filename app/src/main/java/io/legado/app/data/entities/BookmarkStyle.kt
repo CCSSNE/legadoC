@@ -10,4 +10,5 @@ object BookmarkStyle {
     const val WAVE_UNDERLINE = 3
     const val HIGHLIGHT = 4
     const val TEXT_COLOR = 5
+    const val STRIKETHROUGH = 6
 }
