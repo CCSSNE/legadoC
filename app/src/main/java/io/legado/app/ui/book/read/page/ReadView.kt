@@ -190,12 +190,6 @@ class ReadView(context: Context, attrs: AttributeSet) :
      */
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.action == MotionEvent.ACTION_DOWN) {
-            android.util.Log.d("ILLUSTRATION_DEBUG", "onTouchEvent DOWN x=${event.x} y=${event.y}")
-        }
-        if (event.action == MotionEvent.ACTION_UP) {
-            android.util.Log.d("ILLUSTRATION_DEBUG", "onTouchEvent UP x=${event.x} y=${event.y} longPressed=$longPressed isTextSelected=$isTextSelected")
-        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             val insets = this.rootWindowInsets.getInsetsIgnoringVisibility(
                 WindowInsets.Type.mandatorySystemGestures()
@@ -367,10 +361,8 @@ class ReadView(context: Context, attrs: AttributeSet) :
      * 长按选择
      */
     private fun onLongPress() {
-        android.util.Log.d("ILLUSTRATION_DEBUG", "onLongPress startX=$startX startY=$startY")
         kotlin.runCatching {
             val handled = curPage.longPress(startX, startY) { textPos: TextPos ->
-                android.util.Log.d("ILLUSTRATION_DEBUG", "onLongPress select callback fired pos=$textPos")
                 isTextSelected = true
                 pressOnTextSelected = true
                 initialTextPos.upData(textPos)

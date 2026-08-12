@@ -858,10 +858,6 @@ class ReadBookActivity : BaseReadBookActivity(),
      * 更新文字选择结束位置
      */
     override fun upSelectedEnd(x: Float, y: Float) = binding.run {
-        android.util.Log.d(
-            "ILLUSTRATION_DEBUG",
-            "upSelectedEnd x=$x y=$y cursorRight=${cursorRight.x},${cursorRight.y} bounds=${cursorRight.left},${cursorRight.top},${cursorRight.right},${cursorRight.bottom}"
-        )
         cursorRight.x = x
         cursorRight.y = y
         cursorRight.visible(true)
@@ -885,10 +881,6 @@ class ReadBookActivity : BaseReadBookActivity(),
      */
     override fun showTextActionMenu() {
         illustrationAnchor = computeIllustrationAnchor()
-        android.util.Log.d(
-            "ILLUSTRATION_DEBUG",
-            "showTextActionMenu anchor=$illustrationAnchor"
-        )
         textActionMenu.illustrationEnabled = illustrationAnchor != null
         val navigationBarHeight =
             if (!ReadBookConfig.hideNavigationBar && navigationBarGravity == Gravity.BOTTOM)
