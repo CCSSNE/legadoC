@@ -927,7 +927,7 @@ class TextChapterLayout(
         var scale = 1f
         if (totalHeight > visibleHeight) {
             scale = visibleHeight / totalHeight
-            totalHeight = visibleHeight
+            totalHeight = visibleHeight.toFloat()
         }
         if (totalHeight <= 0f) return
         if (pendingTextPage.lines.isNotEmpty() && visibleHeight - durY < totalHeight) {
