@@ -52,6 +52,12 @@ data class TextColumn(
         }
 
     override fun draw(view: ContentTextView, canvas: Canvas) {
+        val isHighlight =
+            bookmarkStyle == io.legado.app.data.entities.BookmarkStyle.HIGHLIGHT
+        if (isHighlight) {
+            // 高亮作为背景层先绘制，文字绘制在其上，避免颜色叠加导致文字对比度下降
+            drawHighlightBackground(canvas)
+        }
         val textPaint = if (textLine.isTitle) {
             ChapterProvider.titlePaint
         } else {
@@ -74,15 +80,27 @@ data class TextColumn(
         } else {
             view.drawTextWithPaperInk(canvas, charData, start, y, textPaint, enablePaperInk)
         }
-        if (bookmarkStyle != 0) {
-            drawBookmarkStyle(canvas)
+        if (bookmarkStyle != 0 && !isHighlight) {
+            drawBookmarkDecoration(canvas)
         }
         if (selected) {
             canvas.drawRect(start, 0f, end, textLine.height, view.selectedPaint)
         }
     }
 
-    private fun drawBookmarkStyle(canvas: Canvas) {
+    private fun drawHighlightBackground(canvas: Canvas) {
+        val color = if (bookmarkColor != 0) bookmarkColor else appCtx.accentColor
+        val red = Color.red(color)
+        val green = Color.green(color)
+        val blue = Color.blue(color)
+        val paint = Paint().apply {
+            this.color = Color.argb(0x66, red, green, blue)
+            style = Paint.Style.FILL
+        }
+        canvas.drawRect(start, 0f, end, textLine.height, paint)
+    }
+
+    private fun drawBookmarkDecoration(canvas: Canvas) {
         val color = if (bookmarkColor != 0) bookmarkColor else appCtx.accentColor
         when (bookmarkStyle) {
             io.legado.app.data.entities.BookmarkStyle.SINGLE_UNDERLINE -> {
@@ -134,17 +152,6 @@ data class TextColumn(
                     up = !up
                 }
                 canvas.drawPath(path, paint)
-            }
-
-            io.legado.app.data.entities.BookmarkStyle.HIGHLIGHT -> {
-                val red = Color.red(color)
-                val green = Color.green(color)
-                val blue = Color.blue(color)
-                val paint = Paint().apply {
-                    this.color = Color.argb(0x59, red, green, blue)
-                    style = Paint.Style.FILL
-                }
-                canvas.drawRect(start, 0f, end, textLine.height, paint)
             }
         }
     }

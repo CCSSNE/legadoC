@@ -256,10 +256,21 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         val rightBound = visibleRect.right
         val bottomBound = visibleRect.bottom
         val pageWidth = rightBound - leftBound
-        val maxTextWidth = (min(bubbleMaxWidth, pageWidth - bubblePadding * 2 - 2 * bubbleGap)).toInt()
-            .coerceAtLeast((bubbleMinWidth - bubblePadding * 2).toInt())
-        val layout = buildBubbleLayout(bookmark.content, maxTextWidth)
-        val bubbleW = (layout.width + bubblePadding * 2).coerceIn(bubbleMinWidth, bubbleMaxWidth)
+        // 先设置文字画笔，再按内容测量理想宽度：气泡宽度随内容多少自适应
+        bubbleTextPaint.textSize = 13f.spToPx()
+        bubbleTextPaint.color = context.getCompatColor(R.color.primaryText)
+        bubbleTextPaint.isAntiAlias = true
+        val maxBubbleWidth = min(
+            bubbleMaxWidth,
+            (pageWidth - bubblePadding * 2 - 2 * bubbleGap).coerceAtLeast(bubbleMinWidth)
+        )
+        val idealTextWidth =
+            bookmark.content.lines().maxOfOrNull { bubbleTextPaint.measureText(it) } ?: 0f
+        val bubbleW = (idealTextWidth + bubblePadding * 2).coerceIn(bubbleMinWidth, maxBubbleWidth)
+        val layout = buildBubbleLayout(
+            bookmark.content,
+            (bubbleW - bubblePadding * 2).toInt().coerceAtLeast(1)
+        )
         val bubbleH = layout.height + bubblePadding * 2
 
         // 已确定过位置的书签，保持其与正文的相对偏移，滚动/翻页时仅随正文平移
@@ -782,6 +793,16 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         return null
     }
 
+    /** 配图所属记录的全部图片 src（同组多图全屏可左右滑动），找不到时退回单图 */
+    private fun illustrationGroupSrcs(src: String): List<String> {
+        val book = ReadBook.book ?: return listOf(src)
+        return appDb.bookIllustrationDao.getByBook(book.bookUrl)
+            .firstOrNull { it.imageSrcsFromJson().contains(src) }
+            ?.imageSrcsFromJson()
+            ?.takeIf { it.isNotEmpty() }
+            ?: listOf(src)
+    }
+
     /**
      * 单击
      * @return true:已处理, false:未处理
@@ -822,12 +843,20 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
                 is ImageColumn -> {
                     val pdfHit = hitPdfIllustration(x, y, textLine, column)
                     if (pdfHit != null) {
-                        // PDF 页内配图热区：点击全屏查看
-                        activity?.showDialogFragment(PhotoDialog(pdfHit.second, isBook = true))
+                        // PDF 页内配图热区：点击全屏查看，同组多图可左右滑动
+                        val pdfSrcs = pdfHit.first.imageSrcsFromJson()
+                        val pdfPos = pdfSrcs.indexOf(pdfHit.second).coerceAtLeast(0)
+                        activity?.showDialogFragment(
+                            PhotoDialog(pdfSrcs, pdfPos, isBook = true)
+                        )
                         handled = true
                     } else if (column.src.startsWith(IllustrationHelp.SRC_PREFIX)) {
-                        // 配图：点击直接全屏查看
-                        activity?.showDialogFragment(PhotoDialog(column.src, isBook = true))
+                        // 配图：点击直接全屏查看，同组多图可左右滑动
+                        val groupSrcs = illustrationGroupSrcs(column.src)
+                        val groupPos = groupSrcs.indexOf(column.src).coerceAtLeast(0)
+                        activity?.showDialogFragment(
+                            PhotoDialog(groupSrcs, groupPos, isBook = true)
+                        )
                         handled = true
                     } else when (AppConfig.clickImgWay) {
                     "1" -> { //预览图片
