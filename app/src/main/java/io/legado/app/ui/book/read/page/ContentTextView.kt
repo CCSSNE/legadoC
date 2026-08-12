@@ -81,6 +81,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     private val bubbleDismissed = mutableSetOf<Long>()
     private val bubbleShown = mutableSetOf<Long>()
     private val bubbleOffsets = mutableMapOf<Long, Pair<Float, Float>>()
+    private val pageBookmarkAnchorCache = HashMap<TextPage, Map<Long, RectF>>()
     private val bubbleBgPaint = Paint()
     private val bubbleStrokePaint = Paint()
     private val bubbleArrowPaint = Paint()
@@ -216,19 +217,23 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     }
 
     private fun findBookmarkAnchorRect(page: TextPage, time: Long, offset: Float): RectF? {
-        for (line in page.lines) {
-            for (column in line.columns) {
-                if (column is TextColumn && column.bookmarkTime == time) {
-                    return RectF(
-                        column.start,
-                        line.lineTop + offset,
-                        column.end,
-                        line.lineBottom + offset
-                    )
+        val anchors = pageBookmarkAnchorCache.getOrPut(page) {
+            val map = HashMap<Long, RectF>()
+            for (line in page.lines) {
+                for (column in line.columns) {
+                    if (column is TextColumn && column.bookmarkTime != 0L) {
+                        map.putIfAbsent(
+                            column.bookmarkTime,
+                            RectF(column.start, line.lineTop, column.end, line.lineBottom)
+                        )
+                    }
                 }
             }
+            map
         }
-        return null
+        return anchors[time]?.let {
+            RectF(it.left, it.top + offset, it.right, it.bottom + offset)
+        }
     }
 
     private fun findBubbleRect(
