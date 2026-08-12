@@ -11,7 +11,9 @@ import android.media.MediaScannerConnection
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import android.provider.OpenableColumns
 import android.util.Size
+import android.webkit.MimeTypeMap
 import androidx.collection.LruCache
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
@@ -48,6 +50,9 @@ object IllustrationHelp {
     val VIDEO_EXTS = setOf("mp4", "webm", "mkv", "mov", "m4v", "3gp", "avi", "ts", "flv")
     val AUDIO_EXTS = setOf(
         "mp3", "m4a", "aac", "wav", "flac", "ogg", "opus", "wma", "amr", "mid", "midi", "3ga"
+    )
+    val IMAGE_EXTS = setOf(
+        "jpg", "jpeg", "png", "webp", "gif", "bmp", "svg", "heic", "heif", "avif", "ico"
     )
 
     /** 指纹窗口长度 */
@@ -97,6 +102,104 @@ object IllustrationHelp {
     fun isVideoSrc(src: String): Boolean = srcType(src) == "video"
 
     fun isAudioSrc(src: String): Boolean = srcType(src) == "audio"
+
+    /** 从系统文件选择器返回的 Uri 读取显示名（优先取文件名扩展名判断类型），失败返回 null */
+    fun queryDisplayName(context: Context, uri: Uri): String? {
+        var name: String? = null
+        runCatching {
+            context.contentResolver.query(
+                uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null
+            )?.use { c ->
+                if (c.moveToFirst()) name = c.getString(0)
+            }
+        }
+        return name?.takeIf { it.isNotBlank() }
+            ?: uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
+    }
+
+    /**
+     * 确定媒体扩展名，按可靠性依次：
+     * 1. 文件名扩展名（文件选择器可能返回错误的 MIME，甚至把视频/音频报成 image 类）；
+     * 2. MIME 映射；
+     * 3. 文件头嗅探。
+     */
+    fun resolveMediaExt(name: String?, mime: String?, bytes: ByteArray): String {
+        val nameExt = name?.substringAfterLast('.', "")?.lowercase()?.trim()
+        if (nameExt != null && (nameExt in VIDEO_EXTS || nameExt in AUDIO_EXTS || nameExt in IMAGE_EXTS)) {
+            return nameExt
+        }
+        val mimeExt = when {
+            mime?.startsWith("video/") == true ->
+                MimeTypeMap.getSingleton().getExtensionFromMimeType(mime)
+                    ?.takeIf { it.isNotBlank() } ?: "mp4"
+            mime?.startsWith("audio/") == true ->
+                MimeTypeMap.getSingleton().getExtensionFromMimeType(mime)
+                    ?.takeIf { it.isNotBlank() } ?: "mp3"
+            mime?.startsWith("image/") == true ->
+                MimeTypeMap.getSingleton().getExtensionFromMimeType(mime)
+                    ?.takeIf { it.isNotBlank() } ?: "jpg"
+            else -> null
+        }
+        if (mimeExt != null) return mimeExt
+        return sniffMediaExt(bytes)
+    }
+
+    /** 按文件头判断容器类型，识别不了时按图片处理 */
+    private fun sniffMediaExt(bytes: ByteArray): String {
+        if (bytes.size >= 12) {
+            val b = bytes
+            // ISO BMFF：mp4 / m4a / mov 等，offset 4 起为 "ftyp"
+            if (b[4] == 'f'.code.toByte() && b[5] == 't'.code.toByte() &&
+                b[6] == 'y'.code.toByte() && b[7] == 'p'.code.toByte()
+            ) {
+                val brand = String(b, 8, 4, Charsets.ISO_8859_1)
+                return if (brand.startsWith("M4A") || brand.startsWith("M4B")) "m4a" else "mp4"
+            }
+            // EBML：webm / mkv
+            if (b[0] == 0x1A.toByte() && b[1] == 0x45.toByte() &&
+                b[2] == 0xDF.toByte() && b[3] == 0xA3.toByte()
+            ) {
+                return "webm"
+            }
+            // RIFF：wav / avi / webp
+            if (b[0] == 'R'.code.toByte() && b[1] == 'I'.code.toByte() &&
+                b[2] == 'F'.code.toByte() && b[3] == 'F'.code.toByte()
+            ) {
+                return when (String(b, 8, 4, Charsets.ISO_8859_1)) {
+                    "WAVE" -> "wav"
+                    "AVI " -> "avi"
+                    "WEBP" -> "webp"
+                    else -> "jpg"
+                }
+            }
+        }
+        if (bytes.size >= 4) {
+            if (bytes[0] == 'f'.code.toByte() && bytes[1] == 'L'.code.toByte() &&
+                bytes[2] == 'a'.code.toByte() && bytes[3] == 'C'.code.toByte()
+            ) return "flac"
+            if (bytes[0] == 'O'.code.toByte() && bytes[1] == 'g'.code.toByte() &&
+                bytes[2] == 'g'.code.toByte() && bytes[3] == 'S'.code.toByte()
+            ) return "ogg"
+        }
+        if (bytes.size >= 3 && bytes[0] == 'I'.code.toByte() && bytes[1] == 'D'.code.toByte() &&
+            bytes[2] == '3'.code.toByte()
+        ) return "mp3"
+        // MP3 帧同步：FF Ex
+        if (bytes.size >= 2 && bytes[0] == 0xFF.toByte() && (bytes[1].toInt() and 0xE0) == 0xE0) {
+            return "mp3"
+        }
+        // JPEG / PNG / GIF
+        if (bytes.size >= 3 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() &&
+            bytes[2] == 0xFF.toByte()
+        ) return "jpg"
+        if (bytes.size >= 8 && bytes[0] == 0x89.toByte() && bytes[1] == 'P'.code.toByte() &&
+            bytes[2] == 'N'.code.toByte() && bytes[3] == 'G'.code.toByte()
+        ) return "png"
+        if (bytes.size >= 6 && bytes[0] == 'G'.code.toByte() && bytes[1] == 'I'.code.toByte() &&
+            bytes[2] == 'F'.code.toByte() && bytes[3] == '8'.code.toByte()
+        ) return "gif"
+        return "jpg"
+    }
 
     /** 音频/视频时长（毫秒），失败返回 0 */
     private val mediaDurationCache = object : LruCache<String, Long>(32) {}

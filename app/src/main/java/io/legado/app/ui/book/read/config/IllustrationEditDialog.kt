@@ -4,7 +4,6 @@ import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
-import android.webkit.MimeTypeMap
 import androidx.recyclerview.widget.LinearLayoutManager
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
@@ -128,19 +127,8 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
         val displayHeight = heightText.toIntOrNull() ?: 0
         val pageBreak = binding.cbPageBreak.isChecked
         val cellCount = layoutCellCount()
-        // 选择器放开 */* 后可能选到非媒体文件，先统一校验，避免中途保存一半
-        selectedUris.forEach { uri ->
-            val mime = requireContext().contentResolver.getType(uri)
-            val isMedia = mime?.startsWith("image/") == true ||
-                mime?.startsWith("video/") == true ||
-                mime?.startsWith("audio/") == true
-            if (!isMedia) {
-                toastOnUi("仅支持图片、视频、音频文件")
-                return
-            }
-        }
-        // 先读取所有媒体并保存，记录选择顺序与是否音频
-        val media = arrayListOf<Pair<String, Boolean>>() // src to isAudio
+        // 选择器放开 */* 后可能选到非媒体文件，先统一读取字节并解析类型，避免中途保存一半
+        val parsed = arrayListOf<Pair<ByteArray, String>>() // bytes to ext
         selectedUris.forEach { uri ->
             val bytes = kotlin.runCatching {
                 requireContext().contentResolver.openInputStream(uri)?.use { it.readBytes() }
@@ -149,18 +137,23 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
                 toastOnUi("读取媒体文件失败")
                 return
             }
+            // 文件选择器返回的 MIME 可能不可靠（null/octet-stream/报成 image 类），
+            // 按文件名扩展名 → MIME → 文件头嗅探三级判断，确保视频/音频不会落成 jpg
+            val name = IllustrationHelp.queryDisplayName(requireContext(), uri)
             val mime = requireContext().contentResolver.getType(uri)
-            val ext = when {
-                mime?.startsWith("video/") == true ->
-                    MimeTypeMap.getSingleton().getExtensionFromMimeType(mime)
-                        ?.takeIf { it.isNotBlank() } ?: "mp4"
-                mime?.startsWith("audio/") == true ->
-                    MimeTypeMap.getSingleton().getExtensionFromMimeType(mime)
-                        ?.takeIf { it.isNotBlank() } ?: "mp3"
-                else ->
-                    MimeTypeMap.getSingleton().getExtensionFromMimeType(mime)
-                        ?.takeIf { it.isNotBlank() } ?: "jpg"
+            val ext = IllustrationHelp.resolveMediaExt(name, mime, bytes)
+            if (ext !in IllustrationHelp.VIDEO_EXTS &&
+                ext !in IllustrationHelp.AUDIO_EXTS &&
+                ext !in IllustrationHelp.IMAGE_EXTS
+            ) {
+                toastOnUi("仅支持图片、视频、音频文件")
+                return
             }
+            parsed.add(bytes to ext)
+        }
+        // 保存媒体文件，记录选择顺序与是否音频
+        val media = arrayListOf<Pair<String, Boolean>>() // src to isAudio
+        parsed.forEach { (bytes, ext) ->
             val src = IllustrationHelp.newSrc(ext)
             IllustrationHelp.saveImage(book, src, bytes)
             media.add(src to IllustrationHelp.isAudioSrc(src))

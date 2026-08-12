@@ -178,6 +178,8 @@ class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
                 }
                 is ImageHolder -> {
                     loadImage(holder.binding.photoView, src)
+                    // 单击图片关闭全屏返回阅读页；PhotoView 内部单击与双击/缩放/长按互不冲突
+                    holder.binding.photoView.setOnClickListener { dismissAllowingStateLoss() }
                     holder.binding.photoView.setOnLongClickListener {
                         if (src.startsWith(IllustrationHelp.SRC_PREFIX)) {
                             showSaveSheet(src)
