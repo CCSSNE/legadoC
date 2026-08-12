@@ -1176,6 +1176,8 @@
     <string name="bookmark_note_bubble_no_style_click_summary">允許點擊無任何顯示樣式的書籤正文顯示其備註氣泡</string>
     <string name="bookmark_note_bubble_bg_alpha">備註氣泡背景透明度</string>
     <string name="bookmark_note_bubble_bg_alpha_summary">對所有備註氣泡統一生效</string>
+    <string name="bookmark_note_bubble_color">備註氣泡顏色</string>
+    <string name="bookmark_note_bubble_color_summary">自動取背景主色，或自定義顏色</string>
     <string name="bookmark_list_mode">列表</string>
     <string name="bookmark_grid_two">網格二列</string>
     <string name="bookmark_grid_three">網格三列</string>

@@ -26,6 +26,7 @@ import io.legado.app.data.entities.BookmarkStyle
 import io.legado.app.help.PaperInkHelper
 import io.legado.app.help.book.isOnLineTxt
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.illustration.IllustrationHelp
 import io.legado.app.help.illustration.AudioBlockPlayer
 import io.legado.app.help.illustration.imageSrcsFromJson
@@ -96,7 +97,8 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     private val bubbleLayoutCache = HashMap<Long, StaticLayout>()
     private var bubbleShowAllPref = true
     private var bubbleNoStyleClickPref = true
-    private var bubbleBgAlpha = 100
+    private var bubbleBgAlpha = 80
+    private var bubbleBgColor = 0
     private val bubbleBgPaint = Paint()
     private val bubbleStrokePaint = Paint()
     private val bubbleArrowPaint = Paint()
@@ -164,7 +166,8 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         bookmarks = list
         bubbleShowAllPref = context.getPrefBoolean(PreferKey.bookmarkNoteBubbleShowAll, true)
         bubbleNoStyleClickPref = context.getPrefBoolean(PreferKey.bookmarkNoteBubbleOnNoStyleClick, true)
-        bubbleBgAlpha = context.getPrefInt(PreferKey.bookmarkNoteBubbleBgAlpha, 100).coerceIn(0, 100)
+        bubbleBgAlpha = context.getPrefInt(PreferKey.bookmarkNoteBubbleBgAlpha, 80).coerceIn(0, 100)
+        bubbleBgColor = context.getPrefInt(PreferKey.bookmarkNoteBubbleColor, 0)
         bubbleLayoutCache.clear()
         invalidate()
     }
@@ -450,7 +453,12 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
 
     private fun drawBubble(canvas: Canvas, data: BubbleData) {
         val rect = data.rect
-        val bgColor = appCtx.backgroundColor
+        val bgColor = if (bubbleBgColor != 0) {
+            bubbleBgColor
+        } else {
+            // 自动：取阅读页背景主色（背景图片平均色），无背景时用主题背景色
+            ReadBookConfig.bgMeanColor.takeIf { it != 0 } ?: appCtx.backgroundColor
+        }
         bubbleBgPaint.color = Color.argb(
             Color.alpha(bgColor) * bubbleBgAlpha / 100,
             Color.red(bgColor),

@@ -141,6 +141,7 @@ object PreferKey {
     const val bookmarkNoteBubbleShowAll = "bookmarkNoteBubbleShowAll"
     const val bookmarkNoteBubbleOnNoStyleClick = "bookmarkNoteBubbleOnNoStyleClick"
     const val bookmarkNoteBubbleBgAlpha = "bookmarkNoteBubbleBgAlpha"
+    const val bookmarkNoteBubbleColor = "bookmarkNoteBubbleColor"
     const val epubParseMode = "epubParseMode"
     const val autoReadSpeed = "autoReadSpeed"
     const val autoReadMode = "autoReadMode"

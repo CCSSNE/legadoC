@@ -1353,6 +1353,8 @@
     <string name="bookmark_note_bubble_no_style_click_summary">允许点击无任何显示样式的书签正文显示其备注气泡</string>
     <string name="bookmark_note_bubble_bg_alpha">备注气泡背景透明度</string>
     <string name="bookmark_note_bubble_bg_alpha_summary">对所有备注气泡统一生效</string>
+    <string name="bookmark_note_bubble_color">备注气泡颜色</string>
+    <string name="bookmark_note_bubble_color_summary">自动取背景主色，或自定义颜色</string>
     <string name="bookmark_list_mode">列表</string>
     <string name="bookmark_grid_two">网格二列</string>
     <string name="bookmark_grid_three">网格三列</string>

@@ -15,6 +15,9 @@ import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import androidx.preference.Preference
+import com.jaredrummler.android.colorpicker.ColorPickerDialog
+import com.jaredrummler.android.colorpicker.ColorPickerDialogListener
+import com.jaredrummler.android.colorpicker.ColorShape
 import io.legado.app.R
 import io.legado.app.base.BasePrefDialogFragment
 import io.legado.app.constant.EventBus
@@ -22,7 +25,9 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.prefs.ColorPreference
 import io.legado.app.lib.prefs.fragment.PreferenceFragment
+import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.view.ThemeSeekBar
@@ -39,6 +44,7 @@ import io.legado.app.utils.postEvent
 import io.legado.app.utils.putPrefInt
 import io.legado.app.utils.removePref
 import io.legado.app.utils.setEdgeEffectColor
+import splitties.init.appCtx
 
 class MoreConfigDialog : BasePrefDialogFragment() {
     private val readPreferTag = "readPreferenceFragment"
@@ -98,7 +104,8 @@ class MoreConfigDialog : BasePrefDialogFragment() {
     }
 
     class ReadPreferenceFragment : PreferenceFragment(),
-        SharedPreferences.OnSharedPreferenceChangeListener {
+        SharedPreferences.OnSharedPreferenceChangeListener,
+        ColorPickerDialogListener {
 
         private val slopSquare by lazy { ViewConfiguration.get(requireContext()).scaledTouchSlop }
 
@@ -310,6 +317,7 @@ class MoreConfigDialog : BasePrefDialogFragment() {
                 }
 
                 PreferKey.bookmarkNoteBubbleBgAlpha -> showBubbleBgAlphaDialog()
+                PreferKey.bookmarkNoteBubbleColor -> showBubbleColorDialog()
             }
             return super.onPreferenceTreeClick(preference)
         }
@@ -319,7 +327,7 @@ class MoreConfigDialog : BasePrefDialogFragment() {
          */
         private fun showBubbleBgAlphaDialog() {
             val current = requireContext()
-                .getPrefInt(PreferKey.bookmarkNoteBubbleBgAlpha, 100)
+                .getPrefInt(PreferKey.bookmarkNoteBubbleBgAlpha, 80)
                 .coerceIn(0, 100)
             val valueView = TextView(requireContext()).apply {
                 text = "$current%"
@@ -375,6 +383,41 @@ class MoreConfigDialog : BasePrefDialogFragment() {
                 }
                 noButton()
             }
+        }
+
+        /**
+         * 备注气泡颜色：弹窗内选择颜色；"默认颜色"表示自动取背景主色
+         */
+        private fun showBubbleColorDialog() {
+            val current = requireContext().getPrefInt(PreferKey.bookmarkNoteBubbleColor, 0)
+            val dialog = ColorPreference.ColorPickerDialogCompat.newBuilder()
+                .setDialogType(ColorPickerDialog.TYPE_PRESETS)
+                .setDialogTitle(R.string.bookmark_note_bubble_color)
+                .setColorShape(ColorShape.CIRCLE)
+                .setPresets(ColorPickerDialog.MATERIAL_COLORS)
+                .setAllowPresets(true)
+                .setAllowCustom(true)
+                .setShowAlphaSlider(false)
+                .setShowColorShades(true)
+                .setShowDefaultColorButton(true)
+                .setColor(if (current != 0) current else appCtx.accentColor)
+                .setDialogId(1)
+                .create()
+            dialog.setColorPickerDialogListener(this)
+            dialog.show(parentFragmentManager, "bookmark_bubble_color_picker")
+        }
+
+        override fun onColorSelected(dialogId: Int, color: Int) {
+            val value = if (color == ColorPreference.ColorPickerDialogCompat.DEFAULT_COLOR) {
+                0
+            } else {
+                color
+            }
+            requireContext().putPrefInt(PreferKey.bookmarkNoteBubbleColor, value)
+            // 返回阅读页时 onResume 重新注入书签数据，气泡按新颜色刷新
+        }
+
+        override fun onDialogDismissed(dialogId: Int) {
         }
 
         @Suppress("SameParameterValue")

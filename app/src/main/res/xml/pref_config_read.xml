@@ -266,6 +266,13 @@
         app:iconSpaceReserved="false"
         app:isBottomBackground="true" />
 
+    <io.legado.app.lib.prefs.Preference
+        android:key="bookmarkNoteBubbleColor"
+        android:summary="@string/bookmark_note_bubble_color_summary"
+        android:title="@string/bookmark_note_bubble_color"
+        app:iconSpaceReserved="false"
+        app:isBottomBackground="true" />
+
     <io.legado.app.lib.prefs.SwitchPreference
         android:defaultValue="true"
         android:key="showReadTitleAddition"
