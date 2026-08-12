@@ -17,22 +17,15 @@ class FileAssociationViewModel(application: Application) : BaseAssociationViewMo
     val notSupportedLiveData = MutableLiveData<Pair<Uri, String>>()
 
     fun dispatchIntent(uri: Uri) {
-        android.util.Log.d("FA_DEBUG", "dispatchIntent uri=$uri")
         execute {
             //如果是普通的url，需要根据返回的内容判断是什么
             if (uri.isContentScheme() || uri.isFileScheme()) {
                 val fileDoc = FileDoc.fromUri(uri, false)
                 val fileName = fileDoc.name
-                android.util.Log.d(
-                    "FA_DEBUG",
-                    "fileName=$fileName archiveMatch=${fileName.matches(AppPattern.archiveFileRegex)}"
-                )
                 if (fileName.matches(AppPattern.archiveFileRegex)) {
-                    val extracted = ArchiveUtils.deCompress(fileDoc, ArchiveUtils.TEMP_PATH) {
-                        it.matches(bookFileRegex)
-                    }
-                    android.util.Log.d("FA_DEBUG", "extracted=${extracted.map { it.name }}")
-                    extracted.forEach { dispatch(FileDoc.fromFile(it)) }
+                    // 压缩包（本应用导出的配图 TXT/PDF 包）：走统一导入流程，
+                    // importBook 内用 importFiles 解压后保存到书籍目录再导入并还原配图
+                    importBookLiveData.postValue(fileDoc.uri)
                 } else {
                     dispatch(fileDoc)
                 }
@@ -65,7 +58,13 @@ class FileAssociationViewModel(application: Application) : BaseAssociationViewMo
     }
 
     fun importBook(uri: Uri) {
-        val book = LocalBook.importFile(uri)
-        openBookLiveData.postValue(book)
+        val fileDoc = FileDoc.fromUri(uri, false)
+        if (ArchiveUtils.isArchive(fileDoc.name)) {
+            val books = LocalBook.importFiles(uri)
+            openBookLiveData.postValue(books.firstOrNull())
+        } else {
+            val book = LocalBook.importFile(uri)
+            openBookLiveData.postValue(book)
+        }
     }
 }
