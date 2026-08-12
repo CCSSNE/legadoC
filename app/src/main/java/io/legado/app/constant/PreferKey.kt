@@ -264,6 +264,7 @@ object PreferKey {
     const val keyPageOnLongPress = "keyPageOnLongPress"
     const val volumeKeyPage = "volumeKeyPage"
     const val volumeKeyPageOnPlay = "volumeKeyPageOnPlay"
+    const val illustrationAudioVolumeKey = "illustrationAudioVolumeKey"
     const val mouseWheelPage = "mouseWheelPage"
     const val recordHeapDump = "recordHeapDump"
     const val optimizeRender = "optimizeRender"

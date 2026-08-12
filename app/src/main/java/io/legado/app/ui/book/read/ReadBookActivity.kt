@@ -1118,6 +1118,10 @@ class ReadBookActivity : BaseReadBookActivity(),
         if (!AppConfig.volumeKeyPageOnPlay && BaseReadAloudService.isPlay()) {
             return false
         }
+        // 内嵌音频块播放时，按设置决定音量键是否让位给系统调音量（像听书一样）
+        if (AppConfig.illustrationAudioVolumeKey && AudioBlockPlayer.isPlaying) {
+            return false
+        }
         handleKeyPage(direction, longPress)
         return true
     }

@@ -72,6 +72,7 @@ class ReadView(context: Context, attrs: AttributeSet) :
         get() = AppConfig.pageAnimationSpeed
     private var pressDown = false
     private var isMove = false
+    private var audioDragging = false
 
     //起始点
     var startX: Float = 0f
@@ -216,6 +217,13 @@ class ReadView(context: Context, attrs: AttributeSet) :
         }
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
+                // 音频块进度条拖动/点击优先级最高：按下即 seek，不触发翻页/长按/选区
+                val trackHit = curPage.hitAudioTrack(event.x, event.y)
+                if (trackHit != null) {
+                    audioDragging = true
+                    curPage.audioTrackSeek(trackHit, event.x)
+                    return true
+                }
                 callBack.screenOffTimerStart()
                 if (isTextSelected) {
                     curPage.cancelSelect()
@@ -234,6 +242,12 @@ class ReadView(context: Context, attrs: AttributeSet) :
             }
 
             MotionEvent.ACTION_MOVE -> {
+                if (audioDragging) {
+                    curPage.hitAudioTrack(event.x, event.y)?.let {
+                        curPage.audioTrackSeek(it, event.x)
+                    }
+                    return true
+                }
                 if (!pressDown) return true
                 val absX = abs(startX - event.x)
                 val absY = abs(startY - event.y)
@@ -254,6 +268,13 @@ class ReadView(context: Context, attrs: AttributeSet) :
 
             MotionEvent.ACTION_UP -> {
                 dismissSelectionMagnifier()
+                if (audioDragging) {
+                    audioDragging = false
+                    curPage.hitAudioTrack(event.x, event.y)?.let {
+                        curPage.audioTrackSeek(it, event.x)
+                    }
+                    return true
+                }
                 callBack.screenOffTimerStart()
                 removeCallbacks(longPressRunnable)
                 if (!pressDown) return true
@@ -274,6 +295,10 @@ class ReadView(context: Context, attrs: AttributeSet) :
 
             MotionEvent.ACTION_CANCEL -> {
                 dismissSelectionMagnifier()
+                if (audioDragging) {
+                    audioDragging = false
+                    return true
+                }
                 removeCallbacks(longPressRunnable)
                 if (!pressDown) return true
                 pressDown = false

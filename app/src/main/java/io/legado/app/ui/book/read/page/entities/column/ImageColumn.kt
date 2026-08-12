@@ -171,10 +171,11 @@ data class ImageColumn(
             )
         }
         // 进度条（右）+ 时长
-        val trackLeft = btnLeft + btnSize + padding
-        val trackRight = rectF.right - padding
-        val trackTop = btnTop + btnSize * 0.42f
-        val trackBottom = btnTop + btnSize * 0.58f
+        val trackRect = audioTrackRectF() ?: return
+        val trackLeft = trackRect.left
+        val trackRight = trackRect.right
+        val trackTop = trackRect.top
+        val trackBottom = trackRect.bottom
         AudioBlockPlayer.updateProgress()
         val book = ReadBook.book ?: return
         val duration = if (AudioBlockPlayer.durationMs > 0) {
@@ -206,6 +207,34 @@ data class ImageColumn(
             btnTop + btnSize - 2f.dpToPx(),
             textPaint
         )
+    }
+
+    /**
+     * 音频块进度条区域（与绘制共用同一套几何计算）；
+     * 非音频列返回 null，用于触摸命中判定。
+     */
+    fun audioTrackRectF(): RectF? {
+        if (mediaType != "audio") return null
+        val height = textLine.height
+        val padding = 10f.dpToPx()
+        val btnSize = (height - padding * 2).coerceAtLeast(20f.dpToPx())
+        val btnLeft = start + padding
+        val btnTop = (height - btnSize) / 2f
+        val trackLeft = btnLeft + btnSize + padding
+        val trackRight = end - padding
+        if (trackRight <= trackLeft) return null
+        return RectF(
+            trackLeft,
+            btnTop + btnSize * 0.42f,
+            trackRight,
+            btnTop + btnSize * 0.58f
+        )
+    }
+
+    /** 触摸点 x 是否落在音频块进度条上（列命中已保证 y 在块内） */
+    fun audioTrackHit(x: Float): Boolean {
+        val track = audioTrackRectF() ?: return false
+        return x >= track.left && x <= track.right
     }
 
     private fun mediaRectF(height: Float): RectF {

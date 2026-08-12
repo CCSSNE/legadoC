@@ -35,6 +35,7 @@ import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.read.page.entities.TextLine
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.entities.TextPos
+import io.legado.app.ui.book.read.page.entities.column.ImageColumn
 import io.legado.app.ui.book.read.page.provider.ChapterProvider
 import io.legado.app.ui.widget.BatteryView
 import io.legado.app.utils.activity
@@ -503,6 +504,20 @@ class PageView(context: Context) : FrameLayout(context) {
      */
     fun onClick(x: Float, y: Float): Boolean {
         return binding.contentTextView.click(x - imgBgPaddingStart, y - headerHeight)
+    }
+
+    /**
+     * 命中音频块进度条（坐标与 onClick 一致，未命中返回 null）
+     */
+    fun hitAudioTrack(x: Float, y: Float): ImageColumn? {
+        return binding.contentTextView.hitAudioTrack(x - imgBgPaddingStart, y - headerHeight)
+    }
+
+    /**
+     * 音频块进度条跳转（坐标与 onClick 一致）
+     */
+    fun audioTrackSeek(column: ImageColumn, x: Float) {
+        binding.contentTextView.audioTrackSeek(column, x - imgBgPaddingStart)
     }
 
     /**

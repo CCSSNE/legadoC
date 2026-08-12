@@ -136,10 +136,17 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         }
     }
 
+    private val audioBlockStateListener = { postInvalidate() }
+
     init {
         callBack = activity as CallBack
-        // 音频块播放状态/进度变化时重绘，保证进度条跟随
-        AudioBlockPlayer.onStateChange = { postInvalidate() }
+        // 音频块播放状态/进度变化时重绘，保证进度条跟随（多页实例各自监听）
+        AudioBlockPlayer.addStateChangeListener(audioBlockStateListener)
+    }
+
+    override fun onDetachedFromWindow() {
+        AudioBlockPlayer.removeStateChangeListener(audioBlockStateListener)
+        super.onDetachedFromWindow()
     }
 
     /**
@@ -878,11 +885,15 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
 
                 is ImageColumn -> {
                     if (column.mediaType == "audio") {
-                        // 音频块：点击播放/暂停（不放大、不弹窗）
+                        // 音频块：点进度条跳转，点播放键播放/暂停（不放大、不弹窗）
                         if (column.src.startsWith(IllustrationHelp.SRC_PREFIX)) {
                             val book = ReadBook.book
                             if (book != null) {
-                                AudioBlockPlayer.toggle(context, book, column.src)
+                                if (column.audioTrackHit(x)) {
+                                    audioTrackSeek(column, x)
+                                } else {
+                                    AudioBlockPlayer.toggle(context, book, column.src)
+                                }
                                 handled = true
                             }
                         }
@@ -974,6 +985,27 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
             }
         }
         return handled
+    }
+
+    /**
+     * 命中音频块进度条：返回对应列（用于拖动/点击跳转），未命中返回 null。
+     * 进度条触摸优先级最高，阅读页在按下时先走这里。
+     */
+    fun hitAudioTrack(x: Float, y: Float): ImageColumn? {
+        var hit: ImageColumn? = null
+        touch(x, y) { _, _, _, _, column ->
+            if (column is ImageColumn && column.mediaType == "audio" && column.audioTrackHit(x)) {
+                hit = column
+            }
+        }
+        return hit
+    }
+
+    /** 按触摸 x 对音频块进度条跳转 */
+    fun audioTrackSeek(column: ImageColumn, x: Float) {
+        val track = column.audioTrackRectF() ?: return
+        val ratio = ((x - track.left) / track.width()).coerceIn(0f, 1f)
+        AudioBlockPlayer.seekTo((AudioBlockPlayer.durationMs * ratio).toLong())
     }
 
     private fun handleEpubNoteClick(x: Float, y: Float): Boolean? {

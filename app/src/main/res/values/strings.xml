@@ -384,6 +384,8 @@
     <string name="sys_file_picker">System file picker</string>
     <string name="new_version">New version</string>
     <string name="volume_key_page_on_play">Volume keys to turn page when reading</string>
+    <string name="illustration_audio_volume_key">配图音频播放时音量键调音量</string>
+    <string name="illustration_audio_volume_key_summary">内嵌音频块播放时，音量键不再翻页，改为调节音量</string>
     <string name="tip_margin_change">Margin adjustment</string>
     <string name="allow_update">Enable update</string>
     <string name="disable_update">Disable update</string>

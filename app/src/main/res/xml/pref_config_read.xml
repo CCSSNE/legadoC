@@ -116,6 +116,14 @@
         app:isBottomBackground="true" />
 
     <io.legado.app.lib.prefs.SwitchPreference
+        android:defaultValue="true"
+        android:key="illustrationAudioVolumeKey"
+        android:title="@string/illustration_audio_volume_key"
+        android:summary="@string/illustration_audio_volume_key_summary"
+        app:iconSpaceReserved="false"
+        app:isBottomBackground="true" />
+
+    <io.legado.app.lib.prefs.SwitchPreference
         android:defaultValue="false"
         android:key="keyPageOnLongPress"
         android:title="@string/key_page_on_long_press"

@@ -1521,6 +1521,9 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val volumeKeyPageOnPlay
         get() = appCtx.getPrefBoolean(PreferKey.volumeKeyPageOnPlay, true)
 
+    val illustrationAudioVolumeKey
+        get() = appCtx.getPrefBoolean(PreferKey.illustrationAudioVolumeKey, true)
+
     val mouseWheelPage
         get() = appCtx.getPrefBoolean(PreferKey.mouseWheelPage, true)
 

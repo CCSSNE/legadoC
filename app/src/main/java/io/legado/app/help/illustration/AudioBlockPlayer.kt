@@ -25,14 +25,28 @@ object AudioBlockPlayer {
     var durationMs = 0L
         private set
 
-    /** 播放状态/进度变化回调（由阅读视图注册，用于重绘音频块） */
-    var onStateChange: (() -> Unit)? = null
+    /** 播放状态/进度变化回调（由阅读视图注册，用于重绘音频块；支持多实例同时监听） */
+    private val stateChangeListeners = mutableListOf<() -> Unit>()
+
+    fun addStateChangeListener(listener: () -> Unit) {
+        if (listener !in stateChangeListeners) {
+            stateChangeListeners.add(listener)
+        }
+    }
+
+    fun removeStateChangeListener(listener: () -> Unit) {
+        stateChangeListeners.remove(listener)
+    }
+
+    private fun notifyStateChange() {
+        stateChangeListeners.toList().forEach { it() }
+    }
 
     private val handler = Handler(Looper.getMainLooper())
     private val tick = object : Runnable {
         override fun run() {
             updateProgress()
-            onStateChange?.invoke()
+            notifyStateChange()
             handler.postDelayed(this, 500L)
         }
     }
@@ -49,7 +63,7 @@ object AudioBlockPlayer {
                 player!!.play()
                 handler.post(tick)
             }
-            onStateChange?.invoke()
+            notifyStateChange()
             return
         }
         stop()
@@ -64,7 +78,7 @@ object AudioBlockPlayer {
                 override fun onIsPlayingChanged(playing: Boolean) {
                     this@AudioBlockPlayer.isPlaying = playing
                     updateProgress()
-                    onStateChange?.invoke()
+                    notifyStateChange()
                     if (playing) {
                         handler.post(tick)
                     } else {
@@ -75,16 +89,16 @@ object AudioBlockPlayer {
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     if (playbackState == Player.STATE_READY) {
                         updateProgress()
-                        onStateChange?.invoke()
+                        notifyStateChange()
                     } else if (playbackState == Player.STATE_ENDED) {
                         this@AudioBlockPlayer.isPlaying = false
                         handler.removeCallbacks(tick)
-                        onStateChange?.invoke()
+                        notifyStateChange()
                     }
                 }
             })
         }
-        onStateChange?.invoke()
+        notifyStateChange()
     }
 
     fun updateProgress() {
@@ -92,6 +106,14 @@ object AudioBlockPlayer {
             positionMs = it.currentPosition.coerceAtLeast(0L)
             durationMs = it.duration.coerceAtLeast(0L)
         }
+    }
+
+    /** 拖动/点击进度条：跳转到指定位置（未加载时忽略） */
+    fun seekTo(ms: Long) {
+        val target = ms.coerceAtLeast(0L)
+        player?.seekTo(target)
+        positionMs = target
+        notifyStateChange()
     }
 
     fun stop() {
