@@ -14,6 +14,7 @@ import android.widget.Magnifier
 import io.legado.app.R
 import io.legado.app.constant.PageAnim
 import io.legado.app.data.entities.BookProgress
+import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.model.ReadAloud
@@ -725,6 +726,12 @@ class ReadView(context: Context, attrs: AttributeSet) :
     fun upPageTouchClick() {
         this.pageTouchClick = AppConfig.pageTouchClick
         setRect9x()
+    }
+
+    fun setBookmarks(list: List<Bookmark>) {
+        prevPage.setBookmarks(list)
+        curPage.setBookmarks(list)
+        nextPage.setBookmarks(list)
     }
 
     /**

@@ -57,6 +57,7 @@ data class TextLine(
     val height: Float inline get() = lineBottom - lineTop
     val canvasRecorder = CanvasRecorderFactory.create()
     var searchResultColumnCount = 0
+    var bookmarkColumnCount = 0
     var isReadAloud: Boolean = false
         set(value) {
             if (field != value) {
@@ -269,7 +270,7 @@ data class TextLine(
         if (wordSpacing != 0f && (!atLeastApi26 || !wordSpacingWorking)) {
             return false
         }
-        return searchResultColumnCount == 0
+        return searchResultColumnCount == 0 && bookmarkColumnCount == 0
     }
 
     fun invalidate() {

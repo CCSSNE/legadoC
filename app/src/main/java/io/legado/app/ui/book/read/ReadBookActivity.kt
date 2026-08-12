@@ -258,6 +258,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     private val prevPageDebounce by lazy { Debounce { keyPage(PageDirection.PREV) } }
     private var bookChanged = false
     private var pageChanged = false
+    private var bookmarkLoadChapterIndex = -1
     private var lastReadAloudChapterPos: Int? = null
     private var lastReadAloudChapterIndex: Int? = null
     private var finishReadAloudBackstage = false
@@ -391,6 +392,8 @@ class ReadBookActivity : BaseReadBookActivity(),
         binding.readView.upTime()
         updateReadAloudPageFloating()
         screenOffTimerStart()
+        bookmarkLoadChapterIndex = -1
+        upChapterBookmarks()
         // 网络监听，当从无网切换到网络环境时同步进度（注意注册的同时就会收到监听，因此界面激活时无需重复执行同步操作）
         networkChangedListener.register()
         networkChangedListener.onNetworkChanged = {
@@ -924,6 +927,16 @@ class ReadBookActivity : BaseReadBookActivity(),
                 return true
             }
 
+            R.id.menu_paragraph_bookmark -> binding.readView.curPage.let {
+                val bookmark = it.createParagraphBookmark()
+                if (bookmark == null) {
+                    toastOnUi(R.string.create_bookmark_error)
+                } else {
+                    showDialogFragment(BookmarkDialog(bookmark))
+                }
+                return true
+            }
+
             R.id.menu_replace -> {
                 val scopes = arrayListOf<String>()
                 ReadBook.book?.name?.let {
@@ -1149,6 +1162,7 @@ class ReadBookActivity : BaseReadBookActivity(),
      */
     override fun pageChanged() {
         pageChanged = true
+        upChapterBookmarks()
         binding.readView.onPageChange()
         postAttachReadAloudProgressIfCurrentPage()
         handler.post {
@@ -1157,6 +1171,31 @@ class ReadBookActivity : BaseReadBookActivity(),
         executor.execute {
             startBackupJob()
         }
+    }
+
+    /**
+     * 加载当前章节的书签数据并注入阅读页（用于书签样式渲染与备注气泡）
+     */
+    private fun upChapterBookmarks() {
+        val book = ReadBook.book ?: return
+        val chapterIndex = ReadBook.durChapterIndex
+        if (bookmarkLoadChapterIndex == chapterIndex) return
+        bookmarkLoadChapterIndex = chapterIndex
+        lifecycleScope.launch(IO) {
+            val bookmarks = appDb.bookmarkDao.getByBook(book.name, book.author)
+                .filter { it.chapterIndex == chapterIndex }
+            withContext(Main) {
+                binding.readView.setBookmarks(bookmarks)
+            }
+        }
+    }
+
+    /**
+     * 书签新增/编辑/删除后重新排版当前章节，让阅读页应用最新的书签样式
+     */
+    private fun reloadCurrentChapterForBookmark() {
+        if (!isInitFinish) return
+        ReadBook.openChapter(ReadBook.durChapterIndex, ReadBook.durChapterPos, false)
     }
 
     /**
@@ -2033,6 +2072,11 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun observeLiveBus() = binding.run {
         observeEvent<String>(EventBus.TIME_CHANGED) { readView.upTime() }
         observeEvent<Int>(EventBus.BATTERY_CHANGED) { readView.upBattery(it) }
+        observeEvent<Boolean>(EventBus.BOOKMARK_CHANGED) {
+            bookmarkLoadChapterIndex = -1
+            upChapterBookmarks()
+            reloadCurrentChapterForBookmark()
+        }
         observeEvent<Boolean>(EventBus.MEDIA_BUTTON) {
             if (it) {
                 onClickReadAloud()

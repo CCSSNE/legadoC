@@ -422,6 +422,10 @@ class PageView(context: Context) : FrameLayout(context) {
         binding.contentTextView.invalidate()
     }
 
+    fun setBookmarks(list: List<Bookmark>) {
+        binding.contentTextView.setBookmarks(list)
+    }
+
     /**
      * 设置无障碍文本
      */
@@ -594,6 +598,10 @@ class PageView(context: Context) : FrameLayout(context) {
 
     fun createBookmark(): Bookmark? {
         return binding.contentTextView.createBookmark()
+    }
+
+    fun createParagraphBookmark(): Bookmark? {
+        return binding.contentTextView.createParagraphBookmark()
     }
 
     fun relativePage(relativePagePos: Int): TextPage {

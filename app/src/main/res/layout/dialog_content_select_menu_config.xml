@@ -56,6 +56,12 @@
                 android:text="@string/bookmark" />
 
             <io.legado.app.lib.theme.view.ThemeCheckBox
+                android:id="@+id/cb_paragraph_bookmark"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/paragraph_bookmark" />
+
+            <io.legado.app.lib.theme.view.ThemeCheckBox
                 android:id="@+id/cb_aloud"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"

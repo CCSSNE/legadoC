@@ -63,6 +63,8 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     private val selectEnd = TextPos(0, -1, -1)
     var textPage: TextPage = TextPage()
         private set
+    var bookmarks: List<Bookmark> = emptyList()
+        private set
     var isMainView = false
     var longScreenshot = false
     var reverseStartCursor = false
@@ -110,6 +112,13 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         if (isScroll) {
             postInvalidate()
         } else {
+            invalidate()
+        }
+    }
+
+    fun setBookmarks(list: List<Bookmark>) {
+        if (bookmarks != list) {
+            bookmarks = list
             invalidate()
         }
     }
@@ -969,6 +978,71 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
             }
         }
         return null
+    }
+
+    /**
+     * 创建段落书签：以完整段落为最小单位扩展选区，段落长度上限 1000 字。
+     */
+    fun createParagraphBookmark(): Bookmark? {
+        if (!selectStart.isSelected() || !selectEnd.isSelected()) return null
+        val startPage = relativePage(selectStart.relativePagePos)
+        val endPage = relativePage(selectEnd.relativePagePos)
+        if (startPage.textChapter !== endPage.textChapter) return null
+        startPage.getTextChapter().let { chapter ->
+            ReadBook.book?.let { book ->
+                val selStart = chapter.getReadLength(startPage.index) +
+                    startPage.getPosByLineColumn(selectStart.lineIndex, selectStart.columnIndex)
+                val selEnd = chapter.getReadLength(endPage.index) +
+                    endPage.getPosByLineColumn(selectEnd.lineIndex, selectEnd.columnIndex)
+                val paragraphs = chapter.paragraphs
+                val startParagraph = paragraphs.firstOrNull { selStart in it.chapterIndices }
+                val endParagraph = paragraphs.firstOrNull { selEnd in it.chapterIndices }
+                if (startParagraph == null || endParagraph == null) {
+                    return null
+                }
+                val paraStart = startParagraph.chapterPosition
+                val paraEnd = endParagraph.lastLine.chapterPosition +
+                    endParagraph.lastLine.charSize +
+                    if (endParagraph.isParagraphEnd) 1 else 0
+                val (bmStart, bmEnd) = expandParagraphToLimit(paraStart, paraEnd, selStart, selEnd)
+                if (paraEnd - paraStart > bmEnd - bmStart) {
+                    context.toastOnUi(R.string.paragraph_bookmark_trimmed)
+                }
+                val text = chapter.getContent().substring(bmStart, bmEnd)
+                return book.createBookMark().apply {
+                    chapterIndex = startPage.chapterIndex
+                    chapterPos = bmStart
+                    chapterName = chapter.title
+                    bookText = text
+                }
+            }
+        }
+        return null
+    }
+
+    private fun expandParagraphToLimit(
+        paraStart: Int,
+        paraEnd: Int,
+        selStart: Int,
+        selEnd: Int
+    ): Pair<Int, Int> {
+        val total = paraEnd - paraStart
+        if (total <= 1000) return paraStart to paraEnd
+        val selLen = selEnd - selStart
+        if (selLen >= 1000) return selStart to selStart + 1000
+        var before = min(selStart - paraStart, (1000 - selLen) / 2)
+        var after = 1000 - selLen - before
+        var start = selStart - before
+        var end = selEnd + after
+        if (end > paraEnd) {
+            end = paraEnd
+            start = maxOf(paraStart, end - 1000)
+        }
+        if (start < paraStart) {
+            start = paraStart
+            end = start + 1000
+        }
+        return start to end
     }
 
     private fun relativeOffset(relativePos: Int): Float {

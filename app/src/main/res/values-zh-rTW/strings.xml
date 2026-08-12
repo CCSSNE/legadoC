@@ -1159,6 +1159,16 @@
     <string name="export_md">導出(MD)（無法導入）</string>
     <string name="bookmark_import">導入書簽</string>
     <string name="bookmark_import_failed">導入失敗，僅支持 JSON 書簽文件</string>
+    <string name="bookmark_style">顯示樣式</string>
+    <string name="bookmark_style_none">無效果</string>
+    <string name="bookmark_style_single">單下劃線</string>
+    <string name="bookmark_style_double">雙下劃線</string>
+    <string name="bookmark_style_wave">波浪線</string>
+    <string name="bookmark_style_highlight">高亮</string>
+    <string name="bookmark_color">顏色</string>
+    <string name="bookmark_color_default">默認</string>
+    <string name="paragraph_bookmark">段落書籤</string>
+    <string name="paragraph_bookmark_trimmed">段落超過1000字，已截取保存</string>
     <string name="change_source_delay">换源间隔</string>
     <string name="change_source_progress">" 結果 %1$d, 當前進度 %2$d / %3$d: %4$s"</string>
     <string name="open_book_info_by_click_title">点击书名打开详情</string>

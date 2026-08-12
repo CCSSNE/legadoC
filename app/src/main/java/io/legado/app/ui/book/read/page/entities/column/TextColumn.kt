@@ -1,14 +1,20 @@
 package io.legado.app.ui.book.read.page.entities.column
 
 import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Path
 import android.os.Build
 import androidx.annotation.Keep
 import io.legado.app.help.config.ReadBookConfig
+import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.ui.book.read.page.ContentTextView
 import io.legado.app.ui.book.read.page.entities.TextLine
 import io.legado.app.ui.book.read.page.entities.TextLine.Companion.emptyTextLine
 import io.legado.app.ui.book.read.page.provider.ChapterProvider
+import io.legado.app.utils.dpToPx
+import splitties.init.appCtx
 
 /**
  * 文字列
@@ -18,6 +24,9 @@ data class TextColumn(
     override var start: Float,
     override var end: Float,
     override val charData: String,
+    var bookmarkStyle: Int = 0,
+    var bookmarkColor: Int = 0,
+    var bookmarkTime: Long = 0,
 ) : TextBaseColumn {
 
     override var textLine: TextLine = emptyTextLine
@@ -65,9 +74,84 @@ data class TextColumn(
         } else {
             view.drawTextWithPaperInk(canvas, charData, start, y, textPaint, enablePaperInk)
         }
+        if (bookmarkStyle != 0) {
+            drawBookmarkStyle(canvas)
+        }
         if (selected) {
             canvas.drawRect(start, 0f, end, textLine.height, view.selectedPaint)
         }
+    }
+
+    private fun drawBookmarkStyle(canvas: Canvas) {
+        val color = if (bookmarkColor != 0) bookmarkColor else appCtx.accentColor
+        when (bookmarkStyle) {
+            io.legado.app.data.entities.BookmarkStyle.SINGLE_UNDERLINE -> {
+                val paint = Paint().apply {
+                    this.color = color
+                    strokeWidth = 1.5f.dpToPx()
+                    style = Paint.Style.STROKE
+                }
+                val y = underlineY()
+                canvas.drawLine(start, y, end, y, paint)
+            }
+
+            io.legado.app.data.entities.BookmarkStyle.DOUBLE_UNDERLINE -> {
+                val paint = Paint().apply {
+                    this.color = color
+                    strokeWidth = 1.5f.dpToPx()
+                    style = Paint.Style.STROKE
+                }
+                val y1 = underlineY()
+                val y2 = y1 + 3f.dpToPx()
+                canvas.drawLine(start, y1, end, y1, paint)
+                canvas.drawLine(start, y2, end, y2, paint)
+            }
+
+            io.legado.app.data.entities.BookmarkStyle.WAVE_UNDERLINE -> {
+                val paint = Paint().apply {
+                    this.color = color
+                    strokeWidth = 1.5f.dpToPx()
+                    style = Paint.Style.STROKE
+                    isAntiAlias = true
+                }
+                val y = underlineY()
+                val waveLength = 6f.dpToPx()
+                val amplitude = 2f.dpToPx()
+                val path = Path()
+                path.moveTo(start, y)
+                var x = start
+                var up = true
+                while (x < end) {
+                    val nextX = minOf(x + waveLength, end)
+                    val targetY = if (up) y - amplitude else y + amplitude
+                    path.quadTo(
+                        (x + nextX) / 2f,
+                        targetY,
+                        nextX,
+                        y
+                    )
+                    x = nextX
+                    up = !up
+                }
+                canvas.drawPath(path, paint)
+            }
+
+            io.legado.app.data.entities.BookmarkStyle.HIGHLIGHT -> {
+                val red = Color.red(color)
+                val green = Color.green(color)
+                val blue = Color.blue(color)
+                val paint = Paint().apply {
+                    this.color = Color.argb(0x59, red, green, blue)
+                    style = Paint.Style.FILL
+                }
+                canvas.drawRect(start, 0f, end, textLine.height, paint)
+            }
+        }
+    }
+
+    private fun underlineY(): Float {
+        val baseline = textLine.lineBase - textLine.lineTop
+        return baseline + 2f.dpToPx()
     }
 
 }

@@ -72,6 +72,100 @@
 
                 </io.legado.app.ui.widget.text.TextInputLayout>
 
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingTop="8dp"
+                    android:text="@string/bookmark_style"
+                    android:textColor="@color/secondaryText"
+                    android:textSize="13sp" />
+
+                <HorizontalScrollView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:scrollbars="none">
+
+                    <RadioGroup
+                        android:id="@+id/rg_style"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+
+                        <RadioButton
+                            android:id="@+id/rb_style_none"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:paddingStart="4dp"
+                            android:paddingEnd="8dp"
+                            android:text="@string/bookmark_style_none" />
+
+                        <RadioButton
+                            android:id="@+id/rb_style_single"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:paddingStart="4dp"
+                            android:paddingEnd="8dp"
+                            android:text="@string/bookmark_style_single" />
+
+                        <RadioButton
+                            android:id="@+id/rb_style_double"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:paddingStart="4dp"
+                            android:paddingEnd="8dp"
+                            android:text="@string/bookmark_style_double" />
+
+                        <RadioButton
+                            android:id="@+id/rb_style_wave"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:paddingStart="4dp"
+                            android:paddingEnd="8dp"
+                            android:text="@string/bookmark_style_wave" />
+
+                        <RadioButton
+                            android:id="@+id/rb_style_highlight"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:paddingStart="4dp"
+                            android:paddingEnd="8dp"
+                            android:text="@string/bookmark_style_highlight" />
+
+                    </RadioGroup>
+
+                </HorizontalScrollView>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingTop="8dp">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/bookmark_color"
+                        android:textColor="@color/secondaryText"
+                        android:textSize="13sp" />
+
+                    <TextView
+                        android:id="@+id/tv_color_default"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:padding="8dp"
+                        android:text="@string/bookmark_color_default"
+                        android:textColor="?attr/colorAccent" />
+
+                    <com.jaredrummler.android.colorpicker.ColorPanelView
+                        android:id="@+id/color_panel"
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:layout_marginStart="8dp" />
+
+                </LinearLayout>
+
             </LinearLayout>
 
         </androidx.core.widget.NestedScrollView>

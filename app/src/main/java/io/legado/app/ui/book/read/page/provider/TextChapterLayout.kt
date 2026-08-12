@@ -22,6 +22,7 @@ import io.legado.app.constant.AppPattern
 import io.legado.app.constant.PageAnim
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.book.BookContent
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.getBookSource
@@ -146,6 +147,14 @@ class TextChapterLayout(
 
     private var isCompleted = false
     private val job: Coroutine<*>
+
+    private val chapterBookmarks: List<Bookmark> by lazy {
+        runCatching {
+            appDb.bookmarkDao.getByBook(book.name, book.author)
+                .filter { it.chapterIndex == bookChapter.index }
+                .sortedBy { it.chapterPos }
+        }.getOrDefault(emptyList())
+    }
 
     var exception: Throwable? = null
 
@@ -2428,6 +2437,7 @@ class TextChapterLayout(
             }
         }
         exceed(absStartX, textLine, words)
+        applyBookmarksToLine(textLine)
     }
 
     /**
@@ -2462,6 +2472,44 @@ class TextChapterLayout(
             }
         }
         exceed(absStartX, textLine, words)
+        applyBookmarksToLine(textLine)
+    }
+
+    /**
+     * 根据书签章节位置区间，为当前行的文本列打上书签样式标记。
+     */
+    private fun applyBookmarksToLine(textLine: TextLine) {
+        if (chapterBookmarks.isEmpty()) return
+        val lineStart = textLine.chapterPosition
+        var offset = 0
+        for (column in textLine.columns) {
+            val colLen = if (column is TextBaseColumn) column.charData.length else 1
+            val colStartAbs = lineStart + offset
+            val colEndAbs = colStartAbs + colLen
+            if (column is TextColumn) {
+                var hit: Bookmark? = null
+                for (bookmark in chapterBookmarks) {
+                    if (bookmark.chapterPos + bookmark.bookText.length <= colStartAbs) {
+                        continue
+                    }
+                    if (bookmark.chapterPos >= colEndAbs) {
+                        break
+                    }
+                    if (hit == null || bookmark.time > hit.time) {
+                        hit = bookmark
+                    }
+                }
+                if (hit != null) {
+                    column.bookmarkStyle = hit.style
+                    column.bookmarkColor = hit.color
+                    column.bookmarkTime = hit.time
+                    if (hit.style != 0) {
+                        textLine.bookmarkColumnCount++
+                    }
+                }
+            }
+            offset += colLen
+        }
     }
 
     /**
