@@ -29,7 +29,6 @@ import io.legado.app.help.book.BookContent
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.getBookSource
 import io.legado.app.help.book.isEpub
-import io.legado.app.help.book.isLocalTxt
 import io.legado.app.help.illustration.IllustrationHelp
 import io.legado.app.help.illustration.imageSrcsFromJson
 import io.legado.app.help.config.AppConfig
@@ -297,11 +296,11 @@ class TextChapterLayout(
         bookContent: BookContent,
     ) {
         val contents = bookContent.textList
-        val illustrations = if (book.isLocalTxt) {
-            appDb.bookIllustrationDao.getByBookAndChapter(book.bookUrl, bookChapter.index)
-        } else {
-            emptyList()
-        }
+        // 在线书/本地书/EPUB 统一支持配图：插图记录按 bookUrl+章节索引关联
+        val illustrations = appDb.bookIllustrationDao.getByBookAndChapter(
+            book.bookUrl,
+            bookChapter.index
+        )
         val placedIllustrationIds = hashSetOf<Long>()
         val imageStyle = book.getImageStyle()
         val isSingleImageStyle = imageStyle.equals(Book.imgStyleSingle, true)

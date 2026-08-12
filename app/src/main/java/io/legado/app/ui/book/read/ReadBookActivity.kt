@@ -756,24 +756,12 @@ class ReadBookActivity : BaseReadBookActivity(),
             }
         }
         when (keyCode) {
-            KeyEvent.KEYCODE_VOLUME_UP -> {
-                android.util.Log.d(
-                    "VOL_DEBUG",
-                    "VOLUME_UP down playing=${AudioBlockPlayer.isPlaying} audioVolKey=${AppConfig.illustrationAudioVolumeKey}"
-                )
-                if (volumeKeyPage(PageDirection.PREV, longPress)) {
-                    return true
-                }
+            KeyEvent.KEYCODE_VOLUME_UP -> if (volumeKeyPage(PageDirection.PREV, longPress)) {
+                return true
             }
 
-            KeyEvent.KEYCODE_VOLUME_DOWN -> {
-                android.util.Log.d(
-                    "VOL_DEBUG",
-                    "VOLUME_DOWN down playing=${AudioBlockPlayer.isPlaying} audioVolKey=${AppConfig.illustrationAudioVolumeKey}"
-                )
-                if (volumeKeyPage(PageDirection.NEXT, longPress)) {
-                    return true
-                }
+            KeyEvent.KEYCODE_VOLUME_DOWN -> if (volumeKeyPage(PageDirection.NEXT, longPress)) {
+                return true
             }
 
             KeyEvent.KEYCODE_PAGE_UP -> {
@@ -944,7 +932,6 @@ class ReadBookActivity : BaseReadBookActivity(),
      */
     private fun computeIllustrationAnchor(): IllustrationAnchor? {
         val book = ReadBook.book ?: return null
-        if (!book.isLocalTxt) return null
         val chapter = ReadBook.curTextChapter ?: return null
         val pageView = binding.readView.curPage
         val startPos = pageView.selectStartPos
@@ -1125,20 +1112,16 @@ class ReadBookActivity : BaseReadBookActivity(),
      */
     private fun volumeKeyPage(direction: PageDirection, longPress: Boolean): Boolean {
         if (!AppConfig.volumeKeyPage) {
-            android.util.Log.d("VOL_DEBUG", "volumeKeyPage return false: disabled")
             return false
         }
         if (!AppConfig.volumeKeyPageOnPlay && BaseReadAloudService.isPlay()) {
-            android.util.Log.d("VOL_DEBUG", "volumeKeyPage return false: readAloud playing")
             return false
         }
         // 内嵌音频块播放时，按设置决定音量键是否让位给系统调音量（像听书一样）
         if (AppConfig.illustrationAudioVolumeKey && AudioBlockPlayer.isPlaying) {
-            android.util.Log.d("VOL_DEBUG", "volumeKeyPage return false: illustration audio playing")
             return false
         }
         handleKeyPage(direction, longPress)
-        android.util.Log.d("VOL_DEBUG", "volumeKeyPage return true: page turned")
         return true
     }
 
