@@ -3,6 +3,7 @@ package io.legado.app.ui.book.toc
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.content.Context
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
@@ -124,7 +125,7 @@ class IllustrationAdapter(
                         holder.tvBack.visible(true)
                     }
                 }
-                loadThumb(holder.ivThumb, item)
+                loadThumb(holder.ivThumb, holder.tvDuration, item)
                 holder.selectionOuter.visible(selectionMode)
                 holder.selectionDot.visible(selectionMode && selected)
                 holder.itemView.setOnClickListener {
@@ -137,7 +138,7 @@ class IllustrationAdapter(
             }
             is GridHolder -> {
                 holder.tvChapter.text = "第 ${item.chapterIndex + 1} 章  ${item.chapterName}"
-                loadThumb(holder.ivThumb, item)
+                loadThumb(holder.ivThumb, holder.tvDuration, item)
                 holder.selectionOuter.visible(selectionMode)
                 holder.selectionDot.visible(selectionMode && selected)
                 holder.itemView.setOnClickListener {
@@ -151,17 +152,51 @@ class IllustrationAdapter(
         }
     }
 
-    private fun loadThumb(imageView: ImageView, item: BookIllustration) {
+    private fun loadThumb(
+        imageView: ImageView,
+        tvDuration: TextView,
+        item: BookIllustration
+    ) {
         val firstSrc = item.imageSrcsFromJson().firstOrNull()
         if (firstSrc == null) {
             imageView.setImageResource(R.drawable.image_loading_error)
             return
         }
         val file = IllustrationHelp.getImageFile(book, firstSrc)
-        if (file.exists()) {
-            ImageLoader.load(imageView.context, file).into(imageView)
-        } else {
-            imageView.setImageResource(R.drawable.image_loading_error)
+        when (IllustrationHelp.srcType(firstSrc)) {
+            "video" -> {
+                if (file.exists()) {
+                    // Glide 直接解码本地视频首帧
+                    ImageLoader.load(imageView.context, file).into(imageView)
+                } else {
+                    imageView.setImageResource(R.drawable.image_loading_error)
+                }
+                loadDuration(imageView.context, tvDuration, firstSrc)
+            }
+            "audio" -> {
+                imageView.setImageResource(R.drawable.ic_music_note)
+                loadDuration(imageView.context, tvDuration, firstSrc)
+            }
+            else -> {
+                if (file.exists()) {
+                    ImageLoader.load(imageView.context, file).into(imageView)
+                } else {
+                    imageView.setImageResource(R.drawable.image_loading_error)
+                }
+            }
+        }
+    }
+
+    private fun loadDuration(context: Context, tvDuration: TextView, src: String) {
+        kotlin.concurrent.thread {
+            val file = IllustrationHelp.getImageFile(book, src)
+            val ms = IllustrationHelp.getMediaDurationMs(file)
+            if (ms > 0) {
+                tvDuration.post {
+                    tvDuration.text = IllustrationHelp.formatDuration(ms)
+                    tvDuration.visibility = View.VISIBLE
+                }
+            }
         }
     }
 
@@ -170,6 +205,7 @@ class IllustrationAdapter(
         val tvBack: TextView = view.findViewById(R.id.tv_back)
         val tvChapter: TextView = view.findViewById(R.id.tv_chapter)
         val ivThumb: ImageView = view.findViewById(R.id.iv_thumb)
+        val tvDuration: TextView = view.findViewById(R.id.tv_duration)
         val selectionOuter: FrameLayout = view.findViewById(R.id.selection_outer)
         val selectionDot: ImageView = view.findViewById(R.id.selection_dot)
     }
@@ -177,6 +213,7 @@ class IllustrationAdapter(
     class GridHolder(view: View) : RecyclerView.ViewHolder(view) {
         val tvChapter: TextView = view.findViewById(R.id.tv_chapter)
         val ivThumb: ImageView = view.findViewById(R.id.iv_thumb)
+        val tvDuration: TextView = view.findViewById(R.id.tv_duration)
         val selectionOuter: FrameLayout = view.findViewById(R.id.selection_outer)
         val selectionDot: ImageView = view.findViewById(R.id.selection_dot)
     }

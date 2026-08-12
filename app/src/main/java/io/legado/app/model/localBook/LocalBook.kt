@@ -513,7 +513,7 @@ object LocalBook {
                 val jsonText = jsonFile.readText()
                 val restored = IllustrationHelp.restoreFromExport(book, jsonText, files)
                 if (!restored && book.isPdf) {
-                    IllustrationHelp.restoreFromPdfExport(book, book, jsonText)
+                    IllustrationHelp.restoreFromPdfExport(book, book, jsonText, files)
                 }
             }
         }.onFailure { e ->

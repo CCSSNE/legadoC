@@ -27,6 +27,7 @@ import io.legado.app.help.PaperInkHelper
 import io.legado.app.help.book.isOnLineTxt
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.illustration.IllustrationHelp
+import io.legado.app.help.illustration.AudioBlockPlayer
 import io.legado.app.help.illustration.imageSrcsFromJson
 import io.legado.app.help.illustration.pdfRectsFromJson
 import io.legado.app.help.book.isPdf
@@ -136,6 +137,8 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
 
     init {
         callBack = activity as CallBack
+        // 音频块播放状态/进度变化时重绘，保证进度条跟随
+        AudioBlockPlayer.onStateChange = { postInvalidate() }
     }
 
     /**
@@ -867,6 +870,26 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
                 }
 
                 is ImageColumn -> {
+                    if (column.mediaType == "audio") {
+                        // 音频块：点击播放/暂停（不放大、不弹窗）
+                        if (column.src.startsWith(IllustrationHelp.SRC_PREFIX)) {
+                            val book = ReadBook.book
+                            if (book != null) {
+                                AudioBlockPlayer.toggle(context, book, column.src)
+                                handled = true
+                            }
+                        }
+                    } else if (column.mediaType == "video") {
+                        // 视频：点击全屏播放，同组多图可左右滑动
+                        if (column.src.startsWith(IllustrationHelp.SRC_PREFIX)) {
+                            val groupSrcs = illustrationGroupSrcs(column.src)
+                            val groupPos = groupSrcs.indexOf(column.src).coerceAtLeast(0)
+                            activity?.showDialogFragment(
+                                PhotoDialog(groupSrcs, groupPos, isBook = true)
+                            )
+                            handled = true
+                        }
+                    } else {
                     val pdfHit = hitPdfIllustration(x, y, textLine, column)
                     if (pdfHit != null) {
                         // PDF 页内配图热区：点击全屏查看，同组多图可左右滑动
@@ -927,6 +950,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
                         }
                     }
                 }
+                    }
                 }
                 is TextHtmlColumn -> {
                     column.linkUrl?.let {

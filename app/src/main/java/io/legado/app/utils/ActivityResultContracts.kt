@@ -54,34 +54,20 @@ class SelectImageContract : ActivityResultContract<Int?, SelectImageContract.Res
 
 class SelectImagesContract : ActivityResultContract<Int?, SelectImagesContract.Result>() {
 
-    private val delegate = ActivityResultContracts.PickMultipleVisualMedia()
     private var requestCode: Int? = null
-    private var usePhotoPicker = false
 
     override fun createIntent(context: Context, input: Int?): Intent {
         requestCode = input
-        // 优先系统相册选择器（Android 13+ 系统自带，支持勾选多图）；
-        // 不可用时退回文件选择器并允许多选
-        val request = PickVisualMediaRequest.Builder()
-            .setMediaType(ActivityResultContracts.PickVisualMedia.ImageOnly)
-            .setMaxItems(9)
-            .build()
-        val pickerIntent = delegate.createIntent(context, request)
-        if (pickerIntent.resolveActivity(appCtx.packageManager) != null) {
-            usePhotoPicker = true
-            return pickerIntent
-        }
-        usePhotoPicker = false
+        // 统一文件选择器：图片/视频/音频一次多选（系统相册选择器不支持音频）
         return Intent(Intent.ACTION_OPEN_DOCUMENT)
             .addCategory(Intent.CATEGORY_OPENABLE)
-            .setType("image/*")
+            .setType("*/*")
+            .putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("image/*", "video/*", "audio/*"))
             .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
     }
 
     override fun parseResult(resultCode: Int, intent: Intent?): Result {
-        val uris = if (usePhotoPicker) {
-            delegate.parseResult(resultCode, intent)
-        } else if (resultCode == RESULT_OK && intent != null) {
+        val uris = if (resultCode == RESULT_OK && intent != null) {
             val clipData = intent.clipData
             if (clipData != null) {
                 (0 until clipData.itemCount).map { clipData.getItemAt(it).uri }

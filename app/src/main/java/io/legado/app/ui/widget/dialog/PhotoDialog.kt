@@ -1,11 +1,15 @@
 package io.legado.app.ui.widget.dialog
 
 import android.annotation.SuppressLint
+import android.content.pm.ActivityInfo
 import android.graphics.Color
+import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
 import androidx.lifecycle.lifecycleScope
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.load.resource.bitmap.DownsampleStrategy
@@ -14,6 +18,7 @@ import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.databinding.DialogPhotoViewBinding
 import io.legado.app.databinding.ItemPhotoPagerBinding
+import io.legado.app.databinding.ItemPhotoPagerVideoBinding
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.glide.OkHttpModelLoader
@@ -31,9 +36,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * 全屏查看图片。
+ * 全屏查看媒体：图片 / 视频。
  *
- * 支持单图与多图：多图时左右滑动浏览；配图长按从底部弹出"保存到相册"。
+ * 多图/多视频可左右滑动，滑走即停止播放；单个视频不可滑动，可横屏。
+ * 配图图片长按从底部弹出"保存到相册"。
  */
 class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
 
@@ -66,6 +72,10 @@ class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
         arguments?.getStringArrayList("srcs").orEmpty()
     }
 
+    private var currentPage = 0
+    private val players = hashMapOf<Int, ExoPlayer>()
+    private var isLandscape = false
+
     override fun onStart() {
         super.onStart()
         setLayout(1f, ViewGroup.LayoutParams.MATCH_PARENT)
@@ -78,9 +88,21 @@ class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
             dismissAllowingStateLoss()
             return
         }
+        currentPage = (arguments?.getInt("position") ?: 0).coerceIn(0, srcs.size - 1)
+        // 单个媒体不允许左右滑动（单视频不能滑到其它媒体）
+        binding.photoPager.isUserInputEnabled = srcs.size > 1
         binding.photoPager.adapter = PhotoPagerAdapter()
-        val position = (arguments?.getInt("position") ?: 0).coerceIn(0, srcs.size - 1)
-        binding.photoPager.setCurrentItem(position, false)
+        binding.photoPager.setCurrentItem(currentPage, false)
+        binding.photoPager.registerOnPageChangeCallback(object :
+            androidx.viewpager2.widget.ViewPager2.OnPageChangeCallback() {
+            override fun onPageSelected(position: Int) {
+                currentPage = position
+                // 滑走即停止播放：只保留当前页播放
+                players.forEach { (pos, player) ->
+                    player.playWhenReady = pos == currentPage
+                }
+            }
+        })
     }
 
     private fun showSaveSheet(src: String) {
@@ -104,30 +126,95 @@ class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
         }
     }
 
-    private inner class PhotoPagerAdapter : RecyclerView.Adapter<PhotoPagerAdapter.Holder>() {
-
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
-            return Holder(ItemPhotoPagerBinding.inflate(layoutInflater, parent, false))
+    override fun onDestroy() {
+        players.values.forEach { it.release() }
+        players.clear()
+        if (isLandscape) {
+            requireActivity().requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
+        super.onDestroy()
+    }
+
+    private inner class PhotoPagerAdapter :
+        RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
         override fun getItemCount(): Int = srcs.size
 
+        override fun getItemViewType(position: Int): Int {
+            return if (IllustrationHelp.isVideoSrc(srcs[position])) {
+                TYPE_VIDEO
+            } else {
+                TYPE_IMAGE
+            }
+        }
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+            return if (viewType == TYPE_VIDEO) {
+                VideoHolder(ItemPhotoPagerVideoBinding.inflate(layoutInflater, parent, false))
+            } else {
+                ImageHolder(ItemPhotoPagerBinding.inflate(layoutInflater, parent, false))
+            }
+        }
+
         @SuppressLint("CheckResult")
-        override fun onBindViewHolder(holder: Holder, position: Int) {
+        override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
             val src = srcs[position]
-            loadImage(holder.binding.photoView, src)
-            holder.binding.photoView.setOnLongClickListener {
-                if (src.startsWith(IllustrationHelp.SRC_PREFIX)) {
-                    showSaveSheet(src)
-                    true
-                } else {
-                    false
+            when (holder) {
+                is VideoHolder -> {
+                    holder.pagePosition = position
+                    val file = IllustrationHelp.getImageFile(ReadBook.book ?: return, src)
+                    if (file.exists()) {
+                        val player = ExoPlayer.Builder(requireContext()).build().apply {
+                            setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
+                            prepare()
+                            playWhenReady = position == currentPage
+                        }
+                        players[position] = player
+                        holder.binding.playerView.player = player
+                        holder.binding.btnLandscape.setOnClickListener {
+                            toggleLandscape()
+                        }
+                    }
+                }
+                is ImageHolder -> {
+                    loadImage(holder.binding.photoView, src)
+                    holder.binding.photoView.setOnLongClickListener {
+                        if (src.startsWith(IllustrationHelp.SRC_PREFIX)) {
+                            showSaveSheet(src)
+                            true
+                        } else {
+                            false
+                        }
+                    }
                 }
             }
         }
 
-        inner class Holder(val binding: ItemPhotoPagerBinding) :
+        override fun onViewRecycled(holder: RecyclerView.ViewHolder) {
+            if (holder is VideoHolder) {
+                players.remove(holder.pagePosition)?.release()
+                holder.binding.playerView.player = null
+                holder.pagePosition = -1
+            }
+            super.onViewRecycled(holder)
+        }
+
+        inner class ImageHolder(val binding: ItemPhotoPagerBinding) :
             RecyclerView.ViewHolder(binding.root)
+
+        inner class VideoHolder(val binding: ItemPhotoPagerVideoBinding) :
+            RecyclerView.ViewHolder(binding.root) {
+            var pagePosition: Int = -1
+        }
+    }
+
+    private fun toggleLandscape() {
+        isLandscape = !isLandscape
+        requireActivity().requestedOrientation = if (isLandscape) {
+            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
     }
 
     @SuppressLint("CheckResult")
@@ -159,4 +246,8 @@ class PhotoDialog() : BaseDialogFragment(R.layout.dialog_photo_view) {
         }
     }
 
+    companion object {
+        private const val TYPE_IMAGE = 0
+        private const val TYPE_VIDEO = 1
+    }
 }

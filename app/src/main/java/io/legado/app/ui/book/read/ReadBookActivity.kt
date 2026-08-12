@@ -56,6 +56,7 @@ import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ReadTipConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.illustration.IllustrationAnchor
+import io.legado.app.help.illustration.AudioBlockPlayer
 import io.legado.app.help.illustration.IllustrationHelp
 import io.legado.app.help.illustration.imageSrcsFromJson
 import io.legado.app.help.source.getSourceType
@@ -2203,6 +2204,8 @@ class ReadBookActivity : BaseReadBookActivity(),
         popupAction.dismiss()
         binding.readView.onDestroy()
         ReadBook.unregister(this)
+        // 退出阅读停止内嵌音频块播放（配图音频不是听书）
+        AudioBlockPlayer.stop()
         handler.removeCallbacksAndMessages(null) // 清理Handler消息
         if (!ReadBook.inBookshelf && !isChangingConfigurations) {
             viewModel.removeFromBookshelf(null)

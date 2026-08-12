@@ -66,6 +66,7 @@ import io.legado.app.utils.writeFile
 import io.legado.app.utils.externalCache
 import java.io.File
 import java.io.FileOutputStream
+import java.io.ByteArrayOutputStream
 import kotlin.math.ceil
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
@@ -500,8 +501,24 @@ class ExportBookService : BaseService() {
                 val jsonText = IllustrationHelp.buildPdfExportJson(book, pdfName, exportItems)
                 val tmpJson = File(tmpRoot, IllustrationHelp.EXPORT_JSON_NAME)
                 tmpJson.writeText(jsonText, Charsets.UTF_8)
+                // 配图媒体（图片/视频/音频）原样打进压缩包，供再导入恢复
+                val tmpImagesDir = File(tmpRoot, IllustrationHelp.EXPORT_IMAGES_DIR)
+                FileUtils.createFolderIfNotExist(tmpImagesDir.absolutePath)
+                illustrations.forEach { illustration ->
+                    illustration.imageSrcsFromJson().forEach { src ->
+                        val srcFile = IllustrationHelp.getImageFile(book, src)
+                        if (srcFile.exists()) {
+                            kotlin.runCatching {
+                                val mediaName = src.substringAfter(IllustrationHelp.SRC_PREFIX)
+                                File(tmpImagesDir, mediaName).writeBytes(srcFile.readBytes())
+                            }.onFailure { e ->
+                                AppLog.put("导出PDF配图媒体失败: ${book.name}", e)
+                            }
+                        }
+                    }
+                }
                 val tmpZip = File(tmpRoot, zipName)
-                ZipUtils.zipFiles(listOf(tmpPdf, tmpJson), tmpZip, null)
+                ZipUtils.zipFiles(listOf(tmpPdf, tmpImagesDir, tmpJson), tmpZip, null)
                 val zipDoc = fileDoc.createFileIfNotExistWithMime(zipName, "application/zip")
                 zipDoc.openOutputStream(truncate = true).getOrThrow().use { out ->
                     tmpZip.inputStream().use { it.copyTo(out) }
@@ -589,10 +606,24 @@ class ExportBookService : BaseService() {
             layoutType: String,
             displayHeight: Int
         ): Pair<Float, List<String>>? {
-            val images = arrayListOf<Pair<String, Bitmap>>()
+            val images = arrayListOf<Triple<String, Bitmap, String>>() // src, bitmap, mediaType
             srcs.forEach { src ->
                 val file = IllustrationHelp.getImageFile(book, src)
-                if (file.exists()) {
+                if (!file.exists()) return@forEach
+                val mediaType = IllustrationHelp.srcType(src)
+                val targetWidth = (contentWidth * 1.5f).toInt().coerceAtLeast(1)
+                val targetHeight = (pageHeight * 1.5f).toInt().coerceAtLeast(1)
+                if (mediaType == "video") {
+                    // PDF 页上画视频首帧
+                    IllustrationHelp.getVideoFrame(file, targetWidth, targetHeight)?.let {
+                        images.add(Triple(src, it, mediaType))
+                    }
+                } else if (mediaType == "audio") {
+                    // 音频无画面，画占位图
+                    images.add(
+                        Triple(src, createAudioPlaceholderBitmap(targetWidth, 160), mediaType)
+                    )
+                } else {
                     val size = kotlin.runCatching {
                         android.graphics.BitmapFactory.Options().apply {
                             inJustDecodeBounds = true
@@ -602,11 +633,9 @@ class ExportBookService : BaseService() {
                         }
                     }.getOrNull()
                     if (size != null && size.first > 0 && size.second > 0) {
-                        val targetWidth = (contentWidth * 1.5f).toInt().coerceAtLeast(1)
-                        val targetHeight = (pageHeight * 1.5f).toInt().coerceAtLeast(1)
                         val bitmap = ImageProvider.getImage(book, src, targetWidth, targetHeight)
                         if (bitmap.width > 0 && bitmap.height > 0) {
-                            images.add(src to bitmap)
+                            images.add(Triple(src, bitmap, mediaType))
                         }
                     }
                 }
@@ -641,7 +670,7 @@ class ExportBookService : BaseService() {
                     val rowHeight = naturalHeights[rowIndex] * scale
                     val rowWidth = row.size * colWidth * scale + gap * (row.size - 1)
                     var x = margin + (contentWidth - rowWidth) / 2f
-                    row.forEach { (src, bmp) ->
+                    row.forEach { (src, bmp, _) ->
                         val left = x
                         val right = x + colWidth * scale
                         val bottom = top + rowHeight
@@ -667,7 +696,7 @@ class ExportBookService : BaseService() {
             var cellWidth: Float
             var rowHeight: Float
             if (layoutType == BookIllustration.LAYOUT_SINGLE && displayHeight > 0) {
-                val (_, bmp) = images[0]
+                val (_, bmp, _) = images[0]
                 rowHeight = displayHeight * 0.75f
                 cellWidth = rowHeight * bmp.width.toFloat() / bmp.height.toFloat()
             } else {
@@ -698,7 +727,7 @@ class ExportBookService : BaseService() {
             var x = margin + (contentWidth - rowWidth) / 2f
             val top = y
             val rects = arrayListOf<String>()
-            images.forEach { (src, bmp) ->
+            images.forEach { (src, bmp, _) ->
                 val left = x
                 val right = x + cellWidth
                 val bottom = top + rowHeight
@@ -811,6 +840,24 @@ class ExportBookService : BaseService() {
         FileOutputStream(outFile).use { document.writeTo(it) }
         document.close()
         return exportItems
+    }
+
+    /** 音频在 PDF 中的占位图：灰底 + "音频" 文字 */
+    private fun createAudioPlaceholderBitmap(width: Int, height: Int): Bitmap {
+        val bmp = Bitmap.createBitmap(
+            width.coerceAtLeast(1),
+            height.coerceAtLeast(1),
+            Bitmap.Config.ARGB_8888
+        )
+        val canvas = Canvas(bmp)
+        canvas.drawColor(Color.parseColor("#EEEEEE"))
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#666666")
+            textSize = height * 0.35f
+            textAlign = Paint.Align.CENTER
+        }
+        canvas.drawText("音频", width / 2f, height * 0.62f, paint)
+        return bmp
     }
 
     private fun wrapPdfText(paint: Paint, text: String, width: Float): List<String> {
@@ -1465,11 +1512,28 @@ class ExportBookService : BaseService() {
         if (srcs.isEmpty()) return
         srcs.forEach { src ->
             val vFile = IllustrationHelp.getImageFile(book, src)
-            if (vFile.exists()) {
-                val href = IllustrationHelp.epubImageHref(src)
-                val fp = FileResourceProvider(vFile.parent)
-                resources.add(LazyResource(fp, href, href))
-                sb.append("""<img src="../$href" />""")
+            if (!vFile.exists()) return@forEach
+            val href = IllustrationHelp.epubImageHref(src)
+            val fp = FileResourceProvider(vFile.parent)
+            // 媒体原文件也打进包，供本应用按侧车清单还原
+            resources.add(LazyResource(fp, href, href))
+            when (IllustrationHelp.srcType(src)) {
+                "video" -> {
+                    // 标准阅读器显示首帧静态图
+                    val frame = IllustrationHelp.getVideoFrame(vFile, 640, 360)
+                    if (frame != null) {
+                        val frameHref = "Images/${MD5Utils.md5Encode16(src)}.jpg"
+                        val out = ByteArrayOutputStream()
+                        frame.compress(Bitmap.CompressFormat.JPEG, 80, out)
+                        resources.add(Resource(out.toByteArray(), frameHref))
+                        sb.append("""<img src="../$frameHref" />""")
+                    }
+                }
+                "audio" -> {
+                    // 音频无画面，只占位提示
+                    sb.append("""<p>[音频]</p>""")
+                }
+                else -> sb.append("""<img src="../$href" />""")
             }
         }
     }

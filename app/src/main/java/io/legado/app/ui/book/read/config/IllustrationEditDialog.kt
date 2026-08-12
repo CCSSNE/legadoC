@@ -128,9 +128,8 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
         val displayHeight = heightText.toIntOrNull() ?: 0
         val pageBreak = binding.cbPageBreak.isChecked
         val cellCount = layoutCellCount()
-        val records = arrayListOf<BookIllustration>()
-        val srcs = arrayListOf<String>()
-        var index = 0
+        // 先读取所有媒体并保存，记录选择顺序与是否音频
+        val media = arrayListOf<Pair<String, Boolean>>() // src to isAudio
         selectedUris.forEach { uri ->
             val bytes = kotlin.runCatching {
                 requireContext().contentResolver.openInputStream(uri)?.use { it.readBytes() }
@@ -140,23 +139,46 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
                 return
             }
             val mime = requireContext().contentResolver.getType(uri)
-            val ext = MimeTypeMap.getSingleton()
-                .getExtensionFromMimeType(mime)
-                ?.takeIf { it.isNotBlank() }
-                ?: "jpg"
+            val ext = when {
+                mime?.startsWith("video/") == true ->
+                    MimeTypeMap.getSingleton().getExtensionFromMimeType(mime)
+                        ?.takeIf { it.isNotBlank() } ?: "mp4"
+                mime?.startsWith("audio/") == true ->
+                    MimeTypeMap.getSingleton().getExtensionFromMimeType(mime)
+                        ?.takeIf { it.isNotBlank() } ?: "mp3"
+                else ->
+                    MimeTypeMap.getSingleton().getExtensionFromMimeType(mime)
+                        ?.takeIf { it.isNotBlank() } ?: "jpg"
+            }
             val src = IllustrationHelp.newSrc(ext)
             IllustrationHelp.saveImage(book, src, bytes)
-            srcs.add(src)
-            index++
-            if (srcs.size >= cellCount) {
-                records.add(
-                    newRecord(book, chapter, srcs, displayHeight, pageBreak, records.size)
-                )
-                srcs.clear()
-            }
+            media.add(src to IllustrationHelp.isAudioSrc(src))
         }
-        if (srcs.isNotEmpty()) {
-            records.add(newRecord(book, chapter, srcs, displayHeight, pageBreak, records.size))
+        // 音频永不参与宫格：图片/视频按所选布局成宫格，音频单独成格；
+        // 各块按原始选择顺序排序（音频夹在宫格区间内时排在宫格块之后）
+        val units = arrayListOf<Triple<Int, List<String>, Boolean>>() // firstIndex, srcs, isAudio
+        media.mapIndexedNotNull { index, m ->
+            if (!m.second) index to m.first else null
+        }.chunked(cellCount).forEach { chunk ->
+            units.add(Triple(chunk.first().first, chunk.map { it.second }, false))
+        }
+        media.forEachIndexed { index, m ->
+            if (m.second) units.add(Triple(index, listOf(m.first), true))
+        }
+        units.sortBy { it.first }
+        val records = arrayListOf<BookIllustration>()
+        units.forEach { (_, srcs, isAudio) ->
+            records.add(
+                newRecord(
+                    book,
+                    chapter,
+                    srcs,
+                    displayHeight,
+                    pageBreak,
+                    records.size,
+                    single = isAudio
+                )
+            )
         }
         if (records.isEmpty()) return
         appDb.bookIllustrationDao.insert(*records.toTypedArray())
@@ -171,7 +193,8 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
         srcs: List<String>,
         displayHeight: Int,
         pageBreak: Boolean,
-        sortOrder: Int
+        sortOrder: Int,
+        single: Boolean = false
     ): BookIllustration {
         return BookIllustration(
             bookUrl = book.bookUrl,
@@ -185,7 +208,7 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
             frontFingerprint = IllustrationHelp.fingerprint(anchor.frontParagraph, false),
             backFingerprint = IllustrationHelp.fingerprint(anchor.backParagraph, true),
             imageSrcs = imageSrcsToJson(srcs),
-            layoutType = selectedLayout(),
+            layoutType = if (single) BookIllustration.LAYOUT_SINGLE else selectedLayout(),
             displayHeight = displayHeight,
             pageBreak = pageBreak,
             sortOrder = sortOrder

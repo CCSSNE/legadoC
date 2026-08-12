@@ -87,5 +87,19 @@
                 app:tint="@color/white"
                 tools:visibility="visible" />
         </FrameLayout>
+
+        <TextView
+            android:id="@+id/tv_duration"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|end"
+            android:layout_margin="2dp"
+            android:background="#66000000"
+            android:paddingStart="4dp"
+            android:paddingEnd="4dp"
+            android:textColor="#FFFFFF"
+            android:textSize="10sp"
+            android:visibility="gone"
+            tools:text="01:23" />
     </FrameLayout>
 </LinearLayout>

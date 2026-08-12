@@ -4,11 +4,15 @@ import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.media.MediaMetadataRetriever
+import android.net.Uri
 import android.graphics.pdf.PdfRenderer
 import android.media.MediaScannerConnection
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import android.util.Size
+import androidx.collection.LruCache
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookIllustration
@@ -40,6 +44,11 @@ object IllustrationHelp {
     const val EPUB_SIDECAR_NAME = "legado_illustrations.json"
     const val EXPORT_IMAGES_DIR = "images"
     const val EXPORT_JSON_VERSION = 1
+
+    val VIDEO_EXTS = setOf("mp4", "webm", "mkv", "mov", "m4v", "3gp", "avi", "ts", "flv")
+    val AUDIO_EXTS = setOf(
+        "mp3", "m4a", "aac", "wav", "flac", "ogg", "opus", "wma", "amr", "mid", "midi", "3ga"
+    )
 
     /** 指纹窗口长度 */
     private const val FINGERPRINT_LENGTH = 24
@@ -73,10 +82,123 @@ object IllustrationHelp {
         }
     }
 
-    /** 将配图保存到系统相册 */
+    /** 媒体类型：image / video / audio（按扩展名推断） */
+    fun srcType(src: String): String {
+        val ext = src.substringAfterLast('.', "").lowercase()
+        return when {
+            ext in VIDEO_EXTS -> "video"
+            ext in AUDIO_EXTS -> "audio"
+            else -> "image"
+        }
+    }
+
+    fun isImageSrc(src: String): Boolean = srcType(src) == "image"
+
+    fun isVideoSrc(src: String): Boolean = srcType(src) == "video"
+
+    fun isAudioSrc(src: String): Boolean = srcType(src) == "audio"
+
+    /** 音频/视频时长（毫秒），失败返回 0 */
+    private val mediaDurationCache = object : LruCache<String, Long>(32) {}
+
+    fun getMediaDurationMs(file: File): Long {
+        val key = file.name
+        mediaDurationCache.get(key)?.let { return it }
+        val ms = kotlin.runCatching {
+            val mmr = MediaMetadataRetriever()
+            try {
+                mmr.setDataSource(file.absolutePath)
+                mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                    ?.toLongOrNull() ?: 0L
+            } finally {
+                mmr.release()
+            }
+        }.getOrDefault(0L)
+        mediaDurationCache.put(key, ms)
+        return ms
+    }
+
+    /** 毫秒格式化为 mm:ss（超过一小时为 h:mm:ss） */
+    fun formatDuration(ms: Long): String {
+        val totalSeconds = (ms / 1000).coerceAtLeast(0L)
+        val hours = totalSeconds / 3600
+        val minutes = (totalSeconds % 3600) / 60
+        val seconds = totalSeconds % 60
+        return if (hours > 0) {
+            "%d:%02d:%02d".format(hours, minutes, seconds)
+        } else {
+            "%02d:%02d".format(minutes, seconds)
+        }
+    }
+
+    /** 视频首帧缓存（按文件名+尺寸） */
+    private val videoFrameCache = object : LruCache<String, Bitmap>(8) {}
+
+    /** 取视频首帧，缩放到指定尺寸；失败返回 null */
+    fun getVideoFrame(file: File, width: Int, height: Int): Bitmap? {
+        val key = "${file.name}_${width}x$height"
+        videoFrameCache.get(key)?.let { return it }
+        val frame = kotlin.runCatching {
+            val mmr = MediaMetadataRetriever()
+            try {
+                mmr.setDataSource(file.absolutePath)
+                val raw = mmr.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                    ?: return@runCatching null
+                if (width <= 0 || height <= 0) {
+                    raw
+                } else {
+                    val scaled = Bitmap.createScaledBitmap(raw, width, height, true)
+                    if (scaled !== raw) raw.recycle()
+                    scaled
+                }
+            } finally {
+                mmr.release()
+            }
+        }.getOrNull() ?: return null
+        videoFrameCache.put(key, frame)
+        return frame
+    }
+
+    /** 视频原始宽高；非视频返回 null */
+    fun getMediaSize(book: Book, src: String): Size? {
+        if (!isVideoSrc(src)) return null
+        val file = getImageFile(book, src)
+        if (!file.exists()) return null
+        return kotlin.runCatching {
+            val mmr = MediaMetadataRetriever()
+            try {
+                mmr.setDataSource(file.absolutePath)
+                val w = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull()
+                val h = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull()
+                if (w != null && h != null && w > 0 && h > 0) Size(w, h) else null
+            } finally {
+                mmr.release()
+            }
+        }.getOrNull()
+    }
+
+    /** 将配图媒体保存到系统相册：图片→Pictures，视频→Movies，音频→Music */
     fun saveToAlbum(context: Context, book: Book, src: String): Boolean {
         val file = getImageFile(book, src)
         if (!file.exists()) return false
+        return when (srcType(src)) {
+            "video" -> saveToMediaStore(
+                context, file,
+                MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                "video/*",
+                Environment.DIRECTORY_MOVIES
+            )
+            "audio" -> saveToMediaStore(
+                context, file,
+                MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                "audio/*",
+                Environment.DIRECTORY_MUSIC
+            )
+            else -> saveImageToGallery(context, file)
+        }
+    }
+
+    private fun saveImageToGallery(context: Context, file: File): Boolean {
         return kotlin.runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val values = ContentValues().apply {
@@ -109,6 +231,44 @@ object IllustrationHelp {
                     file.inputStream().use { it.copyTo(out) }
                 }
                 MediaScannerConnection.scanFile(context, arrayOf(target.absolutePath), null, null)
+                true
+            }
+        }.getOrDefault(false)
+    }
+
+    private fun saveToMediaStore(
+        context: Context,
+        file: File,
+        collection: Uri,
+        mime: String,
+        relativeDir: String
+    ): Boolean {
+        return kotlin.runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val values = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, file.name)
+                    put(MediaStore.MediaColumns.MIME_TYPE, mime)
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, "$relativeDir/Legado")
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+                val uri = context.contentResolver.insert(collection, values) ?: return false
+                context.contentResolver.openOutputStream(uri)?.use { out ->
+                    file.inputStream().use { it.copyTo(out) }
+                } ?: return false
+                values.clear()
+                values.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                context.contentResolver.update(uri, values, null, null)
+                true
+            } else {
+                @Suppress("DEPRECATION")
+                val dir = Environment.getExternalStoragePublicDirectory(relativeDir)
+                    .let { File(it, "Legado") }
+                if (!dir.exists() && !dir.mkdirs()) return false
+                val target = File(dir, file.name)
+                FileOutputStream(target).use { out ->
+                    file.inputStream().use { it.copyTo(out) }
+                }
+                MediaScannerConnection.scanFile(context, arrayOf(target.absolutePath), arrayOf(mime), null)
                 true
             }
         }.getOrDefault(false)
@@ -343,6 +503,7 @@ object IllustrationHelp {
         book: Book,
         pdfBook: Book,
         jsonText: String,
+        files: List<File> = emptyList(),
         context: Context = appCtx
     ): Boolean {
         val json = kotlin.runCatching {
@@ -355,7 +516,13 @@ object IllustrationHelp {
             val rects = arrayListOf<String>()
             item.srcs.forEachIndexed { i, src ->
                 val rect = item.pdfRects.getOrNull(i)
-                val bytes = cropPdfRegion(pdfBook, item.pdfPage, rect)
+                val bytes = if (isVideoSrc(src) || isAudioSrc(src)) {
+                    // 视频/音频无法从 PDF 页裁出，直接取压缩包里的原文件
+                    val name = src.substringAfter(SRC_PREFIX)
+                    files.firstOrNull { it.name == name }?.readBytes()
+                } else {
+                    cropPdfRegion(pdfBook, item.pdfPage, rect)
+                }
                 if (bytes != null) {
                     saveImage(book, src, bytes)
                     srcs.add(src)

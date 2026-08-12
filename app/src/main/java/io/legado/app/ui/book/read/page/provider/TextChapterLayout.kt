@@ -836,32 +836,50 @@ class TextChapterLayout(
         layoutType: String,
         displayHeight: Float
     ) {
-        val images = arrayListOf<Pair<String, Size>>()
+        val media = arrayListOf<Triple<String, Size?, String>>() // src, size, mediaType
         group.forEach { src ->
-            val size = runCatching {
-                ImageProvider.getImageSize(book, src, ReadBook.bookSource)
-            }.getOrNull()
-            if (size != null && size.width > 0 && size.height > 0) {
-                images.add(src to size)
+            val mediaType = IllustrationHelp.srcType(src)
+            val size = when (mediaType) {
+                "video" -> IllustrationHelp.getMediaSize(book, src)
+                "image" -> runCatching {
+                    ImageProvider.getImageSize(book, src, ReadBook.bookSource)
+                }.getOrNull()
+                else -> null
             }
+            if (mediaType == "image" && (size == null || size.width <= 0 || size.height <= 0)) {
+                return@forEach
+            }
+            media.add(Triple(src, size, mediaType))
         }
-        if (images.isEmpty()) return
+        if (media.isEmpty()) return
         val gap = 4f.dpToPx()
         if (layoutType == BookIllustration.LAYOUT_QUAD_GRID) {
-            drawIllustrationGrid(images, gap)
+            drawIllustrationGrid(media, gap)
             return
         }
-        val n = images.size
+        val n = media.size
+        val audioBlockHeight = 52f.dpToPx()
         var cellWidth: Float
         var rowHeight: Float
-        if (layoutType == BookIllustration.LAYOUT_SINGLE && displayHeight > 0f) {
-            val size = images[0].second
+        if (n == 1 && media[0].third == "audio") {
+            // 音频块：整行、固定高度
+            cellWidth = visibleWidth
+            rowHeight = audioBlockHeight
+        } else if (layoutType == BookIllustration.LAYOUT_SINGLE && displayHeight > 0f &&
+            media[0].third == "image"
+        ) {
+            val size = media[0].second ?: return
             rowHeight = displayHeight
             cellWidth = rowHeight * size.width.toFloat() / size.height.toFloat()
         } else {
             cellWidth = (visibleWidth - gap * (n - 1)) / n
-            val naturalHeights = images.map {
-                it.second.height.toFloat() * cellWidth / it.second.width.toFloat()
+            val naturalHeights = media.map {
+                val size = it.second
+                if (size != null) {
+                    size.height.toFloat() * cellWidth / size.width.toFloat()
+                } else {
+                    audioBlockHeight
+                }
             }
             rowHeight = naturalHeights.max()
         }
@@ -890,13 +908,14 @@ class TextChapterLayout(
         durY += rowHeight
         textLine.lineBottom = durY + paddingTop
         var x = startX
-        images.forEach { (src, _) ->
+        media.forEach { (src, _, mediaType) ->
             textLine.addColumn(
                 ImageColumn(
                     start = absStartX + x,
                     end = absStartX + x + cellWidth,
                     src = src,
-                    click = null
+                    click = null,
+                    mediaType = mediaType
                 )
             )
             x += cellWidth + gap
@@ -913,14 +932,19 @@ class TextChapterLayout(
      * 整组超过一页时按比例缩放，放不下当前页剩余空间时直接换页。
      */
     private suspend fun drawIllustrationGrid(
-        images: List<Pair<String, Size>>,
+        media: List<Triple<String, Size?, String>>,
         gap: Float
     ) {
-        val rows = images.chunked(2)
+        val rows = media.chunked(2)
         val cellWidth = (visibleWidth - gap) / 2f
         val rowHeights = rows.map { row ->
             row.map {
-                it.second.height.toFloat() * cellWidth / it.second.width.toFloat()
+                val size = it.second
+                if (size != null) {
+                    size.height.toFloat() * cellWidth / size.width.toFloat()
+                } else {
+                    52f.dpToPx()
+                }
             }.max()
         }
         var totalHeight = rowHeights.sum() + gap * (rows.size - 1)
@@ -945,13 +969,14 @@ class TextChapterLayout(
             textLine.lineBottom = durY + paddingTop
             val rowWidth = row.size * cellWidth * scale + gap * (row.size - 1)
             var x = (visibleWidth - rowWidth) / 2f
-            row.forEach { (src, _) ->
+            row.forEach { (src, _, mediaType) ->
                 textLine.addColumn(
                     ImageColumn(
                         start = absStartX + x,
                         end = absStartX + x + cellWidth * scale,
                         src = src,
-                        click = null
+                        click = null,
+                        mediaType = mediaType
                     )
                 )
                 x += cellWidth * scale + gap
