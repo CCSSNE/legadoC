@@ -14,6 +14,7 @@ import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.exception.EmptyFileException
+import io.legado.app.help.illustration.IllustrationHelp
 import io.legado.app.exception.NoBooksDirException
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.exception.TocEmptyException
@@ -352,7 +353,7 @@ object LocalBook {
         if (files.isEmpty()) {
             throw NoStackTraceException(appCtx.getString(R.string.unsupport_archivefile_entry))
         }
-        return files.map {
+        val books = files.map {
             saveBookFile(FileInputStream(it), saveFileName ?: it.name).let { uri ->
                 importFile(uri).apply {
                     //附加压缩包名称 以便解压文件被删后再解压
@@ -361,6 +362,41 @@ object LocalBook {
                     save()
                 }
             }
+        }
+        restoreIllustrationsFromArchive(archiveFileDoc, books)
+        return books
+    }
+
+    /**
+     * 识别配图压缩包（book.txt + images/ + illustrations.json），还原配图记录。
+     */
+    private fun restoreIllustrationsFromArchive(
+        archiveFileDoc: FileDoc,
+        importedBooks: List<Book>
+    ) {
+        kotlin.runCatching {
+            val files = ArchiveUtils.deCompress(
+                archiveFileDoc,
+                filter = { name ->
+                    name == IllustrationHelp.EXPORT_JSON_NAME ||
+                        name.startsWith("${IllustrationHelp.EXPORT_IMAGES_DIR}/")
+                }
+            )
+            val jsonFile = files.firstOrNull { it.name == IllustrationHelp.EXPORT_JSON_NAME }
+                ?: return
+            val json = kotlin.runCatching {
+                GSON.fromJson(
+                    jsonFile.readText(),
+                    IllustrationHelp.IllustrationJson::class.java
+                )
+            }.getOrNull() ?: return
+            val book = importedBooks.firstOrNull { it.originName == json.bookFile }
+                ?: importedBooks.firstOrNull()
+            if (book != null) {
+                IllustrationHelp.restoreFromExport(book, jsonFile.readText(), files)
+            }
+        }.onFailure { e ->
+            AppLog.put("还原配图数据失败\n${e.localizedMessage}", e)
         }
     }
 

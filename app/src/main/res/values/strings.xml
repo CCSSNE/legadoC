@@ -2020,4 +2020,30 @@ Current chapter: %4$s (chapter %5$d)
 
 Selected text or question:
 %6$s</string>
+
+    <!--配图（插图）-->
+    <string name="menu_illustration">配图</string>
+    <string name="illustration_title">插入配图</string>
+    <string name="illustration_pick_images">选择图片</string>
+    <string name="illustration_height">显示高度</string>
+    <string name="illustration_height_hint">单位 dp，留空按图片原始高度</string>
+    <string name="illustration_layout">布局</string>
+    <string name="illustration_layout_single">单图</string>
+    <string name="illustration_layout_double">双图</string>
+    <string name="illustration_layout_triple">三图</string>
+    <string name="illustration_layout_quad">四宫格</string>
+    <string name="illustration_page_break">独占一页</string>
+    <string name="illustration_save">插入</string>
+    <string name="illustration_no_images">请先选择图片</string>
+    <string name="illustration_inserted">配图已插入</string>
+    <string name="illustration_invalid_selection">请选择恰好两段文本，或该章最后一段</string>
+    <string name="illustration_save_to_album">保存到相册</string>
+    <string name="illustration_saved_to_album">已保存到相册</string>
+    <string name="illustration_save_failed">保存失败</string>
+    <string name="illustration_delete">删除配图</string>
+    <string name="illustration_deleted">配图已删除</string>
+    <string name="illustration_empty">本书暂无配图</string>
+    <string name="illustration_list_mode">列表</string>
+    <string name="illustration_grid_mode">宫格</string>
+    <string name="illustration_export_name">配图书籍</string>
 </resources>

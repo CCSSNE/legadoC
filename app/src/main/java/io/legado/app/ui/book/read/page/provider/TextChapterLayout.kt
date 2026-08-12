@@ -22,11 +22,15 @@ import io.legado.app.constant.AppPattern
 import io.legado.app.constant.PageAnim
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.BookIllustration
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.book.BookContent
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.getBookSource
 import io.legado.app.help.book.isEpub
+import io.legado.app.help.book.isLocalTxt
+import io.legado.app.help.illustration.IllustrationHelp
+import io.legado.app.help.illustration.imageSrcsFromJson
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.AdvancedTitleConfig
 import io.legado.app.help.config.ReadBookConfig
@@ -292,6 +296,12 @@ class TextChapterLayout(
         bookContent: BookContent,
     ) {
         val contents = bookContent.textList
+        val illustrations = if (book.isLocalTxt) {
+            appDb.bookIllustrationDao.getByBookAndChapter(book.bookUrl, bookChapter.index)
+        } else {
+            emptyList()
+        }
+        val placedIllustrationIds = hashSetOf<Long>()
         val imageStyle = book.getImageStyle()
         val isSingleImageStyle = imageStyle.equals(Book.imgStyleSingle, true)
 
@@ -423,26 +433,35 @@ class TextChapterLayout(
         val sb = StringBuffer()
         var isSetTypedImage = false
         var wordCount = 0
-        contents.forEach { content ->
+        contents.forEachIndexed { contentIndex, content ->
             currentCoroutineContext().ensureActive()
+            if (contentIndex > 0) {
+                insertIllustrationsAtBoundary(
+                    book = book,
+                    frontText = contents[contentIndex - 1],
+                    backText = content,
+                    illustrations = illustrations,
+                    placedIds = placedIllustrationIds
+                )
+            }
             if (adaptSpecialStyle) {
                 val text = content.trim()
                 if (text == "[newpage]") {
                     prepareNextPageIfNeed()
-                    return@forEach
+                    return@forEachIndexed
                 } else if (text == EpubFile.READABLE_CONTENT_VERSION_FLAG) {
-                    return@forEach
+                    return@forEachIndexed
                 } else if (text.startsWith(EpubFile.NATIVE_CONTENT_FLAG)) {
                     if (isClassicEpub) {
                         setTypeNativeEpubLayout(text)
                     }
-                    return@forEach
+                    return@forEachIndexed
                 } else if (text.startsWith("<usehtml")) {
                     val contentStart = text.indexOf('>')
                     val contentEnd = text.lastIndexOf("<")
                     if (contentStart >= 0 && contentEnd > contentStart) {
                         setTypeHtml(imageStyle, book, text.substring(contentStart + 1, contentEnd))
-                        return@forEach
+                        return@forEachIndexed
                     }
                 }
             }
@@ -599,6 +618,12 @@ class TextChapterLayout(
             pendingTextPage.lines.lastOrNull()?.isParagraphEnd = true
             stringBuilder.append("\n")
         }
+        // 章末配图 + 未匹配到锚点的配图（容错放章末）
+        for (illustration in illustrations
+            .filter { it.id !in placedIllustrationIds }
+            .sortedBy { it.sortOrder }) {
+            insertIllustrationLine(book, illustration)
+        }
         val chapterWordCount = StringUtils.wordCountFormat(wordCount.toString())
         bookChapter.wordCount = chapterWordCount
         appDb.bookChapterDao.upWordCount(bookChapter.bookUrl, bookChapter.url, chapterWordCount)
@@ -722,6 +747,154 @@ class TextChapterLayout(
             return false
         }
         return true
+    }
+
+    /** 当前章节排版进度对应的字符偏移（跨页时补上已完成的页面） */
+    private fun currentChapterOffset(): Int {
+        val lastPageEnd = textPages.lastOrNull()?.let { lastPage ->
+            lastPage.lines.lastOrNull()?.run {
+                chapterPosition + charSize + if (isParagraphEnd) 1 else 0
+            } ?: (lastPage.chapterPosition + lastPage.charSize)
+        } ?: 0
+        return lastPageEnd + stringBuilder.length
+    }
+
+    /**
+     * 在段落边界插入配图：anchorPos 精确匹配或前后段落指纹匹配。
+     * 指纹匹配对内容偏移不敏感，避免前一个配图占用字符导致后续锚点偏移。
+     */
+    private suspend fun insertIllustrationsAtBoundary(
+        book: Book,
+        frontText: String,
+        backText: String,
+        illustrations: List<BookIllustration>,
+        placedIds: MutableSet<Long>
+    ) {
+        val boundaryPos = currentChapterOffset()
+        val frontFp = IllustrationHelp.fingerprint(frontText, false)
+        val backFp = IllustrationHelp.fingerprint(backText, true)
+        val matched = illustrations
+            .filter {
+                it.id !in placedIds &&
+                    it.anchorType == BookIllustration.ANCHOR_BETWEEN_PARAGRAPHS &&
+                    (
+                        (
+                            it.frontFingerprint.isNotBlank() &&
+                                it.backFingerprint.isNotBlank() &&
+                                it.frontFingerprint == frontFp &&
+                                it.backFingerprint == backFp
+                            ) ||
+                            (
+                                it.frontFingerprint.isBlank() &&
+                                    it.backFingerprint.isBlank() &&
+                                    it.anchorPos == boundaryPos
+                                )
+                        )
+            }
+            .sortedBy { it.sortOrder }
+        for (illustration in matched) {
+            placedIds.add(illustration.id)
+            insertIllustrationLine(book, illustration)
+        }
+    }
+
+    /** 插入一条配图记录（单图或多图按布局分组绘制） */
+    private suspend fun insertIllustrationLine(book: Book, illustration: BookIllustration) {
+        val srcs = illustration.imageSrcsFromJson()
+        if (srcs.isEmpty()) return
+        val cellCount = when (illustration.layoutType) {
+            BookIllustration.LAYOUT_DOUBLE -> 2
+            BookIllustration.LAYOUT_TRIPLE -> 3
+            BookIllustration.LAYOUT_QUAD -> 4
+            else -> 1
+        }
+        val displayHeight = if (illustration.displayHeight > 0) {
+            illustration.displayHeight.toFloat().dpToPx()
+        } else {
+            0f
+        }
+        if (illustration.pageBreak) {
+            prepareNextPageIfNeed()
+        }
+        srcs.chunked(cellCount).forEach { group ->
+            drawIllustrationGroup(book, group, illustration.layoutType, displayHeight)
+        }
+        if (illustration.pageBreak) {
+            prepareNextPageIfNeed()
+        }
+    }
+
+    /**
+     * 绘制一组配图（一行）：宫格等分宽度、行内等高；
+     * 单图支持设置显示高度，宽度按比例，超宽/超高自动收缩。
+     */
+    private suspend fun drawIllustrationGroup(
+        book: Book,
+        group: List<String>,
+        layoutType: String,
+        displayHeight: Float
+    ) {
+        val images = arrayListOf<Pair<String, Size>>()
+        group.forEach { src ->
+            val size = runCatching {
+                ImageProvider.getImageSize(book, src, ReadBook.bookSource)
+            }.getOrNull()
+            if (size != null && size.width > 0 && size.height > 0) {
+                images.add(src to size)
+            }
+        }
+        if (images.isEmpty()) return
+        val gap = 4f.dpToPx()
+        val n = images.size
+        var cellWidth: Float
+        var rowHeight: Float
+        if (layoutType == BookIllustration.LAYOUT_SINGLE && displayHeight > 0f) {
+            val size = images[0].second
+            rowHeight = displayHeight
+            cellWidth = rowHeight * size.width.toFloat() / size.height.toFloat()
+        } else {
+            cellWidth = (visibleWidth - gap * (n - 1)) / n
+            val naturalHeights = images.map {
+                it.second.height.toFloat() * cellWidth / it.second.width.toFloat()
+            }
+            rowHeight = naturalHeights.max()
+        }
+        val totalWidth = cellWidth * n + gap * (n - 1)
+        if (totalWidth > visibleWidth) {
+            val scale = visibleWidth / totalWidth
+            cellWidth *= scale
+            rowHeight *= scale
+        }
+        if (rowHeight > visibleHeight) {
+            val scale = visibleHeight / rowHeight
+            cellWidth *= scale
+            rowHeight *= scale
+        }
+        if (rowHeight <= 0f) return
+        val rowWidth = cellWidth * n + gap * (n - 1)
+        val startX = (visibleWidth - rowWidth) / 2f
+        val textLine = TextLine(isImage = true)
+        textLine.text = " "
+        textLine.lineTop = durY + paddingTop
+        durY += rowHeight
+        textLine.lineBottom = durY + paddingTop
+        var x = startX
+        images.forEach { (src, _) ->
+            textLine.addColumn(
+                ImageColumn(
+                    start = absStartX + x,
+                    end = absStartX + x + cellWidth,
+                    src = src,
+                    click = null
+                )
+            )
+            x += cellWidth + gap
+        }
+        calcTextLinePosition(textPages, textLine, stringBuilder.length)
+        stringBuilder.append(" ")
+        pendingTextPage.addLine(textLine)
+        textLine.isParagraphEnd = true
+        durY += contentPaintTextHeight * paragraphSpacing / 10f
     }
 
     private suspend fun breakAfterSingleImageIfNeed() {

@@ -1,0 +1,65 @@
+package io.legado.app.data.entities
+
+import android.os.Parcelable
+import androidx.room.Entity
+import androidx.room.ForeignKey
+import androidx.room.Index
+import androidx.room.PrimaryKey
+import kotlinx.parcelize.Parcelize
+
+/**
+ * 配图（插图）记录
+ *
+ * 锚点策略：
+ * - 段间配图：anchorType = between_paragraphs，anchorPos 为章节文本（排版后）中的段落边界字符偏移，
+ *   frontFingerprint / backFingerprint 为边界前后段落文本指纹，用于章节内容变化后的容错重定位。
+ * - 章末配图：anchorType = chapter_end，插入该章末尾。
+ */
+@Parcelize
+@Entity(
+    tableName = "book_illustrations",
+    indices = [
+        Index(value = ["bookUrl"]),
+        Index(value = ["bookUrl", "chapterIndex"])
+    ],
+    foreignKeys = [
+        ForeignKey(
+            entity = Book::class,
+            parentColumns = ["bookUrl"],
+            childColumns = ["bookUrl"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ]
+)
+data class BookIllustration(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val bookUrl: String = "",
+    val chapterIndex: Int = 0,
+    val chapterUrl: String = "",
+    val chapterName: String = "",
+    val anchorType: String = ANCHOR_BETWEEN_PARAGRAPHS,
+    val anchorPos: Int = -1,
+    val frontParagraphText: String = "",
+    val backParagraphText: String = "",
+    val frontFingerprint: String = "",
+    val backFingerprint: String = "",
+    val imageSrcs: String = "[]",
+    val layoutType: String = LAYOUT_SINGLE,
+    val displayHeight: Int = 0,
+    val pageBreak: Boolean = false,
+    val sortOrder: Int = 0,
+    val pdfPage: Int = -1,
+    val pdfRect: String = ""
+) : Parcelable {
+
+    companion object {
+        const val ANCHOR_BETWEEN_PARAGRAPHS = "between_paragraphs"
+        const val ANCHOR_CHAPTER_END = "chapter_end"
+
+        const val LAYOUT_SINGLE = "single"
+        const val LAYOUT_DOUBLE = "double"
+        const val LAYOUT_TRIPLE = "triple"
+        const val LAYOUT_QUAD = "quad"
+    }
+}

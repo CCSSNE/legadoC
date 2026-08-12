@@ -79,6 +79,7 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
         for (index in 0 until tabLayout.tabCount) {
             val title = when (index) {
                 1 -> getString(R.string.bookmark)
+                2 -> getString(R.string.menu_illustration)
                 else -> getString(R.string.chapter_list)
             }
             tabLayout.getTabAt(index)?.customView = TextView(this).apply {
@@ -226,17 +227,19 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
         override fun getItem(position: Int): Fragment {
             return when (position) {
                 1 -> BookmarkFragment()
+                2 -> IllustrationFragment()
                 else -> ChapterListFragment()
             }
         }
 
         override fun getCount(): Int {
-            return 2
+            return 3
         }
 
         override fun getPageTitle(position: Int): CharSequence {
             return when (position) {
                 1 -> getString(R.string.bookmark)
+                2 -> getString(R.string.menu_illustration)
                 else -> getString(R.string.chapter_list)
             }
         }

@@ -12,6 +12,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.illustration.IllustrationHelp
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.localBook.EpubFile
 import io.legado.app.model.localBook.LocalBook
@@ -269,6 +270,9 @@ object BookHelp {
     }
 
     fun getImage(book: Book, src: String): File {
+        if (src.startsWith(IllustrationHelp.SRC_PREFIX)) {
+            return IllustrationHelp.getImageFile(book, src)
+        }
         return downloadDir.getFile(
             cacheFolderName,
             book.getFolderName(),

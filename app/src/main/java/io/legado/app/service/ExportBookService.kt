@@ -16,6 +16,7 @@ import io.legado.app.constant.NotificationId
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.BookIllustration
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.LifecycleHelp
@@ -24,6 +25,8 @@ import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.book.getLiteralExportFileName
 import io.legado.app.help.book.isLocalModified
+import io.legado.app.help.illustration.IllustrationHelp
+import io.legado.app.help.illustration.imageSrcsFromJson
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.ReadBook
 import io.legado.app.model.localBook.EpubFile
@@ -39,6 +42,7 @@ import io.legado.app.utils.activityPendingIntent
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.createFileIfNotExist
 import io.legado.app.utils.createFileIfNotExistWithMime
+import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.delete
 import io.legado.app.utils.exists
 import io.legado.app.utils.find
@@ -52,6 +56,8 @@ import io.legado.app.utils.postEvent
 import io.legado.app.utils.servicePendingIntent
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.writeFile
+import io.legado.app.utils.externalCache
+import java.io.File
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
@@ -349,6 +355,11 @@ class ExportBookService : BaseService() {
     }
 
     private suspend fun exportTxt(fileDoc: FileDoc, book: Book, config: ExportConfig) {
+        val illustrations = appDb.bookIllustrationDao.getByBook(book.bookUrl)
+        if (illustrations.isNotEmpty()) {
+            exportTxtZip(fileDoc, book, config, illustrations)
+            return
+        }
         val filename = book.getLiteralExportFileName("txt", config.bookExportFileName)
         fileDoc.find(filename)?.delete()
 
@@ -379,6 +390,68 @@ class ExportBookService : BaseService() {
         if (config.toWebDav) {
             // 导出到webdav
             AppWebDav.exportWebDav(bookDoc.uri, filename)
+        }
+    }
+
+    /**
+     * 带配图的 TXT 导出：压缩包 = book.txt + images/ + illustrations.json
+     */
+    private suspend fun exportTxtZip(
+        fileDoc: FileDoc,
+        book: Book,
+        config: ExportConfig,
+        illustrations: List<BookIllustration>
+    ) {
+        val txtName = book.getLiteralExportFileName("txt", config.bookExportFileName)
+        val zipName = txtName.removeSuffix(".txt") + ".zip"
+        fileDoc.find(zipName)?.delete()
+        val tmpRoot = FileUtils.createFolderIfNotExist(
+            appCtx.externalCache,
+            "ExportTxtZip"
+        )
+        FileUtils.delete(tmpRoot)
+        FileUtils.createFolderIfNotExist(tmpRoot.absolutePath)
+        val tmpTxt = File(tmpRoot, txtName)
+        val tmpImagesDir = File(tmpRoot, IllustrationHelp.EXPORT_IMAGES_DIR)
+        FileUtils.createFolderIfNotExist(tmpImagesDir.absolutePath)
+        val tmpJson = File(tmpRoot, IllustrationHelp.EXPORT_JSON_NAME)
+        try {
+            val charset = Charset.forName(config.charset)
+            tmpTxt.bufferedWriter(charset).use { bw ->
+                getAllContents(book, config) { text, _ ->
+                    bw.write(text)
+                }
+            }
+            illustrations.forEach { illustration ->
+                illustration.imageSrcsFromJson().forEach { src ->
+                    val srcFile = IllustrationHelp.getImageFile(book, src)
+                    if (srcFile.exists()) {
+                        kotlin.runCatching {
+                            val imageName = src.substringAfter(IllustrationHelp.SRC_PREFIX)
+                            File(tmpImagesDir, imageName).writeBytes(srcFile.readBytes())
+                        }.onFailure { e ->
+                            AppLog.put("导出配图失败: ${book.name} ${illustration.chapterName}", e)
+                        }
+                    }
+                }
+            }
+            val jsonText = IllustrationHelp.buildExportJson(book, txtName) ?: return
+            tmpJson.writeText(jsonText, Charsets.UTF_8)
+            val tmpZip = File(tmpRoot, zipName)
+            ZipUtils.zipFiles(
+                listOf(tmpTxt, tmpImagesDir, tmpJson),
+                tmpZip,
+                null
+            )
+            val zipDoc = fileDoc.createFileIfNotExistWithMime(zipName, "application/zip")
+            zipDoc.openOutputStream(truncate = true).getOrThrow().use { out ->
+                tmpZip.inputStream().use { it.copyTo(out) }
+            }
+            if (config.toWebDav) {
+                AppWebDav.exportWebDav(zipDoc.uri, zipName)
+            }
+        } finally {
+            FileUtils.delete(tmpRoot)
         }
     }
 

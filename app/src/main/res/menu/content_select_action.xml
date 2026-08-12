@@ -44,4 +44,9 @@
         android:id="@+id/menu_share_str"
         android:title="@string/share"
         app:showAsAction="never" />
+
+    <item
+        android:id="@+id/menu_illustration"
+        android:title="@string/menu_illustration"
+        app:showAsAction="never" />
 </menu>

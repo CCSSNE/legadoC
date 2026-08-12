@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ImageView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/iv_image"
+    android:layout_width="80dp"
+    android:layout_height="80dp"
+    android:layout_marginEnd="6dp"
+    android:scaleType="centerCrop"
+    android:src="@drawable/image_loading_error"
+    android:contentDescription="@string/illustration_title" />

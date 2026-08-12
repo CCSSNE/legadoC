@@ -825,6 +825,8 @@ class PageView(context: Context) : FrameLayout(context) {
 
     val selectStartPos get() = binding.contentTextView.selectStart
 
+    val selectEndPos get() = binding.contentTextView.selectEndPos
+
     private companion object {
         const val ADVANCED_TITLE_SIZE_FACTOR = 1.25f
         const val MAX_STYLED_LOTTIE_CACHE_SIZE = 6

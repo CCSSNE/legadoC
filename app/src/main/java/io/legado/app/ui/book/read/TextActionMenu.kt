@@ -51,6 +51,13 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
     private val visibleMenuItems = arrayListOf<MenuItemImpl>()
     private val moreMenuItems = arrayListOf<MenuItemImpl>()
     private val expandTextMenu get() = context.getPrefBoolean(PreferKey.expandTextMenu)
+    var illustrationEnabled: Boolean = false
+        set(value) {
+            if (field != value) {
+                field = value
+                upMenu()
+            }
+        }
 
     private val configuredActionIds: Set<String>
         get() = context.getPrefStringSet(
@@ -119,7 +126,10 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
 
     private fun filteredMenuItems(): List<MenuItemImpl> {
         return allMenuItems.filter { item ->
-            menuItemToActionId(item.itemId)?.let { configuredActionIds.contains(it) } ?: false
+            when (item.itemId) {
+                R.id.menu_illustration -> illustrationEnabled
+                else -> menuItemToActionId(item.itemId)?.let { configuredActionIds.contains(it) } ?: false
+            }
         }
     }
 

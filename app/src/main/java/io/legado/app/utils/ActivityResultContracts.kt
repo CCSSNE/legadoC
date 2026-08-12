@@ -52,6 +52,52 @@ class SelectImageContract : ActivityResultContract<Int?, SelectImageContract.Res
 
 }
 
+class SelectImagesContract : ActivityResultContract<Int?, SelectImagesContract.Result>() {
+
+    private val delegate = ActivityResultContracts.PickMultipleVisualMedia()
+    private var requestCode: Int? = null
+    private var useFallback = false
+
+    override fun createIntent(context: Context, input: Int?): Intent {
+        requestCode = input
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            .setType("image/*")
+            .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+        if (intent.resolveActivity(appCtx.packageManager) == null) {
+            useFallback = true
+            val request = PickVisualMediaRequest.Builder()
+                .setMediaType(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                .setMaxItems(9)
+                .build()
+            return delegate.createIntent(context, request)
+        }
+        return intent
+    }
+
+    override fun parseResult(resultCode: Int, intent: Intent?): Result {
+        val uris = if (useFallback) {
+            delegate.parseResult(resultCode, intent)
+        } else if (resultCode == RESULT_OK && intent != null) {
+            val clipData = intent.clipData
+            if (clipData != null) {
+                (0 until clipData.itemCount).map { clipData.getItemAt(it).uri }
+            } else {
+                intent.data?.let { listOf(it) }.orEmpty()
+            }
+        } else {
+            emptyList()
+        }
+        return Result(requestCode, uris)
+    }
+
+    data class Result(
+        val requestCode: Int?,
+        val uris: List<Uri> = emptyList()
+    )
+
+}
+
 class StartActivityContract(private val cls: Class<*>) :
     ActivityResultContract<(Intent.() -> Unit)?, ActivityResult>() {
 

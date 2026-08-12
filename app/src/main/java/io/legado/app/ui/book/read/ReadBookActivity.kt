@@ -36,6 +36,7 @@ import io.legado.app.constant.Status
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.BookIllustration
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
@@ -54,6 +55,9 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ReadTipConfig
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.illustration.IllustrationAnchor
+import io.legado.app.help.illustration.IllustrationHelp
+import io.legado.app.help.illustration.imageSrcsFromJson
 import io.legado.app.help.source.getSourceType
 import io.legado.app.help.storage.Backup
 import io.legado.app.lib.dialogs.SelectItem
@@ -79,6 +83,7 @@ import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.book.changesource.ChangeBookSourceDialog
 import io.legado.app.ui.book.changesource.ChangeChapterSourceDialog
 import io.legado.app.ui.book.info.BookInfoActivity
+import io.legado.app.ui.book.read.config.IllustrationEditDialog
 import io.legado.app.ui.book.read.config.AutoReadDialog
 import io.legado.app.ui.book.read.config.BgTextConfigDialog.Companion.BG_COLOR
 import io.legado.app.ui.book.read.config.BgTextConfigDialog.Companion.READ_MENU_BG_COLOR
@@ -154,6 +159,8 @@ import io.legado.app.model.analyzeRule.AnalyzeUrl.Companion.paramPattern
 import java.lang.ref.WeakReference
 import io.legado.app.ui.login.SourceLoginJsExtensions
 import kotlinx.coroutines.CoroutineStart
+import kotlin.math.max
+import kotlin.math.min
 
 /**
  * 阅读界面
@@ -233,6 +240,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
     private var menu: Menu? = null
     private var backupJob: Job? = null
+    private var illustrationAnchor: IllustrationAnchor? = null
     val textActionMenu: TextActionMenu by lazy {
         TextActionMenu(this, this)
     }
@@ -872,6 +880,8 @@ class ReadBookActivity : BaseReadBookActivity(),
      * 显示文本操作菜单
      */
     override fun showTextActionMenu() {
+        illustrationAnchor = computeIllustrationAnchor()
+        textActionMenu.illustrationEnabled = illustrationAnchor != null
         val navigationBarHeight =
             if (!ReadBookConfig.hideNavigationBar && navigationBarGravity == Gravity.BOTTOM)
                 binding.navigationBar.height else 0
@@ -906,10 +916,69 @@ class ReadBookActivity : BaseReadBookActivity(),
     override val selectedText: String get() = binding.readView.getSelectText()
 
     /**
+     * 计算选区对应的配图插入锚点。
+     *
+     * 规则：恰好选中两段（A 段一部分 + B 段一部分）时，插入 A/B 段边界；
+     * 单独选中该章最后一段时，插入该章末尾；其余情况不出现配图选项。
+     */
+    private fun computeIllustrationAnchor(): IllustrationAnchor? {
+        val book = ReadBook.book ?: return null
+        if (!book.isLocalTxt) return null
+        val chapter = ReadBook.curTextChapter ?: return null
+        val pageView = binding.readView.curPage
+        val startPos = pageView.selectStartPos
+        val endPos = pageView.selectEndPos
+        if (!startPos.isSelected() || !endPos.isSelected()) return null
+        val startPage = pageView.relativePage(startPos.relativePagePos)
+        val endPage = pageView.relativePage(endPos.relativePagePos)
+        val startParaNum = startPage.getLine(startPos.lineIndex).paragraphNum
+        val endParaNum = endPage.getLine(endPos.lineIndex).paragraphNum
+        if (startParaNum <= 0 || endParaNum <= 0) return null
+        val chapterParagraphs = chapter.paragraphs
+        val lastParaNum = chapterParagraphs.lastOrNull()?.num ?: return null
+        if (startParaNum == endParaNum) {
+            // 单段：仅当是该章最后一段时，配到章末
+            if (startParaNum != lastParaNum) return null
+            val paragraph = chapterParagraphs.getOrNull(startParaNum - 1) ?: return null
+            return IllustrationAnchor(
+                anchorType = BookIllustration.ANCHOR_CHAPTER_END,
+                anchorPos = -1,
+                frontParagraph = paragraph.text,
+                backParagraph = ""
+            )
+        }
+        val frontNum = min(startParaNum, endParaNum)
+        val backNum = max(startParaNum, endParaNum)
+        if (backNum != frontNum + 1) return null
+        val frontParagraph = chapterParagraphs.getOrNull(frontNum - 1) ?: return null
+        val backParagraph = chapterParagraphs.getOrNull(backNum - 1) ?: return null
+        val anchorPos = frontParagraph.lastLine.chapterPosition +
+            frontParagraph.lastLine.charSize +
+            if (frontParagraph.isParagraphEnd) 1 else 0
+        return IllustrationAnchor(
+            anchorType = BookIllustration.ANCHOR_BETWEEN_PARAGRAPHS,
+            anchorPos = anchorPos,
+            frontParagraph = frontParagraph.text,
+            backParagraph = backParagraph.text
+        )
+    }
+
+    /**
      * 文本选择菜单操作
      */
     override fun onMenuItemSelected(itemId: Int): Boolean {
         when (itemId) {
+            R.id.menu_illustration -> {
+                illustrationAnchor?.let { anchor ->
+                    val dialog = IllustrationEditDialog(anchor)
+                    dialog.setOnInserted {
+                        ReadBook.loadContent(resetPageOffset = true)
+                    }
+                    showDialogFragment(dialog)
+                }
+                return true
+            }
+
             R.id.menu_aloud -> {
                 lifecycleScope.launch(start = CoroutineStart.UNDISPATCHED) {
                     binding.readView.aloudStartSelect()
@@ -1778,19 +1847,25 @@ class ReadBookActivity : BaseReadBookActivity(),
      */
     @SuppressLint("RtlHardcoded")
     override fun onImageLongPress(x: Float, y: Float, src: String) {
-        popupAction.setItems(
-            listOf(
-                SelectItem(getString(R.string.show), "show"),
-                SelectItem(getString(R.string.refresh), "refresh"),
-                SelectItem(getString(R.string.action_save), "save"),
-                SelectItem(getString(R.string.menu), "menu"),
-                SelectItem(getString(R.string.select_folder), "selectFolder")
-            )
+        val items = arrayListOf(
+            SelectItem(getString(R.string.show), "show"),
+            SelectItem(getString(R.string.refresh), "refresh")
         )
+        if (src.startsWith(IllustrationHelp.SRC_PREFIX)) {
+            items.add(SelectItem(getString(R.string.illustration_save_to_album), "saveToAlbum"))
+            items.add(SelectItem(getString(R.string.illustration_delete), "deleteIllustration"))
+        } else {
+            items.add(SelectItem(getString(R.string.action_save), "save"))
+            items.add(SelectItem(getString(R.string.menu), "menu"))
+            items.add(SelectItem(getString(R.string.select_folder), "selectFolder"))
+        }
+        popupAction.setItems(items)
         popupAction.onActionClick = {
             when (it) {
                 "show" -> showDialogFragment(PhotoDialog(src, isBook = true))
                 "refresh" -> viewModel.refreshImage(src)
+                "saveToAlbum" -> saveIllustrationToAlbum(src)
+                "deleteIllustration" -> deleteIllustration(src)
                 "save" -> {
                     val path = ACache.get().getAsString(AppConst.imagePathKey)
                     if (path.isNullOrEmpty()) {
@@ -1814,6 +1889,31 @@ class ReadBookActivity : BaseReadBookActivity(),
             binding.readView, Gravity.BOTTOM or Gravity.LEFT, x.toInt(),
             binding.root.height + navigationBarHeight - y.toInt()
         )
+    }
+
+    private fun saveIllustrationToAlbum(src: String) {
+        val book = ReadBook.book ?: return
+        lifecycleScope.launch(IO) {
+            val ok = IllustrationHelp.saveToAlbum(this@ReadBookActivity, book, src)
+            withContext(Main) {
+                toastOnUi(
+                    if (ok) R.string.illustration_saved_to_album else R.string.illustration_save_failed
+                )
+            }
+        }
+    }
+
+    private fun deleteIllustration(src: String) {
+        val book = ReadBook.book ?: return
+        val records = appDb.bookIllustrationDao.getByBook(book.bookUrl)
+            .filter { it.imageSrcsFromJson().contains(src) }
+        if (records.isEmpty()) return
+        appDb.bookIllustrationDao.delete(*records.toTypedArray())
+        records.forEach {
+            IllustrationHelp.deleteImages(book, it.imageSrcsFromJson())
+        }
+        toastOnUi(R.string.illustration_deleted)
+        ReadBook.loadContent(resetPageOffset = true)
     }
 
     /**

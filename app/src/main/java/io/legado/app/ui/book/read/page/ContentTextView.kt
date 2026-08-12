@@ -25,6 +25,7 @@ import io.legado.app.data.entities.BookmarkStyle
 import io.legado.app.help.PaperInkHelper
 import io.legado.app.help.book.isOnLineTxt
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.illustration.IllustrationHelp
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.model.ReadBook
 import io.legado.app.model.localBook.EpubFile
@@ -74,6 +75,8 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     private val visibleRect = ChapterProvider.visibleRect
     val selectStart = TextPos(0, -1, -1)
     private val selectEnd = TextPos(0, -1, -1)
+    val selectEndPos: TextPos
+        get() = selectEnd
     var textPage: TextPage = TextPage()
         private set
     var bookmarks: List<Bookmark> = emptyList()
@@ -772,7 +775,11 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
                     handled = true
                 }
 
-                is ImageColumn -> when (AppConfig.clickImgWay) {
+                is ImageColumn -> if (column.src.startsWith(IllustrationHelp.SRC_PREFIX)) {
+                    // 配图：点击直接全屏查看
+                    activity?.showDialogFragment(PhotoDialog(column.src, isBook = true))
+                    handled = true
+                } else when (AppConfig.clickImgWay) {
                     "1" -> { //预览图片
                         activity?.showDialogFragment(PhotoDialog(column.src, isBook = true))
                         handled = true
