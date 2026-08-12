@@ -92,10 +92,15 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     private val bubbleShown = mutableSetOf<Long>()
     private val bubbleOffsets = mutableMapOf<Long, Pair<Float, Float>>()
     private val pageBookmarkAnchorCache = HashMap<TextPage, Map<Long, RectF>>()
+    private val bubbleLayoutCache = HashMap<Long, StaticLayout>()
+    private var bubbleShowAllPref = true
+    private var bubbleNoStyleClickPref = true
+    private var bubbleBgAlpha = 100
     private val bubbleBgPaint = Paint()
     private val bubbleStrokePaint = Paint()
     private val bubbleArrowPaint = Paint()
     private val bubbleTextPaint = TextPaint()
+    private val bubbleArrowPath = Path()
     private val bubbleCornerRadius = 8f.dpToPx()
     private val bubblePadding = 10f.dpToPx()
     private val bubbleGap = 6f.dpToPx()
@@ -155,6 +160,10 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
 
     fun setBookmarks(list: List<Bookmark>) {
         bookmarks = list
+        bubbleShowAllPref = context.getPrefBoolean(PreferKey.bookmarkNoteBubbleShowAll, true)
+        bubbleNoStyleClickPref = context.getPrefBoolean(PreferKey.bookmarkNoteBubbleOnNoStyleClick, true)
+        bubbleBgAlpha = context.getPrefInt(PreferKey.bookmarkNoteBubbleBgAlpha, 100).coerceIn(0, 100)
+        bubbleLayoutCache.clear()
         invalidate()
     }
 
@@ -165,12 +174,6 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         val rect: RectF,
         val anchor: RectF
     )
-
-    private val bubbleShowAllPref: Boolean
-        get() = context.getPrefBoolean(PreferKey.bookmarkNoteBubbleShowAll, true)
-
-    private val bubbleNoStyleClickPref: Boolean
-        get() = context.getPrefBoolean(PreferKey.bookmarkNoteBubbleOnNoStyleClick, true)
 
     private fun shouldShowBubble(bookmark: Bookmark): Boolean {
         if (bookmark.content.isBlank()) return false
@@ -258,22 +261,33 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         val rightBound = visibleRect.right
         val bottomBound = visibleRect.bottom
         val pageWidth = rightBound - leftBound
-        // 先设置文字画笔，再按内容测量理想宽度：气泡宽度随内容多少自适应
-        bubbleTextPaint.textSize = 13f.spToPx()
-        bubbleTextPaint.color = context.getCompatColor(R.color.primaryText)
-        bubbleTextPaint.isAntiAlias = true
         val maxBubbleWidth = min(
             bubbleMaxWidth,
             (pageWidth - bubblePadding * 2 - 2 * bubbleGap).coerceAtLeast(bubbleMinWidth)
         )
-        val idealTextWidth =
-            bookmark.content.lines().maxOfOrNull { bubbleTextPaint.measureText(it) } ?: 0f
-        val bubbleW = (idealTextWidth + bubblePadding * 2).coerceIn(bubbleMinWidth, maxBubbleWidth)
-        val layout = buildBubbleLayout(
-            bookmark.content,
-            (bubbleW - bubblePadding * 2).toInt().coerceAtLeast(1)
-        )
-        val bubbleH = layout.height + bubblePadding * 2
+        // 缓存气泡布局与尺寸，滚动时避免每帧重建 StaticLayout/测量文本
+        val bubbleW: Float
+        val bubbleH: Float
+        val cachedLayout = bubbleLayoutCache[bookmark.time]
+        if (cachedLayout != null) {
+            bubbleW = (cachedLayout.width + bubblePadding * 2)
+                .coerceIn(bubbleMinWidth, maxBubbleWidth)
+            bubbleH = cachedLayout.height + bubblePadding * 2
+        } else {
+            bubbleTextPaint.textSize = 13f.spToPx()
+            bubbleTextPaint.color = context.getCompatColor(R.color.primaryText)
+            bubbleTextPaint.isAntiAlias = true
+            val idealTextWidth =
+                bookmark.content.lines().maxOfOrNull { bubbleTextPaint.measureText(it) } ?: 0f
+            val w = (idealTextWidth + bubblePadding * 2).coerceIn(bubbleMinWidth, maxBubbleWidth)
+            val layout = buildBubbleLayout(
+                bookmark.content,
+                (w - bubblePadding * 2).toInt().coerceAtLeast(1)
+            )
+            bubbleLayoutCache[bookmark.time] = layout
+            bubbleW = (layout.width + bubblePadding * 2).coerceIn(bubbleMinWidth, maxBubbleWidth)
+            bubbleH = layout.height + bubblePadding * 2
+        }
 
         // 已确定过位置的书签，保持其与正文的相对偏移，滚动/翻页时仅随正文平移
         bubbleOffsets[bookmark.time]?.let { (dx, dy) ->
@@ -435,10 +449,8 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     private fun drawBubble(canvas: Canvas, data: BubbleData) {
         val rect = data.rect
         val bgColor = appCtx.backgroundColor
-        val bgAlpha = context.getPrefInt(PreferKey.bookmarkNoteBubbleBgAlpha, 100)
-            .coerceIn(0, 100)
         bubbleBgPaint.color = Color.argb(
-            Color.alpha(bgColor) * bgAlpha / 100,
+            Color.alpha(bgColor) * bubbleBgAlpha / 100,
             Color.red(bgColor),
             Color.green(bgColor),
             Color.blue(bgColor)
@@ -453,10 +465,11 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         bubbleStrokePaint.isAntiAlias = true
         canvas.drawRoundRect(rect, bubbleCornerRadius, bubbleCornerRadius, bubbleStrokePaint)
 
-        val layout = buildBubbleLayout(
-            data.bookmark.content,
-            (rect.width() - bubblePadding * 2).toInt().coerceAtLeast(1)
-        )
+        val layout = bubbleLayoutCache[data.bookmark.time]
+            ?: buildBubbleLayout(
+                data.bookmark.content,
+                (rect.width() - bubblePadding * 2).toInt().coerceAtLeast(1)
+            )
         canvas.save()
         canvas.translate(rect.left + bubblePadding, rect.top + bubblePadding)
         layout.draw(canvas)
@@ -496,20 +509,20 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         // 箭头小三角
         val angle = Math.atan2((endY - startY).toDouble(), (endX - startX).toDouble())
         val size = bubbleArrowSize
-        val path = Path()
-        path.moveTo(endX, endY)
-        path.lineTo(
+        bubbleArrowPath.reset()
+        bubbleArrowPath.moveTo(endX, endY)
+        bubbleArrowPath.lineTo(
             (endX - size * Math.cos(angle - Math.PI / 6)).toFloat(),
             (endY - size * Math.sin(angle - Math.PI / 6)).toFloat()
         )
-        path.lineTo(
+        bubbleArrowPath.lineTo(
             (endX - size * Math.cos(angle + Math.PI / 6)).toFloat(),
             (endY - size * Math.sin(angle + Math.PI / 6)).toFloat()
         )
-        path.close()
+        bubbleArrowPath.close()
         bubbleArrowPaint.pathEffect = null
         bubbleArrowPaint.style = Paint.Style.FILL
-        canvas.drawPath(path, bubbleArrowPaint)
+        canvas.drawPath(bubbleArrowPath, bubbleArrowPaint)
     }
 
     private fun findBubbleAt(x: Float, y: Float): Bookmark? {
