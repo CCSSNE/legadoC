@@ -41,6 +41,11 @@ class AllBookmarkActivity : VMBaseActivity<ActivityAllBookmarkBinding, AllBookma
             }
         }
     }
+    private val importFile = registerForActivityResult(HandleFileContract()) {
+        it.uri?.let { uri ->
+            viewModel.importBookmark(uri)
+        }
+    }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         initView()
@@ -72,6 +77,12 @@ class AllBookmarkActivity : VMBaseActivity<ActivityAllBookmarkBinding, AllBookma
 
             R.id.menu_export_md -> exportDir.launch {
                 requestCode = 2
+            }
+
+            R.id.menu_import -> importFile.launch {
+                mode = HandleFileContract.FILE
+                allowExtensions = arrayOf("json")
+                title = getString(R.string.bookmark_import)
             }
         }
         return super.onCompatOptionsItemSelected(item)

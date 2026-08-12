@@ -2,12 +2,16 @@ package io.legado.app.ui.book.bookmark
 
 import android.app.Application
 import android.net.Uri
+import io.legado.app.R
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
+import io.legado.app.data.entities.Bookmark
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.GSON
 import io.legado.app.utils.createFileIfNotExist
+import io.legado.app.utils.fromJsonArray
+import io.legado.app.utils.openInputStream
 import io.legado.app.utils.openOutputStream
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.writeToOutputStream
@@ -61,6 +65,26 @@ class AllBookmarkViewModel(application: Application) : BaseViewModel(application
             AppLog.put("导出失败\n${it.localizedMessage}", it, true)
         }.onSuccess {
             context.toastOnUi("导出成功")
+        }
+    }
+
+    fun importBookmark(uri: Uri) {
+        execute {
+            val input = context.contentResolver.openInputStream(uri)
+                ?: throw Exception("无法打开文件")
+            val list = input.use {
+                GSON.fromJsonArray<Bookmark>(it).getOrThrow()
+            }
+            if (list.isEmpty()) {
+                throw Exception("文件中没有可导入的书签")
+            }
+            appDb.bookmarkDao.insert(*list.toTypedArray())
+            list.size
+        }.onError {
+            AppLog.put("导入书签失败\n${it.localizedMessage}", it, true)
+            context.toastOnUi(R.string.bookmark_import_failed)
+        }.onSuccess { count ->
+            context.toastOnUi("导入成功，共 $count 条书签")
         }
     }
 

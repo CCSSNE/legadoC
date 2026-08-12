@@ -9,4 +9,8 @@
         android:id="@+id/menu_export_md"
         android:title="@string/export_md" />
 
+    <item
+        android:id="@+id/menu_import"
+        android:title="@string/bookmark_import" />
+
 </menu>

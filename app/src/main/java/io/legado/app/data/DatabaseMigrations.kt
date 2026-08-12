@@ -21,7 +21,15 @@ object DatabaseMigrations {
             migration_35_36, migration_36_37, migration_37_38, migration_38_39,
             migration_39_40, migration_40_41, migration_41_42, migration_42_43,
             migration_90_91, migration_91_92, migration_92_93, migration_93_94,
+            migration_94_95,
         )
+    }
+
+    private val migration_94_95 = object : Migration(94, 95) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE bookmarks ADD COLUMN style INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE bookmarks ADD COLUMN color INTEGER NOT NULL DEFAULT 0")
+        }
     }
 
     private val migration_93_94 = object : Migration(93, 94) {
