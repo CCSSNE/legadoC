@@ -31,7 +31,6 @@ import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import splitties.init.appCtx
-import splitties.views.onClick
 
 class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark, true),
     ColorPickerDialogListener {
@@ -44,7 +43,6 @@ class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark, true),
     }
 
     private val binding by viewBinding(DialogBookmarkBinding::bind)
-    private var selectedColor = 0
     private val effectColorMap = mutableMapOf<Int, Int>()
 
     override fun onStart() {
@@ -66,25 +64,16 @@ class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark, true),
             return
         }
         val editPos = arguments.getInt("editPos", -1)
-        selectedColor = bookmark.color
         effectColorMap.clear()
         effectColorMap.putAll(BookmarkStyle.parseStyleColors(bookmark.styleColors))
         checkStyleBoxes(bookmark.style)
         initStyleCheckBoxes()
         rebuildEffectColorRows()
-        upColorPanel()
         binding.tvFooterLeft.visible(editPos >= 0)
         binding.run {
             tvChapterName.text = bookmark.chapterName
             editBookText.setText(bookmark.bookText)
             editContent.setText(bookmark.content)
-            colorPanel.onClick {
-                showColorPicker(0)
-            }
-            tvColorDefault.onClick {
-                selectedColor = 0
-                upColorPanel()
-            }
             tvCancel.setOnClickListener {
                 dismiss()
             }
@@ -92,7 +81,6 @@ class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark, true),
                 bookmark.bookText = editBookText.text?.toString() ?: ""
                 bookmark.content = editContent.text?.toString() ?: ""
                 bookmark.style = getCheckedStyles()
-                bookmark.color = selectedColor
                 bookmark.styleColors = BookmarkStyle.toStyleColorsJson(effectColorMap)
                 lifecycleScope.launch {
                     withContext(IO) {
@@ -199,7 +187,7 @@ class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark, true),
             )
             val colorPanel = ColorPanelView(requireContext()).apply {
                 color = effectColorMap[bit]
-                    ?: selectedColor.takeIf { it != 0 }
+                    ?: bookmark.color.takeIf { it != 0 }
                     ?: appCtx.accentColor
                 layoutParams = LinearLayout.LayoutParams(32.dpToPx(), 32.dpToPx())
                 setOnClickListener {
@@ -236,16 +224,12 @@ class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark, true),
         return styles
     }
 
-    private fun upColorPanel() {
-        binding.colorPanel.color = if (selectedColor != 0) selectedColor else appCtx.accentColor
-    }
-
+    @Suppress("DEPRECATION")
     private fun showColorPicker(dialogId: Int) {
-        val color = if (dialogId == 0) {
-            selectedColor.takeIf { it != 0 } ?: appCtx.accentColor
-        } else {
-            effectColorMap[dialogId] ?: selectedColor.takeIf { it != 0 } ?: appCtx.accentColor
-        }
+        val bookmark = arguments?.getParcelable<Bookmark>("bookmark")
+        val color = effectColorMap[dialogId]
+            ?: bookmark?.color?.takeIf { it != 0 }
+            ?: appCtx.accentColor
         val dialog = ColorPreference.ColorPickerDialogCompat.newBuilder()
             .setDialogType(ColorPickerDialog.TYPE_PRESETS)
             .setDialogTitle(R.string.bookmark_color)
@@ -269,17 +253,12 @@ class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark, true),
         } else {
             color
         }
-        if (dialogId == 0) {
-            selectedColor = value
-            upColorPanel()
+        if (value == 0) {
+            effectColorMap.remove(dialogId)
         } else {
-            if (value == 0) {
-                effectColorMap.remove(dialogId)
-            } else {
-                effectColorMap[dialogId] = value
-            }
-            rebuildEffectColorRows()
+            effectColorMap[dialogId] = value
         }
+        rebuildEffectColorRows()
     }
 
     override fun onDialogDismissed(dialogId: Int) {

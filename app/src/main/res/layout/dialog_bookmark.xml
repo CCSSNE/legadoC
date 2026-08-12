@@ -135,37 +135,6 @@
                     android:layout_height="wrap_content"
                     android:orientation="vertical" />
 
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal"
-                    android:paddingTop="8dp">
-
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="@string/bookmark_color"
-                        android:textColor="@color/secondaryText"
-                        android:textSize="13sp" />
-
-                    <TextView
-                        android:id="@+id/tv_color_default"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:padding="8dp"
-                        android:text="@string/bookmark_color_default"
-                        android:textColor="?attr/colorAccent" />
-
-                    <com.jaredrummler.android.colorpicker.ColorPanelView
-                        android:id="@+id/color_panel"
-                        android:layout_width="32dp"
-                        android:layout_height="32dp"
-                        android:layout_marginStart="8dp" />
-
-                </LinearLayout>
-
             </LinearLayout>
 
         </androidx.core.widget.NestedScrollView>
