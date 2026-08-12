@@ -109,6 +109,7 @@ class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark, true),
                 BookmarkStyle.DOUBLE_UNDERLINE -> R.id.rb_style_double
                 BookmarkStyle.WAVE_UNDERLINE -> R.id.rb_style_wave
                 BookmarkStyle.HIGHLIGHT -> R.id.rb_style_highlight
+                BookmarkStyle.TEXT_COLOR -> R.id.rb_style_text_color
                 else -> R.id.rb_style_none
             }
         )
@@ -120,6 +121,7 @@ class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark, true),
             R.id.rb_style_double -> BookmarkStyle.DOUBLE_UNDERLINE
             R.id.rb_style_wave -> BookmarkStyle.WAVE_UNDERLINE
             R.id.rb_style_highlight -> BookmarkStyle.HIGHLIGHT
+            R.id.rb_style_text_color -> BookmarkStyle.TEXT_COLOR
             else -> BookmarkStyle.NONE
         }
     }

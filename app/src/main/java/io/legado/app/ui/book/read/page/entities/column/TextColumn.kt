@@ -52,9 +52,8 @@ data class TextColumn(
         }
 
     override fun draw(view: ContentTextView, canvas: Canvas) {
-        val isHighlight =
-            bookmarkStyle == io.legado.app.data.entities.BookmarkStyle.HIGHLIGHT
-        if (isHighlight) {
+        val bookmarkStyleValue = bookmarkStyle
+        if (bookmarkStyleValue == io.legado.app.data.entities.BookmarkStyle.HIGHLIGHT) {
             // 高亮作为背景层先绘制，文字绘制在其上，避免颜色叠加导致文字对比度下降
             drawHighlightBackground(canvas)
         }
@@ -63,10 +62,12 @@ data class TextColumn(
         } else {
             ChapterProvider.contentPaint
         }
-        val textColor = if (textLine.isReadAloud || isSearchResult) {
-            ReadBookConfig.textAccentColor
-        } else {
-            ReadBookConfig.textColor
+        val textColor = when {
+            textLine.isReadAloud || isSearchResult -> ReadBookConfig.textAccentColor
+            bookmarkStyleValue == io.legado.app.data.entities.BookmarkStyle.TEXT_COLOR -> {
+                if (bookmarkColor != 0) bookmarkColor else appCtx.accentColor
+            }
+            else -> ReadBookConfig.textColor
         }
         val enablePaperInk = !textLine.isReadAloud && !isSearchResult
         if (textPaint.color != textColor) {
@@ -80,7 +81,11 @@ data class TextColumn(
         } else {
             view.drawTextWithPaperInk(canvas, charData, start, y, textPaint, enablePaperInk)
         }
-        if (bookmarkStyle != 0 && !isHighlight) {
+        if (
+            bookmarkStyleValue == io.legado.app.data.entities.BookmarkStyle.SINGLE_UNDERLINE ||
+            bookmarkStyleValue == io.legado.app.data.entities.BookmarkStyle.DOUBLE_UNDERLINE ||
+            bookmarkStyleValue == io.legado.app.data.entities.BookmarkStyle.WAVE_UNDERLINE
+        ) {
             drawBookmarkDecoration(canvas)
         }
         if (selected) {

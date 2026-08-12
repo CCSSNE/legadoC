@@ -1165,6 +1165,7 @@
     <string name="bookmark_style_double">雙下劃線</string>
     <string name="bookmark_style_wave">波浪線</string>
     <string name="bookmark_style_highlight">高亮</string>
+    <string name="bookmark_style_text_color">文字變色</string>
     <string name="bookmark_color">顏色</string>
     <string name="bookmark_color_default">默認</string>
     <string name="paragraph_bookmark">段落書籤</string>
@@ -1173,6 +1174,8 @@
     <string name="bookmark_note_bubble_show_all_summary">關閉後氣泡默認隱藏，點擊書籤正文仍可單獨顯示</string>
     <string name="bookmark_note_bubble_no_style_click">點擊無效果書籤顯示備註</string>
     <string name="bookmark_note_bubble_no_style_click_summary">允許點擊無任何顯示樣式的書籤正文顯示其備註氣泡</string>
+    <string name="bookmark_note_bubble_bg_alpha">備註氣泡背景透明度</string>
+    <string name="bookmark_note_bubble_bg_alpha_summary">對所有備註氣泡統一生效</string>
     <string name="change_source_delay">换源间隔</string>
     <string name="change_source_progress">" 結果 %1$d, 當前進度 %2$d / %3$d: %4$s"</string>
     <string name="open_book_info_by_click_title">点击书名打开详情</string>

@@ -3,6 +3,7 @@ package io.legado.app.ui.book.read.page
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Path
@@ -53,6 +54,7 @@ import io.legado.app.utils.activity
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.getCompatColor
 import io.legado.app.utils.getPrefBoolean
+import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.setHtml
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.spToPx
@@ -432,7 +434,15 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
 
     private fun drawBubble(canvas: Canvas, data: BubbleData) {
         val rect = data.rect
-        bubbleBgPaint.color = appCtx.backgroundColor
+        val bgColor = appCtx.backgroundColor
+        val bgAlpha = context.getPrefInt(PreferKey.bookmarkNoteBubbleBgAlpha, 100)
+            .coerceIn(0, 100)
+        bubbleBgPaint.color = Color.argb(
+            Color.alpha(bgColor) * bgAlpha / 100,
+            Color.red(bgColor),
+            Color.green(bgColor),
+            Color.blue(bgColor)
+        )
         bubbleBgPaint.style = Paint.Style.FILL
         bubbleBgPaint.isAntiAlias = true
         canvas.drawRoundRect(rect, bubbleCornerRadius, bubbleCornerRadius, bubbleBgPaint)
