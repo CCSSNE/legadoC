@@ -2034,8 +2034,11 @@ Selected text or question:
     <string name="illustration_layout">布局</string>
     <string name="illustration_layout_single">单图</string>
     <string name="illustration_layout_double">双图</string>
-    <string name="illustration_layout_triple">三图</string>
-    <string name="illustration_layout_quad">四宫格</string>
+    <string name="illustration_layout_triple">一行三张</string>
+    <string name="illustration_layout_quad">一行四张</string>
+    <string name="illustration_layout_quad_grid">四宫格</string>
+    <string name="illustration_grid_two">二宫格</string>
+    <string name="illustration_grid_three">三宫格</string>
     <string name="illustration_page_break">独占一页</string>
     <string name="illustration_save">插入</string>
     <string name="illustration_no_images">请先选择图片</string>

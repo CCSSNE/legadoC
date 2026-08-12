@@ -102,6 +102,7 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
             binding.rbDouble.id -> BookIllustration.LAYOUT_DOUBLE
             binding.rbTriple.id -> BookIllustration.LAYOUT_TRIPLE
             binding.rbQuad.id -> BookIllustration.LAYOUT_QUAD
+            binding.rbQuadGrid.id -> BookIllustration.LAYOUT_QUAD_GRID
             else -> BookIllustration.LAYOUT_SINGLE
         }
     }
@@ -111,6 +112,7 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
             BookIllustration.LAYOUT_DOUBLE -> 2
             BookIllustration.LAYOUT_TRIPLE -> 3
             BookIllustration.LAYOUT_QUAD -> 4
+            BookIllustration.LAYOUT_QUAD_GRID -> 4
             else -> 1
         }
     }

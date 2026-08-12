@@ -87,8 +87,8 @@ class IllustrationFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_illu
         requireContext().selector(
             listOf(
                 getString(R.string.illustration_list_mode),
-                getString(R.string.illustration_layout_double),
-                getString(R.string.illustration_layout_triple)
+                getString(R.string.illustration_grid_two),
+                getString(R.string.illustration_grid_three)
             )
         ) { _, _, index ->
             gridSpan = when (index) {

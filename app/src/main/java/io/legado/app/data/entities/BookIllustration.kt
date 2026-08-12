@@ -61,5 +61,6 @@ data class BookIllustration(
         const val LAYOUT_DOUBLE = "double"
         const val LAYOUT_TRIPLE = "triple"
         const val LAYOUT_QUAD = "quad"
+        const val LAYOUT_QUAD_GRID = "quad_grid"
     }
 }

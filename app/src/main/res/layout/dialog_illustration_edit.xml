@@ -94,44 +94,53 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:orientation="horizontal">
+                    android:orientation="vertical">
 
                     <RadioButton
                         android:id="@+id/rb_single"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
+                        android:layout_width="match_parent"
+                        android:layout_height="40dp"
                         android:checked="true"
+                        android:gravity="center_vertical"
                         android:text="@string/illustration_layout_single"
                         android:textColor="@color/primaryText"
-                        android:textSize="13sp" />
+                        android:textSize="14sp" />
 
                     <RadioButton
                         android:id="@+id/rb_double"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
+                        android:layout_width="match_parent"
+                        android:layout_height="40dp"
+                        android:gravity="center_vertical"
                         android:text="@string/illustration_layout_double"
                         android:textColor="@color/primaryText"
-                        android:textSize="13sp" />
+                        android:textSize="14sp" />
 
                     <RadioButton
                         android:id="@+id/rb_triple"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
+                        android:layout_width="match_parent"
+                        android:layout_height="40dp"
+                        android:gravity="center_vertical"
                         android:text="@string/illustration_layout_triple"
                         android:textColor="@color/primaryText"
-                        android:textSize="13sp" />
+                        android:textSize="14sp" />
 
                     <RadioButton
                         android:id="@+id/rb_quad"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
+                        android:layout_width="match_parent"
+                        android:layout_height="40dp"
+                        android:gravity="center_vertical"
                         android:text="@string/illustration_layout_quad"
                         android:textColor="@color/primaryText"
-                        android:textSize="13sp" />
+                        android:textSize="14sp" />
+
+                    <RadioButton
+                        android:id="@+id/rb_quad_grid"
+                        android:layout_width="match_parent"
+                        android:layout_height="40dp"
+                        android:gravity="center_vertical"
+                        android:text="@string/illustration_layout_quad_grid"
+                        android:textColor="@color/primaryText"
+                        android:textSize="14sp" />
                 </RadioGroup>
 
                 <CheckBox

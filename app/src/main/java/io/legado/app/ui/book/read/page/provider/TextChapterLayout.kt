@@ -806,6 +806,7 @@ class TextChapterLayout(
             BookIllustration.LAYOUT_DOUBLE -> 2
             BookIllustration.LAYOUT_TRIPLE -> 3
             BookIllustration.LAYOUT_QUAD -> 4
+            BookIllustration.LAYOUT_QUAD_GRID -> 4
             else -> 1
         }
         val displayHeight = if (illustration.displayHeight > 0) {
@@ -845,6 +846,10 @@ class TextChapterLayout(
         }
         if (images.isEmpty()) return
         val gap = 4f.dpToPx()
+        if (layoutType == BookIllustration.LAYOUT_QUAD_GRID) {
+            drawIllustrationGrid(images, gap)
+            return
+        }
         val n = images.size
         var cellWidth: Float
         var rowHeight: Float
@@ -899,6 +904,62 @@ class TextChapterLayout(
         stringBuilder.append(" ")
         pendingTextPage.addLine(textLine)
         textLine.isParagraphEnd = true
+        durY += contentPaintTextHeight * paragraphSpacing / 10f
+    }
+
+    /**
+     * 绘制真正的四宫格（两行两列）：列宽等分，每行内等高，行间留隙；
+     * 整组超过一页时按比例缩放，放不下当前页剩余空间时直接换页。
+     */
+    private suspend fun drawIllustrationGrid(
+        images: List<Pair<String, Size>>,
+        gap: Float
+    ) {
+        val rows = images.chunked(2)
+        val cellWidth = (visibleWidth - gap) / 2f
+        val rowHeights = rows.map { row ->
+            row.map {
+                it.second.height.toFloat() * cellWidth / it.second.width.toFloat()
+            }.max()
+        }
+        var totalHeight = rowHeights.sum() + gap * (rows.size - 1)
+        var scale = 1f
+        if (totalHeight > visibleHeight) {
+            scale = visibleHeight / totalHeight
+            totalHeight = visibleHeight
+        }
+        if (totalHeight <= 0f) return
+        if (pendingTextPage.lines.isNotEmpty() && visibleHeight - durY < totalHeight) {
+            prepareNextPageIfNeed()
+        }
+        rows.forEachIndexed { rowIndex, row ->
+            val rowHeight = rowHeights[rowIndex] * scale
+            val textLine = TextLine(isImage = true)
+            textLine.text = " "
+            textLine.lineTop = durY + paddingTop
+            durY += rowHeight
+            if (rowIndex < rows.size - 1) {
+                durY += gap
+            }
+            textLine.lineBottom = durY + paddingTop
+            val rowWidth = row.size * cellWidth * scale + gap * (row.size - 1)
+            var x = (visibleWidth - rowWidth) / 2f
+            row.forEach { (src, _) ->
+                textLine.addColumn(
+                    ImageColumn(
+                        start = absStartX + x,
+                        end = absStartX + x + cellWidth * scale,
+                        src = src,
+                        click = null
+                    )
+                )
+                x += cellWidth * scale + gap
+            }
+            calcTextLinePosition(textPages, textLine, stringBuilder.length)
+            stringBuilder.append(" ")
+            pendingTextPage.addLine(textLine)
+            textLine.isParagraphEnd = true
+        }
         durY += contentPaintTextHeight * paragraphSpacing / 10f
     }
 

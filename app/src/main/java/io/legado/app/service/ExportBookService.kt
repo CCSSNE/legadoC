@@ -614,6 +614,56 @@ class ExportBookService : BaseService() {
             if (images.isEmpty()) return null
             val gap = 6f
             val n = images.size
+            if (layoutType == BookIllustration.LAYOUT_QUAD_GRID) {
+                // 真正的四宫格：两行两列
+                val colWidth = (contentWidth - gap) / 2f
+                val rows = images.chunked(2)
+                val naturalHeights = rows.map { row ->
+                    row.map {
+                        it.second.height.toFloat() * colWidth / it.second.width.toFloat()
+                    }.max()
+                }
+                var totalHeight = naturalHeights.sum() + gap * (rows.size - 1)
+                var scale = 1f
+                if (totalHeight > pageHeight - margin * 2) {
+                    scale = (pageHeight - margin * 2) / totalHeight
+                    totalHeight *= scale
+                }
+                if (totalHeight <= 0f) return null
+                ensurePage()
+                if (y + totalHeight > pageHeight - margin) {
+                    newPage()
+                    ensurePage()
+                }
+                val rects = arrayListOf<String>()
+                var top = y
+                rows.forEachIndexed { rowIndex, row ->
+                    val rowHeight = naturalHeights[rowIndex] * scale
+                    val rowWidth = row.size * colWidth * scale + gap * (row.size - 1)
+                    var x = margin + (contentWidth - rowWidth) / 2f
+                    row.forEach { (src, bmp) ->
+                        val left = x
+                        val right = x + colWidth * scale
+                        val bottom = top + rowHeight
+                        page?.canvas?.drawBitmap(
+                            bmp,
+                            null as android.graphics.Rect?,
+                            android.graphics.RectF(left, top, right, bottom),
+                            null
+                        )
+                        rects.add(
+                            "${left / pageWidth},${top / pageHeight},${colWidth * scale / pageWidth},${rowHeight / pageHeight}"
+                        )
+                        x += colWidth * scale + gap
+                    }
+                    top += rowHeight
+                    if (rowIndex < rows.size - 1) {
+                        top += gap
+                    }
+                }
+                y = top + paragraphGap
+                return totalHeight to rects
+            }
             var cellWidth: Float
             var rowHeight: Float
             if (layoutType == BookIllustration.LAYOUT_SINGLE && displayHeight > 0) {
@@ -676,6 +726,7 @@ class ExportBookService : BaseService() {
                     BookIllustration.LAYOUT_DOUBLE -> 2
                     BookIllustration.LAYOUT_TRIPLE -> 3
                     BookIllustration.LAYOUT_QUAD -> 4
+                    BookIllustration.LAYOUT_QUAD_GRID -> 4
                     else -> 1
                 }
                 val allRects = arrayListOf<String>()
