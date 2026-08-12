@@ -52,8 +52,8 @@ data class TextColumn(
         }
 
     override fun draw(view: ContentTextView, canvas: Canvas) {
-        val bookmarkStyleValue = bookmarkStyle
-        if (bookmarkStyleValue == io.legado.app.data.entities.BookmarkStyle.HIGHLIGHT) {
+        val styleMask = bookmarkStyle
+        if (styleMask and io.legado.app.data.entities.BookmarkStyle.HIGHLIGHT != 0) {
             // 高亮作为背景层先绘制，文字绘制在其上，避免颜色叠加导致文字对比度下降
             drawHighlightBackground(canvas)
         }
@@ -64,7 +64,7 @@ data class TextColumn(
         }
         val textColor = when {
             textLine.isReadAloud || isSearchResult -> ReadBookConfig.textAccentColor
-            bookmarkStyleValue == io.legado.app.data.entities.BookmarkStyle.TEXT_COLOR -> {
+            styleMask and io.legado.app.data.entities.BookmarkStyle.TEXT_COLOR != 0 -> {
                 if (bookmarkColor != 0) bookmarkColor else appCtx.accentColor
             }
             else -> ReadBookConfig.textColor
@@ -82,10 +82,12 @@ data class TextColumn(
             view.drawTextWithPaperInk(canvas, charData, start, y, textPaint, enablePaperInk)
         }
         if (
-            bookmarkStyleValue == io.legado.app.data.entities.BookmarkStyle.SINGLE_UNDERLINE ||
-            bookmarkStyleValue == io.legado.app.data.entities.BookmarkStyle.DOUBLE_UNDERLINE ||
-            bookmarkStyleValue == io.legado.app.data.entities.BookmarkStyle.WAVE_UNDERLINE ||
-            bookmarkStyleValue == io.legado.app.data.entities.BookmarkStyle.STRIKETHROUGH
+            styleMask and (
+                io.legado.app.data.entities.BookmarkStyle.SINGLE_UNDERLINE or
+                    io.legado.app.data.entities.BookmarkStyle.DOUBLE_UNDERLINE or
+                    io.legado.app.data.entities.BookmarkStyle.WAVE_UNDERLINE or
+                    io.legado.app.data.entities.BookmarkStyle.STRIKETHROUGH
+                ) != 0
         ) {
             drawBookmarkDecoration(canvas)
         }
@@ -108,74 +110,72 @@ data class TextColumn(
 
     private fun drawBookmarkDecoration(canvas: Canvas) {
         val color = if (bookmarkColor != 0) bookmarkColor else appCtx.accentColor
-        when (bookmarkStyle) {
-            io.legado.app.data.entities.BookmarkStyle.SINGLE_UNDERLINE -> {
-                val paint = Paint().apply {
-                    this.color = color
-                    strokeWidth = 1.5f.dpToPx()
-                    style = Paint.Style.STROKE
-                }
-                val y = underlineY()
-                canvas.drawLine(start, y, end, y, paint)
+        if (bookmarkStyle and io.legado.app.data.entities.BookmarkStyle.SINGLE_UNDERLINE != 0) {
+            val paint = Paint().apply {
+                this.color = color
+                strokeWidth = 1.5f.dpToPx()
+                style = Paint.Style.STROKE
             }
+            val y = underlineY()
+            canvas.drawLine(start, y, end, y, paint)
+        }
 
-            io.legado.app.data.entities.BookmarkStyle.DOUBLE_UNDERLINE -> {
-                val paint = Paint().apply {
-                    this.color = color
-                    strokeWidth = 1.5f.dpToPx()
-                    style = Paint.Style.STROKE
-                }
-                val y1 = underlineY()
-                val y2 = y1 + 3f.dpToPx()
-                canvas.drawLine(start, y1, end, y1, paint)
-                canvas.drawLine(start, y2, end, y2, paint)
+        if (bookmarkStyle and io.legado.app.data.entities.BookmarkStyle.DOUBLE_UNDERLINE != 0) {
+            val paint = Paint().apply {
+                this.color = color
+                strokeWidth = 1.5f.dpToPx()
+                style = Paint.Style.STROKE
             }
+            val y1 = underlineY()
+            val y2 = y1 + 3f.dpToPx()
+            canvas.drawLine(start, y1, end, y1, paint)
+            canvas.drawLine(start, y2, end, y2, paint)
+        }
 
-            io.legado.app.data.entities.BookmarkStyle.WAVE_UNDERLINE -> {
-                val paint = Paint().apply {
-                    this.color = color
-                    strokeWidth = 1.5f.dpToPx()
-                    style = Paint.Style.STROKE
-                    isAntiAlias = true
-                }
-                val y = underlineY()
-                val waveLength = 6f.dpToPx()
-                val amplitude = 2f.dpToPx()
-                val path = Path()
-                path.moveTo(start, y)
-                var x = start
-                var up = true
-                while (x < end) {
-                    val nextX = minOf(x + waveLength, end)
-                    val targetY = if (up) y - amplitude else y + amplitude
-                    path.quadTo(
-                        (x + nextX) / 2f,
-                        targetY,
-                        nextX,
-                        y
-                    )
-                    x = nextX
-                    up = !up
-                }
-                canvas.drawPath(path, paint)
+        if (bookmarkStyle and io.legado.app.data.entities.BookmarkStyle.WAVE_UNDERLINE != 0) {
+            val paint = Paint().apply {
+                this.color = color
+                strokeWidth = 1.5f.dpToPx()
+                style = Paint.Style.STROKE
+                isAntiAlias = true
             }
+            val y = underlineY()
+            val waveLength = 6f.dpToPx()
+            val amplitude = 2f.dpToPx()
+            val path = Path()
+            path.moveTo(start, y)
+            var x = start
+            var up = true
+            while (x < end) {
+                val nextX = minOf(x + waveLength, end)
+                val targetY = if (up) y - amplitude else y + amplitude
+                path.quadTo(
+                    (x + nextX) / 2f,
+                    targetY,
+                    nextX,
+                    y
+                )
+                x = nextX
+                up = !up
+            }
+            canvas.drawPath(path, paint)
+        }
 
-            io.legado.app.data.entities.BookmarkStyle.STRIKETHROUGH -> {
-                val paint = Paint().apply {
-                    this.color = color
-                    strokeWidth = 1.5f.dpToPx()
-                    style = Paint.Style.STROKE
-                }
-                val baseline = textLine.lineBase - textLine.lineTop
-                val fontMetrics = if (textLine.isTitle) {
-                    ChapterProvider.titlePaint.fontMetrics
-                } else {
-                    ChapterProvider.contentPaint.fontMetrics
-                }
-                // 删除线画在文字中线（基线向上半个 ascent 处），与系统删除线位置一致
-                val y = baseline + fontMetrics.ascent * 0.5f
-                canvas.drawLine(start, y, end, y, paint)
+        if (bookmarkStyle and io.legado.app.data.entities.BookmarkStyle.STRIKETHROUGH != 0) {
+            val paint = Paint().apply {
+                this.color = color
+                strokeWidth = 1.5f.dpToPx()
+                style = Paint.Style.STROKE
             }
+            val baseline = textLine.lineBase - textLine.lineTop
+            val fontMetrics = if (textLine.isTitle) {
+                ChapterProvider.titlePaint.fontMetrics
+            } else {
+                ChapterProvider.contentPaint.fontMetrics
+            }
+            // 删除线画在文字中线（基线向上半个 ascent 处），与系统删除线位置一致
+            val y = baseline + fontMetrics.ascent * 0.5f
+            canvas.drawLine(start, y, end, y, paint)
         }
     }
 

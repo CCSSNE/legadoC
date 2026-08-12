@@ -80,76 +80,54 @@
                     android:textColor="@color/secondaryText"
                     android:textSize="13sp" />
 
-                <HorizontalScrollView
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:scrollbars="none">
+                    android:orientation="vertical">
 
-                    <RadioGroup
-                        android:id="@+id/rg_style"
+                    <io.legado.app.lib.theme.view.ThemeCheckBox
+                        android:id="@+id/cb_style_none"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:orientation="horizontal">
+                        android:text="@string/bookmark_style_none" />
 
-                        <RadioButton
-                            android:id="@+id/rb_style_none"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:paddingStart="4dp"
-                            android:paddingEnd="8dp"
-                            android:text="@string/bookmark_style_none" />
+                    <io.legado.app.lib.theme.view.ThemeCheckBox
+                        android:id="@+id/cb_style_single"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/bookmark_style_single" />
 
-                        <RadioButton
-                            android:id="@+id/rb_style_single"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:paddingStart="4dp"
-                            android:paddingEnd="8dp"
-                            android:text="@string/bookmark_style_single" />
+                    <io.legado.app.lib.theme.view.ThemeCheckBox
+                        android:id="@+id/cb_style_double"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/bookmark_style_double" />
 
-                        <RadioButton
-                            android:id="@+id/rb_style_double"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:paddingStart="4dp"
-                            android:paddingEnd="8dp"
-                            android:text="@string/bookmark_style_double" />
+                    <io.legado.app.lib.theme.view.ThemeCheckBox
+                        android:id="@+id/cb_style_wave"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/bookmark_style_wave" />
 
-                        <RadioButton
-                            android:id="@+id/rb_style_wave"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:paddingStart="4dp"
-                            android:paddingEnd="8dp"
-                            android:text="@string/bookmark_style_wave" />
+                    <io.legado.app.lib.theme.view.ThemeCheckBox
+                        android:id="@+id/cb_style_highlight"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/bookmark_style_highlight" />
 
-                        <RadioButton
-                            android:id="@+id/rb_style_highlight"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:paddingStart="4dp"
-                            android:paddingEnd="8dp"
-                            android:text="@string/bookmark_style_highlight" />
+                    <io.legado.app.lib.theme.view.ThemeCheckBox
+                        android:id="@+id/cb_style_text_color"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/bookmark_style_text_color" />
 
-                        <RadioButton
-                            android:id="@+id/rb_style_text_color"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:paddingStart="4dp"
-                            android:paddingEnd="8dp"
-                            android:text="@string/bookmark_style_text_color" />
+                    <io.legado.app.lib.theme.view.ThemeCheckBox
+                        android:id="@+id/cb_style_strikethrough"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/bookmark_style_strikethrough" />
 
-                        <RadioButton
-                            android:id="@+id/rb_style_strikethrough"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:paddingStart="4dp"
-                            android:paddingEnd="8dp"
-                            android:text="@string/bookmark_style_strikethrough" />
-
-                    </RadioGroup>
-
-                </HorizontalScrollView>
+                </LinearLayout>
 
                 <LinearLayout
                     android:layout_width="match_parent"

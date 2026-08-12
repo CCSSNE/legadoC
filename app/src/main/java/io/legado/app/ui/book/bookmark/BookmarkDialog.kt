@@ -60,7 +60,8 @@ class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark, true),
         }
         val editPos = arguments.getInt("editPos", -1)
         selectedColor = bookmark.color
-        checkStyleRadio(bookmark.style)
+        checkStyleBoxes(bookmark.style)
+        initStyleCheckBoxes()
         upColorPanel()
         binding.tvFooterLeft.visible(editPos >= 0)
         binding.run {
@@ -80,7 +81,7 @@ class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark, true),
             tvOk.setOnClickListener {
                 bookmark.bookText = editBookText.text?.toString() ?: ""
                 bookmark.content = editContent.text?.toString() ?: ""
-                bookmark.style = getCheckedStyle()
+                bookmark.style = getCheckedStyles()
                 bookmark.color = selectedColor
                 lifecycleScope.launch {
                     withContext(IO) {
@@ -102,30 +103,57 @@ class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark, true),
         }
     }
 
-    private fun checkStyleRadio(style: Int) {
-        binding.rgStyle.check(
-            when (style) {
-                BookmarkStyle.SINGLE_UNDERLINE -> R.id.rb_style_single
-                BookmarkStyle.DOUBLE_UNDERLINE -> R.id.rb_style_double
-                BookmarkStyle.WAVE_UNDERLINE -> R.id.rb_style_wave
-                BookmarkStyle.HIGHLIGHT -> R.id.rb_style_highlight
-                BookmarkStyle.TEXT_COLOR -> R.id.rb_style_text_color
-                BookmarkStyle.STRIKETHROUGH -> R.id.rb_style_strikethrough
-                else -> R.id.rb_style_none
-            }
-        )
+    private fun checkStyleBoxes(styles: Int) {
+        binding.run {
+            cbStyleNone.isChecked = styles == BookmarkStyle.NONE
+            cbStyleSingle.isChecked = styles and BookmarkStyle.SINGLE_UNDERLINE != 0
+            cbStyleDouble.isChecked = styles and BookmarkStyle.DOUBLE_UNDERLINE != 0
+            cbStyleWave.isChecked = styles and BookmarkStyle.WAVE_UNDERLINE != 0
+            cbStyleHighlight.isChecked = styles and BookmarkStyle.HIGHLIGHT != 0
+            cbStyleTextColor.isChecked = styles and BookmarkStyle.TEXT_COLOR != 0
+            cbStyleStrikethrough.isChecked = styles and BookmarkStyle.STRIKETHROUGH != 0
+        }
     }
 
-    private fun getCheckedStyle(): Int {
-        return when (binding.rgStyle.checkedRadioButtonId) {
-            R.id.rb_style_single -> BookmarkStyle.SINGLE_UNDERLINE
-            R.id.rb_style_double -> BookmarkStyle.DOUBLE_UNDERLINE
-            R.id.rb_style_wave -> BookmarkStyle.WAVE_UNDERLINE
-            R.id.rb_style_highlight -> BookmarkStyle.HIGHLIGHT
-            R.id.rb_style_text_color -> BookmarkStyle.TEXT_COLOR
-            R.id.rb_style_strikethrough -> BookmarkStyle.STRIKETHROUGH
-            else -> BookmarkStyle.NONE
+    /**
+     * 效果可多选组合；"无效果"与其他效果互斥，勾选其一自动取消另一方
+     */
+    private fun initStyleCheckBoxes() {
+        binding.run {
+            val styleBoxes = listOf(
+                cbStyleSingle,
+                cbStyleDouble,
+                cbStyleWave,
+                cbStyleHighlight,
+                cbStyleTextColor,
+                cbStyleStrikethrough
+            )
+            cbStyleNone.setOnCheckedChangeListener { _, checked ->
+                if (checked) {
+                    styleBoxes.forEach { it.isChecked = false }
+                }
+            }
+            styleBoxes.forEach { box ->
+                box.setOnCheckedChangeListener { _, checked ->
+                    if (checked) {
+                        cbStyleNone.isChecked = false
+                    }
+                }
+            }
         }
+    }
+
+    private fun getCheckedStyles(): Int {
+        var styles = BookmarkStyle.NONE
+        binding.run {
+            if (cbStyleSingle.isChecked) styles = styles or BookmarkStyle.SINGLE_UNDERLINE
+            if (cbStyleDouble.isChecked) styles = styles or BookmarkStyle.DOUBLE_UNDERLINE
+            if (cbStyleWave.isChecked) styles = styles or BookmarkStyle.WAVE_UNDERLINE
+            if (cbStyleHighlight.isChecked) styles = styles or BookmarkStyle.HIGHLIGHT
+            if (cbStyleTextColor.isChecked) styles = styles or BookmarkStyle.TEXT_COLOR
+            if (cbStyleStrikethrough.isChecked) styles = styles or BookmarkStyle.STRIKETHROUGH
+        }
+        return styles
     }
 
     private fun upColorPanel() {

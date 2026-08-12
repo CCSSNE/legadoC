@@ -21,8 +21,24 @@ object DatabaseMigrations {
             migration_35_36, migration_36_37, migration_37_38, migration_38_39,
             migration_39_40, migration_40_41, migration_41_42, migration_42_43,
             migration_90_91, migration_91_92, migration_92_93, migration_93_94,
-            migration_94_95, migration_95_96,
+            migration_94_95, migration_95_96, migration_96_97,
         )
+    }
+
+    private val migration_96_97 = object : Migration(96, 97) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // 书签样式由单值改为位掩码，迁移旧值到对应掩码位
+            db.execSQL(
+                """
+                UPDATE bookmarks SET style = CASE style
+                    WHEN 3 THEN 4
+                    WHEN 4 THEN 8
+                    WHEN 5 THEN 16
+                    WHEN 6 THEN 32
+                    ELSE style END
+                """.trimIndent()
+            )
+        }
     }
 
     private val migration_95_96 = object : Migration(95, 96) {
