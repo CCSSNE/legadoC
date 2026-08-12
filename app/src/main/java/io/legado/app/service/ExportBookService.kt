@@ -965,6 +965,15 @@ class ExportBookService : BaseService() {
                     chineseConvert = false,
                     reSegment = false
                 ).toString()
+            val illustrations = appDb.bookIllustrationDao.getByBookAndChapter(
+                book.bookUrl,
+                chapter.index
+            )
+            val (contentWithIllustrations, illustrationResources) = if (illustrations.isEmpty()) {
+                content1 to arrayListOf<Resource>()
+            } else {
+                injectIllustrationHtml(book, content1, illustrations)
+            }
             val title = chapter.run {
                 // 不导出vip标识
                 isVip = false
@@ -976,11 +985,14 @@ class ExportBookService : BaseService() {
             }
             val chapterResource = ResourceUtil.createChapterResource(
                 title.replace("\uD83D\uDD12", ""),
-                content1,
+                contentWithIllustrations,
                 contentModel,
                 "Text/chapter_${index}.html"
             )
-            ExportChapter(title, chapterResource, resources, chapter)
+            val allResources = arrayListOf<Resource>()
+            allResources.addAll(resources)
+            allResources.addAll(illustrationResources)
+            ExportChapter(title, chapterResource, allResources, chapter)
         }.collectIndexed { index, exportChapter ->
             postEvent(EventBus.EXPORT_BOOK, book.bookUrl)
             exportProgress[book.bookUrl] = index
@@ -992,6 +1004,93 @@ class ExportBookService : BaseService() {
                 epubBook.addSection(title, chapterResource)
             } else {
                 epubBook.addSection(parentSection, title, chapterResource)
+            }
+        }
+        // 配图侧车清单（不可见标记：仅供本应用再导入时还原）
+        val allIllustrations = appDb.bookIllustrationDao.getByBook(book.bookUrl)
+        if (allIllustrations.isNotEmpty()) {
+            val sidecar = IllustrationHelp.buildEpubSidecarJson(allIllustrations)
+            epubBook.resources.add(
+                Resource(
+                    sidecar.toByteArray(Charsets.UTF_8),
+                    IllustrationHelp.EPUB_SIDECAR_NAME
+                )
+            )
+        }
+    }
+
+    /**
+     * 在 EPUB 正文章节中注入配图标记（不可见、不影响标准阅读器渲染）：
+     * 每个配图一个 div[data-ill-version]，内含 img[data-ill-src]。
+     */
+    private fun injectIllustrationHtml(
+        book: Book,
+        content: String,
+        illustrations: List<BookIllustration>
+    ): Pair<String, ArrayList<Resource>> {
+        val paragraphs = content.split("\n")
+        val resources = arrayListOf<Resource>()
+        val placedIds = hashSetOf<Long>()
+        val sb = StringBuilder()
+        var offset = 0
+        paragraphs.forEachIndexed { index, paragraph ->
+            sb.append(paragraph)
+            offset += paragraph.length
+            if (index < paragraphs.lastIndex) {
+                sb.append("\n")
+                offset += 1
+                val next = paragraphs[index + 1]
+                val frontFp = IllustrationHelp.fingerprint(paragraph, false)
+                val backFp = IllustrationHelp.fingerprint(next, true)
+                val matched = illustrations
+                    .filter {
+                        it.id !in placedIds &&
+                            it.anchorType == BookIllustration.ANCHOR_BETWEEN_PARAGRAPHS &&
+                            (
+                                (
+                                    it.frontFingerprint.isNotBlank() &&
+                                        it.backFingerprint.isNotBlank() &&
+                                        it.frontFingerprint == frontFp &&
+                                        it.backFingerprint == backFp
+                                    ) ||
+                                    (
+                                        it.frontFingerprint.isBlank() &&
+                                            it.backFingerprint.isBlank() &&
+                                            it.anchorPos == offset
+                                        )
+                                )
+                    }
+                    .sortedBy { it.sortOrder }
+                matched.forEach {
+                    placedIds.add(it.id)
+                    appendIllustrationHtml(sb, book, it, resources)
+                }
+            }
+        }
+        illustrations
+            .filter { it.id !in placedIds }
+            .sortedBy { it.sortOrder }
+            .forEach {
+                appendIllustrationHtml(sb, book, it, resources)
+            }
+        return sb.toString() to resources
+    }
+
+    private fun appendIllustrationHtml(
+        sb: StringBuilder,
+        book: Book,
+        illustration: BookIllustration,
+        resources: ArrayList<Resource>
+    ) {
+        val srcs = illustration.imageSrcsFromJson()
+        if (srcs.isEmpty()) return
+        srcs.forEach { src ->
+            val vFile = IllustrationHelp.getImageFile(book, src)
+            if (vFile.exists()) {
+                val href = IllustrationHelp.epubImageHref(src)
+                val fp = FileResourceProvider(vFile.parent)
+                resources.add(LazyResource(fp, href, href))
+                sb.append("""<img src="../$href" />""")
             }
         }
     }

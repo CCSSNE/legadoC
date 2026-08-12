@@ -9,6 +9,7 @@ import android.provider.MediaStore
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookIllustration
+import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.createFileIfNotExist
@@ -31,6 +32,7 @@ object IllustrationHelp {
     const val SRC_PREFIX = "illustration://"
     const val ILLUSTRATIONS_DIR_NAME = "illustrations"
     const val EXPORT_JSON_NAME = "illustrations.json"
+    const val EPUB_SIDECAR_NAME = "legado_illustrations.json"
     const val EXPORT_IMAGES_DIR = "images"
     const val EXPORT_JSON_VERSION = 1
 
@@ -239,6 +241,63 @@ object IllustrationHelp {
         appDb.bookIllustrationDao.deleteByBook(book.bookUrl)
         appDb.bookIllustrationDao.insert(*newRecords.toTypedArray())
         return true
+    }
+
+    // ---------- EPUB 侧车清单 ----------
+
+    data class EpubIllustrationRecord(
+        val chapterIndex: Int = 0,
+        val chapterName: String = "",
+        val anchorType: String = BookIllustration.ANCHOR_BETWEEN_PARAGRAPHS,
+        val anchorPos: Int = -1,
+        val frontParagraphText: String = "",
+        val backParagraphText: String = "",
+        val frontFingerprint: String = "",
+        val backFingerprint: String = "",
+        val srcs: List<String> = emptyList(),
+        val layoutType: String = BookIllustration.LAYOUT_SINGLE,
+        val displayHeight: Int = 0,
+        val pageBreak: Boolean = false,
+        val sortOrder: Int = 0
+    )
+
+    data class EpubIllustrationJson(
+        val version: Int = EXPORT_JSON_VERSION,
+        val records: List<EpubIllustrationRecord> = emptyList()
+    )
+
+    fun buildEpubSidecarJson(records: List<BookIllustration>): String {
+        val items = records.map { record ->
+            EpubIllustrationRecord(
+                chapterIndex = record.chapterIndex,
+                chapterName = record.chapterName,
+                anchorType = record.anchorType,
+                anchorPos = record.anchorPos,
+                frontParagraphText = record.frontParagraphText,
+                backParagraphText = record.backParagraphText,
+                frontFingerprint = record.frontFingerprint,
+                backFingerprint = record.backFingerprint,
+                srcs = record.imageSrcsFromJson(),
+                layoutType = record.layoutType,
+                displayHeight = record.displayHeight,
+                pageBreak = record.pageBreak,
+                sortOrder = record.sortOrder
+            )
+        }
+        return GSON.toJson(EpubIllustrationJson(records = items))
+    }
+
+    /** 由配图 src 键计算 EPUB 内图片资源路径（与导出端一致） */
+    fun epubImageHref(src: String): String {
+        return "Images/${MD5Utils.md5Encode16(src)}.${getSuffixOf(src)}"
+    }
+
+    fun epubImageHrefWithParent(src: String): String {
+        return "../${epubImageHref(src)}"
+    }
+
+    private fun getSuffixOf(src: String): String {
+        return src.substringAfterLast('.', "jpg").ifBlank { "jpg" }
     }
 }
 

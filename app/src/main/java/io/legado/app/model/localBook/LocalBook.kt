@@ -13,8 +13,11 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.BookIllustration
 import io.legado.app.exception.EmptyFileException
 import io.legado.app.help.illustration.IllustrationHelp
+import io.legado.app.help.illustration.imageSrcsToJson
+import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.exception.NoBooksDirException
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.exception.TocEmptyException
@@ -299,7 +302,120 @@ object LocalBook {
             //已有书籍说明是更新,删除原有目录
             appDb.bookChapterDao.delByBook(bookUrl)
         }
+        if (book.isEpub) {
+            Coroutine.async {
+                restoreIllustrationsFromEpub(book)
+            }
+        }
         return book
+    }
+
+    /**
+     * 识别本应用导出的 EPUB 配图标记（div[data-ill-version]），
+     * 提取图片到配图目录、重写缓存的图片 src、还原配图记录。
+     */
+    private fun restoreIllustrationsFromEpub(book: Book) {
+        kotlin.runCatching {
+            val sidecarText = readEpubSidecar(book) ?: return
+            val sidecar = kotlin.runCatching {
+                GSON.fromJson(sidecarText, IllustrationHelp.EpubIllustrationJson::class.java)
+            }.getOrNull() ?: return
+            if (sidecar.records.isEmpty()) return
+            val chapterList = appDb.bookChapterDao.getChapterList(book.bookUrl)
+                .ifEmpty { EpubFile.getChapterList(book) }
+            val records = arrayListOf<BookIllustration>()
+            val recordsByChapter = sidecar.records.groupBy { it.chapterIndex }
+            chapterList.forEach { chapter ->
+                val items = recordsByChapter[chapter.index] ?: return@forEach
+                val content = EpubFile.getContent(book, chapter) ?: return@forEach
+                var newContent = content
+                var contentChanged = false
+                val chapterRecords = arrayListOf<BookIllustration>()
+                items.sortedBy { it.sortOrder }.forEachIndexed { index, item ->
+                    val srcs = arrayListOf<String>()
+                    item.srcs.forEach { src ->
+                        val bytes = extractEpubImageBytes(
+                            book,
+                            IllustrationHelp.epubImageHrefWithParent(src),
+                            IllustrationHelp.epubImageHref(src)
+                        )
+                        if (bytes != null) {
+                            IllustrationHelp.saveImage(book, src, bytes)
+                            val hrefWithParent = IllustrationHelp.epubImageHrefWithParent(src)
+                            val replaced = newContent.replace(
+                                """<img src="$hrefWithParent">""",
+                                """<img src="$src">"""
+                            )
+                            newContent = replaced.replace(
+                                """<img src="$hrefWithParent"/>""",
+                                """<img src="$src"/>"""
+                            )
+                            contentChanged = contentChanged || newContent != content
+                            srcs.add(src)
+                        }
+                    }
+                    if (srcs.isEmpty()) return@forEach
+                    chapterRecords.add(
+                        BookIllustration(
+                            bookUrl = book.bookUrl,
+                            chapterIndex = chapter.index,
+                            chapterUrl = chapter.url,
+                            chapterName = item.chapterName.ifBlank { chapter.title },
+                            anchorType = item.anchorType,
+                            anchorPos = item.anchorPos,
+                            frontParagraphText = item.frontParagraphText,
+                            backParagraphText = item.backParagraphText,
+                            frontFingerprint = item.frontFingerprint,
+                            backFingerprint = item.backFingerprint,
+                            imageSrcs = imageSrcsToJson(srcs),
+                            layoutType = item.layoutType,
+                            displayHeight = item.displayHeight,
+                            pageBreak = item.pageBreak,
+                            sortOrder = index
+                        )
+                    )
+                }
+                if (chapterRecords.isNotEmpty()) {
+                    records.addAll(chapterRecords)
+                    if (contentChanged) {
+                        BookHelp.saveText(book, chapter, newContent)
+                    }
+                }
+            }
+            if (records.isNotEmpty()) {
+                appDb.bookIllustrationDao.deleteByBook(book.bookUrl)
+                appDb.bookIllustrationDao.insert(*records.toTypedArray())
+            }
+        }.onFailure { e ->
+            AppLog.put("还原EPUB配图失败\n${e.localizedMessage}", e)
+        }
+    }
+
+    private fun readEpubSidecar(book: Book): String? {
+        return kotlin.runCatching {
+            val zip = BookHelp.getEpubFile(book)
+            zip.use { z ->
+                val entry = z.entries().asSequence()
+                    .firstOrNull { it.name.endsWith(IllustrationHelp.EPUB_SIDECAR_NAME) }
+                    ?: return@use null
+                z.getInputStream(entry).use { it.readBytes() }.toString(Charsets.UTF_8)
+            }
+        }.getOrNull()
+    }
+
+    private fun extractEpubImageBytes(
+        book: Book,
+        htmlSrc: String,
+        altSrc: String
+    ): ByteArray? {
+        val candidates = listOf(htmlSrc, altSrc)
+        candidates.forEach { src ->
+            val bytes = kotlin.runCatching {
+                EpubFile.getImage(book, src)?.use { it.readBytes() }
+            }.getOrNull()
+            if (bytes != null && bytes.isNotEmpty()) return bytes
+        }
+        return null
     }
 
     fun upBookInfo(book: Book) {
