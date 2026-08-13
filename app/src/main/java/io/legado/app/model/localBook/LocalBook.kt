@@ -694,9 +694,9 @@ object LocalBook {
     ): Uri {
         inputStream.use {
             val defaultBookTreeUri = AppConfig.defaultBookTreeUri
-            if (!defaultBookTreeUri.isNullOrBlank()) {
+            return if (!defaultBookTreeUri.isNullOrBlank()) {
                 val treeUri = defaultBookTreeUri.toUri()
-                return if (treeUri.isContentScheme()) {
+                if (treeUri.isContentScheme()) {
                     val treeDoc = DocumentFile.fromTreeUri(appCtx, treeUri)
                     var doc = treeDoc!!.findFile(fileName)
                     if (doc == null) {
