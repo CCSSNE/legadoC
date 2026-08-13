@@ -1345,6 +1345,7 @@
     <string name="image_retain_number_summary">Keep the number of chapters read %s</string>
     <string name="image_retain_number">Number of manga reservations</string>
     <string name="export_pics_file">Export Picture Files</string>
+    <string name="export_bookmarks">Export bookmarks</string>
     <!-- string end -->
     <string name="error_decode_bitmap">Fail to decode bitmap</string>
     <string name="error_image_url_empty">Image url is empty, check replacement rules</string>
