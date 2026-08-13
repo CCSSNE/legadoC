@@ -364,9 +364,11 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
         var visibleIds = visibleSecondaryGroups
             .sortedWith(compareBy({ it.order }, { it.groupId }))
             .map { it.groupId }
-        // "全部"是否显示由用户在分组管理里的开关决定（show 已过滤），不再强制兜底；
-        // 但过滤结果为空时不能空白：兜底补上"全部"，保证书架顶部分组至少有一个入口
-        if (visibleIds.isEmpty()) {
+        // 尊重用户在分组管理里的开关：secondaryGroups 本身已按 show 过滤，
+        // 用户关掉的分组（如"全部"）不会出现在这里，也不能被兜底强行加回。
+        // 仅在确实没有任何分组时，且用户没有显式关闭"全部"（即 secondaryGroups 中仍有 IdAll）
+        // 才兜底补上，避免界面意外空白；用户已关闭"全部"则保持空列表。
+        if (visibleIds.isEmpty() && secondaryGroups.any { it.groupId == BookGroup.IdAll }) {
             visibleIds = listOf(BookGroup.IdAll)
         }
         secondaryGroupIds = visibleIds

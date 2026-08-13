@@ -112,7 +112,7 @@ object UpdateManager {
             tagName = best.release.tag_name ?: best.versionCode.toString(),
             versionCode = best.versionCode,
             fileName = best.asset.name ?: "legado-update.apk",
-            downloadUrl = resolveDownloadUrl(context, originalUrl),
+            downloadUrl = resolveAcceleratedUrl(context, originalUrl),
             body = best.release.body
         )
     }
@@ -130,7 +130,7 @@ object UpdateManager {
     /**
      * 根据设置的加速源改写下载地址
      */
-    private fun resolveDownloadUrl(context: Context, originalUrl: String): String {
+    fun resolveAcceleratedUrl(context: Context, originalUrl: String): String {
         return when (context.getPrefString(PreferKey.updateAccelerator) ?: "ghfast") {
             "ghproxy" -> "https://ghproxy.net/" + originalUrl
             "gh-proxy" -> "https://gh-proxy.com/" + originalUrl

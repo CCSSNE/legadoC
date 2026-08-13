@@ -12,6 +12,9 @@ import io.legado.app.constant.AppLog
 import io.legado.app.help.CrashHandler
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.http.newCallStrResponse
+import io.legado.app.help.http.okHttpClient
+import io.legado.app.help.update.UpdateManager
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.compress.ZipUtils
@@ -54,7 +57,7 @@ class AboutFragment : PreferenceFragmentCompat() {
         when (preference.key) {
             "contributors" -> openUrl(R.string.repo_url)
             "telegram" -> openUrl(R.string.qq_group_url)
-            "update_log" -> showMdFile(getString(R.string.update_log), "README.md")
+            "update_log" -> showUpdateLog()
             "mail" -> requireContext().sendMail(getString(R.string.email))
             "license" -> showMdFile(getString(R.string.license), "LICENSE.md")
             "disclaimer" -> showMdFile(getString(R.string.disclaimer), "disclaimer.md")
@@ -65,6 +68,37 @@ class AboutFragment : PreferenceFragmentCompat() {
             "createHeapDump" -> createHeapDump()
         }
         return super.onPreferenceTreeClick(preference)
+    }
+
+    /**
+     * 更新日志：优先从 GitHub 拉取最新 README（走设置的加速源），失败时回退到本地 assets
+     */
+    private fun showUpdateLog() {
+        Coroutine.async {
+            fetchReadmeFromGithub()
+        }.onSuccess { text ->
+            if (text.isNullOrBlank()) {
+                showMdFile(getString(R.string.update_log), "README.md")
+            } else {
+                showDialogFragment(TextDialog(getString(R.string.update_log), text, TextDialog.Mode.MD))
+            }
+        }.onError {
+            AppLog.put("拉取更新日志失败\n${it.localizedMessage}", it)
+            showMdFile(getString(R.string.update_log), "README.md")
+        }
+    }
+
+    private suspend fun fetchReadmeFromGithub(): String? {
+        return runCatching {
+            val url = UpdateManager.resolveAcceleratedUrl(
+                requireContext(),
+                "https://raw.githubusercontent.com/CCSSNE/legadoC/own/README.md"
+            )
+            okHttpClient.newCallStrResponse(retry = 1) {
+                url(url)
+                header("User-Agent", "LegadoC/${appInfo.versionName}")
+            }.body
+        }.getOrNull()
     }
 
     @Suppress("SameParameterValue")
