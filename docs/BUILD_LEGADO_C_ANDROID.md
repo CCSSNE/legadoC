@@ -36,11 +36,16 @@ io.legado.app.c
 
 1. 只编译 `appC` 变体，产物目录必须是 `app\build\outputs\apk\app\c`。
 2. 每次重新编译安装包前，先确认用户手机已安装版本的 `versionCode`。能连设备时用 `adb shell dumpsys package io.legado.app.c` 查；不能连设备时，用第 7 条的“最近一次已交付”基线。
-3. 新包的 `VERSION_CODE` 必须大于用户手机已安装版本；不能只看当前输出目录，更不能复用旧值。按已交付线每次 `+1`（当前基线 `10542` → 下一包 `10543`）。
+3. 新包的 `VERSION_CODE` 必须大于用户手机已安装版本；不能只看当前输出目录，更不能复用旧值。按已交付线每次 `+1`（当前基线 `10544` → 下一包 `10545`）。
 4. `VERSION_NAME` 格式是 `3.26.MMddHH`（默认按 GMT+8 编译时刻生成，例如 08-11 23 时 → `081123`），并且每次交付必须大于上一包。也可以沿用/顺延上一包名加一（如 `081123` → `081124`），本次 `3.26.081123` 就是按基线顺延取名、而非当天实际时刻。
 5. 如果只是跑普通 debug 编译验证，不交付给用户安装，必须明确说明那不是覆盖安装包。
 6. 禁止把 `app\build\outputs\apk\app\debug` 的 `.debug` 包当成阅读 C 包交付。
 7. 已交付基线（新 → 旧）：
+   - `3.26.081312c` / `10548`：2026-08-13 编译交付（修复增量缓存损坏导致的 `compileAppCKotlin` classpath 快照缺失失败：停 daemon、删 `app/build`、`modules/*/build`、关 `-Dkotlin.incremental=false` 后重跑成功；本次源码改动 = 10547 的替换净化外挂 + txt_zip 对话框选项显隐 + 编译监控与进程清理手册）。
+   - `3.26.081311c` / `10547`：2026-08-13 编译交付（TXT(zip) 导出新增替换净化外挂：开启“替换净化”时把当前书生效的替换规则写入 zip 的 `replace_rules.json`，正文 txt 保持原文不动，导入时同步还原规则并把该书净化开关打开；txt_zip 对话框隐藏不生效的选项（编码/多线程/不导出章节名/导出图片），保留导出路径/文件名/WebDav/替换净化/导出书签）。
+   - `3.26.081310c` / `10546`：2026-08-12 编译交付（TXT 导出拆分：新增独立“导出 TXT (zip)”选项（type=`txt_zip`）专门做带配图的完整导出，压缩包 = 原始 txt + images/ + illustrations.json + bookmarks.json，本地 TXT 正文直接复制原始文件保持字节一致、本体不变，重新导入不章节错乱；原“导出 TXT”彻底恢复原样（仅走 getAllContents，不自动转 zip、不含配图/书签），两类不再混用）。
+   - `3.26.081309c` / `10545`：2026-08-12 编译交付（EPUB 导出修复：配图媒体原文件此前因 LazyResource originalHref 误传 `Images/` 前缀而导出 0 字节，改为传实际文件名；EPUB 与 PDF 导出新增书签侧车（EPUB 内 `legado_bookmarks.json` / PDF zip 内 `bookmarks.json`），导入时同步还原书签；EPUB 导入书签还原逻辑，媒体还原时兼容视频首帧 `.jpg` 与 `<img src="..." />` 空格写法）。
+   - `3.26.081308c` / `10544`：从 `app\build\outputs\apk\app\c\base.apk` 读取的上一包版本（2026-08-12 交付）。
    - `3.26.081306c` / `10542`：2026-08-12 编译交付（配图导入导出修复：导入列表显示 zip/rar/7z 压缩包，VIEW 打开配图压缩包走统一导入流程（解压保存到书籍目录+还原图片/视频/音频与锚点），导出对话框路径行可点击重选文件夹，导出完成通知显示文件名；用含 jpg/mp4/m4a 配图的 PDF 导出包实测：书导入、3 条配图记录与媒体文件全部还原、PDF 页配图热区点击可全屏查看）。
    - `3.26.081136c` / `10538`：2026-08-12 编译交付（音频块交互增强：进度条可点击/拖动 seek、播放/暂停键状态多实例刷新、新增配图音频播放时音量键调音量的设置；发布为 GitHub Release v3.26.081136c）。
    - `3.26.081134c` / `10536`：2026-08-12 编译交付（修复配图保存真正根因：newSrc 把无点号扩展名全部默认成 jpg，导致视频/音频保存后仍按图片渲染；修复后在模拟器实测：png/mp4/wav 落库正确、视频全屏播放、音频块内联播放、全屏图片单击返回）。
@@ -56,8 +61,7 @@ io.legado.app.c
    - `3.26.081122c` / `10524`：2026-08-11 交付。
    - `3.26.081121c` / `10523`：2026-08-11 交付。
    - `3.26.062205c` / `10491`：更早交付。
-   后续覆盖包必须从 `3.26.081307c` / `10543` 起步（实际编译时刻的 `MMddHH` 更大时取实际值）。
-8. 删除旧包本身不提供版本号：删除动作只负责清空产物目录，版本号必须在删除前从 adb 或第 7 条基线确认好。第 7 条是“最近一次已交付”的唯一持久记录，每次交付后必须当场更新，否则下一包会复用旧值、破坏单调递增。
+   后续覆盖包必须从 `3.26.081313c` / `10549` 起步（实际编译时刻的 `MMddHH` 更大时取实际值）。8. 删除旧包本身不提供版本号：删除动作只负责清空产物目录，版本号必须在删除前从 adb 或第 7 条基线确认好。第 7 条是“最近一次已交付”的唯一持久记录，每次交付后必须当场更新，否则下一包会复用旧值、破坏单调递增。
 
 当前阅读 C 使用独立包名，构建类型是 `c`，最终包名后缀是 `.c`。版本号沿用正常递增线，不要随手写超大版本号。
 
@@ -72,7 +76,12 @@ io.legado.app.c
 
 PowerShell 必须显式使用 UTF-8，并把 Gradle 缓存放在 D 盘，避免 Windows 下 KSP/增量缓存跨盘路径问题。
 
-版本号必须按“覆盖编译版本号规则”取最新值，下面的数值是最近一次实际使用的值，不要照抄。
+版本号必须按"覆盖编译版本号规则"取最新值，下面的数值是最近一次实际使用的值，不要照抄。
+
+> 速度优化（2026-08-13）：已恢复 Kotlin/KSP 增量编译（`gradle.properties`）和 Gradle daemon、多 worker 并行。
+> 前提已满足：`GRADLE_USER_HOME` 在 D 盘，与项目同盘，不再有跨盘增量缓存问题；内存由 `-Xmx6g` 兜底。
+> 之后首次编译仍是全量，但第二次起增量编译 + 复用 daemon，明显快于之前的全量冷编译。
+> 若出现"增量缓存已注册冲突"或内存崩溃，按下面"失败处理"临时退回旧参数。
 
 ```powershell
 $OutputEncoding=[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
@@ -88,7 +97,7 @@ $env:Path = @(
 
 $versionCode=10531
 $versionName='3.26.081129'
-.\gradlew.bat ':app:assembleAppC' '-Pabi=arm64-v8a' "-PVERSION_CODE=$versionCode" "-PVERSION_NAME=$versionName" '-Dkotlin.incremental=false' '-Dkotlin.compiler.execution.strategy=in-process' --no-daemon --console=plain --warning-mode=summary --max-workers=1
+.\gradlew.bat ':app:assembleAppC' '-Pabi=arm64-v8a' "-PVERSION_CODE=$versionCode" "-PVERSION_NAME=$versionName" --console=plain --warning-mode=summary
 ```
 
 2026-08-12 实测结果（`VERSION_CODE=10531`、`VERSION_NAME=3.26.081129`）：
@@ -164,7 +173,7 @@ $env:Path = @(
 
 $versionCode=10521
 $versionName='3.26.081117'
-.\gradlew.bat ':app:processAppCResources' '-Pabi=arm64-v8a' "-PVERSION_CODE=$versionCode" "-PVERSION_NAME=$versionName" '-Dkotlin.incremental=false' '-Dkotlin.compiler.execution.strategy=in-process' --no-daemon --console=plain --warning-mode=summary --max-workers=1
+.\gradlew.bat ':app:processAppCResources' '-Pabi=arm64-v8a' "-PVERSION_CODE=$versionCode" "-PVERSION_NAME=$versionName" --console=plain --warning-mode=summary
 ```
 
 2026-08-11 实测结果：
@@ -192,7 +201,7 @@ $env:Path = @(
 
 $versionCode=10521
 $versionName='3.26.081117'
-.\gradlew.bat ':modules:book:compileDebugKotlin' ':modules:book:compileDebugJavaWithJavac' ':modules:rhino:compileDebugKotlin' ':modules:rhino:compileDebugJavaWithJavac' ':app:kspAppCKotlin' ':app:compileAppCKotlin' ':app:compileAppCJavaWithJavac' '-Pabi=arm64-v8a' "-PVERSION_CODE=$versionCode" "-PVERSION_NAME=$versionName" '-Dkotlin.incremental=false' '-Dkotlin.compiler.execution.strategy=in-process' --no-daemon --console=plain --warning-mode=summary --max-workers=1
+.\gradlew.bat ':modules:book:compileDebugKotlin' ':modules:book:compileDebugJavaWithJavac' ':modules:rhino:compileDebugKotlin' ':modules:rhino:compileDebugJavaWithJavac' ':app:kspAppCKotlin' ':app:compileAppCKotlin' ':app:compileAppCJavaWithJavac' '-Pabi=arm64-v8a' "-PVERSION_CODE=$versionCode" "-PVERSION_NAME=$versionName" --console=plain --warning-mode=summary
 ```
 
 2026-08-11 实测结果：
@@ -220,7 +229,7 @@ $env:Path = @(
 
 $versionCode=10521
 $versionName='3.26.081117'
-.\gradlew.bat ':app:packageAppC' ':app:createAppCApkListingFileRedirect' ':app:assembleAppC' '-Pabi=arm64-v8a' "-PVERSION_CODE=$versionCode" "-PVERSION_NAME=$versionName" '-Dkotlin.incremental=false' '-Dkotlin.compiler.execution.strategy=in-process' --no-daemon --console=plain --warning-mode=summary --max-workers=1
+.\gradlew.bat ':app:packageAppC' ':app:createAppCApkListingFileRedirect' ':app:assembleAppC' '-Pabi=arm64-v8a' "-PVERSION_CODE=$versionCode" "-PVERSION_NAME=$versionName" --console=plain --warning-mode=summary
 ```
 
 2026-08-11 实测结果：
@@ -251,7 +260,7 @@ native-code: 'arm64-v8a'
 Signer #1 certificate DN: C=US, O=Android, CN=Android Debug
 ```
 
-PowerShell 监控注意事项：后台启动编译时，标准输出和错误输出不能重定向到同一个文件。必须使用两个不同日志文件，或者不要用后台启动方式；否则编译根本不会启动，后续循环只是在空进程上假监控。
+PowerShell 监控注意事项：后台启动编译时，标准输出和错误输出不能重定向到同一个文件。必须使用两个不同日志文件，或者不要用后台启动方式；否则编译根本不会启动，后续循环只是在空进程上假监控。前台直接运行编译时，同样要按“编译监控与进程清理”一节持续观察 CPU 与日志，完成后执行 `.\gradlew.bat --stop` 清理 daemon 残留进程。
 
 ## 2026-08-12 整包编译实测
 
@@ -271,19 +280,37 @@ BUILD SUCCESSFUL in 4m 17s
 - 产物 `legado_app_3.26.081123_10525.apk` 验证通过：包名 `io.legado.app.c`、`versionCode=10525`、`versionName=3.26.081123c`、中文名 `阅读 C`、`native-code: arm64-v8a`、签名 `CN=Android Debug`（apksigner 退出码 0，`META-INF` 未受签名保护警告为正常现象）。
 - 编译前后 `git status` 干净：本次没有源码改动，Room schema 无变化；临时构建脚本和日志在验证后已清理。
 
+## 编译监控与进程清理（每次编译必做）
+
+编译不是“跑完命令就完事”，必须实时监控状态，并在结束后清理残留进程：
+
+1. **实时监控**：编译期间不能死等或只看一眼进程列表就判断。要持续确认“是否真的在干活”：
+   - 用 `Get-Process` 观察 `GradleDaemon` 与 `KotlinCompileDaemon` 的 CPU 时间；隔 15 秒取两次，CPU 持续增长 = 正常在编译。
+   - 两个进程 CPU 均不增长，且无输出日志更新 = 疑似卡死/异常，应立即向用户报告，不要干等。
+2. **判定成功**：唯一标准是命令退出码 `exit=0`（或 `BUILD SUCCESSFUL`）。成功后再检查产物 `app\build\outputs\apk\app\c\legado_app_*.apk` 是否生成。
+3. **成功后必须清理残留进程**：Gradle daemon 和 Kotlin daemon 编译完成后不会自动退出，会一直占着约 6G 内存待机。成功（或失败结束）后必须执行：
+   ```powershell
+   .\gradlew.bat --stop
+   ```
+   然后确认残留的 `java.exe`（`GradleDaemon` / `KotlinCompileDaemon` 命令行特征）已退出；未退出时按 PID 结束：
+   ```powershell
+   Stop-Process -Id <pid> -Force
+   ```
+4. **异常必须主动告知**：编译超时、日志停滞、进程异常退出、`BUILD FAILED`、OOM（`OutOfMemoryError`）等，都必须明确向用户说明原因和下一步，不允许静默忽略或让用户自己猜。
+
 ## 失败处理
 
 如果出现 Kotlin 增量缓存已注册冲突，或资源合并阶段提示某个 `build\intermediates` 目录删不掉：
 
 1. 停掉 Gradle daemon。
 2. 删除项目内生成目录：`app\build`、`modules\book\build`、`modules\rhino\build`。
-3. 用上面的无 daemon、关闭 Kotlin 增量编译命令重跑。
+3. 用上面的编译命令重跑；仍失败时，可临时追加 `--no-daemon`、`-Dkotlin.incremental=false`、`--max-workers=1` 冷编译一次定位问题，定位后恢复正常参数。
 
 如果 Kotlin 编译阶段出现 `Native memory allocation failed`、`Kotlin daemon has been unexpectedly lost` 或 `Connection reset`：
 
 1. 先确认并停止当前仓库相关的 Gradle/Kotlin daemon，避免旧的 6G 构建进程继续占内存。
 2. 保持 `appC` 变体和递增后的 `VERSION_CODE` 不变。
-3. 在编译命令后追加 `--max-workers=1` 重跑；这会慢一点，但能降低并发内存占用。
+3. 在编译命令后追加 `--max-workers=1` 重跑；这会慢一点，但能降低并发内存占用。若仍崩溃，再追加 `--no-daemon` 和 `-Dkotlin.incremental=false`，并把 `gradle.properties` 中 `kotlin.incremental`、`ksp.incremental` 临时改回 `false`，稳定后再按"编译命令"里的说明恢复。
 
 ## 验证
 
