@@ -296,16 +296,9 @@ class TextChapterLayout(
         bookContent: BookContent,
     ) {
         val contents = bookContent.textList
-        // 在线书/本地书/EPUB 统一支持配图：插图记录按 bookUrl+章节索引关联
-        val illustrations = appDb.bookIllustrationDao.getByBookAndChapter(
-            book.bookUrl,
-            bookChapter.index
-        )
-        android.util.Log.d(
-            "ILL_ANCHOR",
-            "getTextChapter bookUrl=${book.bookUrl} chapterIndex=${bookChapter.index} " +
-                "illCount=${illustrations.size} allByBook=${appDb.bookIllustrationDao.getByBook(book.bookUrl).size}"
-        )
+        // 配图记录按全书查询，段间锚点用前后段落指纹匹配：
+        // TXT 重新导入后章节索引可能与导出时错位，指纹与章节无关，能稳定还原位置
+        val illustrations = appDb.bookIllustrationDao.getByBook(book.bookUrl)
         val placedIllustrationIds = hashSetOf<Long>()
         val imageStyle = book.getImageStyle()
         val isSingleImageStyle = imageStyle.equals(Book.imgStyleSingle, true)
@@ -623,9 +616,13 @@ class TextChapterLayout(
             pendingTextPage.lines.lastOrNull()?.isParagraphEnd = true
             stringBuilder.append("\n")
         }
-        // 章末配图 + 未匹配到锚点的配图（容错放章末）
+        // 章末配图（明确章末锚点）插入章末；
+        // 段间锚点未匹配时不强制堆到章末，避免重新导入后章节索引错位导致配图全部堆在书头
         for (illustration in illustrations
-            .filter { it.id !in placedIllustrationIds }
+            .filter {
+                it.id !in placedIllustrationIds &&
+                    it.anchorType == BookIllustration.ANCHOR_CHAPTER_END
+            }
             .sortedBy { it.sortOrder }) {
             insertIllustrationLine(book, illustration)
         }
@@ -797,12 +794,6 @@ class TextChapterLayout(
                         )
             }
             .sortedBy { it.sortOrder }
-        android.util.Log.d(
-            "ILL_ANCHOR",
-            "boundary frontFp=${frontFp.take(20)} backFp=${backFp.take(20)} " +
-                "candidates=${illustrations.map { it.id to (it.frontFingerprint.take(15) to it.backFingerprint.take(15)) }} " +
-                "matched=${matched.map { it.id }}"
-        )
         for (illustration in matched) {
             placedIds.add(illustration.id)
             insertIllustrationLine(book, illustration)
