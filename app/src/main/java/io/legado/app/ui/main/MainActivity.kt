@@ -59,6 +59,7 @@ import io.legado.app.help.config.NavigationBarIconConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.storage.Backup
+import io.legado.app.help.update.UpdateManager
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.lib.theme.UiCorner
@@ -88,6 +89,7 @@ import io.legado.app.utils.isCreated
 import io.legado.app.utils.BitmapUtils
 import io.legado.app.utils.navigationBarHeight
 import io.legado.app.utils.observeEvent
+import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.setHuaweiDisplayCutoutShortEdgesCompat
 import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
@@ -292,6 +294,10 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             if (!privacyPolicy()) return@launch
             //版本更新
             upVersion()
+            //自动检查更新
+            if (getPrefBoolean(PreferKey.updateCheckOnStart)) {
+                UpdateManager.checkUpdate(this@MainActivity)
+            }
             //设置本地密码
             setLocalPassword()
             notifyAppCrash()

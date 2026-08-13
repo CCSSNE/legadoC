@@ -74,6 +74,50 @@
     </io.legado.app.lib.prefs.PreferenceCategory>
 
     <io.legado.app.lib.prefs.PreferenceCategory
+        android:title="@string/config_category_update"
+        app:allowDividerAbove="false"
+        app:allowDividerBelow="false"
+        app:iconSpaceReserved="false"
+        app:layout="@layout/view_preference_category">
+
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="true"
+            android:key="updateCheckOnStart"
+            android:summary="@string/update_check_on_start_desc"
+            android:title="@string/update_check_on_start"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="false"
+            android:key="updateCheckPre"
+            android:summary="@string/update_check_pre_desc"
+            android:title="@string/update_check_pre"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.NameListPreference
+            android:defaultValue="ghfast"
+            android:entries="@array/update_accelerator"
+            android:entryValues="@array/update_accelerator_v"
+            android:key="updateAccelerator"
+            android:summary="@string/update_accelerator_desc"
+            android:title="@string/update_accelerator"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.EditTextPreference
+            android:key="updateAcceleratorCustom"
+            android:summary="@string/update_accelerator_custom_hint"
+            android:title="@string/update_accelerator_custom_title"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="updateCheckNow"
+            android:summary="@string/update_check_now_desc"
+            android:title="@string/update_check_now"
+            app:iconSpaceReserved="false" />
+
+    </io.legado.app.lib.prefs.PreferenceCategory>
+
+    <io.legado.app.lib.prefs.PreferenceCategory
         android:title="@string/config_category_sync"
         app:allowDividerAbove="false"
         app:allowDividerBelow="false"

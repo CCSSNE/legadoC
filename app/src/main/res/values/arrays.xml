@@ -69,6 +69,22 @@
 		<item>E-Ink mode</item>
 	</string-array>
 
+	<string-array name="update_accelerator">
+		<item>@string/update_accelerator_none</item>
+		<item>@string/update_accelerator_ghproxy</item>
+		<item>@string/update_accelerator_gh_proxy</item>
+		<item>@string/update_accelerator_ghfast</item>
+		<item>@string/update_accelerator_custom</item>
+	</string-array>
+
+	<string-array name="update_accelerator_v">
+		<item>none</item>
+		<item>ghproxy</item>
+		<item>gh-proxy</item>
+		<item>ghfast</item>
+		<item>custom</item>
+	</string-array>
+
 	<string-array name="NavBarColors">
 		<item>Auto</item>
 		<item>Black</item>

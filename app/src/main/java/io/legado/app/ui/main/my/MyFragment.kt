@@ -17,7 +17,10 @@ import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.FragmentMyConfigBinding
 import io.legado.app.help.config.ThemeConfig
+import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.update.UpdateManager
 import io.legado.app.lib.dialogs.selector
+import io.legado.app.lib.prefs.EditTextPreference
 import io.legado.app.lib.prefs.NameListPreference
 import io.legado.app.lib.prefs.SwitchPreference
 import io.legado.app.lib.prefs.fragment.PreferenceFragment
@@ -46,6 +49,7 @@ import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.applyMainBottomBarPadding
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.getPrefBoolean
+import io.legado.app.utils.getPrefString
 import io.legado.app.utils.observeEventSticky
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.putPrefBoolean
@@ -209,6 +213,8 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
                     true
                 }
             }
+            findPreference<EditTextPreference>(PreferKey.updateAcceleratorCustom)?.isVisible =
+                getPrefString(PreferKey.updateAccelerator) == "custom"
         }
 
         override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -238,6 +244,20 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
                         WebService.start(requireContext())
                     } else {
                         WebService.stop(requireContext())
+                    }
+                }
+
+                PreferKey.updateAccelerator -> {
+                    findPreference<EditTextPreference>(PreferKey.updateAcceleratorCustom)
+                        ?.isVisible = sharedPreferences?.getString(key, "none") == "custom"
+                }
+
+                PreferKey.updateCheckOnStart -> {
+                    if (requireContext().getPrefBoolean(PreferKey.updateCheckOnStart)) {
+                        val ctx = requireContext()
+                        Coroutine.async {
+                            UpdateManager.checkUpdate(ctx, showUpToDate = true, showError = true)
+                        }
                     }
                 }
 
@@ -511,6 +531,14 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
 
                 "ai_setting" -> startActivity<ConfigActivity> {
                     putExtra("configTag", ConfigTag.AI_CONFIG)
+                }
+
+                "updateCheckNow" -> {
+                    val ctx = requireContext()
+                    Coroutine.async {
+                        UpdateManager.checkUpdate(ctx, showUpToDate = true, showError = true)
+                    }
+                    return true
                 }
 
                 "fileManage" -> startActivity<FileManageActivity>()
