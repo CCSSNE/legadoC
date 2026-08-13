@@ -86,7 +86,7 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
     override val viewModel by viewModels<CacheViewModel>()
 
     private val exportBookPathKey = "exportBookPath"
-    private val exportTypes = arrayListOf("txt", "epub", "pdf")
+    private val exportTypes = arrayListOf("txt", "txt_zip", "epub", "pdf")
     private val layoutManager by lazy { LinearLayoutManager(this) }
     private val adapter by lazy { CacheAdapter(this, this) }
     private var booksFlowJob: Job? = null
@@ -380,8 +380,8 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
             setExportPath(path)
             adapter.getItem(position)?.let { book ->
                 tvBookFilenameValue.text =
-                    book.getExportFileName(exportType, null)
-                        .removeExportFileSuffix(exportType)
+                    book.getExportFileName(if (exportType == "txt_zip") "txt" else exportType, null)
+                        .removeExportFileSuffix(exportType, "txt_zip", "txt")
             } ?: run {
                 tvBookFilenameValue.text = AppConfig.bookExportFileName
             }
@@ -408,10 +408,15 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
             setEpubBackgroundImage(defaultEpubBackgroundImagePath() ?: AppConfig.epubExportBackgroundImagePath)
             fun upTypeView() {
                 val isEpub = exportType == "epub"
+                val isTxtZip = exportType == "txt_zip"
                 tabExportBar.visibility = if (isEpub) View.VISIBLE else View.GONE
-                rowExportCharset.visibility = if (isEpub) View.GONE else View.VISIBLE
-                rowNoChapterName.visibility = if (isEpub) View.GONE else View.VISIBLE
-                rowExportPicsFile.visibility = if (isEpub) View.GONE else View.VISIBLE
+                // txt_zip 正文直接复制原始文件，编码/多线程/章节名/图片文件选项不生效，隐藏；
+                // 替换净化有效（规则作为外挂数据导出，导入时同步还原）
+                rowExportCharset.visibility = if (isEpub || isTxtZip) View.GONE else View.VISIBLE
+                rowUseReplace.visibility = if (isEpub) View.GONE else View.VISIBLE
+                rowParallelExport.visibility = if (isEpub || isTxtZip) View.GONE else View.VISIBLE
+                rowNoChapterName.visibility = if (isEpub || isTxtZip) View.GONE else View.VISIBLE
+                rowExportPicsFile.visibility = if (isEpub || isTxtZip) View.GONE else View.VISIBLE
                 rowExportBookmarks.visibility = if (isEpub) View.GONE else View.VISIBLE
                 rowCustomExport.visibility = View.GONE
                 showExportConfigTab(ExportConfigTab.BASE, isEpub)

@@ -20,6 +20,12 @@
 
 **好用的话，点个 star，谢谢啦**
 
+阅读C 功能排期 https://docs.qq.com/doc/DVkxsQVpqWk1tV05S
+
+阅读C 不做功能 https://docs.qq.com/doc/DVkFjc0tWWW1VSnZB
+
+阅读C Bug排期 https://docs.qq.com/doc/DVmtiSHZza1VPZWdG
+
 ## 更新记录
 
 ### 2026-08-12

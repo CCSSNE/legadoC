@@ -15,6 +15,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookIllustration
 import io.legado.app.data.entities.Bookmark
+import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.exception.EmptyFileException
 import io.legado.app.help.illustration.IllustrationHelp
 import io.legado.app.help.illustration.imageSrcsToJson
@@ -307,9 +308,37 @@ object LocalBook {
         if (book.isEpub) {
             Coroutine.async {
                 restoreIllustrationsFromEpub(book)
+                restoreBookmarksFromEpub(book)
             }
         }
         return book
+    }
+
+    /** 识别本应用导出的 EPUB 书签侧车（legado_bookmarks.json）并还原书签 */
+    private fun restoreBookmarksFromEpub(book: Book) {
+        kotlin.runCatching {
+            val bookmarksText = readEpubBookmarks(book) ?: return
+            val bookmarks = GSON.fromJsonArray<Bookmark>(
+                ByteArrayInputStream(bookmarksText.toByteArray(Charsets.UTF_8))
+            ).getOrNull()
+            if (!bookmarks.isNullOrEmpty()) {
+                appDb.bookmarkDao.insert(*bookmarks.toTypedArray())
+            }
+        }.onFailure { e ->
+            AppLog.put("还原EPUB书签失败\n${e.localizedMessage}", e)
+        }
+    }
+
+    private fun readEpubBookmarks(book: Book): String? {
+        return kotlin.runCatching {
+            val zip = BookHelp.getEpubFile(book)
+            zip.use { z ->
+                val entry = z.entries().asSequence()
+                    .firstOrNull { it.name.endsWith(IllustrationHelp.EPUB_BOOKMARKS_NAME) }
+                    ?: return@use null
+                z.getInputStream(entry).use { it.readBytes() }.toString(Charsets.UTF_8)
+            }
+        }.getOrNull()
     }
 
     /**
@@ -343,15 +372,28 @@ object LocalBook {
                         )
                         if (bytes != null) {
                             IllustrationHelp.saveImage(book, src, bytes)
-                            val hrefWithParent = IllustrationHelp.epubImageHrefWithParent(src)
-                            val replaced = newContent.replace(
-                                """<img src="$hrefWithParent">""",
-                                """<img src="$src">"""
+                            // 正文中 `<img>` 指向的可能是媒体原 href，也可能是视频首帧（同名 .jpg）。
+                            // 导出的标记是 `<img src="../Images/xxx" />`（`/>` 前带空格），替换时都要兼容。
+                            val candidates = listOf(
+                                IllustrationHelp.epubImageHrefWithParent(src),
+                                IllustrationHelp.epubImageHref(src),
+                                IllustrationHelp.epubVideoFrameHrefWithParent(src),
+                                IllustrationHelp.epubVideoFrameHref(src)
                             )
-                            newContent = replaced.replace(
-                                """<img src="$hrefWithParent"/>""",
-                                """<img src="$src"/>"""
-                            )
+                            candidates.forEach { hrefWithParent ->
+                                newContent = newContent.replace(
+                                    """<img src="$hrefWithParent">""",
+                                    """<img src="$src">"""
+                                )
+                                newContent = newContent.replace(
+                                    """<img src="$hrefWithParent"/>""",
+                                    """<img src="$src"/>"""
+                                )
+                                newContent = newContent.replace(
+                                    """<img src="$hrefWithParent" />""",
+                                    """<img src="$src" />"""
+                                )
+                            }
                             contentChanged = contentChanged || newContent != content
                             srcs.add(src)
                         }
@@ -498,6 +540,7 @@ object LocalBook {
                 filter = { name ->
                     name == IllustrationHelp.EXPORT_JSON_NAME ||
                         name == IllustrationHelp.EXPORT_BOOKMARKS_NAME ||
+                        name == IllustrationHelp.EXPORT_REPLACE_RULES_NAME ||
                         name.startsWith("${IllustrationHelp.EXPORT_IMAGES_DIR}/") ||
                         name.matches(AppPattern.bookFileRegex)
                 }
@@ -511,6 +554,25 @@ object LocalBook {
                     }
                 }.onFailure { e ->
                     AppLog.put("导入书签失败\n${e.localizedMessage}", e)
+                }
+            }
+            // 压缩包内含替换规则时同步导入规则，并把该书的净化开关打开：
+            // 原文 + 规则同步还原，规则不作用于导出的 txt 本身
+            files.firstOrNull { it.name == IllustrationHelp.EXPORT_REPLACE_RULES_NAME }?.let { rulesFile ->
+                kotlin.runCatching {
+                    val rules = GSON.fromJsonArray<ReplaceRule>(rulesFile.inputStream()).getOrNull()
+                    if (!rules.isNullOrEmpty()) {
+                        appDb.replaceRuleDao.insert(*rules.toTypedArray())
+                        importedBooks.firstOrNull()?.let { book ->
+                            if (book.config.useReplaceRule != true) {
+                                book.config.useReplaceRule = true
+                                book.save()
+                            }
+                        }
+                        ContentProcessor.upReplaceRules()
+                    }
+                }.onFailure { e ->
+                    AppLog.put("导入替换规则失败\n${e.localizedMessage}", e)
                 }
             }
             val jsonFile = files.firstOrNull { it.name == IllustrationHelp.EXPORT_JSON_NAME }

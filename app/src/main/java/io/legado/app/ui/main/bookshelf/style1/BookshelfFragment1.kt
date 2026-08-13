@@ -361,14 +361,15 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
                 primaryBooks.any { book -> book.isInSecondaryGroup(group.groupId, userGroupIds) }
             }
         }
-        val visibleGroupIds = visibleSecondaryGroups
+        var visibleIds = visibleSecondaryGroups
             .sortedWith(compareBy({ it.order }, { it.groupId }))
             .map { it.groupId }
-        secondaryGroupIds = if (BookGroup.IdAll in visibleGroupIds) {
-            visibleGroupIds
-        } else {
-            listOf(BookGroup.IdAll) + visibleGroupIds
+        // "全部"是否显示由用户在分组管理里的开关决定（show 已过滤），不再强制兜底；
+        // 但过滤结果为空时不能空白：兜底补上"全部"，保证书架顶部分组至少有一个入口
+        if (visibleIds.isEmpty()) {
+            visibleIds = listOf(BookGroup.IdAll)
         }
+        secondaryGroupIds = visibleIds
     }
 
     private fun buildPrimaryGroups(): List<BookGroup> {

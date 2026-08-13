@@ -44,7 +44,9 @@ object IllustrationHelp {
     const val ILLUSTRATIONS_DIR_NAME = "illustrations"
     const val EXPORT_JSON_NAME = "illustrations.json"
     const val EXPORT_BOOKMARKS_NAME = "bookmarks.json"
+    const val EXPORT_REPLACE_RULES_NAME = "replace_rules.json"
     const val EPUB_SIDECAR_NAME = "legado_illustrations.json"
+    const val EPUB_BOOKMARKS_NAME = "legado_bookmarks.json"
     const val EXPORT_IMAGES_DIR = "images"
     const val EXPORT_JSON_VERSION = 1
 
@@ -565,6 +567,15 @@ object IllustrationHelp {
 
     fun epubImageHrefWithParent(src: String): String {
         return "../${epubImageHref(src)}"
+    }
+
+    /** 视频首帧静态图在 EPUB 内的资源路径（与导出端一致，同源不同后缀 .jpg） */
+    fun epubVideoFrameHref(src: String): String {
+        return "Images/${MD5Utils.md5Encode16(src)}.jpg"
+    }
+
+    fun epubVideoFrameHrefWithParent(src: String): String {
+        return "../${epubVideoFrameHref(src)}"
     }
 
     // ---------- PDF 导出 / 再导入 ----------
