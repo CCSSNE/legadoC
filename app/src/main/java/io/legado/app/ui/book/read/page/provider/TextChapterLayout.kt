@@ -301,6 +301,11 @@ class TextChapterLayout(
             book.bookUrl,
             bookChapter.index
         )
+        android.util.Log.d(
+            "ILL_ANCHOR",
+            "getTextChapter bookUrl=${book.bookUrl} chapterIndex=${bookChapter.index} " +
+                "illCount=${illustrations.size} allByBook=${appDb.bookIllustrationDao.getByBook(book.bookUrl).size}"
+        )
         val placedIllustrationIds = hashSetOf<Long>()
         val imageStyle = book.getImageStyle()
         val isSingleImageStyle = imageStyle.equals(Book.imgStyleSingle, true)
