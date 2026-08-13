@@ -81,12 +81,18 @@ abstract class BaseImportBookActivity<VM : ViewModel> :
     private inline fun addArchiveToBookShelf(
         fileDoc: FileDoc,
         fileName: String,
-        onSuccess: (Book) -> Unit
+        crossinline onSuccess: (Book) -> Unit
     ) {
-        LocalBook.importArchiveFile(fileDoc.uri, fileName) {
-            it.contains(fileName)
-        }.firstOrNull()?.run {
-            onSuccess.invoke(this)
+        kotlin.runCatching {
+            LocalBook.importArchiveFile(fileDoc.uri, fileName) {
+                it.contains(fileName)
+            }
+        }.onSuccess { books ->
+            books.firstOrNull()?.let(onSuccess)
+                ?: toastOnUi(R.string.unsupport_archivefile_entry)
+        }.onFailure { e ->
+            e.printOnDebug()
+            toastOnUi("导入压缩包失败：${e.localizedMessage}")
         }
     }
 

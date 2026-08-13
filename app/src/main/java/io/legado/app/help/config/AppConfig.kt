@@ -1279,7 +1279,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefInt(PreferKey.exportType, value)
         }
     var exportPictureFile: Boolean
-        get() = appCtx.getPrefBoolean(PreferKey.exportPictureFile, false)
+        get() = appCtx.getPrefBoolean(PreferKey.exportPictureFile, true)
         set(value) {
             appCtx.putPrefBoolean(PreferKey.exportPictureFile, value)
         }
