@@ -265,6 +265,7 @@ object PreferKey {
     const val volumeKeyPage = "volumeKeyPage"
     const val volumeKeyPageOnPlay = "volumeKeyPageOnPlay"
     const val illustrationAudioVolumeKey = "illustrationAudioVolumeKey"
+    const val exportBookmarks = "exportBookmarks"
     const val mouseWheelPage = "mouseWheelPage"
     const val recordHeapDump = "recordHeapDump"
     const val optimizeRender = "optimizeRender"

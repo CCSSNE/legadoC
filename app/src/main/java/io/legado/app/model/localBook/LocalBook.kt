@@ -14,6 +14,7 @@ import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookIllustration
+import io.legado.app.data.entities.Bookmark
 import io.legado.app.exception.EmptyFileException
 import io.legado.app.help.illustration.IllustrationHelp
 import io.legado.app.help.illustration.imageSrcsToJson
@@ -44,6 +45,7 @@ import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
+import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.fromJsonObject
@@ -495,10 +497,22 @@ object LocalBook {
                 archiveFileDoc,
                 filter = { name ->
                     name == IllustrationHelp.EXPORT_JSON_NAME ||
+                        name == IllustrationHelp.EXPORT_BOOKMARKS_NAME ||
                         name.startsWith("${IllustrationHelp.EXPORT_IMAGES_DIR}/") ||
                         name.matches(AppPattern.bookFileRegex)
                 }
             )
+            // 压缩包内含书签文件时同步导入书签（bookName/bookAuthor 关联到书）
+            files.firstOrNull { it.name == IllustrationHelp.EXPORT_BOOKMARKS_NAME }?.let { bookmarkFile ->
+                kotlin.runCatching {
+                    val bookmarks = GSON.fromJsonArray<Bookmark>(bookmarkFile.inputStream()).getOrNull()
+                    if (!bookmarks.isNullOrEmpty()) {
+                        appDb.bookmarkDao.insert(*bookmarks.toTypedArray())
+                    }
+                }.onFailure { e ->
+                    AppLog.put("导入书签失败\n${e.localizedMessage}", e)
+                }
+            }
             val jsonFile = files.firstOrNull { it.name == IllustrationHelp.EXPORT_JSON_NAME }
                 ?: return
             val json = kotlin.runCatching {

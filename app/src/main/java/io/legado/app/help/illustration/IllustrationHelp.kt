@@ -43,6 +43,7 @@ object IllustrationHelp {
     const val SRC_PREFIX = "illustration://"
     const val ILLUSTRATIONS_DIR_NAME = "illustrations"
     const val EXPORT_JSON_NAME = "illustrations.json"
+    const val EXPORT_BOOKMARKS_NAME = "bookmarks.json"
     const val EPUB_SIDECAR_NAME = "legado_illustrations.json"
     const val EXPORT_IMAGES_DIR = "images"
     const val EXPORT_JSON_VERSION = 1

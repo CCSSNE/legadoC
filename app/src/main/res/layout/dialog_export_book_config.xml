@@ -201,6 +201,20 @@
             </LinearLayout>
 
             <LinearLayout
+                android:id="@+id/row_export_bookmarks"
+                style="@style/ReadColorRow">
+
+                <TextView
+                    style="@style/ReadColorRowTitle"
+                    android:text="@string/export_bookmarks" />
+
+                <TextView
+                    android:id="@+id/tv_export_bookmarks_value"
+                    style="@style/ReadColorRowValue" />
+
+            </LinearLayout>
+
+            <LinearLayout
                 android:id="@+id/row_custom_export"
                 style="@style/ReadColorRow">
 

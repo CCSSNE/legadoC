@@ -43,6 +43,7 @@ import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.ExportImageSanitizer
 import io.legado.app.utils.HtmlFormatter
+import io.legado.app.utils.GSON
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.activityPendingIntent
@@ -124,6 +125,7 @@ class ExportBookService : BaseService() {
         val toWebDav: Boolean = AppConfig.exportToWebDav,
         val noChapterName: Boolean = AppConfig.exportNoChapterName,
         val pictureFile: Boolean = AppConfig.exportPictureFile,
+        val exportBookmarks: Boolean = AppConfig.exportBookmarks,
         val parallelExport: Boolean = AppConfig.parallelExportBook,
         val bookExportFileName: String? = AppConfig.bookExportFileName,
         val episodeExportFileName: String? = AppConfig.episodeExportFileName,
@@ -175,6 +177,10 @@ class ExportBookService : BaseService() {
                         pictureFile = intent.getBooleanExtra(
                             "exportPictureFile",
                             AppConfig.exportPictureFile
+                        ),
+                        exportBookmarks = intent.getBooleanExtra(
+                            "exportBookmarks",
+                            AppConfig.exportBookmarks
                         ),
                         parallelExport = intent.getBooleanExtra(
                             "parallelExportBook",
@@ -430,6 +436,18 @@ class ExportBookService : BaseService() {
         val tmpImagesDir = File(tmpRoot, IllustrationHelp.EXPORT_IMAGES_DIR)
         FileUtils.createFolderIfNotExist(tmpImagesDir.absolutePath)
         val tmpJson = File(tmpRoot, IllustrationHelp.EXPORT_JSON_NAME)
+        val tmpBookmarks = if (config.exportBookmarks) {
+            File(tmpRoot, IllustrationHelp.EXPORT_BOOKMARKS_NAME).also { f ->
+                val bookmarks = appDb.bookmarkDao.all.filter {
+                    it.bookName == book.name && it.bookAuthor == book.author
+                }
+                if (bookmarks.isNotEmpty()) {
+                    f.writeText(GSON.toJson(bookmarks), Charsets.UTF_8)
+                }
+            }
+        } else {
+            null
+        }
         try {
             val charset = Charset.forName(config.charset)
             tmpTxt.bufferedWriter(charset).use { bw ->
@@ -453,8 +471,10 @@ class ExportBookService : BaseService() {
             val jsonText = IllustrationHelp.buildExportJson(book, txtName) ?: return
             tmpJson.writeText(jsonText, Charsets.UTF_8)
             val tmpZip = File(tmpRoot, zipName)
+            val zipEntries = arrayListOf<File>(tmpTxt, tmpImagesDir, tmpJson)
+            tmpBookmarks?.takeIf { it.exists() }?.let { zipEntries.add(it) }
             ZipUtils.zipFiles(
-                listOf(tmpTxt, tmpImagesDir, tmpJson),
+                zipEntries,
                 tmpZip,
                 null
             )

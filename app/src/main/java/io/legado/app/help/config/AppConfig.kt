@@ -1284,6 +1284,12 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefBoolean(PreferKey.exportPictureFile, value)
         }
 
+    var exportBookmarks: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.exportBookmarks, true)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.exportBookmarks, value)
+        }
+
     var epubExportTitleColor: String?
         get() = appCtx.getPrefString(PreferKey.epubExportTitleColor)
         set(value) {
