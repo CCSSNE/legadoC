@@ -792,6 +792,12 @@ class TextChapterLayout(
                         )
             }
             .sortedBy { it.sortOrder }
+        android.util.Log.d(
+            "ILL_ANCHOR",
+            "boundary frontFp=${frontFp.take(20)} backFp=${backFp.take(20)} " +
+                "candidates=${illustrations.map { it.id to (it.frontFingerprint.take(15) to it.backFingerprint.take(15)) }} " +
+                "matched=${matched.map { it.id }}"
+        )
         for (illustration in matched) {
             placedIds.add(illustration.id)
             insertIllustrationLine(book, illustration)
