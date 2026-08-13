@@ -694,32 +694,41 @@ object LocalBook {
     ): Uri {
         inputStream.use {
             val defaultBookTreeUri = AppConfig.defaultBookTreeUri
-            if (defaultBookTreeUri.isNullOrBlank()) throw NoBooksDirException()
-            val treeUri = defaultBookTreeUri.toUri()
-            return if (treeUri.isContentScheme()) {
-                val treeDoc = DocumentFile.fromTreeUri(appCtx, treeUri)
-                var doc = treeDoc!!.findFile(fileName)
-                if (doc == null) {
-                    doc = treeDoc.createFile(FileUtils.getMimeType(fileName), fileName)
-                        ?: throw SecurityException("请重新设置书籍保存位置\nPermission Denial")
-                }
-                appCtx.contentResolver.openOutputStream(doc.uri)!!.use { oStream ->
-                    it.copyTo(oStream)
-                }
-                doc.uri
-            } else {
-                try {
-                    val treeFile = File(treeUri.path!!)
-                    val file = treeFile.getFile(fileName)
-                    FileOutputStream(file).use { oStream ->
+            if (!defaultBookTreeUri.isNullOrBlank()) {
+                val treeUri = defaultBookTreeUri.toUri()
+                return if (treeUri.isContentScheme()) {
+                    val treeDoc = DocumentFile.fromTreeUri(appCtx, treeUri)
+                    var doc = treeDoc!!.findFile(fileName)
+                    if (doc == null) {
+                        doc = treeDoc.createFile(FileUtils.getMimeType(fileName), fileName)
+                            ?: throw SecurityException("请重新设置书籍保存位置\nPermission Denial")
+                    }
+                    appCtx.contentResolver.openOutputStream(doc.uri)!!.use { oStream ->
                         it.copyTo(oStream)
                     }
-                    Uri.fromFile(file)
-                } catch (e: FileNotFoundException) {
-                    throw SecurityException("请重新设置书籍保存位置\nPermission Denial\n$e").apply {
-                        addSuppressed(e)
+                    doc.uri
+                } else {
+                    try {
+                        val treeFile = File(treeUri.path!!)
+                        val file = treeFile.getFile(fileName)
+                        FileOutputStream(file).use { oStream ->
+                            it.copyTo(oStream)
+                        }
+                        Uri.fromFile(file)
+                    } catch (e: FileNotFoundException) {
+                        throw SecurityException("请重新设置书籍保存位置\nPermission Denial\n$e").apply {
+                            addSuppressed(e)
+                        }
                     }
                 }
+            } else {
+                // 未设置书籍保存目录时，兜底保存到应用外部文件目录 Books/，避免导入失败
+                val fallbackDir = appCtx.externalFiles.getFile("Books").apply { mkdirs() }
+                val file = File(fallbackDir, fileName)
+                FileOutputStream(file).use { oStream ->
+                    it.copyTo(oStream)
+                }
+                Uri.fromFile(file)
             }
         }
     }
