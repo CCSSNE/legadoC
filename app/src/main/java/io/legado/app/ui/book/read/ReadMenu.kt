@@ -73,6 +73,7 @@ class ReadMenu @JvmOverloads constructor(
     private val binding = ViewReadMenuBinding.inflate(LayoutInflater.from(context), this, true)
     private var confirmSkipToChapter: Boolean = false
     private var isMenuOutAnimating = false
+    private var menuBlurGeneration = 0
     private val menuTopIn: Animation by lazy {
         loadAnimation(context, R.anim.anim_readbook_top_in)
     }
@@ -122,7 +123,6 @@ class ReadMenu @JvmOverloads constructor(
         @SuppressLint("RtlHardcoded")
         override fun onAnimationEnd(animation: Animation) {
             binding.vwMenuBg.setOnClickListener { runMenuOut() }
-            applyMenuBlur()
             callBack.onReadMenuAvoidanceChanged(true)
             callBack.upSystemUiVisibility()
         }
@@ -460,16 +460,26 @@ class ReadMenu @JvmOverloads constructor(
     }
 
     fun runMenuIn(anim: Boolean = !AppConfig.isEInkMode) {
+        val generation = ++menuBlurGeneration
         callBack.onMenuShow()
+        clearMenuBlur()
         this.visible()
         binding.titleBar.visible()
         binding.bottomMenu.visible()
-        if (anim) {
-            binding.titleBar.startAnimation(menuTopIn)
-            binding.bottomMenu.startAnimation(menuBottomIn)
-        } else {
-            menuInListener.onAnimationStart(menuBottomIn)
-            menuInListener.onAnimationEnd(menuBottomIn)
+        val originalAlpha = alpha.takeIf { it > 0f } ?: 1f
+        alpha = 0f
+        menuInListener.onAnimationStart(menuTopIn)
+        post {
+            applyMenuBlur {
+                if (generation != menuBlurGeneration || !isVisible || isMenuOutAnimating) return@applyMenuBlur
+                alpha = originalAlpha
+                if (anim) {
+                    binding.titleBar.startAnimation(menuTopIn)
+                    binding.bottomMenu.startAnimation(menuBottomIn)
+                } else {
+                    menuInListener.onAnimationEnd(menuBottomIn)
+                }
+            }
         }
     }
 
@@ -477,6 +487,7 @@ class ReadMenu @JvmOverloads constructor(
         if (isMenuOutAnimating) {
             return
         }
+        menuBlurGeneration++
         callBack.onMenuHide()
         this.onMenuOutEnd = onMenuOutEnd
         if (this.isVisible) {
@@ -490,12 +501,16 @@ class ReadMenu @JvmOverloads constructor(
         }
     }
 
-    private fun applyMenuBlur() {
-        val hostWindow = context.findHostWindow() ?: return
+    private fun applyMenuBlur(onReady: () -> Unit) {
+        val hostWindow = context.findHostWindow() ?: run {
+            onReady()
+            return
+        }
         LocalPopupBlur.apply(
             hostWindow = hostWindow,
             targets = listOf(binding.titleBlurSurface, binding.bottomBlurSurface),
-            captureOwner = this
+            captureOwner = this,
+            onReady = onReady
         )
     }
 

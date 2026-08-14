@@ -60,6 +60,7 @@ class MangaMenu @JvmOverloads constructor(
         loadAnimation(context, R.anim.anim_readbook_bottom_out)
     }
     private var isMenuOutAnimating = false
+    private var menuBlurGeneration = 0
     private var bgColor = context.bottomBackground
 
     private val menuOutListener = object : Animation.AnimationListener {
@@ -93,7 +94,6 @@ class MangaMenu @JvmOverloads constructor(
             binding.run {
                 vwMenuBg.setOnClickListener { runMenuOut() }
             }
-            applyMenuBlur()
         }
 
         override fun onAnimationRepeat(animation: Animation) = Unit
@@ -183,6 +183,7 @@ class MangaMenu @JvmOverloads constructor(
         if (isMenuOutAnimating) {
             return
         }
+        menuBlurGeneration++
         if (this.isVisible) {
             if (anim) {
                 binding.titleBar.startAnimation(menuTopOut)
@@ -195,24 +196,38 @@ class MangaMenu @JvmOverloads constructor(
     }
 
     fun runMenuIn(anim: Boolean = !AppConfig.isEInkMode) {
+        val generation = ++menuBlurGeneration
+        clearMenuBlur()
         this.visible()
         binding.titleBar.visible()
         binding.bottomMenu.visible()
-        if (anim) {
-            binding.titleBar.startAnimation(menuTopIn)
-            binding.bottomMenu.startAnimation(menuBottomIn)
-        } else {
-            menuInListener.onAnimationStart(menuBottomIn)
-            menuInListener.onAnimationEnd(menuBottomIn)
+        val originalAlpha = alpha.takeIf { it > 0f } ?: 1f
+        alpha = 0f
+        menuInListener.onAnimationStart(menuTopIn)
+        post {
+            applyMenuBlur {
+                if (generation != menuBlurGeneration || !isVisible || isMenuOutAnimating) return@applyMenuBlur
+                alpha = originalAlpha
+                if (anim) {
+                    binding.titleBar.startAnimation(menuTopIn)
+                    binding.bottomMenu.startAnimation(menuBottomIn)
+                } else {
+                    menuInListener.onAnimationEnd(menuBottomIn)
+                }
+            }
         }
     }
 
-    private fun applyMenuBlur() {
-        val hostWindow = context.findHostWindow() ?: return
+    private fun applyMenuBlur(onReady: () -> Unit) {
+        val hostWindow = context.findHostWindow() ?: run {
+            onReady()
+            return
+        }
         LocalPopupBlur.apply(
             hostWindow = hostWindow,
             targets = listOf(binding.titleBlurSurface, binding.bottomBlurSurface),
-            captureOwner = this
+            captureOwner = this,
+            onReady = onReady
         )
     }
 

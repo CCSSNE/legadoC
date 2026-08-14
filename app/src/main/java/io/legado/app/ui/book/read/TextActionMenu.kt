@@ -53,6 +53,7 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
     private val allMenuItems: List<MenuItemImpl>
     private val visibleMenuItems = arrayListOf<MenuItemImpl>()
     private val moreMenuItems = arrayListOf<MenuItemImpl>()
+    private var blurGeneration = 0
     private val expandTextMenu get() = context.getPrefBoolean(PreferKey.expandTextMenu)
     var illustrationEnabled: Boolean = false
         set(value) {
@@ -104,7 +105,9 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
         binding.recyclerView.adapter = adapter
         binding.recyclerViewMore.adapter = adapter
         setOnDismissListener {
+            blurGeneration++
             LocalPopupBlur.clear(contentView)
+            contentView.alpha = 1f
             if (!context.getPrefBoolean(PreferKey.expandTextMenu)) {
                 binding.ivMenuMore.setImageResource(R.drawable.ic_more_vert)
                 binding.recyclerViewMore.gone()
@@ -199,6 +202,9 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
         } else {
             (selectionBottomY + margin).coerceAtMost((windowHeight - popupHeight - margin).coerceAtLeast(margin))
         }
+        val originalAlpha = contentView.alpha.takeIf { it > 0f } ?: 1f
+        val generation = ++blurGeneration
+        contentView.alpha = 0f
         if (isShowing) {
             // 已显示时原地更新位置与尺寸，避免重建窗口造成闪动
             update(x, y, popupWidth, popupHeight)
@@ -208,14 +214,19 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
             binding.recyclerViewMore.removeAllViews()
             showAtLocation(view, Gravity.TOP or Gravity.START, x, y)
         }
-        contentView.post {
-            context.findHostWindow()?.let { hostWindow ->
-                LocalPopupBlur.apply(
-                    hostWindow,
-                    listOf(contentView),
-                    popupSurfaceAlpha = UiCorner.dialogSurfaceAlpha()
-                )
-            }
+        context.findHostWindow()?.let { hostWindow ->
+            LocalPopupBlur.apply(
+                hostWindow,
+                listOf(contentView),
+                popupSurfaceAlpha = UiCorner.dialogSurfaceAlpha(),
+                onReady = {
+                    if (generation == blurGeneration && isShowing) {
+                        contentView.alpha = originalAlpha
+                    }
+                }
+            )
+        } ?: run {
+            if (generation == blurGeneration) contentView.alpha = originalAlpha
         }
     }
 

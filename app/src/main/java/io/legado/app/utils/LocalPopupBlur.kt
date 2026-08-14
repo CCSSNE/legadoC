@@ -31,6 +31,7 @@ import kotlin.math.roundToInt
 
 private const val POPUP_BLUR_MAX_ATTEMPTS = 12
 private const val POPUP_BLUR_RETRY_DELAY_MS = 50L
+private val mainHandler = Handler(Looper.getMainLooper())
 
 /**
  * 只给浮层自身的矩形区域铺设宿主页面的模糊底图。
@@ -52,19 +53,25 @@ object LocalPopupBlur {
         targets: List<View>,
         captureOwner: View? = null,
         radius: Int = UiCorner.dialogBlurRadius(),
-        popupSurfaceAlpha: Float? = null
+        popupSurfaceAlpha: Float? = null,
+        onReady: (() -> Unit)? = null
     ) {
         val validTargets = targets.distinct().filter {
             it.isAttachedToWindow && it.width > 0 && it.height > 0
         }
-        if (validTargets.isEmpty()) return
+        if (validTargets.isEmpty()) {
+            onReady?.invoke()
+            return
+        }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || radius <= 0) {
             clear(validTargets)
+            onReady?.invoke()
             return
         }
 
         val hostDecor = hostWindow.decorView
         if (!hostDecor.isAttachedToWindow || hostDecor.width <= 0 || hostDecor.height <= 0) {
+            onReady?.invoke()
             return
         }
 
@@ -96,7 +103,10 @@ object LocalPopupBlur {
             var remaining = targetRequests.size
             fun finishOne() {
                 remaining -= 1
-                if (remaining <= 0) restoreTargets()
+                if (remaining <= 0) {
+                    restoreTargets()
+                    onReady?.invoke()
+                }
             }
             targetRequests.forEach { (target, generation) ->
                 requestTargetBitmap(
@@ -178,41 +188,45 @@ object LocalPopupBlur {
             return
         }
         try {
+            val onCopyFinished: (Int) -> Unit = { result ->
+                if (result == PixelCopy.SUCCESS) {
+                    val blurred = blurBitmap(sourceBitmap, radius)
+                    sourceBitmap.recycle()
+                    if (generations[target] == generation && target.isAttachedToWindow) {
+                        install(target, blurred, popupSurfaceAlpha)
+                    } else if (!blurred.isRecycled) {
+                        blurred.recycle()
+                    }
+                    onFinished()
+                } else {
+                    sourceBitmap.recycle()
+                    if (attempt < 2) {
+                        hostDecor.postDelayed({
+                            requestTargetBitmap(
+                                hostWindow,
+                                hostDecor,
+                                target,
+                                radius,
+                                generation,
+                                attempt + 1,
+                                popupSurfaceAlpha,
+                                onFinished
+                            )
+                        }, 60L)
+                    } else {
+                        onFinished()
+                    }
+                }
+            }
+            // 本项目当前 compileSdk 的 android.view stubs 不暴露 API 34 的
+            // PixelCopy.Request 构建器；Window 重载同样走系统硬件复制，且可兼容
+            // 当前正式版的 minSdk，不能为了新 API 让整个 appC 无法编译。
             PixelCopy.request(
                 hostWindow,
                 sourceRect,
                 sourceBitmap,
-                { result ->
-                    if (result == PixelCopy.SUCCESS) {
-                        val blurred = blurBitmap(sourceBitmap, radius)
-                        sourceBitmap.recycle()
-                        if (generations[target] == generation && target.isAttachedToWindow) {
-                            install(target, blurred, popupSurfaceAlpha)
-                        } else if (!blurred.isRecycled) {
-                            blurred.recycle()
-                        }
-                        onFinished()
-                    } else {
-                        sourceBitmap.recycle()
-                        if (attempt < 2) {
-                            hostDecor.postDelayed({
-                                requestTargetBitmap(
-                                    hostWindow,
-                                    hostDecor,
-                                    target,
-                                    radius,
-                                    generation,
-                                    attempt + 1,
-                                    popupSurfaceAlpha,
-                                    onFinished
-                                )
-                            }, 60L)
-                        } else {
-                            onFinished()
-                        }
-                    }
-                },
-                Handler(Looper.getMainLooper())
+                onCopyFinished,
+                mainHandler
             )
         } catch (_: Throwable) {
             sourceBitmap.recycle()
@@ -223,14 +237,24 @@ object LocalPopupBlur {
     private fun sourceRect(hostDecor: View, target: View): Rect? {
         val targetLocation = IntArray(2)
         val hostLocation = IntArray(2)
-        target.getLocationOnScreen(targetLocation)
-        hostDecor.getLocationOnScreen(hostLocation)
+        val sameWindow = target.rootView === hostDecor ||
+            target.windowToken != null && target.windowToken == hostDecor.windowToken
+        if (sameWindow) {
+            target.getLocationInWindow(targetLocation)
+            hostDecor.getLocationInWindow(hostLocation)
+        } else {
+            // PopupWindow/Dialog 与宿主是不同窗口，只能用屏幕坐标换算到宿主窗口。
+            target.getLocationOnScreen(targetLocation)
+            hostDecor.getLocationOnScreen(hostLocation)
+        }
         val rawLeft = targetLocation[0] - hostLocation[0]
         val rawTop = targetLocation[1] - hostLocation[1]
-        val left = rawLeft.coerceAtLeast(0).coerceAtMost(hostDecor.width - 1)
-        val top = rawTop.coerceAtLeast(0).coerceAtMost(hostDecor.height - 1)
-        val right = (rawLeft + target.width).coerceAtLeast(left + 1).coerceAtMost(hostDecor.width)
-        val bottom = (rawTop + target.height).coerceAtLeast(top + 1).coerceAtMost(hostDecor.height)
+        val rawRight = rawLeft + target.width
+        val rawBottom = rawTop + target.height
+        val left = rawLeft.coerceAtLeast(0).coerceAtMost(hostDecor.width)
+        val top = rawTop.coerceAtLeast(0).coerceAtMost(hostDecor.height)
+        val right = rawRight.coerceAtLeast(0).coerceAtMost(hostDecor.width)
+        val bottom = rawBottom.coerceAtLeast(0).coerceAtMost(hostDecor.height)
         return if (right > left && bottom > top) Rect(left, top, right, bottom) else null
     }
 
@@ -374,22 +398,50 @@ fun PopupMenu.applyLocalPopupBlur(hostWindow: Window) {
 }
 
 private fun schedulePopupBlur(hostWindow: Window, source: Any) {
+    var preparedTarget: View? = null
+    var originalAlpha = 1f
+    var finished = false
+
+    fun restoreUnblurred() {
+        if (finished) return
+        finished = true
+        preparedTarget?.takeIf { it.isAttachedToWindow }?.let { it.alpha = originalAlpha }
+    }
+
     fun attempt(count: Int) {
-        val target = findPopupTarget(source)
+        if (finished) return
+        val candidate = findPopupTarget(source)
+        if (preparedTarget == null && candidate != null) {
+            // PopupWindow 的 contentView 在 show() 前通常已经存在，但外壳还没有
+            // attach/layout。此时先把它设为不可见，避免系统先画出一帧未模糊的菜单。
+            preparedTarget = candidate
+            originalAlpha = candidate.alpha.takeIf { it > 0f } ?: 1f
+            candidate.alpha = 0f
+        }
+        val target = preparedTarget?.takeIf { isPopupSurface(it, hostWindow.decorView) }
         if (target != null && target.isAttachedToWindow) {
             LocalPopupBlur.apply(
                 hostWindow,
                 listOf(target),
-                popupSurfaceAlpha = UiCorner.dialogSurfaceAlpha()
+                popupSurfaceAlpha = UiCorner.dialogSurfaceAlpha(),
+                onReady = {
+                    if (finished) return@apply
+                    finished = true
+                    if (target.isAttachedToWindow) target.alpha = originalAlpha
+                }
             )
         } else if (count < POPUP_BLUR_MAX_ATTEMPTS) {
             hostWindow.decorView.postDelayed(
                 { attempt(count + 1) },
                 POPUP_BLUR_RETRY_DELAY_MS
             )
+        } else {
+            // 目标窗口异常时不能一直保持透明，否则会留下不可见菜单。
+            restoreUnblurred()
         }
     }
-    hostWindow.decorView.post { attempt(0) }
+    // show() 返回后立即尝试一次，确保在下一个绘制帧前进入预备态。
+    attempt(0)
 }
 
 private fun findPopupTarget(source: Any): View? {
@@ -398,7 +450,28 @@ private fun findPopupTarget(source: Any): View? {
 
     fun visit(value: Any?, depth: Int): View? {
         if (value == null || depth > 7 || !visited.add(value)) return null
-        if (value is PopupWindow) return value.contentView
+        if (value is PopupWindow) {
+            // PopupWindow 的列表 contentView 外面还有 PopupDecorView/mPopupView，
+            // 圆角、内边距和阴影都画在外壳上。优先取外壳，避免模糊矩形少一圈；
+            // 旧实现只取 contentView，正是右侧/顶部范围不准的来源。
+            val popupSurface = listOf("mDecorView", "mPopupView")
+                .asSequence()
+                .mapNotNull { fieldName ->
+                    runCatching {
+                        var currentClass: Class<*>? = value.javaClass
+                        while (currentClass != null && currentClass != Any::class.java) {
+                            currentClass.declaredFields.firstOrNull { it.name == fieldName }?.let { field ->
+                                field.isAccessible = true
+                                return@runCatching field.get(value) as? View
+                            }
+                            currentClass = currentClass.superclass
+                        }
+                        null
+                    }.getOrNull()
+                }
+                .firstOrNull()
+            return popupSurface ?: value.contentView
+        }
         if (value is Reference<*>) return visit(value.get(), depth + 1)
         if (value is Iterable<*>) {
             for (item in value) {
@@ -444,6 +517,14 @@ private fun findPopupTarget(source: Any): View? {
     }
 
     return visit(source, 0) ?: listViewFallback
+}
+
+private fun isPopupSurface(target: View, hostDecor: View): Boolean {
+    if (!target.isAttachedToWindow || target.width <= 0 || target.height <= 0) return false
+    // 原生菜单内容不应是宿主整页；找不到真实 PopupWindow 内容时直接放弃，
+    // 不把宿主根布局或锚点按钮误套成模糊层。
+    return !(target.width >= hostDecor.width * 0.98f &&
+        target.height >= hostDecor.height * 0.98f)
 }
 
 fun Context.findHostWindow(): Window? {

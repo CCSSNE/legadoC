@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.Dialog
 import android.content.Context
 import android.content.ContextWrapper
+import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.view.Gravity
@@ -30,6 +31,12 @@ import io.legado.app.lib.theme.dialogSurfaceBackground
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.primaryColorDark
 import splitties.systemservices.windowManager
+import java.util.WeakHashMap
+
+private const val DIALOG_BLUR_MAX_ATTEMPTS = 24
+private const val DIALOG_BLUR_RETRY_DELAY_MS = 16L
+private val preparedDialogWindowAlphas = WeakHashMap<Window, Float>()
+private val dialogBlurGenerations = WeakHashMap<Window, Int>()
 
 fun AlertDialog.applyTint(): AlertDialog {
     window?.setBackgroundDrawable(context.dialogSurfaceBackground)
@@ -62,6 +69,8 @@ fun Dialog.applyDialogSurfaceBlur() {
     val dialogDecor = dialogWindow.decorView
     val radius = if (AppConfig.isEInkMode) 0 else UiCorner.dialogBlurRadius()
     val activityWindow = context.findActivity()?.window
+    val generation = (dialogBlurGenerations[dialogWindow] ?: 0) + 1
+    dialogBlurGenerations[dialogWindow] = generation
 
     fun clearWindowDim() {
         val attributes = dialogWindow.attributes
@@ -78,6 +87,24 @@ fun Dialog.applyDialogSurfaceBlur() {
     // 弹窗的玻璃效果不应再叠加系统整屏变暗层；否则弹窗一出现，底图亮度就会整体下降。
     clearWindowDim()
 
+    fun hideWindowForPreparation() {
+        if (radius <= 0 || activityWindow == null) return
+        val alpha = dialogWindow.attributes.alpha
+        if (alpha <= 0f) return
+        if (!preparedDialogWindowAlphas.containsKey(dialogWindow)) {
+            preparedDialogWindowAlphas[dialogWindow] = alpha
+        }
+        dialogWindow.attributes = dialogWindow.attributes.apply { this.alpha = 0f }
+    }
+
+    fun revealWindow() {
+        if (dialogBlurGenerations[dialogWindow] != generation) return
+        val alpha = preparedDialogWindowAlphas.remove(dialogWindow) ?: return
+        if (dialogWindow.decorView.isAttachedToWindow) {
+            dialogWindow.attributes = dialogWindow.attributes.apply { this.alpha = alpha }
+        }
+    }
+
     fun clearWindowBlur() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
         kotlin.runCatching {
@@ -89,33 +116,86 @@ fun Dialog.applyDialogSurfaceBlur() {
         }
     }
 
-    dialogDecor.post {
-        clearWindowDim()
-        val blurTarget = dialogDecor.findDialogBlurTarget()
+    hideWindowForPreparation()
 
-        if (radius <= 0) {
+    fun prepare(attempt: Int) {
+        dialogDecor.post {
+            if (dialogBlurGenerations[dialogWindow] != generation) return@post
+            clearWindowDim()
             clearWindowBlur()
-        } else {
-            // 不使用窗口级 setBackgroundBlurRadius/FLAG_BLUR_BEHIND。
-            // 这两条系统路径在当前模拟器上会把宿主阅读页整块模糊，
-            // 弹窗范围越大，越容易表现成“全局模糊”。统一只复制弹窗目标区域。
-            clearWindowBlur()
-            activityWindow?.let { hostWindow ->
-                LocalPopupBlur.apply(hostWindow, listOf(blurTarget), radius = radius)
+            dialogDecor.applyDialogSurfaceChildren()
+            val blurTarget = dialogDecor.findDialogBlurTarget()
+            val targetReady = blurTarget != null &&
+                blurTarget.isAttachedToWindow &&
+                blurTarget.width > 0 &&
+                blurTarget.height > 0
+
+            if (radius <= 0 || activityWindow == null) {
+                revealWindow()
+            } else if (!dialogDecor.isAttachedToWindow || !targetReady) {
+                if (attempt < DIALOG_BLUR_MAX_ATTEMPTS) {
+                    dialogDecor.postDelayed(
+                        { prepare(attempt + 1) },
+                        DIALOG_BLUR_RETRY_DELAY_MS
+                    )
+                } else {
+                    // 不能让异常布局把弹窗永久藏住；宁可显示无模糊弹窗，也不显示全局错误模糊。
+                    revealWindow()
+                }
+            } else {
+                LocalPopupBlur.apply(
+                    activityWindow,
+                    listOfNotNull(blurTarget),
+                    radius = radius,
+                    onReady = ::revealWindow
+                )
             }
         }
-        dialogDecor.applyDialogSurfaceChildren()
     }
+
+    prepare(0)
 }
 
-private fun View.findDialogBlurTarget(): View {
-    findViewById<View>(R.id.vw_bg)?.let { return it }
-    findViewById<View>(MaterialR.id.design_bottom_sheet)?.let { return it }
+private fun View.findDialogBlurTarget(): View? {
+    findViewById<View>(R.id.vw_bg)?.takeIf { it.isDialogSurfaceCandidate(this) }?.let { return it }
+    findViewById<View>(MaterialR.id.design_bottom_sheet)
+        ?.takeIf { it.isDialogSurfaceCandidate(this) }
+        ?.let { return it }
     val content = findViewById<ViewGroup>(android.R.id.content)
-    if (content != null && content.childCount == 1) {
-        return content.getChildAt(0)
+    if (content == null) return null
+
+    val backgroundCandidates = ArrayList<View>()
+    val directCandidates = ArrayList<View>()
+    fun walk(view: View, direct: Boolean) {
+        if (view !== content) {
+            if (view.isDialogSurfaceCandidate(this)) {
+                if (view.background != null) backgroundCandidates += view
+            }
+            if (direct && view.isDialogSurfaceCandidate(this, requireBackground = false)) {
+                directCandidates += view
+            }
+        }
+        if (view is ViewGroup) {
+            for (index in 0 until view.childCount) {
+                walk(view.getChildAt(index), direct = view === content)
+            }
+        }
     }
-    return content ?: this
+    walk(content, direct = false)
+    return (backgroundCandidates + directCandidates)
+        .maxByOrNull { it.width.toLong() * it.height.toLong() }
+}
+
+private fun View.isDialogSurfaceCandidate(
+    decor: View,
+    requireBackground: Boolean = true
+): Boolean {
+    if (!isAttachedToWindow || width <= 0 || height <= 0) return false
+    val fillsWindow = width >= decor.width * 0.98f && height >= decor.height * 0.98f
+    if (fillsWindow) return false
+    val background = background ?: return !requireBackground
+    if (background is ColorDrawable && Color.alpha(background.color) == 0) return false
+    return background.alpha > 0
 }
 
 /**

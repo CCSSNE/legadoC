@@ -55,6 +55,7 @@ class SearchMenu @JvmOverloads constructor(
         .create()
     private var onMenuOutEnd: (() -> Unit)? = null
     private var isMenuOutAnimating = false
+    private var menuBlurGeneration = 0
 
     private val searchResultList: MutableList<SearchResult> = mutableListOf()
     private var currentSearchResultIndex: Int = -1
@@ -174,18 +175,32 @@ class SearchMenu @JvmOverloads constructor(
 
 
     fun runMenuIn() {
+        val generation = ++menuBlurGeneration
+        clearMenuBlur()
         this.visible()
         binding.llBottomMenu.visible()
         binding.vwMenuBg.visible()
-        binding.llBottomMenu.startAnimation(menuBottomIn)
+        val originalAlpha = alpha.takeIf { it > 0f } ?: 1f
+        alpha = 0f
+        post {
+            applyMenuBlur {
+                if (generation != menuBlurGeneration || !isVisible || isMenuOutAnimating) return@applyMenuBlur
+                alpha = originalAlpha
+                binding.llBottomMenu.startAnimation(menuBottomIn)
+            }
+        }
     }
 
-    private fun applyMenuBlur() {
-        val hostWindow = context.findHostWindow() ?: return
+    private fun applyMenuBlur(onReady: () -> Unit) {
+        val hostWindow = context.findHostWindow() ?: run {
+            onReady()
+            return
+        }
         LocalPopupBlur.apply(
             hostWindow = hostWindow,
             targets = listOf(binding.llBottomMenu, binding.fabLeft, binding.fabRight),
-            captureOwner = this
+            captureOwner = this,
+            onReady = onReady
         )
     }
 
@@ -197,6 +212,7 @@ class SearchMenu @JvmOverloads constructor(
         if (isMenuOutAnimating) {
             return
         }
+        menuBlurGeneration++
         this.onMenuOutEnd = onMenuOutEnd
         if (this.isVisible) {
             binding.llBottomMenu.startAnimation(menuBottomOut)
@@ -289,7 +305,6 @@ class SearchMenu @JvmOverloads constructor(
             @SuppressLint("RtlHardcoded")
             override fun onAnimationEnd(animation: Animation) {
                 binding.vwMenuBg.setOnClickListener { runMenuOut() }
-                applyMenuBlur()
                 callBack.upSystemUiVisibility()
             }
 
