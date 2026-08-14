@@ -1372,6 +1372,10 @@
     <string name="page_bookmark_pull_down_summary">翻页模式下，从页面顶部向下滑动快速添加整页书签</string>
     <string name="page_bookmark_color">整页书签颜色</string>
     <string name="page_bookmark_color_summary">右上角书签标签的颜色，对所有整页书签生效</string>
+    <string name="page_bookmark_style">整页书签样式</string>
+    <string name="page_bookmark_style_summary">尖角朝下，或尖角朝上（底部凹口）</string>
+    <string name="page_bookmark_style_pointed">尖角朝下</string>
+    <string name="page_bookmark_style_notched">尖角朝上（底部凹口）</string>
     <string name="page_bookmark_added">已添加整页书签</string>
     <string name="page_bookmark_removed">已删除整页书签</string>
     <string name="cross_page_copy">跨页复制</string>

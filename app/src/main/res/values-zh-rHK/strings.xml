@@ -1198,6 +1198,10 @@
     <string name="page_bookmark_pull_down_summary">翻頁模式下，從頁面頂部向下滑動快速添加整頁書簽</string>
     <string name="page_bookmark_color">整頁書簽顏色</string>
     <string name="page_bookmark_color_summary">右上角書簽標籤的顏色，對所有整頁書簽生效</string>
+    <string name="page_bookmark_style">整頁書簽樣式</string>
+    <string name="page_bookmark_style_summary">尖角朝下，或尖角朝上（底部凹口）</string>
+    <string name="page_bookmark_style_pointed">尖角朝下</string>
+    <string name="page_bookmark_style_notched">尖角朝上（底部凹口）</string>
     <string name="page_bookmark_added">已添加整頁書簽</string>
     <string name="page_bookmark_removed">已刪除整頁書簽</string>
     <string name="cross_page_copy">跨頁複製</string>

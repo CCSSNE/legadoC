@@ -124,6 +124,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     private val pageBookmarkPaint = Paint()
     private val pageBookmarkPath = Path()
     private var pageBookmarkColor = 0
+    private var pageBookmarkStyle = PAGE_BOOKMARK_STYLE_POINTED
     //单击书签弹出的"编辑当前标签"临时悬浮窗
     private var bookmarkEditPopup: PopupWindow? = null
     private var bookmarkEditPopupDismissTask: Runnable? = null
@@ -213,6 +214,9 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         bubbleArrowAlpha = context.getPrefInt(PreferKey.bookmarkNoteBubbleArrowAlpha, 80).coerceIn(0, 100)
         bubbleArrowColor = context.getPrefInt(PreferKey.bookmarkNoteBubbleArrowColor, 0)
         pageBookmarkColor = context.getPrefInt(PreferKey.pageBookmarkColor, 0)
+        pageBookmarkStyle = context
+            .getPrefInt(PreferKey.pageBookmarkStyle, PAGE_BOOKMARK_STYLE_POINTED)
+            .coerceIn(PAGE_BOOKMARK_STYLE_POINTED, PAGE_BOOKMARK_STYLE_NOTCHED)
         bubbleLayoutCache.clear()
         invalidate()
     }
@@ -434,21 +438,45 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
             // 长度=满长的一半，厚度=原标签宽，尖角朝页内（尖端在左端）
             val len = tabHeight / 2f
             val cut = 8f.dpToPx() / 2f
-            pageBookmarkPath.moveTo(right - len, top + tabWidth / 2f)
-            pageBookmarkPath.lineTo(right - len + cut, top)
-            pageBookmarkPath.lineTo(right, top)
-            pageBookmarkPath.lineTo(right, top + tabWidth)
-            pageBookmarkPath.lineTo(right - len + cut, top + tabWidth)
-            pageBookmarkPath.close()
+            val left = right - len
+            if (pageBookmarkStyle == PAGE_BOOKMARK_STYLE_NOTCHED) {
+                // 滚动模式标签横向向页内生长，左端改为向内凹口。
+                pageBookmarkPath.moveTo(left, top)
+                pageBookmarkPath.lineTo(right, top)
+                pageBookmarkPath.lineTo(right, top + tabWidth)
+                pageBookmarkPath.lineTo(left, top + tabWidth)
+                pageBookmarkPath.lineTo(left + cut, top + tabWidth / 2f)
+                pageBookmarkPath.close()
+            } else {
+                // 滚动模式标签横向向页内生长，左端为向外凸出的尖角。
+                pageBookmarkPath.moveTo(left, top + tabWidth / 2f)
+                pageBookmarkPath.lineTo(left + cut, top)
+                pageBookmarkPath.lineTo(right, top)
+                pageBookmarkPath.lineTo(right, top + tabWidth)
+                pageBookmarkPath.lineTo(left + cut, top + tabWidth)
+                pageBookmarkPath.close()
+            }
         } else {
             // 翻页模式：纵向标签，钉在页面顶边、垂向页内，尖角朝下
             val corner = min(8f.dpToPx(), tabHeight * 0.125f)
-            pageBookmarkPath.moveTo(right - tabWidth, top)
-            pageBookmarkPath.lineTo(right, top)
-            pageBookmarkPath.lineTo(right, top + tabHeight - corner)
-            pageBookmarkPath.lineTo(right - tabWidth / 2, top + tabHeight)
-            pageBookmarkPath.lineTo(right - tabWidth, top + tabHeight - corner)
-            pageBookmarkPath.close()
+            val left = right - tabWidth
+            if (pageBookmarkStyle == PAGE_BOOKMARK_STYLE_NOTCHED) {
+                // 翻页模式标签垂向向页内生长，底部中间向上凹入。
+                pageBookmarkPath.moveTo(left, top)
+                pageBookmarkPath.lineTo(right, top)
+                pageBookmarkPath.lineTo(right, top + tabHeight)
+                pageBookmarkPath.lineTo(right - tabWidth / 2, top + tabHeight - corner)
+                pageBookmarkPath.lineTo(left, top + tabHeight)
+                pageBookmarkPath.close()
+            } else {
+                // 翻页模式标签垂向向页内生长，底部中间向下凸出尖角。
+                pageBookmarkPath.moveTo(left, top)
+                pageBookmarkPath.lineTo(right, top)
+                pageBookmarkPath.lineTo(right, top + tabHeight - corner)
+                pageBookmarkPath.lineTo(right - tabWidth / 2, top + tabHeight)
+                pageBookmarkPath.lineTo(left, top + tabHeight - corner)
+                pageBookmarkPath.close()
+            }
         }
         canvas.drawPath(pageBookmarkPath, pageBookmarkPaint)
     }
@@ -2010,6 +2038,8 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         }
         private val cursorWidth = 24.dpToPx()
         private const val EPUB_MEDIA_LINK_PREFIX = "legado-epub-media:"
+        private const val PAGE_BOOKMARK_STYLE_POINTED = 0
+        private const val PAGE_BOOKMARK_STYLE_NOTCHED = 1
     }
 
     interface CallBack {

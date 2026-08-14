@@ -2331,7 +2331,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     /**
-     * 整页书签/备注气泡外观设置（颜色、透明度等）变更后立即重注当前章节书签，
+     * 整页书签/备注气泡外观设置（颜色、形状、透明度等）变更后立即重注当前章节书签，
      * 让阅读页按新设置刷新，无需等待 onResume 或翻章
      */
     fun reloadPageBookmarkConfig() {

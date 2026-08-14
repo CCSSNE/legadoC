@@ -229,6 +229,7 @@ class MoreConfigDialog : BasePrefDialogFragment() {
                 // 整页书签/备注气泡外观设置变更：立即重注书签刷新绘制，
                 // 底部弹窗内修改不会触发 onResume，不刷新就看不到新颜色
                 PreferKey.pageBookmarkColor,
+                PreferKey.pageBookmarkStyle,
                 PreferKey.bookmarkNoteBubbleColor,
                 PreferKey.bookmarkNoteBubbleBgAlpha,
                 PreferKey.bookmarkNoteBubbleStrokeColor,
@@ -344,6 +345,7 @@ class MoreConfigDialog : BasePrefDialogFragment() {
                 PreferKey.bookmarkNoteBubbleStroke -> showBubbleStrokeDialog()
                 PreferKey.bookmarkNoteBubbleArrow -> showBubbleArrowDialog()
                 PreferKey.pageBookmarkColor -> showPageBookmarkColorDialog()
+                PreferKey.pageBookmarkStyle -> showPageBookmarkStyleDialog()
                 PreferKey.selectionBgColor -> showSelectionColorDialog(
                     title = R.string.selection_bg_color,
                     prefKey = PreferKey.selectionBgColor,
@@ -602,6 +604,27 @@ class MoreConfigDialog : BasePrefDialogFragment() {
                 .create()
             dialog.setColorPickerDialogListener(this)
             dialog.show(parentFragmentManager, "page_bookmark_color_picker")
+        }
+
+        /**
+         * 整页书签标签样式：尖角朝下，或底部凹口朝上
+         */
+        private fun showPageBookmarkStyleDialog() {
+            val current = requireContext()
+                .getPrefInt(PreferKey.pageBookmarkStyle, 0)
+                .coerceIn(0, 1)
+            alert(getString(R.string.page_bookmark_style)) {
+                singleChoiceItems(
+                    arrayOf(
+                        getString(R.string.page_bookmark_style_pointed),
+                        getString(R.string.page_bookmark_style_notched)
+                    ),
+                    checkedItem = current
+                ) { dialog, index ->
+                    requireContext().putPrefInt(PreferKey.pageBookmarkStyle, index)
+                    dialog.dismiss()
+                }
+            }
         }
 
         /**

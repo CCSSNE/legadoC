@@ -152,6 +152,7 @@ object PreferKey {
     const val bookmarkNoteBubbleArrowColor = "bookmarkNoteBubbleArrowColor"
     const val pageBookmarkPullDown = "pageBookmarkPullDown"
     const val pageBookmarkColor = "pageBookmarkColor"
+    const val pageBookmarkStyle = "pageBookmarkStyle"
     const val crossPageCopy = "crossPageCopy"
     const val selectionMagnifier = "selectionMagnifier"
     const val selectionBgColor = "selectionBgColor"

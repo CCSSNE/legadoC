@@ -1569,6 +1569,10 @@
     <string name="page_bookmark_pull_down_summary">In paging mode, swipe down from the top of the page to quickly add a page bookmark</string>
     <string name="page_bookmark_color">Page bookmark color</string>
     <string name="page_bookmark_color_summary">Color of the bookmark tab at the top right, applies to all page bookmarks</string>
+    <string name="page_bookmark_style">Page bookmark style</string>
+    <string name="page_bookmark_style_summary">Pointed down or pointed up with a notched bottom</string>
+    <string name="page_bookmark_style_pointed">Pointed down</string>
+    <string name="page_bookmark_style_notched">Pointed up (notched bottom)</string>
     <string name="page_bookmark_added">Page bookmark added</string>
     <string name="page_bookmark_removed">Page bookmark removed</string>
     <string name="cross_page_copy">Cross-page copy</string>
