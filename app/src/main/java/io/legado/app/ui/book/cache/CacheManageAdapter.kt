@@ -63,13 +63,13 @@ class CacheManageAdapter(
             ContextCompat.getColor(context, R.color.background_card),
             UiCorner.panelRadius(context)
         )
-        btnSource.background = UiCorner.actionSelector(
+        btnSource.background = UiCorner.softActionSelector(
             ContextCompat.getColor(context, R.color.background_menu),
             ContextCompat.getColor(context, R.color.background_card),
             UiCorner.actionRadius(context)
         )
         listOf(btnChapters, btnUpload, btnDelete, btnBookshelf, btnStop).forEach {
-            it.background = UiCorner.actionSelector(
+            it.background = UiCorner.softActionSelector(
                 ContextCompat.getColor(context, R.color.background_card),
                 ContextCompat.getColor(context, R.color.background_menu),
                 UiCorner.actionRadius(context)

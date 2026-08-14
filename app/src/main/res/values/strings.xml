@@ -933,6 +933,10 @@
     <string name="ui_corner_scale_invalid">Please enter a number from 0 to 3</string>
     <string name="ui_layout_alpha">Global interface opacity</string>
     <string name="ui_layout_alpha_value">%d%%</string>
+    <string name="dialog_alpha">Dialog opacity</string>
+    <string name="dialog_alpha_value">%d%%</string>
+    <string name="dialog_blur">Dialog blur</string>
+    <string name="dialog_blur_value">%d%% of standard blur</string>
     <string name="read_page_background_transparent">Transparent reading-page background</string>
     <string name="read_page_background_transparent_summary">Apply the day/night standard glass-bar opacity to the reading-page background image. Global interface opacity only controls floating UI surfaces.</string>
     <string name="ui_corner_search_follow">Search bars follow corner scale</string>

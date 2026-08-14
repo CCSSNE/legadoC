@@ -10,6 +10,7 @@ import io.legado.app.databinding.DialogUrlOptionEditBinding
 import io.legado.app.lib.theme.dialogSurfaceBackground
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.utils.GSON
+import io.legado.app.utils.applyDialogSurfaceBlur
 import io.legado.app.utils.setLayout
 
 class UrlOptionDialog(context: Context, private val success: (String) -> Unit) : Dialog(context) {
@@ -20,6 +21,7 @@ class UrlOptionDialog(context: Context, private val success: (String) -> Unit) :
         super.onStart()
         setLayout(1f, ViewGroup.LayoutParams.MATCH_PARENT)
         window?.setBackgroundDrawableResource(R.color.transparent)
+        applyDialogSurfaceBlur()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

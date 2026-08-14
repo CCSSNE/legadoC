@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
+import android.os.Build
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -21,6 +22,7 @@ import io.legado.app.R
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.Selector
 import io.legado.app.lib.theme.ThemeStore
+import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.dialogSurfaceBackground
 import splitties.systemservices.windowManager
@@ -50,7 +52,16 @@ fun AlertDialog.applyTint(): AlertDialog {
     return this
 }
 
+fun Dialog.applyDialogSurfaceBlur() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        window?.setBackgroundBlurRadius(
+            if (AppConfig.isEInkMode) 0 else UiCorner.dialogBlurRadius()
+        )
+    }
+}
+
 fun Dialog.applyAdaptiveDim() {
+    applyDialogSurfaceBlur()
     if (AppConfig.isEInkMode) return
     val isLightBackground = ColorUtils.isColorLight(
         ContextCompat.getColor(context, R.color.background_card)

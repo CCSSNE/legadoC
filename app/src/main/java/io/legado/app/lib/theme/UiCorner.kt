@@ -8,6 +8,7 @@ import androidx.core.graphics.ColorUtils
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.dpToPx
+import kotlin.math.roundToInt
 
 object UiCorner {
 
@@ -74,6 +75,23 @@ object UiCorner {
         return (configuredAlpha * standardBarAlpha()).coerceIn(0f, 1f)
     }
 
+    fun dialogSurfaceColor(color: Int): Int {
+        val alpha = (Color.alpha(color) * AppConfig.dialogAlpha.coerceIn(0, 100) / 100f)
+            .roundToInt()
+        return ColorUtils.setAlphaComponent(color, alpha)
+    }
+
+    fun dialogBlurRadius(): Int {
+        val standardRadiusDp = when (AppConfig.bottomBarEffectMode) {
+            "frosted" -> 10f + AppConfig.frostedGlassLevel.coerceIn(0, 100) / 100f * 24f
+            "glass" -> 5f
+            else -> 0f
+        }
+        return (standardRadiusDp * AppConfig.dialogBlur.coerceIn(0, 100) / 100f)
+            .dpToPx()
+            .roundToInt()
+    }
+
     fun surfaceColor(color: Int, pressed: Boolean = false): Int {
         val sourceAlpha = Color.alpha(color) / 255f
         val alpha = (sourceAlpha * floatingGroupAlpha() + if (pressed) 0.08f else 0f)
@@ -103,6 +121,10 @@ object UiCorner {
         return roundedColor(color, radius, false, false)
     }
 
+    fun dialogRounded(color: Int, radius: Float): GradientDrawable {
+        return opaqueRounded(dialogSurfaceColor(color), radius)
+    }
+
     fun roundedStroke(color: Int, radius: Float, strokeWidth: Int, strokeColor: Int): GradientDrawable {
         return rounded(color, radius).apply {
             setStroke(strokeWidth, strokeColor)
@@ -120,6 +142,14 @@ object UiCorner {
             addState(intArrayOf(android.R.attr.state_pressed), roundedColor(pressedColor, radius, true, false))
             addState(intArrayOf(android.R.attr.state_selected), roundedColor(pressedColor, radius, true, false))
             addState(intArrayOf(), opaqueRounded(defaultColor, radius))
+        }
+    }
+
+    fun softActionSelector(defaultColor: Int, pressedColor: Int, radius: Float): StateListDrawable {
+        return StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_pressed), roundedColor(pressedColor, radius, true, true))
+            addState(intArrayOf(android.R.attr.state_selected), roundedColor(pressedColor, radius, true, true))
+            addState(intArrayOf(), roundedColor(defaultColor, radius, false, true))
         }
     }
 

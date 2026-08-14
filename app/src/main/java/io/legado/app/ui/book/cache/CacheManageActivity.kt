@@ -87,7 +87,7 @@ class CacheManageActivity :
             UiCorner.panelRadius(this@CacheManageActivity)
         )
         listOf(btnBooks, btnAudio, btnVideo, btnManga, btnStats).forEach {
-            it.background = UiCorner.actionSelector(
+            it.background = UiCorner.softActionSelector(
                 Color.TRANSPARENT,
                 ContextCompat.getColor(this@CacheManageActivity, R.color.background_card),
                 UiCorner.actionRadius(this@CacheManageActivity)
@@ -300,7 +300,7 @@ class CacheManageActivity :
                 addView(ImageButton(context).apply {
                     setImageResource(R.drawable.ic_outline_delete)
                     setColorFilter(secondaryTextColor())
-                    background = UiCorner.actionSelector(
+                    background = UiCorner.softActionSelector(
                         Color.TRANSPARENT,
                         ContextCompat.getColor(this@CacheManageActivity, R.color.background_menu),
                         UiCorner.actionRadius(this@CacheManageActivity)

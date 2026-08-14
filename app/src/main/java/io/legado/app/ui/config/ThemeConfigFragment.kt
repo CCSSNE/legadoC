@@ -128,6 +128,8 @@ class ThemeConfigFragment : PreferenceFragment(),
         upPreferenceSummary(PreferKey.bgImageN, getPrefString(PreferKey.bgImageN))
         upPreferenceSummary(PreferKey.bookInfoBgImage, getPrefString(PreferKey.bookInfoBgImage))
         upPreferenceSummary(PreferKey.bookInfoBgImageN, getPrefString(PreferKey.bookInfoBgImageN))
+        upPreferenceSummary(PreferKey.dialogAlpha)
+        upPreferenceSummary(PreferKey.dialogBlur)
         upPreferenceSummary(PreferKey.uiLayoutAlpha)
         findPreference<ColorPreference>(PreferKey.cBackground)?.let {
             it.onSaveColor = { color ->
@@ -198,6 +200,11 @@ class ThemeConfigFragment : PreferenceFragment(),
                 upPreferenceSummary(PreferKey.uiLayoutAlpha)
                 recreateActivities()
             }
+            PreferKey.dialogAlpha,
+            PreferKey.dialogBlur -> {
+                upPreferenceSummary(key)
+                recreateActivities()
+            }
             PreferKey.transparentStatusBar -> recreateActivities()
             PreferKey.immNavigationBar -> recreateActivities()
             PreferKey.moveSearchToBookshelf -> postEvent(key, getPrefBoolean(key))
@@ -236,6 +243,8 @@ class ThemeConfigFragment : PreferenceFragment(),
             PreferKey.bgImageN -> selectBgAction(true)
             PreferKey.bookInfoBgImage -> selectBookInfoBgAction(false)
             PreferKey.bookInfoBgImageN -> selectBookInfoBgAction(true)
+            PreferKey.dialogAlpha -> showDialogAlphaDialog()
+            PreferKey.dialogBlur -> showDialogBlurDialog()
             PreferKey.uiLayoutAlpha -> showUiLayoutAlphaDialog()
             "themeList" -> startActivity<ThemeManageActivity>()
             "theme_manage" -> startActivity<ThemeManageActivity>()
@@ -291,6 +300,34 @@ class ThemeConfigFragment : PreferenceFragment(),
             }
             cancelButton()
         }
+    }
+
+    private fun showDialogAlphaDialog() {
+        NumberPickerDialog(requireContext())
+            .setTitle(getString(R.string.dialog_alpha))
+            .setMaxValue(100)
+            .setMinValue(0)
+            .setValue(AppConfig.dialogAlpha)
+            .setCustomButton(R.string.btn_default_s) {
+                putPrefInt(PreferKey.dialogAlpha, 100)
+            }
+            .show {
+                putPrefInt(PreferKey.dialogAlpha, it.coerceIn(0, 100))
+            }
+    }
+
+    private fun showDialogBlurDialog() {
+        NumberPickerDialog(requireContext())
+            .setTitle(getString(R.string.dialog_blur))
+            .setMaxValue(100)
+            .setMinValue(0)
+            .setValue(AppConfig.dialogBlur)
+            .setCustomButton(R.string.btn_default_s) {
+                putPrefInt(PreferKey.dialogBlur, 100)
+            }
+            .show {
+                putPrefInt(PreferKey.dialogBlur, it.coerceIn(0, 100))
+            }
     }
 
     private fun selectBgAction(isNight: Boolean) {
@@ -413,6 +450,16 @@ class ThemeConfigFragment : PreferenceFragment(),
             PreferKey.uiLayoutAlpha -> preference.summary = getString(
                 R.string.ui_layout_alpha_value,
                 AppConfig.uiLayoutAlpha
+            )
+
+            PreferKey.dialogAlpha -> preference.summary = getString(
+                R.string.dialog_alpha_value,
+                AppConfig.dialogAlpha
+            )
+
+            PreferKey.dialogBlur -> preference.summary = getString(
+                R.string.dialog_blur_value,
+                AppConfig.dialogBlur
             )
 
             else -> preference.summary = value

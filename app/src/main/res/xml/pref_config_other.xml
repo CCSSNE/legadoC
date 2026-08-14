@@ -11,6 +11,7 @@
 
     <io.legado.app.lib.prefs.PreferenceCategory
         android:title="@string/other_setting"
+        app:allowDividerAbove="false"
         app:allowDividerBelow="false"
         app:iconSpaceReserved="false"
         app:layout="@layout/view_preference_category">

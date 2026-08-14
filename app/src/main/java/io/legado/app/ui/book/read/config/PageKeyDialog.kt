@@ -10,6 +10,7 @@ import io.legado.app.lib.theme.dialogSurfaceBackground
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.hideSoftInput
 import io.legado.app.utils.putPrefString
+import io.legado.app.utils.applyDialogSurfaceBlur
 import io.legado.app.utils.setLayout
 import splitties.views.onClick
 
@@ -21,6 +22,7 @@ class PageKeyDialog(context: Context) : Dialog(context) {
     override fun onStart() {
         super.onStart()
         window?.setBackgroundDrawableResource(android.R.color.transparent)
+        applyDialogSurfaceBlur()
         setLayout(0.9f, ViewGroup.LayoutParams.WRAP_CONTENT)
     }
 

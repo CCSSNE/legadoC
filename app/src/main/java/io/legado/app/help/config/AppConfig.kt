@@ -1161,6 +1161,18 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefInt(PreferKey.uiLayoutAlpha, value.coerceIn(0, 100))
         }
 
+    var dialogAlpha: Int
+        get() = appCtx.getPrefInt(PreferKey.dialogAlpha, 100).coerceIn(0, 100)
+        set(value) {
+            appCtx.putPrefInt(PreferKey.dialogAlpha, value.coerceIn(0, 100))
+        }
+
+    var dialogBlur: Int
+        get() = appCtx.getPrefInt(PreferKey.dialogBlur, 100).coerceIn(0, 100)
+        set(value) {
+            appCtx.putPrefInt(PreferKey.dialogBlur, value.coerceIn(0, 100))
+        }
+
     val readPageBackgroundTransparent: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.readPageBackgroundTransparent, true)
 

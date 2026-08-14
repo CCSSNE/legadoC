@@ -19,7 +19,7 @@
     <color name="background">#F7F7FA</color>
     <color name="background_card">#FFFFFFFF</color>
     <color name="background_menu">#F1F2F6</color>
-    <color name="dialog_surface">#FFFFFFFF</color>
+    <color name="dialog_surface">@color/background_menu</color>
     <color name="book_info_frost">#DDF1F2F6</color>
     <color name="background_prefs">#EFFFFFFF</color>
     <color name="glass_bar">#A8D9E6F7</color>
