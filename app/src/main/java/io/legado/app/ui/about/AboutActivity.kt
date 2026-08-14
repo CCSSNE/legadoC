@@ -18,7 +18,7 @@ class AboutActivity : BaseActivity<ActivityAboutBinding>() {
     override val binding by viewBinding(ActivityAboutBinding::inflate)
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        binding.llAbout.background = UiCorner.opaqueRounded(
+        binding.llAbout.background = UiCorner.rounded(
             ContextCompat.getColor(this, R.color.background_card),
             UiCorner.panelRadius(this)
         )

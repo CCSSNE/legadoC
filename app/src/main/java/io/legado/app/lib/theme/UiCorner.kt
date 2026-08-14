@@ -45,9 +45,12 @@ object UiCorner {
 
     fun effectMode(): String = AppConfig.bottomBarEffectMode
 
-    fun layoutAlpha(): Float {
-        val configuredAlpha = AppConfig.uiLayoutAlpha.coerceIn(0, 100) / 100f
-        val bottomBarAlpha = when {
+    /**
+     * 标准底栏的表面不透明度，供需要与底栏保持同一透明规律的独立界面使用。
+     * 不包含全局悬浮块组透明度，避免把两个设置混成一个值。
+     */
+    fun standardBarAlpha(): Float {
+        return when {
             AppConfig.isEInkMode -> 1f
             AppConfig.bottomBarEffectMode == "solid" -> {
                 AppConfig.liquidGlassLevel.coerceIn(0, 100) / 100f
@@ -60,12 +63,20 @@ object UiCorner {
                 (0.24f + level * 0.38f).coerceIn(0f, 1f)
             }
         }
-        return (configuredAlpha * bottomBarAlpha).coerceIn(0f, 1f)
+    }
+
+    /**
+     * 悬浮块组的统一表面不透明度。
+     * 搜索条、卡片、分组条、底部导航等浮层表面都从这里取全局系数。
+     */
+    fun floatingGroupAlpha(): Float {
+        val configuredAlpha = AppConfig.uiLayoutAlpha.coerceIn(0, 100) / 100f
+        return (configuredAlpha * standardBarAlpha()).coerceIn(0f, 1f)
     }
 
     fun surfaceColor(color: Int, pressed: Boolean = false): Int {
         val sourceAlpha = Color.alpha(color) / 255f
-        val alpha = (sourceAlpha * layoutAlpha() + if (pressed) 0.08f else 0f)
+        val alpha = (sourceAlpha * floatingGroupAlpha() + if (pressed) 0.08f else 0f)
             .coerceIn(0f, 1f)
         return ColorUtils.setAlphaComponent(color, (alpha * 255).toInt())
     }

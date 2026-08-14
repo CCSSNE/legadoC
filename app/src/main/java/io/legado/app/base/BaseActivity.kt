@@ -232,7 +232,6 @@ abstract class BaseActivity<VB : ViewBinding>(
         try {
             val drawable = ThemeConfig.getBgImage(this, windowManager.windowSize)
             if (drawable != null) {
-                drawable.alpha = (UiCorner.layoutAlpha() * 255f).toInt().coerceIn(0, 255)
                 ViewCompat.setBackgroundTintList(window.decorView, null)
                 window.decorView.background = drawable
             } else if (hasBgImage) {

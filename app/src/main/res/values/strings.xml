@@ -934,7 +934,7 @@
     <string name="ui_layout_alpha">Global interface opacity</string>
     <string name="ui_layout_alpha_value">%d%%</string>
     <string name="read_page_background_transparent">Transparent reading-page background</string>
-    <string name="read_page_background_transparent_summary">Apply the day/night glass-bar opacity to the reading-page background image. The global interface opacity still controls ordinary pages.</string>
+    <string name="read_page_background_transparent_summary">Apply the day/night standard glass-bar opacity to the reading-page background image. Global interface opacity only controls floating UI surfaces.</string>
     <string name="ui_corner_search_follow">Search bars follow corner scale</string>
     <string name="ui_corner_search_follow_summary">Allow search bars to use the global corner radius scale</string>
     <string name="move_search_to_bookshelf">Move search to bookshelf</string>

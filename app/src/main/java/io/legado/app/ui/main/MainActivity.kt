@@ -1381,7 +1381,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         val surface = if (binding.sideNavigationBackground.isVisible) {
             AppColorUtils.withAlpha(
                 if (AppConfig.isNightTheme) Color.BLACK else Color.WHITE,
-                (if (AppConfig.isNightTheme) 0.20f else 0.42f) * UiCorner.layoutAlpha()
+                (if (AppConfig.isNightTheme) 0.20f else 0.42f) * UiCorner.floatingGroupAlpha()
             )
         } else {
             AppColorUtils.blendColors(
@@ -1444,7 +1444,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             if (binding.sideNavigationBackground.isVisible) {
                 AppColorUtils.withAlpha(
                     if (AppConfig.isNightTheme) Color.BLACK else Color.WHITE,
-                    (if (AppConfig.isNightTheme) 0.18f else 0.34f) * UiCorner.layoutAlpha()
+                    (if (AppConfig.isNightTheme) 0.18f else 0.34f) * UiCorner.floatingGroupAlpha()
                 )
             } else {
                 UiCorner.surfaceColor(

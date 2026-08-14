@@ -492,10 +492,14 @@ object ReadBookConfig {
         }
 
     val effectiveBgAlpha: Int
-        get() = if (AppConfig.readPageBackgroundTransparent) {
-            (bgAlpha * UiCorner.layoutAlpha()).roundToInt().coerceIn(0, 100)
-        } else {
-            bgAlpha.coerceIn(0, 100)
+        get() {
+            val isImageBackground = bg is BitmapDrawable || isNineBgImg
+            val alpha = if (AppConfig.readPageBackgroundTransparent && isImageBackground) {
+                bgAlpha * UiCorner.standardBarAlpha()
+            } else {
+                bgAlpha.toFloat()
+            }
+            return alpha.roundToInt().coerceIn(0, 100)
         }
 
     var pageAnim: Int

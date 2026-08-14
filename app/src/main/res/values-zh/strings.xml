@@ -758,7 +758,7 @@
     <string name="ui_layout_alpha">全局界面透明度</string>
     <string name="ui_layout_alpha_value">%d%%</string>
     <string name="read_page_background_transparent">书页背景透明</string>
-    <string name="read_page_background_transparent_summary">按日间/夜间玻璃栏的透明规律处理阅读页背景图；关闭后保持阅读设置中的背景透明度，全局界面透明度仍作用于普通页面</string>
+    <string name="read_page_background_transparent_summary">按日间/夜间标准玻璃栏的透明规律处理阅读页背景图；关闭后保持阅读设置中的背景透明度；全局界面透明度只作用于悬浮块表面</string>
     <string name="ui_corner_search_follow">搜索栏跟随圆角</string>
     <string name="ui_corner_search_follow_summary">允许搜索栏使用全局圆角倍率</string>
     <string name="move_search_to_bookshelf">搜索入口移到书架</string>

@@ -361,11 +361,11 @@ class PageView(context: Context) : FrameLayout(context) {
     fun upBgAlpha() {
         val bgAlpha = (ReadBookConfig.effectiveBgAlpha / 100f * 255).toInt()
         binding.contentTextView.setScrollFollowBackgroundAlpha(bgAlpha)
+        // 同时更新原始图片 Drawable 和实际页面图层，覆盖首次加载与开关即时切换。
+        ReadBookConfig.bg?.alpha = bgAlpha
         val background = binding.vwRoot.background
         if (background is LayerDrawable && background.numberOfLayers > 1) {
             background.getDrawable(1).alpha = bgAlpha
-        } else {
-            ReadBookConfig.bg?.alpha = bgAlpha
         }
         binding.vwRoot.invalidate()
     }
