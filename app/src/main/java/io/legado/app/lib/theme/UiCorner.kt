@@ -171,20 +171,12 @@ object UiCorner {
     }
 
     fun dialogRounded(color: Int, radius: Float): GradientDrawable {
-        return opaqueRounded(dialogSurfaceColor(color), radius)
+        // 标准弹窗外壳保持矩形；透明度和局部模糊不应改变窗口几何形状。
+        return opaqueRounded(dialogSurfaceColor(color), 0f)
     }
 
     fun dialogTopRounded(color: Int, radius: Float): GradientDrawable {
-        return GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadii = floatArrayOf(
-                radius, radius,
-                radius, radius,
-                0f, 0f,
-                0f, 0f
-            )
-            setColor(dialogSurfaceColor(color))
-        }
+        return opaqueRounded(dialogSurfaceColor(color), 0f)
     }
 
     fun roundedStroke(color: Int, radius: Float, strokeWidth: Int, strokeColor: Int): GradientDrawable {
