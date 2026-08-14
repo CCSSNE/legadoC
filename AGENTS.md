@@ -182,10 +182,12 @@ $apk='D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_<版本>.ap
 
 ## 十三、已确认编译经验
 
-1. **appC 版本名参数不要重复追加 `c`**：`app\build.gradle` 的 `appC` flavor 会自动追加 `versionNameSuffix 'c'`。正式编译时应传 `-PVERSION_NAME=3.26.MMddHH`（不带末尾 `c`），再用 `aapt dump badging` 确认产物为 `3.26.MMddHHc`。如果传入值已经带 `c`，产物会错误地变成 `3.26.MMddHHcc`，不能交付。
+1. **appC 版本名参数不要重复追加 `c`**：`app\build.gradle` 的 `appC` flavor 会自动追加 `versionNameSuffix 'c'`。正式编译时应传 `-PVERSION_NAME=3.26.MMddHH`（不带末尾 `c`），再用 `aapt dump badging` 确认产物为 `3.26.MMddHHc`。如果传入值已经带 `c`，产物会错误地变成 `3.26.MMddHHcc`，不能交付。**本次实际复现**：10599 首次传入 `3.26.081500c`，生成了错误的 `3.26.081500cc`；未交付，随后改用不带 `c` 的 `3.26.081500` 重新正式编译。
 2. **Java 原生内存不足的确认处理**：若正式编译出现 `Native memory allocation failed`、`Kotlin daemon has been unexpectedly lost`、`Connection reset` 或 Gradle daemon 消失，先执行 `gradlew --stop`，确认并清理残留的 Gradle/Java 编译进程；然后使用正式的 `assembleAppC`，附加 `--no-daemon --max-workers=1 -Dkotlin.incremental=false -Dksp.incremental=false -Dkotlin.compiler.execution.strategy=in-process` 重试。每 30 秒检查进程 CPU、内存、日志和 APK 产物，不能只等待固定超时。
 3. **编译失败必须先读实际错误再重跑**：如果 Kotlin 编译失败，先查看标准错误中的具体文件、行号和 unresolved reference 等真实错误，修复后再重新执行正式 APK 编译；不能把源码错误误判成内存问题，也不能只重复执行同一条命令。
 4. **编译前删除旧 APK 只限于精确产物文件**：项目规则要求编译前移除旧安装包时，只能根据已确认的完整路径删除 `app\build\outputs\apk\app\c` 下的旧 APK；不得删除源码、`AGENTS.md`、构建配置或整个工作区。删除后必须重新生成并用 `aapt`、`apksigner` 验证新 APK。
+5. **编译异常必须形成闭环记录**：任何编译异常、参数错误、构建脚本行为差异或已确认的警告处理方式，在解决后都必须把“现象、根因、修复方法、是否交付”写回本节；下一次编译前必须先检索本节并复核旧经验。已失效或错误的经验可以直接修正或删除，不能让同一个异常重复消耗编译时间。
+6. **本项目的持续记录要求（用户原话）**： “编译出现了任何异常都往 agent md 里面写，包括这句话也往 agent md 里面写。任何编译异常最后解决都要把解决方法往 agent md 里面写。”
 
 ## 十四、弹窗模糊规则
 
