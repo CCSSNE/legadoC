@@ -235,7 +235,7 @@ class ReadMenu @JvmOverloads constructor(
             // 标题栏底色独立放在按钮下面，避免把右上角的“更多”按钮纳入模糊区域。
             titleBlurSurface.background = createFillDrawable(headerColor)
             bottomBlurSurface.background = createPanelDrawable(
-                UiCorner.panelRadius(context),
+                UiCorner.compactSurfaceRadius(context),
                 sheetColor,
                 panelStrokeColor,
                 topOnly = true

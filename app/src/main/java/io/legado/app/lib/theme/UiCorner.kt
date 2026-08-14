@@ -30,6 +30,16 @@ object UiCorner {
         return context.resources.getDimension(R.dimen.ui_action_radius) * scale()
     }
 
+    /**
+     * 弹窗和原生菜单使用的小圆角上限。它与普通卡片的圆角分开，避免为了
+     * 改小菜单圆角而影响书架卡片、搜索条等普通 UI。
+     */
+    fun compactSurfaceRadius(context: Context): Float {
+        return panelRadius(context).coerceAtMost(
+            context.resources.getDimension(R.dimen.popup_surface_corner_radius)
+        )
+    }
+
     fun scaledDp(value: Float): Float {
         return value.dpToPx() * scale()
     }
@@ -171,12 +181,25 @@ object UiCorner {
     }
 
     fun dialogRounded(color: Int, radius: Float): GradientDrawable {
-        // 标准弹窗外壳保持矩形；透明度和局部模糊不应改变窗口几何形状。
-        return opaqueRounded(dialogSurfaceColor(color), 0f)
+        return opaqueRounded(dialogSurfaceColor(color), compactDialogRadius(radius))
     }
 
     fun dialogTopRounded(color: Int, radius: Float): GradientDrawable {
-        return opaqueRounded(dialogSurfaceColor(color), 0f)
+        val compactRadius = compactDialogRadius(radius)
+        return GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadii = floatArrayOf(
+                compactRadius, compactRadius,
+                compactRadius, compactRadius,
+                0f, 0f,
+                0f, 0f
+            )
+            setColor(dialogSurfaceColor(color))
+        }
+    }
+
+    private fun compactDialogRadius(radius: Float): Float {
+        return radius.coerceAtLeast(0f).coerceAtMost(4f.dpToPx())
     }
 
     fun roundedStroke(color: Int, radius: Float, strokeWidth: Int, strokeColor: Int): GradientDrawable {

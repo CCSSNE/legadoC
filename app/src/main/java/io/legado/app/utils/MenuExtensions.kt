@@ -50,9 +50,13 @@ fun View.showPopupMenu(
             actions.getOrNull(item.itemId)?.onClick?.invoke()
             true
         }
+        val hostWindow = context.findHostWindow()
+        val popupBlurGeneration = hostWindow?.let { LocalPopupBlur.preparePopupBlur(it) }
         show()
         showScrollIndicators()
-        context.findHostWindow()?.let { hostWindow -> popup.applyLocalPopupBlur(hostWindow) }
+        if (hostWindow != null && popupBlurGeneration != null) {
+            popup.applyLocalPopupBlur(hostWindow, popupBlurGeneration)
+        }
     }
     return true
 }
@@ -68,9 +72,13 @@ fun View.showPopupMenu(
         prepare?.invoke(menu)
         menu.applyUiMenuStyle(context)
         setOnMenuItemClickListener(onClick)
+        val hostWindow = context.findHostWindow()
+        val popupBlurGeneration = hostWindow?.let { LocalPopupBlur.preparePopupBlur(it) }
         show()
         showScrollIndicators()
-        context.findHostWindow()?.let { hostWindow -> popup.applyLocalPopupBlur(hostWindow) }
+        if (hostWindow != null && popupBlurGeneration != null) {
+            popup.applyLocalPopupBlur(hostWindow, popupBlurGeneration)
+        }
     }
     return true
 }

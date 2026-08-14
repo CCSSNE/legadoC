@@ -106,6 +106,7 @@
     <!-- Shared modern UI shape tokens -->
     <dimen name="ui_panel_radius">10dp</dimen>
     <dimen name="ui_action_radius">9dp</dimen>
+    <dimen name="popup_surface_corner_radius">4dp</dimen>
 
     <!-- Bookshelf collection cover -->
     <dimen name="book_collection_cover_corner_radius">4dp</dimen>

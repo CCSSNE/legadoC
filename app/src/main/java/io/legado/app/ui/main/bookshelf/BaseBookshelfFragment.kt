@@ -21,7 +21,10 @@ import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.DirectLinkUpload
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.utils.LocalPopupBlur
+import io.legado.app.utils.applyLocalPopupBlur
 import io.legado.app.utils.applyUiMenuStyle
+import io.legado.app.utils.findHostWindow
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.cache.CacheActivity
 import io.legado.app.ui.book.group.GroupManageDialog
@@ -120,7 +123,12 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
                 onCompatOptionsItemSelected(it)
                 true
             }
+            val hostWindow = requireContext().findHostWindow()
+            val popupBlurGeneration = hostWindow?.let { LocalPopupBlur.preparePopupBlur(it) }
             show()
+            if (hostWindow != null && popupBlurGeneration != null) {
+                applyLocalPopupBlur(hostWindow, popupBlurGeneration)
+            }
         }
     }
 

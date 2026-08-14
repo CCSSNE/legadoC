@@ -11,7 +11,6 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
-import android.widget.FrameLayout
 import androidx.activity.addCallback
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
@@ -24,7 +23,6 @@ import io.legado.app.constant.Theme
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.lib.theme.ThemeStore
-import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.applyUiBodyTypeface
 import io.legado.app.lib.theme.applyUiMenuTypefaceDeep
 import io.legado.app.service.ExportBookService
@@ -76,12 +74,6 @@ abstract class BaseActivity<VB : ViewBinding>(
     ): View? {
         val view = super.onCreateView(parent, name, context, attrs)
         if (AppConst.menuViewNames.contains(name)) {
-            if (parent?.parent is FrameLayout) {
-                (parent.parent as View).background = UiCorner.rounded(
-                    androidx.core.content.ContextCompat.getColor(context, R.color.background_card),
-                    UiCorner.panelRadius(context)
-                )
-            }
             val menuView = view ?: parent
             menuView?.post {
                 menuView.applyUiMenuTypefaceDeep(context)
