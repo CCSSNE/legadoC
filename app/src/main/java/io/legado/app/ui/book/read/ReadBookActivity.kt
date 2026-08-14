@@ -133,6 +133,7 @@ import io.legado.app.utils.hexString
 import io.legado.app.utils.iconItemOnLongClick
 import io.legado.app.utils.invisible
 import io.legado.app.utils.isAbsUrl
+import io.legado.app.utils.LocalPopupBlur
 import io.legado.app.utils.applyLocalPopupBlur
 import io.legado.app.utils.isTrue
 import io.legado.app.utils.launch
@@ -475,8 +476,11 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
         menu.findItem(R.id.menu_same_title_removed)?.isChecked =
             ReadBook.curTextChapter?.sameTitleRemoved == true
+        // AppCompat 会在这个回调返回后才真正创建 PopupWindow；先趁阅读主菜单
+        // 已经绘制完成时缓存宿主整页模糊图，避免弹窗显示后再异步替换背景。
+        val popupBlurGeneration = LocalPopupBlur.preparePopupBlur(window)
         return super.onMenuOpened(featureId, menu).also {
-            menu.applyLocalPopupBlur(window)
+            menu.applyLocalPopupBlur(window, popupBlurGeneration)
         }
     }
 

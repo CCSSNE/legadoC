@@ -15,10 +15,8 @@ import android.os.Handler
 import android.os.Looper
 import android.view.PixelCopy
 import android.view.View
-import android.view.ViewGroup
 import android.view.Window
 import android.view.Menu
-import android.widget.ListView
 import android.widget.PopupWindow
 import androidx.appcompat.widget.PopupMenu
 import io.legado.app.lib.theme.UiCorner
@@ -28,10 +26,13 @@ import java.util.Collections
 import java.util.IdentityHashMap
 import java.util.Locale
 import java.util.WeakHashMap
+import kotlin.math.ceil
+import kotlin.math.floor
 import kotlin.math.roundToInt
 
-private const val POPUP_BLUR_MAX_ATTEMPTS = 12
-private const val POPUP_BLUR_RETRY_DELAY_MS = 50L
+private const val POPUP_BLUR_MAX_ATTEMPTS = 64
+private const val POPUP_BLUR_RETRY_DELAY_MS = 16L
+private const val POPUP_BACKDROP_SAMPLE = 4
 private val mainHandler = Handler(Looper.getMainLooper())
 
 /**
@@ -42,12 +43,139 @@ private val mainHandler = Handler(Looper.getMainLooper())
  */
 object LocalPopupBlur {
 
+    private data class PopupBackdropSnapshot(
+        val generation: Int,
+        val sourceWidth: Int,
+        val sourceHeight: Int,
+        val bitmap: Bitmap
+    )
+
     private val originalBackgrounds = WeakHashMap<View, Drawable?>()
-    private val originalAlphas = WeakHashMap<View, Int>()
     private val blurredBitmaps = WeakHashMap<View, Bitmap>()
     private val generations = WeakHashMap<View, Int>()
     private val attachListeners = WeakHashMap<View, View.OnAttachStateChangeListener>()
     private val temporaryAlphas = WeakHashMap<View, Float>()
+    private val popupBackdropSnapshots = WeakHashMap<Window, PopupBackdropSnapshot>()
+    private val popupBackdropGenerations = WeakHashMap<Window, Int>()
+    private val popupBackdropPending = WeakHashMap<Window, Int>()
+
+    /**
+     * 在菜单真正创建前，从当前宿主页面预先生成一张低分辨率整页模糊图。
+     * 后续弹窗只从这张图裁剪，不再对弹窗外壳和内部列表分别异步取图。
+     */
+    fun preparePopupBlur(hostWindow: Window): Int {
+        val generation = (popupBackdropGenerations[hostWindow] ?: 0) + 1
+        popupBackdropGenerations[hostWindow] = generation
+        popupBackdropPending[hostWindow] = generation
+        capturePopupBackdrop(hostWindow, generation, 0)
+        return generation
+    }
+
+    private fun capturePopupBackdrop(hostWindow: Window, generation: Int, attempt: Int) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+            UiCorner.dialogBlurRadius() <= 0 ||
+            popupBackdropGenerations[hostWindow] != generation
+        ) {
+            if (popupBackdropPending[hostWindow] == generation) {
+                popupBackdropPending.remove(hostWindow)
+            }
+            return
+        }
+        val decor = hostWindow.decorView
+        if (!decor.isAttachedToWindow || decor.width <= 0 || decor.height <= 0) {
+            retryPopupBackdrop(hostWindow, generation, attempt)
+            return
+        }
+        val bitmap = try {
+            Bitmap.createBitmap(
+                (decor.width / POPUP_BACKDROP_SAMPLE).coerceAtLeast(1),
+                (decor.height / POPUP_BACKDROP_SAMPLE).coerceAtLeast(1),
+                Bitmap.Config.ARGB_8888
+            )
+        } catch (_: Throwable) {
+            if (popupBackdropPending[hostWindow] == generation) {
+                popupBackdropPending.remove(hostWindow)
+            }
+            return
+        }
+        val source = Rect(0, 0, decor.width, decor.height)
+        try {
+            PixelCopy.request(hostWindow, source, bitmap, { result ->
+                if (popupBackdropGenerations[hostWindow] != generation) {
+                    bitmap.recycle()
+                    return@request
+                }
+                if (result == PixelCopy.SUCCESS) {
+                    val blurred = runCatching {
+                        blurBitmapAtResolution(bitmap, UiCorner.dialogBlurRadius())
+                    }.getOrNull()
+                    bitmap.recycle()
+                    if (blurred != null) {
+                        popupBackdropSnapshots.remove(hostWindow)?.bitmap?.let {
+                            if (!it.isRecycled) it.recycle()
+                        }
+                        popupBackdropSnapshots[hostWindow] = PopupBackdropSnapshot(
+                            generation = generation,
+                            sourceWidth = decor.width,
+                            sourceHeight = decor.height,
+                            bitmap = blurred
+                        )
+                        popupBackdropPending.remove(hostWindow)
+                    } else {
+                        retryPopupBackdrop(hostWindow, generation, attempt)
+                    }
+                } else {
+                    bitmap.recycle()
+                    retryPopupBackdrop(hostWindow, generation, attempt)
+                }
+            }, mainHandler)
+        } catch (_: Throwable) {
+            bitmap.recycle()
+            retryPopupBackdrop(hostWindow, generation, attempt)
+        }
+    }
+
+    private fun retryPopupBackdrop(hostWindow: Window, generation: Int, attempt: Int) {
+        if (popupBackdropGenerations[hostWindow] != generation) return
+        if (attempt >= 3) {
+            if (popupBackdropPending[hostWindow] == generation) {
+                popupBackdropPending.remove(hostWindow)
+            }
+            return
+        }
+        mainHandler.postDelayed(
+            { capturePopupBackdrop(hostWindow, generation, attempt + 1) },
+            POPUP_BLUR_RETRY_DELAY_MS
+        )
+    }
+
+    /**
+     * 用已准备好的整页模糊图给当前唯一的 PopupWindow 背景外壳安装裁剪结果。
+     * 返回 false 表示本轮整页图还没准备好，调用方必须继续等待，不能改用内容列表。
+     */
+    fun installPreparedPopupBlur(
+        hostWindow: Window,
+        target: View,
+        minimumGeneration: Int,
+        popupSurfaceAlpha: Float
+    ): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+            UiCorner.dialogBlurRadius() <= 0 ||
+            !target.isAttachedToWindow || target.width <= 0 || target.height <= 0
+        ) return false
+        val snapshot = popupBackdropSnapshots[hostWindow] ?: return false
+        val currentGeneration = popupBackdropGenerations[hostWindow] ?: return false
+        if (currentGeneration != minimumGeneration ||
+            snapshot.generation != minimumGeneration ||
+            popupBackdropPending[hostWindow] == minimumGeneration
+        ) return false
+        val hostDecor = hostWindow.decorView
+        val sourceRect = sourceRect(hostDecor, target) ?: return false
+        val blurred = cropBackdrop(snapshot, sourceRect, target.width, target.height) ?: return false
+        val generation = nextGeneration(target)
+        install(target, blurred, popupSurfaceAlpha)
+        return generations[target] == generation && target.isAttachedToWindow
+    }
 
     fun apply(
         hostWindow: Window,
@@ -139,7 +267,6 @@ object LocalPopupBlur {
         generations[target] = (generations[target] ?: 0) + 1
         temporaryAlphas.remove(target)?.let { target.alpha = it }
         if (originalBackgrounds.containsKey(target)) {
-            originalAlphas.remove(target)?.let { originalBackgrounds[target]?.alpha = it }
             target.background = originalBackgrounds.remove(target)
         }
         blurredBitmaps.remove(target)?.let {
@@ -278,43 +405,82 @@ object LocalPopupBlur {
             isFilterBitmap = true
         }
         val appliedBackground = if (original != null) {
-            LayerDrawable(arrayOf(blurredDrawable, original))
+            val independentOriginal = original.constantState
+                ?.newDrawable(target.resources)
+                ?.mutate()
+                ?: original.mutate()
+            popupSurfaceAlpha?.let { alpha ->
+                independentOriginal.alpha =
+                    (independentOriginal.alpha * alpha.coerceIn(0f, 1f)).roundToInt()
+            }
+            LayerDrawable(arrayOf(blurredDrawable, independentOriginal)).mutate()
         } else {
             LayerDrawable(
                 arrayOf<Drawable>(
                     blurredDrawable,
                     ColorDrawable(Color.TRANSPARENT)
                 )
-            )
-        }
-        popupSurfaceAlpha?.let { alpha ->
-            if (original != null) {
-                val baseAlpha = originalAlphas.getOrPut(target) { original.alpha }
-                original.alpha = (baseAlpha * alpha.coerceIn(0f, 1f)).roundToInt()
-            }
+            ).mutate()
         }
         target.background = appliedBackground
     }
 
     private fun blurBitmap(source: Bitmap, radius: Int): Bitmap {
-        val sample = 4
+        val sample = POPUP_BACKDROP_SAMPLE
         val smallWidth = (source.width / sample).coerceAtLeast(1)
         val smallHeight = (source.height / sample).coerceAtLeast(1)
         val small = Bitmap.createScaledBitmap(source, smallWidth, smallHeight, true)
-        val pixels = IntArray(smallWidth * smallHeight)
-        val buffer = IntArray(pixels.size)
-        small.getPixels(pixels, 0, smallWidth, 0, 0, smallWidth, smallHeight)
-        val blurRadius = (radius / sample).coerceIn(1, 24)
-        repeat(3) {
-            blurHorizontal(pixels, buffer, smallWidth, smallHeight, blurRadius)
-            blurVertical(buffer, pixels, smallWidth, smallHeight, blurRadius)
-        }
-        val blurredSmall = Bitmap.createBitmap(smallWidth, smallHeight, Bitmap.Config.ARGB_8888)
-        blurredSmall.setPixels(pixels, 0, smallWidth, 0, 0, smallWidth, smallHeight)
+        val blurredSmall = blurBitmapAtResolution(small, radius)
         if (small !== source && !small.isRecycled) small.recycle()
         val result = Bitmap.createScaledBitmap(blurredSmall, source.width, source.height, true)
         if (result !== blurredSmall && !blurredSmall.isRecycled) blurredSmall.recycle()
         return result
+    }
+
+    private fun blurBitmapAtResolution(source: Bitmap, radius: Int): Bitmap {
+        val width = source.width.coerceAtLeast(1)
+        val height = source.height.coerceAtLeast(1)
+        val pixels = IntArray(width * height)
+        val buffer = IntArray(pixels.size)
+        source.getPixels(pixels, 0, width, 0, 0, width, height)
+        val blurRadius = (radius / POPUP_BACKDROP_SAMPLE).coerceIn(1, 24)
+        repeat(3) {
+            blurHorizontal(pixels, buffer, width, height, blurRadius)
+            blurVertical(buffer, pixels, width, height, blurRadius)
+        }
+        return Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also {
+            it.setPixels(pixels, 0, width, 0, 0, width, height)
+        }
+    }
+
+    private fun cropBackdrop(
+        snapshot: PopupBackdropSnapshot,
+        sourceRect: Rect,
+        targetWidth: Int,
+        targetHeight: Int
+    ): Bitmap? {
+        val bitmap = snapshot.bitmap
+        if (bitmap.isRecycled || snapshot.sourceWidth <= 0 || snapshot.sourceHeight <= 0) return null
+        val left = floor(sourceRect.left.toDouble() * bitmap.width / snapshot.sourceWidth)
+            .toInt().coerceIn(0, bitmap.width - 1)
+        val top = floor(sourceRect.top.toDouble() * bitmap.height / snapshot.sourceHeight)
+            .toInt().coerceIn(0, bitmap.height - 1)
+        val right = ceil(sourceRect.right.toDouble() * bitmap.width / snapshot.sourceWidth)
+            .toInt().coerceIn(left + 1, bitmap.width)
+        val bottom = ceil(sourceRect.bottom.toDouble() * bitmap.height / snapshot.sourceHeight)
+            .toInt().coerceIn(top + 1, bitmap.height)
+        val cropped = runCatching {
+            Bitmap.createBitmap(bitmap, left, top, right - left, bottom - top)
+        }.getOrNull() ?: return null
+        val scaled = runCatching {
+            Bitmap.createScaledBitmap(cropped, targetWidth, targetHeight, true)
+        }.getOrNull()
+        if (scaled == null) {
+            if (!cropped.isRecycled) cropped.recycle()
+            return null
+        }
+        if (scaled !== cropped && !cropped.isRecycled) cropped.recycle()
+        return scaled
     }
 
     private fun blurHorizontal(
@@ -398,151 +564,133 @@ fun View.applyLocalPopupBlur(
     radius: Int = UiCorner.dialogBlurRadius()
 ) = LocalPopupBlur.apply(hostWindow, listOf(this), captureOwner, radius)
 
-fun Menu.applyLocalPopupBlur(hostWindow: Window) {
-    schedulePopupBlur(hostWindow, this)
+fun Menu.applyLocalPopupBlur(hostWindow: Window, preparedGeneration: Int? = null) {
+    schedulePopupBlur(hostWindow, this, preparedGeneration)
 }
 
-fun PopupMenu.applyLocalPopupBlur(hostWindow: Window) {
-    schedulePopupBlur(hostWindow, this)
+fun PopupMenu.applyLocalPopupBlur(hostWindow: Window, preparedGeneration: Int? = null) {
+    schedulePopupBlur(hostWindow, this, preparedGeneration)
 }
 
-private fun schedulePopupBlur(hostWindow: Window, source: Any) {
+private fun schedulePopupBlur(
+    hostWindow: Window,
+    source: Any,
+    preparedGeneration: Int?
+) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || UiCorner.dialogBlurRadius() <= 0) return
+    val requiredGeneration = preparedGeneration ?: LocalPopupBlur.preparePopupBlur(hostWindow)
     var preparedSurface: View? = null
-    var preparedTargets: List<View> = emptyList()
-    val originalAlphas = IdentityHashMap<View, Float>()
+    var preparedSurfaceAlpha = 1f
+    var lastX = Int.MIN_VALUE
+    var lastY = Int.MIN_VALUE
+    var lastWidth = 0
+    var lastHeight = 0
+    var stableFrames = 0
     var finished = false
 
     fun restoreUnblurred() {
         if (finished) return
         finished = true
-        preparedTargets.forEach { target ->
-            if (target.isAttachedToWindow) {
-                originalAlphas[target]?.let { target.alpha = it }
-            }
+        preparedSurface?.takeIf { it.isAttachedToWindow }?.let { target ->
+            target.alpha = preparedSurfaceAlpha
+            target.invalidate()
         }
     }
 
-    fun attempt(count: Int) {
-        if (finished) return
-        val candidate = findPopupTarget(source)
-        if (preparedSurface == null && candidate != null) {
-            // PopupWindow 的 contentView 在 show() 前通常已经存在，但外壳还没有
-            // attach/layout。此时先把它设为不可见，避免系统先画出一帧未模糊的菜单。
-            preparedSurface = candidate
-            preparedTargets = popupSurfaceTargets(candidate)
-            preparedTargets.forEach { target ->
-                originalAlphas[target] = target.alpha.takeIf { it > 0f } ?: 1f
-                target.alpha = 0f
-            }
-        }
-        val targets = preparedTargets.filter { isPopupSurface(it, hostWindow.decorView) }
-        if (targets.isNotEmpty()) {
-            LocalPopupBlur.apply(
-                hostWindow,
-                targets,
-                popupSurfaceAlpha = UiCorner.dialogSurfaceAlpha(),
-                onReady = {
-                    if (finished) return@apply
-                    finished = true
-                    targets.forEach { target ->
-                        if (target.isAttachedToWindow) {
-                            originalAlphas[target]?.let { target.alpha = it }
-                        }
-                    }
-                }
-            )
-        } else if (count < POPUP_BLUR_MAX_ATTEMPTS) {
+    lateinit var attempt: (Int) -> Unit
+
+    fun retry(count: Int) {
+        if (count < POPUP_BLUR_MAX_ATTEMPTS) {
             hostWindow.decorView.postDelayed(
                 { attempt(count + 1) },
                 POPUP_BLUR_RETRY_DELAY_MS
             )
         } else {
-            // 目标窗口异常时不能一直保持透明，否则会留下不可见菜单。
             restoreUnblurred()
         }
     }
-    // show() 返回后立即尝试一次，确保在下一个绘制帧前进入预备态。
-    attempt(0)
-}
 
-/**
- * PopupWindow 的背景外壳和菜单列表可能分别绘制背景。
- * 只处理外壳以及其中的 ListView，避免列表自己的背景把外壳模糊层盖掉；
- * 不向外扩展到宿主页面，也不处理菜单文字和按钮本身。
- */
-private fun popupSurfaceTargets(surface: View): List<View> {
-    val targets = ArrayList<View>(2)
-    targets += surface
-
-    fun collect(view: View, depth: Int) {
-        if (depth > 8 || view !is ViewGroup) return
-        for (index in 0 until view.childCount) {
-            val child = view.getChildAt(index)
-            if (child is ListView) {
-                targets += child
-            } else {
-                collect(child, depth + 1)
-            }
+    attempt = attempt@{ count ->
+        if (finished) return@attempt
+        val candidate = findPopupTarget(source)
+        if (candidate == null || !isPopupSurface(candidate, hostWindow.decorView)) {
+            retry(count)
+            return@attempt
         }
+        val location = IntArray(2)
+        candidate.getLocationOnScreen(location)
+        val changed = candidate !== preparedSurface ||
+            location[0] != lastX || location[1] != lastY ||
+            candidate.width != lastWidth || candidate.height != lastHeight
+        if (changed) {
+            preparedSurface?.takeIf { it.isAttachedToWindow }?.alpha = preparedSurfaceAlpha
+            preparedSurface = candidate
+            preparedSurfaceAlpha = candidate.alpha.takeIf { it > 0f } ?: 1f
+            candidate.alpha = 0f
+            candidate.invalidate()
+            lastX = location[0]
+            lastY = location[1]
+            lastWidth = candidate.width
+            lastHeight = candidate.height
+            stableFrames = 1
+        } else {
+            stableFrames += 1
+        }
+        if (stableFrames >= 2 && LocalPopupBlur.installPreparedPopupBlur(
+                hostWindow = hostWindow,
+                target = candidate,
+                minimumGeneration = requiredGeneration,
+                popupSurfaceAlpha = UiCorner.dialogSurfaceAlpha()
+            )
+        ) {
+            finished = true
+            candidate.alpha = preparedSurfaceAlpha
+            candidate.invalidate()
+            return@attempt
+        }
+        retry(count)
     }
 
-    collect(surface, 0)
-    return targets.distinct()
+    // 先找已经 attach 的新外壳；show() 前不会把 contentView 当成替代目标。
+    attempt(0)
 }
 
 private fun findPopupTarget(source: Any): View? {
     val visited = Collections.newSetFromMap(IdentityHashMap<Any, Boolean>())
-    var listViewFallback: View? = null
+    var latestSurface: View? = null
 
-    fun visit(value: Any?, depth: Int): View? {
-        if (value == null || depth > 7 || !visited.add(value)) return null
+    fun visit(value: Any?, depth: Int) {
+        if (value == null || depth > 7 || !visited.add(value)) return
         if (value is PopupWindow) {
-            // PopupWindow 的 mDecorView 只负责事件分发和承载子树，真正绘制
-            // 背景、圆角和内边距的是 mBackgroundView。把 mDecorView 当目标时，
-            // 模糊层会被它里面不透明的 mBackgroundView 完全盖住，结果就是
-            // “弹窗范围对了，但弹窗中间没有模糊”。先取背景外壳，再兼容
-            // AppCompat/厂商实现可能存在的 mPopupView，最后才用 decor 兜底。
-            val popupSurface = listOf("mBackgroundView", "mPopupView", "mContentView", "mDecorView")
-                .asSequence()
-                .mapNotNull { fieldName ->
-                    runCatching {
-                        var currentClass: Class<*>? = value.javaClass
-                        while (currentClass != null && currentClass != Any::class.java) {
-                            currentClass.declaredFields.firstOrNull { it.name == fieldName }?.let { field ->
-                                field.isAccessible = true
-                                return@runCatching field.get(value) as? View
-                            }
-                            currentClass = currentClass.superclass
+            // 只认本轮 PopupWindow 已经创建并 attach 的 mBackgroundView。
+            // contentView、ListView、mDecorView 都不能作为弹窗表面替代目标。
+            val background = runCatching {
+                var currentClass: Class<*>? = value.javaClass
+                var result: View? = null
+                while (currentClass != null && currentClass != Any::class.java) {
+                    currentClass.declaredFields.firstOrNull { it.name == "mBackgroundView" }
+                        ?.let { field ->
+                            field.isAccessible = true
+                            result = field.get(value) as? View
                         }
-                        null
-                    }.getOrNull()
+                    currentClass = currentClass.superclass
                 }
-                .firstOrNull()
-            return popupSurface ?: value.contentView
+                result
+            }.getOrNull()
+            if (background?.isAttachedToWindow == true && background.width > 0 && background.height > 0) {
+                latestSurface = background
+            }
+            return
         }
-        if (value is Reference<*>) return visit(value.get(), depth + 1)
+        if (value is Reference<*>) {
+            visit(value.get(), depth + 1)
+            return
+        }
         if (value is Iterable<*>) {
-            for (item in value) {
-                val target = visit(item, depth + 1)
-                if (target != null) return target
-            }
-            return null
+            value.forEach { visit(it, depth + 1) }
+            return
         }
-        if (value is View) {
-            // 不能把任意 View 当成弹窗目标，否则找不到 PopupWindow 时会把
-            // 右上角的锚点按钮本身套上模糊背景。只允许菜单列表作为保底目标。
-            if (value is ListView) {
-                listViewFallback = listViewFallback ?: value
-            }
-            return null
-        }
-        runCatching {
-            value.javaClass.methods.firstOrNull {
-                it.name == "getListView" && it.parameterTypes.isEmpty()
-            }?.let { method ->
-                (method.invoke(value) as? View)?.let { listViewFallback = listViewFallback ?: it }
-            }
-        }
+        if (value is View) return
         var currentClass: Class<*>? = value.javaClass
         while (currentClass != null && currentClass != Any::class.java) {
             currentClass.declaredFields.forEach { field ->
@@ -556,15 +704,15 @@ private fun findPopupTarget(source: Any): View? {
                 ) return@forEach
                 runCatching {
                     field.isAccessible = true
-                    visit(field.get(value), depth + 1)?.let { return it }
+                    visit(field.get(value), depth + 1)
                 }
             }
             currentClass = currentClass.superclass
         }
-        return null
     }
 
-    return visit(source, 0) ?: listViewFallback
+    visit(source, 0)
+    return latestSurface
 }
 
 private fun isPopupSurface(target: View, hostDecor: View): Boolean {
