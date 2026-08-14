@@ -126,6 +126,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     private var pageBookmarkColor = 0
     //单击书签弹出的"编辑当前标签"临时悬浮窗
     private var bookmarkEditPopup: PopupWindow? = null
+    private var bookmarkEditPopupDismissTask: Runnable? = null
 
     //下拉添加/删除整页书签动效：页面跟手位移量（仅非滚动模式）
     private var pullDownOffset = 0f
@@ -294,7 +295,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
             ViewGroup.LayoutParams.WRAP_CONTENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply {
-            // 与选中文字菜单一样由阅读页的下一次点击关闭，不抢走这次点击。
+            // 窗外点击由阅读页关闭并消费，不能继续传给阅读页的轻触区域。
             isFocusable = false
             isOutsideTouchable = false
             isTouchable = true
@@ -305,6 +306,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
             setOnDismissListener {
                 if (bookmarkEditPopup === this) {
                     bookmarkEditPopup = null
+                    bookmarkEditPopupDismissTask = null
                 }
             }
         }
@@ -326,9 +328,16 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
             .coerceAtMost(screenH - popupH - margin)
             .coerceAtLeast(margin)
         popup.showAtLocation(this, Gravity.NO_GRAVITY, showX, showY)
+        bookmarkEditPopupDismissTask = Runnable {
+            if (bookmarkEditPopup === popup) {
+                dismissBookmarkEditPopup()
+            }
+        }.also { postDelayed(it, 1_000L) }
     }
 
     private fun dismissBookmarkEditPopup() {
+        bookmarkEditPopupDismissTask?.let(::removeCallbacks)
+        bookmarkEditPopupDismissTask = null
         bookmarkEditPopup?.let {
             it.dismiss()
             bookmarkEditPopup = null
@@ -1148,8 +1157,11 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
      */
     @Suppress("UNUSED_ANONYMOUS_PARAMETER")
     fun click(x: Float, y: Float): Boolean {
-        // 临时“编辑当前标签”菜单不应遮挡后续阅读操作。
-        dismissBookmarkEditPopup()
+        // 与框选操作窗一致：窗外第一次点击只负责关闭菜单，不再触发阅读页轻触动作。
+        if (bookmarkEditPopup?.isShowing == true) {
+            dismissBookmarkEditPopup()
+            return true
+        }
         val currentTime = System.currentTimeMillis()
         val debounceClick = currentTime - lastClickTime < 300L //300毫秒防抖和双击
         lastClickTime = currentTime
