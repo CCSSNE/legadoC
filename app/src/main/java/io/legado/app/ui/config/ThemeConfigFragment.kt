@@ -33,8 +33,8 @@ import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.image.ImageCropContract
-import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
+import io.legado.app.ui.widget.seekbar.SeekBarDialog
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.ImageCropHelper
@@ -265,7 +265,7 @@ class ThemeConfigFragment : PreferenceFragment(),
     }
 
     private fun showUiLayoutAlphaDialog() {
-        NumberPickerDialog(requireContext())
+        SeekBarDialog(requireContext())
             .setTitle(getString(R.string.ui_layout_alpha))
             .setMaxValue(100)
             .setMinValue(0)
@@ -303,13 +303,13 @@ class ThemeConfigFragment : PreferenceFragment(),
     }
 
     private fun showDialogAlphaDialog() {
-        NumberPickerDialog(requireContext())
+        SeekBarDialog(requireContext())
             .setTitle(getString(R.string.dialog_alpha))
             .setMaxValue(100)
             .setMinValue(0)
             .setValue(AppConfig.dialogAlpha)
             .setCustomButton(R.string.btn_default_s) {
-                putPrefInt(PreferKey.dialogAlpha, 100)
+                putPrefInt(PreferKey.dialogAlpha, 0)
             }
             .show {
                 putPrefInt(PreferKey.dialogAlpha, it.coerceIn(0, 100))
@@ -317,7 +317,7 @@ class ThemeConfigFragment : PreferenceFragment(),
     }
 
     private fun showDialogBlurDialog() {
-        NumberPickerDialog(requireContext())
+        SeekBarDialog(requireContext())
             .setTitle(getString(R.string.dialog_blur))
             .setMaxValue(100)
             .setMinValue(0)

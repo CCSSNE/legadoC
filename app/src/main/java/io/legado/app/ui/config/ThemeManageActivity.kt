@@ -52,6 +52,7 @@ import io.legado.app.ui.font.FontSelectDialog
 import io.legado.app.ui.image.ImageCropContract
 import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
+import io.legado.app.ui.widget.seekbar.SeekBarDialog
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.applyNavigationBarMargin
@@ -521,7 +522,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         row.viewSwatch.visibility = View.INVISIBLE
         row.tvValue.text = getString(R.string.ui_layout_alpha_value, pendingUiLayoutAlpha)
         row.root.setOnClickListener {
-            NumberPickerDialog(this)
+            SeekBarDialog(this)
                 .setTitle(getString(R.string.ui_layout_alpha))
                 .setMaxValue(100)
                 .setMinValue(0)

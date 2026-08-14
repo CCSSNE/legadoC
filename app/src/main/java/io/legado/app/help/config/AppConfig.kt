@@ -1162,7 +1162,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         }
 
     var dialogAlpha: Int
-        get() = appCtx.getPrefInt(PreferKey.dialogAlpha, 100).coerceIn(0, 100)
+        get() = appCtx.getPrefInt(PreferKey.dialogAlpha, 0).coerceIn(0, 100)
         set(value) {
             appCtx.putPrefInt(PreferKey.dialogAlpha, value.coerceIn(0, 100))
         }

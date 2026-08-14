@@ -60,7 +60,7 @@ import io.legado.app.ui.book.read.config.BgTextConfigDialog.Companion.TEXT_COLOR
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.font.FontSelectDialog
 import io.legado.app.ui.widget.DetailSeekBar
-import io.legado.app.ui.widget.number.NumberPickerDialog
+import io.legado.app.ui.widget.seekbar.SeekBarDialog
 import io.legado.app.utils.ChineseUtils
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.FileDoc
@@ -252,7 +252,7 @@ class ReadStyleDialog : BaseDialogFragment(R.layout.dialog_read_book_style),
                 .show(requireActivity())
         }
         rowReadMenuAlpha.setOnClickListener {
-            NumberPickerDialog(requireContext())
+            SeekBarDialog(requireContext())
                 .setTitle(getString(R.string.read_menu_alpha))
                 .setMaxValue(100)
                 .setMinValue(35)
@@ -269,7 +269,7 @@ class ReadStyleDialog : BaseDialogFragment(R.layout.dialog_read_book_style),
                 }
         }
         rowBgAlpha.setOnClickListener {
-            NumberPickerDialog(requireContext())
+            SeekBarDialog(requireContext())
                 .setTitle(getString(R.string.bg_alpha))
                 .setMaxValue(100)
                 .setMinValue(0)

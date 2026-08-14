@@ -76,7 +76,8 @@ object UiCorner {
     }
 
     fun dialogSurfaceColor(color: Int): Int {
-        val alpha = (Color.alpha(color) * AppConfig.dialogAlpha.coerceIn(0, 100) / 100f)
+        val transparency = AppConfig.dialogAlpha.coerceIn(0, 100)
+        val alpha = (Color.alpha(color) * (100 - transparency) / 100f)
             .roundToInt()
         return ColorUtils.setAlphaComponent(color, alpha)
     }

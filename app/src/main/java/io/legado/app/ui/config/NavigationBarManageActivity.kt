@@ -35,7 +35,7 @@ import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.image.ImageCropContract
-import io.legado.app.ui.widget.number.NumberPickerDialog
+import io.legado.app.ui.widget.seekbar.SeekBarDialog
 import io.legado.app.utils.ImageCropHelper
 import io.legado.app.utils.applyNavigationBarMargin
 import io.legado.app.utils.externalFiles
@@ -353,7 +353,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                     }
                 })
                 addView(optionRow(getString(R.string.bottom_bar_opacity), "${config.opacity}%") {
-                    NumberPickerDialog(this@NavigationBarManageActivity)
+                    SeekBarDialog(this@NavigationBarManageActivity)
                         .setTitle(getString(R.string.bottom_bar_opacity))
                         .setMinValue(0)
                         .setMaxValue(100)

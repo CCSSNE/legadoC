@@ -4,7 +4,6 @@ import android.app.Activity
 import android.app.Dialog
 import android.content.Context
 import android.content.ContextWrapper
-import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.graphics.RenderEffect
 import android.graphics.Shader
@@ -64,6 +63,21 @@ fun Dialog.applyDialogSurfaceBlur() {
     val radius = if (AppConfig.isEInkMode) 0 else UiCorner.dialogBlurRadius()
     val activityDecor = context.findActivity()?.window?.decorView
 
+    fun clearWindowDim() {
+        val attributes = dialogWindow.attributes
+        if (attributes.flags and WindowManager.LayoutParams.FLAG_DIM_BEHIND == 0 &&
+            attributes.dimAmount == 0f
+        ) {
+            return
+        }
+        dialogWindow.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        attributes.dimAmount = 0f
+        dialogWindow.attributes = attributes
+    }
+
+    // 弹窗的玻璃效果不应再叠加系统整屏变暗层；否则弹窗一出现，底图亮度就会整体下降。
+    clearWindowDim()
+
     fun applyActivityFallback() {
         // 雷电当前关闭了跨窗口模糊，系统接口调用成功但画面不会变化。
         // 用同一 Activity 的 RenderEffect 作为实际可见的回退，只处理弹窗后面的内容。
@@ -81,6 +95,7 @@ fun Dialog.applyDialogSurfaceBlur() {
     }
 
     dialogDecor.post {
+        clearWindowDim()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             // DialogFragment 的 onCreateDialog 发生在 DecorView 创建前；必须等到
             // DecorView 已经附着后再调用窗口背景模糊，否则 Android 12 的 PhoneWindow
@@ -123,14 +138,26 @@ fun View.applyDialogSurfaceChildren() {
         ContextCompat.getColor(context, R.color.dialog_surface)
     )
     val dialogMenuColor = ContextCompat.getColor(context, R.color.background_menu)
+    fun resourceName(view: View): String? {
+        return runCatching { view.resources.getResourceEntryName(view.id) }.getOrNull()
+    }
+
+    fun clearHeaderSurface(view: View) {
+        view.background = ColorDrawable(android.graphics.Color.TRANSPARENT)
+        view.backgroundTintList = null
+        view.elevation = 0f
+        view.stateListAnimator = null
+    }
+
     fun rewrite(view: View) {
+        val name = resourceName(view)
+        if (view is Toolbar || name == "topPanel" || name == "title_template") {
+            // 标题仍由原控件绘制，但不再给它单独铺一块色块。
+            clearHeaderSurface(view)
+            return
+        }
         val drawableColor = (view.background as? ColorDrawable)?.color
         val replacement = when {
-            // Toolbar 可能被 android:theme / actionBarStyle 换成主题 Drawable，
-            // 不能只依赖 ColorDrawable 颜色相等来识别；它本身就是弹窗头，
-            // 必须始终纳入弹窗表面组。
-            view is Toolbar ->
-                UiCorner.dialogSurfaceColor(dialogMenuColor)
             drawableColor == context.primaryColor || drawableColor == context.primaryColorDark ->
                 UiCorner.dialogSurfaceColor(dialogMenuColor)
             drawableColor != null && drawableColor in surfaceColors ->
@@ -150,43 +177,6 @@ fun View.applyDialogSurfaceChildren() {
 
 fun Dialog.applyAdaptiveDim() {
     applyDialogSurfaceBlur()
-    if (AppConfig.isEInkMode) return
-    val isLightBackground = ColorUtils.isColorLight(
-        ContextCompat.getColor(context, R.color.background_card)
-    )
-    if (isLightBackground) return
-    val activity = context.findActivity() ?: return
-    val activityDecor = activity.window.decorView
-    val dimForeground = ColorDrawable(ColorUtils.withAlpha(Color.WHITE, NIGHT_DIALOG_DIM_ALPHA))
-    val dialogDecor = window?.decorView ?: return
-    fun addOverlay() {
-        val dialogWindow = window ?: return
-        val attr = dialogWindow.attributes
-        val hasWindowDim = attr.flags and WindowManager.LayoutParams.FLAG_DIM_BEHIND != 0
-        if (!hasWindowDim || attr.dimAmount <= 0f) {
-            return
-        }
-        dialogWindow.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-        attr.dimAmount = 0f
-        dialogWindow.attributes = attr
-        dimForeground.setBounds(0, 0, activityDecor.width, activityDecor.height)
-        activityDecor.overlay.add(dimForeground)
-    }
-    dialogDecor.post {
-        if (activityDecor.width > 0 && activityDecor.height > 0) {
-            addOverlay()
-        } else {
-            activityDecor.post { addOverlay() }
-        }
-    }
-    dialogDecor.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
-        override fun onViewAttachedToWindow(v: View) = Unit
-
-        override fun onViewDetachedFromWindow(v: View) {
-            v.removeOnAttachStateChangeListener(this)
-            activityDecor.overlay.remove(dimForeground)
-        }
-    })
 }
 
 private fun Context.findActivity(): Activity? {
@@ -360,5 +350,3 @@ fun Dialog.keepScreenOn(on: Boolean) {
         }
     }
 }
-
-private const val NIGHT_DIALOG_DIM_ALPHA = 0.12f
