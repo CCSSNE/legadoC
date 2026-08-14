@@ -15,6 +15,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.PixelCopy
 import android.view.View
+import android.view.ViewGroup
 import android.view.Window
 import android.view.Menu
 import android.widget.ListView
@@ -406,36 +407,48 @@ fun PopupMenu.applyLocalPopupBlur(hostWindow: Window) {
 }
 
 private fun schedulePopupBlur(hostWindow: Window, source: Any) {
-    var preparedTarget: View? = null
-    var originalAlpha = 1f
+    var preparedSurface: View? = null
+    var preparedTargets: List<View> = emptyList()
+    val originalAlphas = IdentityHashMap<View, Float>()
     var finished = false
 
     fun restoreUnblurred() {
         if (finished) return
         finished = true
-        preparedTarget?.takeIf { it.isAttachedToWindow }?.let { it.alpha = originalAlpha }
+        preparedTargets.forEach { target ->
+            if (target.isAttachedToWindow) {
+                originalAlphas[target]?.let { target.alpha = it }
+            }
+        }
     }
 
     fun attempt(count: Int) {
         if (finished) return
         val candidate = findPopupTarget(source)
-        if (preparedTarget == null && candidate != null) {
+        if (preparedSurface == null && candidate != null) {
             // PopupWindow 的 contentView 在 show() 前通常已经存在，但外壳还没有
             // attach/layout。此时先把它设为不可见，避免系统先画出一帧未模糊的菜单。
-            preparedTarget = candidate
-            originalAlpha = candidate.alpha.takeIf { it > 0f } ?: 1f
-            candidate.alpha = 0f
+            preparedSurface = candidate
+            preparedTargets = popupSurfaceTargets(candidate)
+            preparedTargets.forEach { target ->
+                originalAlphas[target] = target.alpha.takeIf { it > 0f } ?: 1f
+                target.alpha = 0f
+            }
         }
-        val target = preparedTarget?.takeIf { isPopupSurface(it, hostWindow.decorView) }
-        if (target != null && target.isAttachedToWindow) {
+        val targets = preparedTargets.filter { isPopupSurface(it, hostWindow.decorView) }
+        if (targets.isNotEmpty()) {
             LocalPopupBlur.apply(
                 hostWindow,
-                listOf(target),
+                targets,
                 popupSurfaceAlpha = UiCorner.dialogSurfaceAlpha(),
                 onReady = {
                     if (finished) return@apply
                     finished = true
-                    if (target.isAttachedToWindow) target.alpha = originalAlpha
+                    targets.forEach { target ->
+                        if (target.isAttachedToWindow) {
+                            originalAlphas[target]?.let { target.alpha = it }
+                        }
+                    }
                 }
             )
         } else if (count < POPUP_BLUR_MAX_ATTEMPTS) {
@@ -450,6 +463,31 @@ private fun schedulePopupBlur(hostWindow: Window, source: Any) {
     }
     // show() 返回后立即尝试一次，确保在下一个绘制帧前进入预备态。
     attempt(0)
+}
+
+/**
+ * PopupWindow 的背景外壳和菜单列表可能分别绘制背景。
+ * 只处理外壳以及其中的 ListView，避免列表自己的背景把外壳模糊层盖掉；
+ * 不向外扩展到宿主页面，也不处理菜单文字和按钮本身。
+ */
+private fun popupSurfaceTargets(surface: View): List<View> {
+    val targets = ArrayList<View>(2)
+    targets += surface
+
+    fun collect(view: View, depth: Int) {
+        if (depth > 8 || view !is ViewGroup) return
+        for (index in 0 until view.childCount) {
+            val child = view.getChildAt(index)
+            if (child is ListView) {
+                targets += child
+            } else {
+                collect(child, depth + 1)
+            }
+        }
+    }
+
+    collect(surface, 0)
+    return targets.distinct()
 }
 
 private fun findPopupTarget(source: Any): View? {
