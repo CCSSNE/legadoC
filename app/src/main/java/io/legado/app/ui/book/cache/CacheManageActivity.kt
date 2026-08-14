@@ -99,6 +99,13 @@ class CacheManageActivity :
                 UiCorner.panelRadius(this@CacheManageActivity)
             )
         }
+        listOf(btnUploadAll, btnDeleteAll).forEach {
+            it.background = UiCorner.softActionSelector(
+                Color.TRANSPARENT,
+                ContextCompat.getColor(this@CacheManageActivity, R.color.background_card),
+                UiCorner.actionRadius(this@CacheManageActivity)
+            )
+        }
         recyclerView.layoutManager = LinearLayoutManager(this@CacheManageActivity)
         recyclerView.adapter = adapter
         (recyclerView.itemAnimator as? SimpleItemAnimator)?.supportsChangeAnimations = false

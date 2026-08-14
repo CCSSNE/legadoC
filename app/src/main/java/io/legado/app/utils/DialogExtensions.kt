@@ -6,12 +6,15 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
+import android.graphics.RenderEffect
+import android.graphics.Shader
 import android.os.Build
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.widget.Toolbar
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -25,6 +28,8 @@ import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.dialogSurfaceBackground
+import io.legado.app.lib.theme.primaryColor
+import io.legado.app.lib.theme.primaryColorDark
 import splitties.systemservices.windowManager
 
 fun AlertDialog.applyTint(): AlertDialog {
@@ -47,6 +52,7 @@ fun AlertDialog.applyTint(): AlertDialog {
         listView?.forEach {
             it.applyTint(context.accentColor)
         }
+        window?.decorView?.applyDialogSurfaceChildren()
         applyMaxWidthIfFloating()
     }
     return this
@@ -54,10 +60,77 @@ fun AlertDialog.applyTint(): AlertDialog {
 
 fun Dialog.applyDialogSurfaceBlur() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        window?.setBackgroundBlurRadius(
-            if (AppConfig.isEInkMode) 0 else UiCorner.dialogBlurRadius()
-        )
+        val radius = if (AppConfig.isEInkMode) 0 else UiCorner.dialogBlurRadius()
+        window?.let { dialogWindow ->
+            dialogWindow.setBackgroundBlurRadius(radius)
+            val attributes = dialogWindow.attributes
+            if (radius > 0) {
+                dialogWindow.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                attributes.setBlurBehindRadius(radius)
+            } else {
+                dialogWindow.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                attributes.setBlurBehindRadius(0)
+            }
+            dialogWindow.attributes = attributes
+
+            // 雷电当前关闭了跨窗口模糊，系统接口调用成功但画面不会变化。
+            // 用同一 Activity 的 RenderEffect 作为实际可见的回退，只处理弹窗后面的内容。
+            val activityDecor = context.findActivity()?.window?.decorView
+            if (radius > 0) {
+                activityDecor?.setRenderEffect(
+                    RenderEffect.createBlurEffect(
+                        radius.toFloat(),
+                        radius.toFloat(),
+                        Shader.TileMode.CLAMP
+                    )
+                )
+            } else {
+                activityDecor?.setRenderEffect(null)
+            }
+            window?.decorView?.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+                override fun onViewAttachedToWindow(v: View) = Unit
+
+                override fun onViewDetachedFromWindow(v: View) {
+                    v.removeOnAttachStateChangeListener(this)
+                    activityDecor?.setRenderEffect(null)
+                }
+            })
+        }
     }
+    window?.decorView?.post { window?.decorView?.applyDialogSurfaceChildren() }
+}
+
+/**
+ * 把弹窗内部仍然写死的背景色接入统一的弹窗表面组。
+ * 只处理现有主题资源和工具栏主色，不碰图标、输入框和自定义图片背景。
+ */
+fun View.applyDialogSurfaceChildren() {
+    val surfaceColors = setOf(
+        ContextCompat.getColor(context, R.color.background),
+        ContextCompat.getColor(context, R.color.background_card),
+        ContextCompat.getColor(context, R.color.background_menu),
+        ContextCompat.getColor(context, R.color.dialog_surface)
+    )
+    val dialogMenuColor = ContextCompat.getColor(context, R.color.background_menu)
+    fun rewrite(view: View) {
+        val drawableColor = (view.background as? ColorDrawable)?.color ?: return
+        val replacement = when {
+            view is Toolbar && drawableColor == context.primaryColor ->
+                UiCorner.dialogSurfaceColor(dialogMenuColor)
+            view is Toolbar && drawableColor == context.primaryColorDark ->
+                UiCorner.dialogSurfaceColor(dialogMenuColor)
+            drawableColor in surfaceColors -> UiCorner.dialogSurfaceColor(drawableColor)
+            else -> return
+        }
+        view.background = ColorDrawable(replacement)
+    }
+    fun walk(view: View) {
+        rewrite(view)
+        if (view is ViewGroup) {
+            view.forEach(::walk)
+        }
+    }
+    walk(this)
 }
 
 fun Dialog.applyAdaptiveDim() {

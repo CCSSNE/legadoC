@@ -80,7 +80,6 @@ class FilePickerDialog : BaseDialogFragment(R.layout.dialog_file_chooser),
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.toolBar.setBackgroundColor(primaryColor)
-        view.setBackgroundResource(R.color.background_card)
         initMenu()
         initContentView()
         viewModel.filesLiveData.observe(viewLifecycleOwner) {

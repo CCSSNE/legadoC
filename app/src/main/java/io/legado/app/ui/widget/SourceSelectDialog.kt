@@ -21,6 +21,7 @@ import io.legado.app.lib.theme.applyUiBodyTypeface
 import io.legado.app.lib.theme.applyUiLabelStyle
 import io.legado.app.lib.theme.applyUiSectionTitleStyle
 import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.utils.applyAdaptiveDim
 import io.legado.app.utils.dpToPx
 
 object SourceSelectDialog {
@@ -62,7 +63,11 @@ object SourceSelectDialog {
             isSubmitButtonEnabled = false
             background = GradientDrawable().apply {
                 cornerRadius = UiCorner.searchRadius(10f)
-                setColor(ContextCompat.getColor(context, R.color.background_menu))
+                setColor(
+                    UiCorner.dialogSurfaceColor(
+                        ContextCompat.getColor(context, R.color.background_menu)
+                    )
+                )
             }
             setPadding(4.dpToPx(), 0, 4.dpToPx(), 0)
             setOnQueryTextListener(object : SearchView.OnQueryTextListener {
@@ -103,8 +108,8 @@ object SourceSelectDialog {
             orientation = LinearLayout.VERTICAL
             isFocusable = true
             isFocusableInTouchMode = true
-            background = UiCorner.opaqueRounded(
-                ContextCompat.getColor(context, R.color.background_card),
+            background = UiCorner.dialogRounded(
+                ContextCompat.getColor(context, R.color.dialog_surface),
                 UiCorner.panelRadius(context)
             )
             setPadding(14.dpToPx(), 14.dpToPx(), 14.dpToPx(), 12.dpToPx())
@@ -141,6 +146,7 @@ object SourceSelectDialog {
         }
         dialog.show()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        dialog.applyAdaptiveDim()
     }
 
     private class SourceOptionView(context: android.content.Context) : TextView(context) {
@@ -157,7 +163,7 @@ object SourceSelectDialog {
             applyUiLabelStyle(context)
             textSize = 15f
             setPadding(18.dpToPx(), 0, 18.dpToPx(), 0)
-            background = UiCorner.actionSelector(
+            background = UiCorner.dialogActionSelector(
                 Color.TRANSPARENT,
                 ContextCompat.getColor(context, R.color.background_menu),
                 UiCorner.actionRadius(context)

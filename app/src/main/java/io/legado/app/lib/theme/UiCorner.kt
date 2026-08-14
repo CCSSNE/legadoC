@@ -145,6 +145,14 @@ object UiCorner {
         }
     }
 
+    fun dialogActionSelector(defaultColor: Int, pressedColor: Int, radius: Float): StateListDrawable {
+        return StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_pressed), opaqueRounded(dialogSurfaceColor(pressedColor), radius))
+            addState(intArrayOf(android.R.attr.state_selected), opaqueRounded(dialogSurfaceColor(pressedColor), radius))
+            addState(intArrayOf(), opaqueRounded(dialogSurfaceColor(defaultColor), radius))
+        }
+    }
+
     fun softActionSelector(defaultColor: Int, pressedColor: Int, radius: Float): StateListDrawable {
         return StateListDrawable().apply {
             addState(intArrayOf(android.R.attr.state_pressed), roundedColor(pressedColor, radius, true, true))

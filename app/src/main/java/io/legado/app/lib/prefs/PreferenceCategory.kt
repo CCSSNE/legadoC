@@ -8,12 +8,8 @@ import androidx.core.view.isVisible
 import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceViewHolder
 import io.legado.app.R
-import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.applyUiTitleTypeface
-import io.legado.app.lib.theme.backgroundColor
-import io.legado.app.lib.theme.UiCorner
-import io.legado.app.utils.ColorUtils
 
 
 class PreferenceCategory(context: Context, attrs: AttributeSet? = null) :
@@ -35,28 +31,10 @@ class PreferenceCategory(context: Context, attrs: AttributeSet? = null) :
             view.setTextColor(context.accentColor)
             view.isVisible = !title.isNullOrEmpty()
 
-            val da = holder.findViewById(R.id.preference_divider_above)
-            val dividerColor = if (AppConfig.isNightTheme) {
-                ColorUtils.withAlpha(
-                    ColorUtils.shiftColor(context.backgroundColor, 1.05f),
-                    0.5f
-                )
-            } else {
-                ColorUtils.withAlpha(
-                    ColorUtils.shiftColor(context.backgroundColor, 0.95f),
-                    0.5f
-                )
-            }
-            val adjustedDividerColor = UiCorner.surfaceColor(dividerColor)
-            if (da is View) {
-                da.setBackgroundColor(adjustedDividerColor)
-                da.isVisible = holder.isDividerAllowedAbove
-            }
-            val db = holder.findViewById(R.id.preference_divider_below)
-            if (db is View) {
-                db.setBackgroundColor(adjustedDividerColor)
-                db.isVisible = holder.isDividerAllowedBelow
-            }
+            // 分类标题之间不再绘制额外横杠。分类本身的标题背景和间距已经足够区分层级，
+            // 也避免 Preference 的分隔规则在不同页面上产生一条漏网的实色带。
+            holder.findViewById(R.id.preference_divider_above).isVisible = false
+            holder.findViewById(R.id.preference_divider_below).isVisible = false
         }
     }
 

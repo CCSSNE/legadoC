@@ -23,6 +23,7 @@ import io.legado.app.lib.theme.applyUiBodyTypeface
 import io.legado.app.lib.theme.applyUiTitleTypeface
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.utils.applyAdaptiveDim
 import io.legado.app.utils.dpToPx
 
 object ExpandableTagSelector {
@@ -70,7 +71,10 @@ object ExpandableTagSelector {
     ) {
         val root = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundResource(R.drawable.bg_book_info_intro_panel)
+            background = UiCorner.dialogRounded(
+                ContextCompat.getColor(context, R.color.dialog_surface),
+                UiCorner.panelRadius(context)
+            )
             clipToOutline = true
         }
         val titleView = TextView(context).apply {
@@ -80,7 +84,7 @@ object ExpandableTagSelector {
             textSize = 18f
             gravity = Gravity.CENTER_VERTICAL
             setPadding(16.dpToPx(), 0, 16.dpToPx(), 0)
-            setBackgroundColor(context.primaryColor)
+            setBackgroundColor(UiCorner.dialogSurfaceColor(context.primaryColor))
         }
         root.addView(
             titleView,
@@ -157,6 +161,7 @@ object ExpandableTagSelector {
             .show()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        dialog.applyAdaptiveDim()
     }
 
     private fun createGridRow(context: Context): LinearLayout {
@@ -184,7 +189,7 @@ object ExpandableTagSelector {
                     intArrayOf(context.accentColor, context.primaryTextColor)
                 )
             )
-            background = UiCorner.actionSelector(
+            background = UiCorner.dialogActionSelector(
                 Color.TRANSPARENT,
                 ContextCompat.getColor(context, R.color.background_card),
                 UiCorner.actionRadius(context)

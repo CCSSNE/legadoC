@@ -10,6 +10,8 @@ import androidx.core.content.ContextCompat
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import io.legado.app.R
 import io.legado.app.lib.dialogs.SelectItem
+import io.legado.app.lib.theme.UiCorner
+import io.legado.app.utils.applyAdaptiveDim
 import io.legado.app.utils.dpToPx
 
 /**
@@ -24,7 +26,10 @@ fun showActionBottomSheet(
     val dialog = BottomSheetDialog(context)
     val layout = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
-        setBackgroundColor(ContextCompat.getColor(context, R.color.background_card))
+        background = UiCorner.rounded(
+            ContextCompat.getColor(context, R.color.background_card),
+            UiCorner.panelRadius(context)
+        )
     }
     val selectableBackground = context.theme.obtainStyledAttributes(
         intArrayOf(android.R.attr.selectableItemBackground)
@@ -72,4 +77,5 @@ fun showActionBottomSheet(
     }
     dialog.setContentView(layout)
     dialog.show()
+    dialog.applyAdaptiveDim()
 }

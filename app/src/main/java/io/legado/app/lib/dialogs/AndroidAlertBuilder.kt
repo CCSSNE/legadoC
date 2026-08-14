@@ -11,6 +11,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.applyUiBodyTypeface
 import io.legado.app.lib.theme.dialogSurfaceBackground
 import io.legado.app.utils.applyDialogSurfaceBlur
+import io.legado.app.utils.applyDialogSurfaceChildren
 import io.legado.app.utils.applyTint
 
 internal class AndroidAlertBuilder(override val ctx: Context) : AlertBuilder<AlertDialog> {
@@ -184,5 +185,6 @@ internal class AndroidAlertBuilder(override val ctx: Context) : AlertBuilder<Ale
             }
         }
         applyDialogSurfaceBlur()
+        window?.decorView?.post { window?.decorView?.applyDialogSurfaceChildren() }
     }
 }

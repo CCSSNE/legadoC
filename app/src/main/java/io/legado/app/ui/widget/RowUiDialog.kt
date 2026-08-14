@@ -10,14 +10,17 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
+import androidx.core.content.ContextCompat
 import com.google.android.flexbox.FlexboxLayout
 import com.google.android.flexbox.FlexWrap
 import io.legado.app.R
 import io.legado.app.data.entities.rule.RowUi
+import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.applyUiBodyTypeface
 import io.legado.app.lib.theme.applyUiTitleTypeface
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.utils.applyAdaptiveDim
 import io.legado.app.utils.dpToPx
 
 object RowUiDialog {
@@ -48,7 +51,10 @@ object RowUiDialog {
         }
         val root = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundResource(R.drawable.bg_book_info_intro_panel)
+            background = UiCorner.dialogRounded(
+                ContextCompat.getColor(context, R.color.dialog_surface),
+                UiCorner.panelRadius(context)
+            )
             clipToOutline = true
         }
         val titleView = TextView(context).apply {
@@ -58,7 +64,7 @@ object RowUiDialog {
             textSize = 18f
             gravity = Gravity.CENTER_VERTICAL
             setPadding(16.dpToPx(), 0, 16.dpToPx(), 0)
-            setBackgroundColor(context.primaryColor)
+            setBackgroundColor(UiCorner.dialogSurfaceColor(context.primaryColor))
         }
         root.addView(
             titleView,
@@ -112,6 +118,7 @@ object RowUiDialog {
             .show()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        dialog.applyAdaptiveDim()
         return dialog
     }
 }

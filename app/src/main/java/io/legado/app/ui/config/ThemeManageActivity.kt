@@ -171,17 +171,22 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     }
 
     private fun initView() = binding.run {
-        tabBar.background = UiCorner.opaqueRounded(
+        tabBar.background = UiCorner.rounded(
             ContextCompat.getColor(this@ThemeManageActivity, R.color.background_menu),
             UiCorner.panelRadius(this@ThemeManageActivity)
         )
         listOf(btnDay, btnNight).forEach {
-            it.background = UiCorner.actionSelector(
+            it.background = UiCorner.softActionSelector(
                 Color.TRANSPARENT,
                 ContextCompat.getColor(this@ThemeManageActivity, R.color.background_card),
                 UiCorner.actionRadius(this@ThemeManageActivity)
             )
         }
+        btnAdd.background = UiCorner.softActionSelector(
+            Color.TRANSPARENT,
+            ContextCompat.getColor(this@ThemeManageActivity, R.color.background_card),
+            UiCorner.actionRadius(this@ThemeManageActivity)
+        )
         recyclerView.layoutManager = LinearLayoutManager(this@ThemeManageActivity)
         recyclerView.adapter = adapter
         (recyclerView.itemAnimator as? SimpleItemAnimator)?.supportsChangeAnimations = false
@@ -380,7 +385,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     }
 
     private fun setupThemeEditTabs(binding: DialogThemePackageEditBinding) = binding.run {
-        tabEditBar.background = UiCorner.opaqueRounded(
+        tabEditBar.background = UiCorner.rounded(
             ContextCompat.getColor(this@ThemeManageActivity, R.color.background_menu),
             UiCorner.panelRadius(this@ThemeManageActivity)
         )
@@ -415,7 +420,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         ).forEach { (tabView, itemTab) ->
             tabView.isSelected = itemTab == tab
             tabView.background = if (itemTab == tab) {
-                UiCorner.opaqueRounded(
+                UiCorner.rounded(
                     selectedBackground,
                     UiCorner.actionRadius(this@ThemeManageActivity)
                 )
@@ -1297,7 +1302,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 tvInfo.applyUiLabelStyle(this@ThemeManageActivity)
                 tvInfo.setTextColor(secondaryTextColor)
                 listOf(btnApply, btnEdit, btnMore).forEach {
-                    it.background = UiCorner.actionSelector(
+                    it.background = UiCorner.softActionSelector(
                         Color.TRANSPARENT,
                         ContextCompat.getColor(this@ThemeManageActivity, R.color.background_menu),
                         UiCorner.actionRadius(this@ThemeManageActivity)

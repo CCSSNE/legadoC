@@ -168,19 +168,19 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     }
 
     private fun initView() = binding.run {
-        tabBar.background = UiCorner.opaqueRounded(
+        tabBar.background = UiCorner.rounded(
             ContextCompat.getColor(this@NavigationBarManageActivity, R.color.background_menu),
             UiCorner.panelRadius(this@NavigationBarManageActivity)
         )
         listOf(btnDay, btnNight).forEach {
-            it.background = UiCorner.actionSelector(
+            it.background = UiCorner.softActionSelector(
                 android.graphics.Color.TRANSPARENT,
                 ContextCompat.getColor(this@NavigationBarManageActivity, R.color.background_card),
                 UiCorner.actionRadius(this@NavigationBarManageActivity)
             )
         }
         btnAdd.text = getString(R.string.theme_add)
-        btnAdd.background = UiCorner.actionSelector(
+        btnAdd.background = UiCorner.softActionSelector(
             ContextCompat.getColor(this@NavigationBarManageActivity, R.color.background_card),
             ContextCompat.getColor(this@NavigationBarManageActivity, R.color.background_menu),
             UiCorner.actionRadius(this@NavigationBarManageActivity)
@@ -307,7 +307,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                 setText(config.name)
                 hint = getString(R.string.navigation_bar_name)
                 applyUiInputStyle(this@NavigationBarManageActivity)
-                background = UiCorner.opaqueRounded(
+                background = UiCorner.rounded(
                     ContextCompat.getColor(context, R.color.background_card),
                     UiCorner.actionRadius(context)
                 )
@@ -424,7 +424,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(14.dp, 0, 14.dp, 0)
-            background = UiCorner.opaqueRounded(
+            background = UiCorner.rounded(
                 ContextCompat.getColor(context, R.color.background_card),
                 UiCorner.actionRadius(context)
             )
@@ -454,7 +454,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(14.dp, 8.dp, 14.dp, 8.dp)
-            background = UiCorner.opaqueRounded(
+            background = UiCorner.rounded(
                 ContextCompat.getColor(context, R.color.background_card),
                 UiCorner.actionRadius(context)
             )
@@ -479,7 +479,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>() {
             setPadding(8.dp, 8.dp, 8.dp, 8.dp)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             setImageDrawable(NavigationBarIconConfig.previewDrawable(this@NavigationBarManageActivity, entry, item, selected))
-            background = UiCorner.actionSelector(
+            background = UiCorner.softActionSelector(
                 ContextCompat.getColor(context, R.color.background_menu),
                 ContextCompat.getColor(context, R.color.background_card),
                 UiCorner.actionRadius(context)
@@ -733,7 +733,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>() {
         inner class Holder(private val itemBinding: ItemThemePackageBinding) : RecyclerView.ViewHolder(itemBinding.root) {
 
             fun bind(entry: NavigationBarIconConfig.Entry) = itemBinding.run {
-                root.background = UiCorner.opaqueRounded(
+                root.background = UiCorner.rounded(
                     ContextCompat.getColor(this@NavigationBarManageActivity, R.color.background_card),
                     UiCorner.panelRadius(this@NavigationBarManageActivity)
                 )
@@ -761,7 +761,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                 tvInfo.setTextColor(secondaryTextColor)
                 tvSource.setTextColor(accentColor)
                 listOf(btnApply, btnEdit, btnMore, tvSource).forEach {
-                    it.background = UiCorner.actionSelector(
+                    it.background = UiCorner.softActionSelector(
                         ContextCompat.getColor(this@NavigationBarManageActivity, R.color.background_card),
                         ContextCompat.getColor(this@NavigationBarManageActivity, R.color.background_menu),
                         UiCorner.actionRadius(this@NavigationBarManageActivity)
