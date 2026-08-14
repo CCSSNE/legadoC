@@ -32,8 +32,10 @@ import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.putPrefInt
 import io.legado.app.utils.resizeAndRecycle
+import io.legado.app.lib.theme.UiCorner
 import splitties.init.appCtx
 import java.io.File
+import kotlin.math.roundToInt
 import androidx.core.graphics.drawable.toDrawable
 
 /**
@@ -487,6 +489,13 @@ object ReadBookConfig {
         get() = config.bgAlpha
         set(value) {
             config.bgAlpha = value
+        }
+
+    val effectiveBgAlpha: Int
+        get() = if (AppConfig.readPageBackgroundTransparent) {
+            (bgAlpha * UiCorner.layoutAlpha()).roundToInt().coerceIn(0, 100)
+        } else {
+            bgAlpha.coerceIn(0, 100)
         }
 
     var pageAnim: Int

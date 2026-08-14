@@ -105,6 +105,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import splitties.views.bottomPadding
+import java.util.WeakHashMap
 import kotlin.coroutines.resume
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.utils.dpToPx
@@ -179,7 +180,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     }
     private val bottomGlassPulseInterpolator by lazy { AccelerateDecelerateInterpolator() }
     private var liquidGlassReady = false
-    private val boundLiquidGlassViewIds = hashSetOf<Int>()
+    private val boundLiquidGlassViews = WeakHashMap<LiquidGlassView, ViewGroup>()
     private var mergedDiscoveryLongClickView: View? = null
     private var sideNavigationOpen = false
     private val hideBottomIndicatorRunnable = Runnable {
@@ -1220,6 +1221,97 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         }
     }
 
+    fun setupAuxiliaryLiquidGlassSurface(
+        liquidGlassView: LiquidGlassView,
+        shellOverlay: View,
+        sourceViewGroup: ViewGroup,
+        cornerRadius: Float,
+        oval: Boolean,
+        selected: Boolean = false,
+        indicator: Boolean = false
+    ) {
+        if (AppConfig.isEInkMode) {
+            liquidGlassView.isVisible = false
+            shellOverlay.isVisible = true
+            shellOverlay.background = createEInkBottomShellDrawable(cornerRadius, oval)
+            return
+        }
+        val effectMode = AppConfig.bottomBarEffectMode
+        if (effectMode == "solid") {
+            liquidGlassView.isVisible = false
+            shellOverlay.isVisible = true
+            shellOverlay.background = createSolidBottomShellDrawable(cornerRadius, oval)
+            return
+        }
+
+        val glassLevel = when (effectMode) {
+            "frosted" -> AppConfig.frostedGlassLevel / 100f
+            else -> AppConfig.liquidGlassLevel / 100f
+        }
+        val frostedMode = effectMode == "frosted"
+        val blurRadius = if (frostedMode) {
+            (10f + glassLevel * 24f).dpToPx()
+        } else {
+            5f.dpToPx()
+        }
+        val tintAlpha = if (frostedMode) {
+            0.12f + glassLevel * 0.18f
+        } else {
+            0.05f
+        }
+        val dispersion = if (frostedMode) {
+            (0.18f + glassLevel * 0.16f).coerceAtMost(0.42f)
+        } else {
+            0f
+        }
+        val refractionHeight = if (frostedMode) {
+            (12f + glassLevel * 10f).dpToPx()
+        } else {
+            12f.dpToPx()
+        }
+        val refractionOffset = if (frostedMode) {
+            (36f + glassLevel * 18f).dpToPx()
+        } else {
+            20f.dpToPx()
+        }
+        liquidGlassView.isVisible = true
+        shellOverlay.isVisible = true
+        shellOverlay.background = createLiquidGlassShellDrawable(
+            glassLevel = glassLevel,
+            cornerRadius = cornerRadius,
+            oval = oval,
+            selected = selected
+        )
+        setupLiquidGlassView(
+            liquidGlassView = liquidGlassView,
+            cornerRadius = cornerRadius,
+            refractionHeight = if (indicator) {
+                (refractionHeight * 0.9f).coerceAtLeast(16f.dpToPx())
+            } else {
+                refractionHeight
+            },
+            refractionOffset = if (indicator) {
+                (refractionOffset * 0.72f).coerceAtLeast(46f.dpToPx())
+            } else {
+                refractionOffset
+            },
+            blurRadius = if (indicator) {
+                (blurRadius * 0.78f).coerceAtLeast(5f.dpToPx())
+            } else {
+                blurRadius
+            },
+            dispersion = if (indicator) {
+                (dispersion + 0.08f).coerceAtMost(1f)
+            } else {
+                dispersion
+            },
+            tintAlpha = (tintAlpha + if (indicator) 0.05f else 0f).coerceAtMost(0.28f),
+            elasticEnabled = true,
+            touchEffectEnabled = true,
+            sourceViewGroup = sourceViewGroup
+        )
+    }
+
     private fun applyBottomNavigationIcons() = binding.run {
         val hasCustom = NavigationBarIconConfig.applyTo(
             bottomNavigationView.menu,
@@ -1289,7 +1381,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         val surface = if (binding.sideNavigationBackground.isVisible) {
             AppColorUtils.withAlpha(
                 if (AppConfig.isNightTheme) Color.BLACK else Color.WHITE,
-                if (AppConfig.isNightTheme) 0.20f else 0.42f
+                (if (AppConfig.isNightTheme) 0.20f else 0.42f) * UiCorner.layoutAlpha()
             )
         } else {
             AppColorUtils.blendColors(
@@ -1313,11 +1405,9 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     }
 
     private fun createSideNavigationSearchDrawable(): GradientDrawable {
-        val searchSurfaceColor = if (AppConfig.isNightTheme) {
-            AppColorUtils.withAlpha(Color.rgb(52, 52, 56), 0.42f)
-        } else {
-            AppColorUtils.withAlpha(Color.rgb(120, 120, 128), 0.22f)
-        }
+        val searchSurfaceColor = UiCorner.surfaceColor(
+            if (AppConfig.isNightTheme) Color.rgb(52, 52, 56) else Color.rgb(120, 120, 128)
+        )
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = UiCorner.searchRadius(18f)
@@ -1354,14 +1444,12 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             if (binding.sideNavigationBackground.isVisible) {
                 AppColorUtils.withAlpha(
                     if (AppConfig.isNightTheme) Color.BLACK else Color.WHITE,
-                    if (AppConfig.isNightTheme) 0.18f else 0.34f
+                    (if (AppConfig.isNightTheme) 0.18f else 0.34f) * UiCorner.layoutAlpha()
                 )
             } else {
-                if (AppConfig.isNightTheme) {
-                    AppColorUtils.withAlpha(Color.rgb(52, 52, 56), 0.46f)
-                } else {
-                    AppColorUtils.withAlpha(Color.rgb(120, 120, 128), 0.20f)
-                }
+                UiCorner.surfaceColor(
+                    if (AppConfig.isNightTheme) Color.rgb(52, 52, 56) else Color.rgb(120, 120, 128)
+                )
             }
         } else {
             Color.TRANSPARENT
@@ -1382,11 +1470,9 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
     private fun createSideNavigationGroupDrawable(selected: Boolean): Drawable {
         val fill = if (selected) {
-            if (AppConfig.isNightTheme) {
-                AppColorUtils.withAlpha(Color.rgb(52, 52, 56), 0.42f)
-            } else {
-                AppColorUtils.withAlpha(Color.rgb(120, 120, 128), 0.18f)
-            }
+            UiCorner.surfaceColor(
+                if (AppConfig.isNightTheme) Color.rgb(52, 52, 56) else Color.rgb(120, 120, 128)
+            )
         } else {
             Color.TRANSPARENT
         }
@@ -1448,9 +1534,11 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         tintAlpha: Float,
         elasticEnabled: Boolean,
         touchEffectEnabled: Boolean,
+        sourceViewGroup: ViewGroup = binding.contentContainer,
     ) {
-        if (boundLiquidGlassViewIds.add(liquidGlassView.id)) {
-            liquidGlassView.bind(binding.contentContainer)
+        if (boundLiquidGlassViews[liquidGlassView] !== sourceViewGroup) {
+            liquidGlassView.bind(sourceViewGroup)
+            boundLiquidGlassViews[liquidGlassView] = sourceViewGroup
         }
         liquidGlassView.setCornerRadius(cornerRadius)
         liquidGlassView.setRefractionHeight(refractionHeight)

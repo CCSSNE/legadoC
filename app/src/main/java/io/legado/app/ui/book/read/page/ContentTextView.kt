@@ -124,7 +124,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     private val pageBookmarkPaint = Paint()
     private val pageBookmarkPath = Path()
     private var pageBookmarkColor = 0
-    private var pageBookmarkStyle = PAGE_BOOKMARK_STYLE_POINTED
+    private var pageBookmarkStyle = PAGE_BOOKMARK_STYLE_NOTCHED
     //单击书签弹出的"编辑当前标签"临时悬浮窗
     private var bookmarkEditPopup: PopupWindow? = null
     private var bookmarkEditPopupDismissTask: Runnable? = null
@@ -215,7 +215,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         bubbleArrowColor = context.getPrefInt(PreferKey.bookmarkNoteBubbleArrowColor, 0)
         pageBookmarkColor = context.getPrefInt(PreferKey.pageBookmarkColor, 0)
         pageBookmarkStyle = context
-            .getPrefInt(PreferKey.pageBookmarkStyle, PAGE_BOOKMARK_STYLE_POINTED)
+            .getPrefInt(PreferKey.pageBookmarkStyle, PAGE_BOOKMARK_STYLE_NOTCHED)
             .coerceIn(PAGE_BOOKMARK_STYLE_POINTED, PAGE_BOOKMARK_STYLE_NOTCHED)
         bubbleLayoutCache.clear()
         invalidate()

@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
 import androidx.core.content.ContextCompat
+import androidx.core.view.doOnPreDraw
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.FragmentStatePagerAdapter
@@ -17,11 +18,13 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.FragmentBookshelf1Binding
 import io.legado.app.help.config.AppConfig
+import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.applyUiTitleTypeface
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.main.bookshelf.BaseBookshelfFragment
 import io.legado.app.ui.main.bookshelf.style1.books.BooksFragment
+import io.legado.app.ui.main.MainActivity
 import io.legado.app.ui.widget.ExpandableTagSelector
 import io.legado.app.ui.widget.RoundedTagBarView
 import io.legado.app.utils.PopupMenuAction
@@ -80,9 +83,9 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
         binding.llTitleSelect.setOnClickListener {
             showGroupSwitchMenu(it)
         }
-        binding.tabBarGlassView.visibility = View.GONE
-        binding.tabBarShellOverlay.visibility = View.GONE
-        binding.tabIndicatorContainer.visibility = View.GONE
+        binding.tabBarGlassView.visibility = View.VISIBLE
+        binding.tabBarShellOverlay.visibility = View.VISIBLE
+        binding.tabIndicatorContainer.visibility = View.VISIBLE
         binding.btnMoreGlassView.visibility = View.GONE
         binding.btnMoreShellOverlay.visibility = View.GONE
         binding.btnMore.setBackgroundResource(R.drawable.bg_more_icon_button_clear)
@@ -127,12 +130,34 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
                 }
             }
         )
+        binding.root.doOnPreDraw { refreshLiquidGlassSurfaces() }
         updateHeaderTitle()
     }
 
     override fun onResume() {
         super.onResume()
         binding.viewPagerBookshelf.swipeEnabled = AppConfig.bottomBarLayoutMode != "sidebar"
+        binding.root.post { refreshLiquidGlassSurfaces() }
+    }
+
+    private fun refreshLiquidGlassSurfaces() {
+        val host = activity as? MainActivity ?: return
+        host.setupAuxiliaryLiquidGlassSurface(
+            liquidGlassView = binding.tabBarGlassView,
+            shellOverlay = binding.tabBarShellOverlay,
+            sourceViewGroup = binding.viewPagerBookshelf,
+            cornerRadius = UiCorner.panelRadius(requireContext()),
+            oval = false
+        )
+        host.setupAuxiliaryLiquidGlassSurface(
+            liquidGlassView = binding.tabIndicatorGlassView,
+            shellOverlay = binding.tabIndicatorOverlay,
+            sourceViewGroup = binding.viewPagerBookshelf,
+            cornerRadius = UiCorner.actionRadius(requireContext()),
+            oval = false,
+            selected = true,
+            indicator = true
+        )
     }
 
     @Synchronized
@@ -316,15 +341,25 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
         fragmentMap.entries.removeAll { it.value.groupId != newGroupId }
         adapter.notifyDataSetChanged()
         renderSecondaryGroups()
-        val targetSecondaryGroupId = BookGroup.IdAll.takeIf { it in secondaryGroupIds }
-            ?: firstSecondaryGroupId()
-        selectSecondaryGroup(targetSecondaryGroupId, smooth = false)
+        selectSecondaryGroup(defaultSecondaryGroupId(), smooth = false)
         updateHeaderTitle()
         updateSelectAllButtonVisibility()
     }
 
     private fun firstSecondaryGroupId(): Long {
         return secondaryGroupIds.firstOrNull() ?: BookGroup.IdAll
+    }
+
+    /**
+     * 启动/切换主分类时的默认二级分组：
+     * 1. 勾选了"默认显示"的分组（且当前可见，与排序无关）；
+     * 2. 否则"全部"（若未关闭）；
+     * 3. 否则第一个分组。
+     */
+    private fun defaultSecondaryGroupId(): Long {
+        val defaultId = secondaryGroups.firstOrNull { it.defaultShow }?.groupId
+        if (defaultId != null && defaultId in secondaryGroupIds) return defaultId
+        return BookGroup.IdAll.takeIf { it in secondaryGroupIds } ?: firstSecondaryGroupId()
     }
 
     fun switchToGroupId(targetGroupId: Long) {

@@ -755,8 +755,10 @@
     <string name="ui_corner_scale">圆角倍率</string>
     <string name="ui_corner_scale_summary">当前圆角倍率：%s，范围 0-3</string>
     <string name="ui_corner_scale_invalid">请输入 0 到 3 之间的数字</string>
-    <string name="ui_layout_alpha">界面布局透明度</string>
+    <string name="ui_layout_alpha">全局界面透明度</string>
     <string name="ui_layout_alpha_value">%d%%</string>
+    <string name="read_page_background_transparent">书页背景透明</string>
+    <string name="read_page_background_transparent_summary">按日间/夜间玻璃栏的透明规律处理阅读页背景图；关闭后保持阅读设置中的背景透明度，全局界面透明度仍作用于普通页面</string>
     <string name="ui_corner_search_follow">搜索栏跟随圆角</string>
     <string name="ui_corner_search_follow_summary">允许搜索栏使用全局圆角倍率</string>
     <string name="move_search_to_bookshelf">搜索入口移到书架</string>
@@ -1297,6 +1299,7 @@
     <string name="file_manage_summary">管理私有文件夹的文件</string>
     <string name="create_folder">创建文件夹</string>
     <string name="allow_drop_down_refresh">允许下拉刷新</string>
+    <string name="default_show">默认显示</string>
     <string name="text_underline">文字下划线</string>
     <string name="select_new_source">选中新增源</string>
     <string name="select_update_source">选中更新源</string>

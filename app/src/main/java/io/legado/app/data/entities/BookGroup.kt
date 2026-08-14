@@ -26,7 +26,10 @@ data class BookGroup(
     var bookSort: Int = -1,
     // 只更新已读
     @ColumnInfo(defaultValue = "0")
-    var onlyUpdateRead: Boolean = false
+    var onlyUpdateRead: Boolean = false,
+    // 默认显示（唯一勾选，书架启动时优先显示该分组，与排序无关）
+    @ColumnInfo(defaultValue = "0")
+    var defaultShow: Boolean = false
 ) : Parcelable {
 
     companion object {
@@ -82,6 +85,7 @@ data class BookGroup(
                     && other.onlyUpdateRead == onlyUpdateRead
                     && other.show == show
                     && other.order == order
+                    && other.defaultShow == defaultShow
         }
         return false
     }

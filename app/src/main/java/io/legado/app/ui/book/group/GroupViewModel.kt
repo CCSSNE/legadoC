@@ -9,6 +9,9 @@ class GroupViewModel(application: Application) : BaseViewModel(application) {
 
     fun upGroup(vararg bookGroup: BookGroup, finally: (() -> Unit)? = null) {
         execute {
+            if (bookGroup.any { it.defaultShow }) {
+                appDb.bookGroupDao.clearDefaultShow()
+            }
             appDb.bookGroupDao.update(*bookGroup)
         }.onFinally {
             finally?.invoke()
@@ -20,10 +23,14 @@ class GroupViewModel(application: Application) : BaseViewModel(application) {
         bookSort: Int,
         enableRefresh: Boolean,
         onlyUpdateRead: Boolean,
+        defaultShow: Boolean,
         cover: String?,
         finally: () -> Unit
     ) {
         execute {
+            if (defaultShow) {
+                appDb.bookGroupDao.clearDefaultShow()
+            }
             val groupId = appDb.bookGroupDao.getUnusedId()
             val bookGroup = BookGroup(
                 groupId = groupId,
@@ -32,6 +39,7 @@ class GroupViewModel(application: Application) : BaseViewModel(application) {
                 bookSort = bookSort,
                 enableRefresh = enableRefresh,
                 onlyUpdateRead = onlyUpdateRead,
+                defaultShow = defaultShow,
                 order = appDb.bookGroupDao.maxOrder.plus(1)
             )
             appDb.bookGroupDao.getByID(groupId) ?: appDb.bookDao.removeGroup(groupId)

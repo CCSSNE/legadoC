@@ -33,6 +33,7 @@ import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.image.ImageCropContract
+import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.FileUtils
@@ -127,6 +128,7 @@ class ThemeConfigFragment : PreferenceFragment(),
         upPreferenceSummary(PreferKey.bgImageN, getPrefString(PreferKey.bgImageN))
         upPreferenceSummary(PreferKey.bookInfoBgImage, getPrefString(PreferKey.bookInfoBgImage))
         upPreferenceSummary(PreferKey.bookInfoBgImageN, getPrefString(PreferKey.bookInfoBgImageN))
+        upPreferenceSummary(PreferKey.uiLayoutAlpha)
         findPreference<ColorPreference>(PreferKey.cBackground)?.let {
             it.onSaveColor = { color ->
                 if (!ColorUtils.isColorLight(color)) {
@@ -188,6 +190,11 @@ class ThemeConfigFragment : PreferenceFragment(),
         when (key) {
             PreferKey.launcherIcon -> LauncherIconHelp.changeIcon(getPrefString(key))
             PreferKey.mainTransparentStatusBar -> recreateActivities()
+            PreferKey.readPageBackgroundTransparent -> recreateActivities()
+            PreferKey.uiLayoutAlpha -> {
+                upPreferenceSummary(PreferKey.uiLayoutAlpha)
+                recreateActivities()
+            }
             PreferKey.transparentStatusBar -> recreateActivities()
             PreferKey.immNavigationBar -> recreateActivities()
             PreferKey.moveSearchToBookshelf -> postEvent(key, getPrefBoolean(key))
@@ -226,6 +233,7 @@ class ThemeConfigFragment : PreferenceFragment(),
             PreferKey.bgImageN -> selectBgAction(true)
             PreferKey.bookInfoBgImage -> selectBookInfoBgAction(false)
             PreferKey.bookInfoBgImageN -> selectBookInfoBgAction(true)
+            PreferKey.uiLayoutAlpha -> showUiLayoutAlphaDialog()
             "themeList" -> startActivity<ThemeManageActivity>()
             "theme_manage" -> startActivity<ThemeManageActivity>()
             "navigation_bar_manage" -> startActivity<NavigationBarManageActivity>()
@@ -242,6 +250,20 @@ class ThemeConfigFragment : PreferenceFragment(),
 
         }
         return super.onPreferenceTreeClick(preference)
+    }
+
+    private fun showUiLayoutAlphaDialog() {
+        NumberPickerDialog(requireContext())
+            .setTitle(getString(R.string.ui_layout_alpha))
+            .setMaxValue(100)
+            .setMinValue(0)
+            .setValue(AppConfig.uiLayoutAlpha)
+            .setCustomButton(R.string.btn_default_s) {
+                putPrefInt(PreferKey.uiLayoutAlpha, 100)
+            }
+            .show {
+                putPrefInt(PreferKey.uiLayoutAlpha, it.coerceIn(0, 100))
+            }
     }
 
     @SuppressLint("InflateParams")
@@ -384,6 +406,11 @@ class ThemeConfigFragment : PreferenceFragment(),
             } else {
                 value
             }
+
+            PreferKey.uiLayoutAlpha -> preference.summary = getString(
+                R.string.ui_layout_alpha_value,
+                AppConfig.uiLayoutAlpha
+            )
 
             else -> preference.summary = value
         }

@@ -336,7 +336,7 @@ class PageView(context: Context) : FrameLayout(context) {
                 isScroll &&
                 !ReadBookConfig.isNineBgImg &&
                 bgDrawable is BitmapDrawable
-        val bgAlpha = (ReadBookConfig.bgAlpha / 100f * 255).toInt()
+        val bgAlpha = (ReadBookConfig.effectiveBgAlpha / 100f * 255).toInt()
         val foregroundDrawable = if (followScrollBackground) {
             binding.contentTextView.setScrollFollowBackground(bgDrawable.bitmap, bgAlpha)
             null
@@ -359,7 +359,7 @@ class PageView(context: Context) : FrameLayout(context) {
      * 更新背景透明度
      */
     fun upBgAlpha() {
-        val bgAlpha = (ReadBookConfig.bgAlpha / 100f * 255).toInt()
+        val bgAlpha = (ReadBookConfig.effectiveBgAlpha / 100f * 255).toInt()
         binding.contentTextView.setScrollFollowBackgroundAlpha(bgAlpha)
         val background = binding.vwRoot.background
         if (background is LayerDrawable && background.numberOfLayers > 1) {

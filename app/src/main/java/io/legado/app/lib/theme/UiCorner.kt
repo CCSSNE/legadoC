@@ -43,14 +43,30 @@ object UiCorner {
         }
     }
 
-    fun effectMode(): String = "solid"
+    fun effectMode(): String = AppConfig.bottomBarEffectMode
 
     fun layoutAlpha(): Float {
-        return AppConfig.uiLayoutAlpha.coerceIn(0, 100) / 100f
+        val configuredAlpha = AppConfig.uiLayoutAlpha.coerceIn(0, 100) / 100f
+        val bottomBarAlpha = when {
+            AppConfig.isEInkMode -> 1f
+            AppConfig.bottomBarEffectMode == "solid" -> {
+                AppConfig.liquidGlassLevel.coerceIn(0, 100) / 100f
+            }
+            else -> {
+                val level = when (AppConfig.bottomBarEffectMode) {
+                    "frosted" -> AppConfig.frostedGlassLevel
+                    else -> AppConfig.liquidGlassLevel
+                }.coerceIn(0, 100) / 100f
+                (0.24f + level * 0.38f).coerceIn(0f, 1f)
+            }
+        }
+        return (configuredAlpha * bottomBarAlpha).coerceIn(0f, 1f)
     }
 
     fun surfaceColor(color: Int, pressed: Boolean = false): Int {
-        val alpha = (layoutAlpha() + if (pressed) 0.08f else 0f).coerceIn(0f, 1f)
+        val sourceAlpha = Color.alpha(color) / 255f
+        val alpha = (sourceAlpha * layoutAlpha() + if (pressed) 0.08f else 0f)
+            .coerceIn(0f, 1f)
         return ColorUtils.setAlphaComponent(color, (alpha * 255).toInt())
     }
 

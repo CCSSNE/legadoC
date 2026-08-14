@@ -611,7 +611,7 @@ class MoreConfigDialog : BasePrefDialogFragment() {
          */
         private fun showPageBookmarkStyleDialog() {
             val current = requireContext()
-                .getPrefInt(PreferKey.pageBookmarkStyle, 0)
+                .getPrefInt(PreferKey.pageBookmarkStyle, 1)
                 .coerceIn(0, 1)
             alert(getString(R.string.page_bookmark_style)) {
                 singleChoiceItems(

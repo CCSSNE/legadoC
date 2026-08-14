@@ -22,8 +22,17 @@ object DatabaseMigrations {
             migration_39_40, migration_40_41, migration_41_42, migration_42_43,
             migration_90_91, migration_91_92, migration_92_93, migration_93_94,
             migration_94_95, migration_95_96, migration_96_97, migration_97_98,
-            migration_98_99,
+            migration_98_99, migration_99_100,
         )
+    }
+
+    private val migration_99_100 = object : Migration(99, 100) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // 分组"默认显示"标记（书架启动时优先显示该分组，唯一勾选）
+            db.execSQL(
+                "ALTER TABLE book_groups ADD COLUMN defaultShow INTEGER NOT NULL DEFAULT 0"
+            )
+        }
     }
 
     private val migration_98_99 = object : Migration(98, 99) {

@@ -22,7 +22,9 @@ object PreferenceItemStyle {
         val itemColor = UiCorner.surfaceColor(
             ContextCompat.getColor(preference.context, R.color.background_card)
         )
-        val dividerColor = ContextCompat.getColor(preference.context, R.color.bg_divider_line)
+        val dividerColor = UiCorner.surfaceColor(
+            ContextCompat.getColor(preference.context, R.color.bg_divider_line)
+        )
         val radius = UiCorner.panelRadius(preference.context)
         val dividerInset = holder.itemView.dp(16).toFloat()
         val current = holder.itemView.background as? PreferenceGroupBackgroundDrawable

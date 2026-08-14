@@ -12,6 +12,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.applyUiTitleTypeface
 import io.legado.app.lib.theme.backgroundColor
+import io.legado.app.lib.theme.UiCorner
 import io.legado.app.utils.ColorUtils
 
 
@@ -46,13 +47,14 @@ class PreferenceCategory(context: Context, attrs: AttributeSet? = null) :
                     0.5f
                 )
             }
+            val adjustedDividerColor = UiCorner.surfaceColor(dividerColor)
             if (da is View) {
-                da.setBackgroundColor(dividerColor)
+                da.setBackgroundColor(adjustedDividerColor)
                 da.isVisible = holder.isDividerAllowedAbove
             }
             val db = holder.findViewById(R.id.preference_divider_below)
             if (db is View) {
-                db.setBackgroundColor(dividerColor)
+                db.setBackgroundColor(adjustedDividerColor)
                 db.isVisible = holder.isDividerAllowedBelow
             }
         }

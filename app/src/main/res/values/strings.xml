@@ -931,8 +931,10 @@
     <string name="ui_corner_scale">Corner radius scale</string>
     <string name="ui_corner_scale_summary">Current corner radius scale: %s, range 0-3</string>
     <string name="ui_corner_scale_invalid">Please enter a number from 0 to 3</string>
-    <string name="ui_layout_alpha">Interface layout opacity</string>
+    <string name="ui_layout_alpha">Global interface opacity</string>
     <string name="ui_layout_alpha_value">%d%%</string>
+    <string name="read_page_background_transparent">Transparent reading-page background</string>
+    <string name="read_page_background_transparent_summary">Apply the day/night glass-bar opacity to the reading-page background image. The global interface opacity still controls ordinary pages.</string>
     <string name="ui_corner_search_follow">Search bars follow corner scale</string>
     <string name="ui_corner_search_follow_summary">Allow search bars to use the global corner radius scale</string>
     <string name="move_search_to_bookshelf">Move search to bookshelf</string>
@@ -1484,6 +1486,7 @@
     <string name="allow_drop_down_refresh">Allow drop-down refresh</string>
     <string name="only_update_read">仅更新已读完</string>
     <string name="ps_only_update_read">自动刷新时，只更新已读完的书籍</string>
+    <string name="default_show">默认显示</string>
     <string name="text_underline">Text underline</string>
     <string name="select_new_source">Select new source</string>
     <string name="select_update_source">Select update source</string>

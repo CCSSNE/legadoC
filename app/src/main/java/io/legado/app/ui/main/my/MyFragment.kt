@@ -122,11 +122,9 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
     private fun applySearchBarStyle() {
         settingsSearchView.applyUiBodyTypeface(requireContext())
         val isNight = io.legado.app.help.config.AppConfig.isNightTheme
-        val searchSurfaceColor = if (isNight) {
-            ColorUtils.adjustAlpha(Color.rgb(52, 52, 56), 0.42f)
-        } else {
-            ColorUtils.adjustAlpha(Color.rgb(120, 120, 128), 0.18f)
-        }
+        val searchSurfaceColor = UiCorner.surfaceColor(
+            if (isNight) Color.rgb(52, 52, 56) else Color.rgb(120, 120, 128)
+        )
         val strokeColor = ColorUtils.adjustAlpha(primaryTextColor, if (isNight) 0.10f else 0.08f)
         settingsSearchView.background = GradientDrawable().apply {
             cornerRadius = UiCorner.searchRadius(18f)

@@ -2,6 +2,7 @@ package io.legado.app.ui.main.bookshelf.style1.books
 
 import android.annotation.SuppressLint
 import android.graphics.Rect
+import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.view.View
 import android.view.ViewConfiguration
@@ -10,6 +11,7 @@ import android.view.HapticFeedbackConstants
 import android.widget.CheckBox
 import android.widget.LinearLayout
 import androidx.activity.addCallback
+import androidx.core.content.ContextCompat
 import androidx.core.view.isGone
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
@@ -35,6 +37,7 @@ import io.legado.app.help.config.LocalConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryColor
+import io.legado.app.lib.theme.UiCorner
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.main.MainActivity
 import io.legado.app.ui.main.MainViewModel
@@ -277,6 +280,9 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     private fun initBookActionBar() = binding.run {
+        bookActionBar.background = ColorDrawable(
+            UiCorner.surfaceColor(ContextCompat.getColor(requireContext(), R.color.background_card))
+        )
         actionBookInfo.setOnClickListener {
             val selected = selectedBookList()
             selected.singleOrNull()?.let {

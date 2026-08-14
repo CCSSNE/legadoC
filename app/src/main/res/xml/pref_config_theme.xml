@@ -29,6 +29,18 @@
         app:iconSpaceReserved="false" />
 
     <io.legado.app.lib.prefs.SwitchPreference
+        android:defaultValue="true"
+        android:key="readPageBackgroundTransparent"
+        android:summary="@string/read_page_background_transparent_summary"
+        android:title="@string/read_page_background_transparent"
+        app:iconSpaceReserved="false" />
+
+    <io.legado.app.lib.prefs.Preference
+        android:key="uiLayoutAlpha"
+        android:title="@string/ui_layout_alpha"
+        app:iconSpaceReserved="false" />
+
+    <io.legado.app.lib.prefs.SwitchPreference
         android:defaultValue="false"
         android:key="moveSearchToBookshelf"
         android:summary="@string/move_search_to_bookshelf_summary"

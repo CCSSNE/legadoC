@@ -311,7 +311,7 @@
         app:isBottomBackground="true" />
 
     <io.legado.app.lib.prefs.Preference
-        android:defaultValue="0"
+        android:defaultValue="1"
         android:key="pageBookmarkStyle"
         android:summary="@string/page_bookmark_style_summary"
         android:title="@string/page_bookmark_style"

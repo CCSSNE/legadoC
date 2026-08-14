@@ -65,6 +65,10 @@ interface BookGroupDao {
     @Query("update book_groups set show = 1 where groupId = :groupId")
     fun enableGroup(groupId: Long)
 
+    /** 清除全部分组的默认显示标记（勾选唯一性） */
+    @Query("update book_groups set defaultShow = 0")
+    fun clearDefaultShow()
+
     @Query("select groupName from book_groups where groupId > 0 and (groupId & :id) > 0")
     fun getGroupNames(id: Long): List<String>
 

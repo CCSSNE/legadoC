@@ -93,8 +93,11 @@ class SearchView @JvmOverloads constructor(
         background = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = UiCorner.searchRadius(18f)
-            setColor(ContextCompat.getColor(context, R.color.background_card))
-            setStroke(1.dpToPx(), ContextCompat.getColor(context, R.color.divider))
+            setColor(UiCorner.surfaceColor(ContextCompat.getColor(context, R.color.background_card)))
+            setStroke(
+                1.dpToPx(),
+                UiCorner.surfaceColor(ContextCompat.getColor(context, R.color.divider))
+            )
         }
     }
 
