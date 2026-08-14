@@ -13,6 +13,7 @@ import io.legado.app.databinding.ItemBookshelfCollectionListBinding
 import io.legado.app.databinding.ItemBookshelfList2Binding
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
+import io.legado.app.lib.theme.UiCorner
 import io.legado.app.ui.main.bookshelf.BookCollectionShelfItem
 import io.legado.app.ui.main.bookshelf.loadCollectionCovers
 import io.legado.app.utils.invisible
@@ -58,6 +59,7 @@ class BooksAdapterList2(
         }
         if (item !is Book || binding !is ItemBookshelfList2Binding) return
         binding.run {
+            ivCover.alpha = UiCorner.floatingGroupAlpha()
             renderSelectionMark(selectionOuter, selectionDot, item, callBack)
             if (payloads.isEmpty()) {
                 tvName.text = item.name

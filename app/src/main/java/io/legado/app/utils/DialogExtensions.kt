@@ -59,45 +59,56 @@ fun AlertDialog.applyTint(): AlertDialog {
 }
 
 fun Dialog.applyDialogSurfaceBlur() {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        val radius = if (AppConfig.isEInkMode) 0 else UiCorner.dialogBlurRadius()
-        window?.let { dialogWindow ->
-            dialogWindow.setBackgroundBlurRadius(radius)
-            val attributes = dialogWindow.attributes
-            if (radius > 0) {
-                dialogWindow.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-                attributes.setBlurBehindRadius(radius)
-            } else {
-                dialogWindow.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-                attributes.setBlurBehindRadius(0)
-            }
-            dialogWindow.attributes = attributes
+    val dialogWindow = window ?: return
+    val dialogDecor = dialogWindow.decorView
+    val radius = if (AppConfig.isEInkMode) 0 else UiCorner.dialogBlurRadius()
+    val activityDecor = context.findActivity()?.window?.decorView
 
-            // 雷电当前关闭了跨窗口模糊，系统接口调用成功但画面不会变化。
-            // 用同一 Activity 的 RenderEffect 作为实际可见的回退，只处理弹窗后面的内容。
-            val activityDecor = context.findActivity()?.window?.decorView
-            if (radius > 0) {
-                activityDecor?.setRenderEffect(
-                    RenderEffect.createBlurEffect(
-                        radius.toFloat(),
-                        radius.toFloat(),
-                        Shader.TileMode.CLAMP
-                    )
+    fun applyActivityFallback() {
+        // 雷电当前关闭了跨窗口模糊，系统接口调用成功但画面不会变化。
+        // 用同一 Activity 的 RenderEffect 作为实际可见的回退，只处理弹窗后面的内容。
+        if (radius > 0) {
+            activityDecor?.setRenderEffect(
+                RenderEffect.createBlurEffect(
+                    radius.toFloat(),
+                    radius.toFloat(),
+                    Shader.TileMode.CLAMP
                 )
-            } else {
-                activityDecor?.setRenderEffect(null)
-            }
-            window?.decorView?.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
-                override fun onViewAttachedToWindow(v: View) = Unit
-
-                override fun onViewDetachedFromWindow(v: View) {
-                    v.removeOnAttachStateChangeListener(this)
-                    activityDecor?.setRenderEffect(null)
-                }
-            })
+            )
+        } else {
+            activityDecor?.setRenderEffect(null)
         }
     }
-    window?.decorView?.post { window?.decorView?.applyDialogSurfaceChildren() }
+
+    dialogDecor.post {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // DialogFragment 的 onCreateDialog 发生在 DecorView 创建前；必须等到
+            // DecorView 已经附着后再调用窗口背景模糊，否则 Android 12 的 PhoneWindow
+            // 会在内部对空 DecorView 调用 setBackgroundBlurRadius，直接杀掉进程。
+            kotlin.runCatching {
+                dialogWindow.setBackgroundBlurRadius(radius)
+                val attributes = dialogWindow.attributes
+                if (radius > 0) {
+                    dialogWindow.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                    attributes.setBlurBehindRadius(radius)
+                } else {
+                    dialogWindow.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                    attributes.setBlurBehindRadius(0)
+                }
+                dialogWindow.attributes = attributes
+            }
+        }
+        applyActivityFallback()
+        dialogDecor.applyDialogSurfaceChildren()
+    }
+    dialogDecor.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+        override fun onViewAttachedToWindow(v: View) = Unit
+
+        override fun onViewDetachedFromWindow(v: View) {
+            v.removeOnAttachStateChangeListener(this)
+            activityDecor?.setRenderEffect(null)
+        }
+    })
 }
 
 /**
@@ -113,13 +124,17 @@ fun View.applyDialogSurfaceChildren() {
     )
     val dialogMenuColor = ContextCompat.getColor(context, R.color.background_menu)
     fun rewrite(view: View) {
-        val drawableColor = (view.background as? ColorDrawable)?.color ?: return
+        val drawableColor = (view.background as? ColorDrawable)?.color
         val replacement = when {
-            view is Toolbar && drawableColor == context.primaryColor ->
+            // Toolbar 可能被 android:theme / actionBarStyle 换成主题 Drawable，
+            // 不能只依赖 ColorDrawable 颜色相等来识别；它本身就是弹窗头，
+            // 必须始终纳入弹窗表面组。
+            view is Toolbar ->
                 UiCorner.dialogSurfaceColor(dialogMenuColor)
-            view is Toolbar && drawableColor == context.primaryColorDark ->
+            drawableColor == context.primaryColor || drawableColor == context.primaryColorDark ->
                 UiCorner.dialogSurfaceColor(dialogMenuColor)
-            drawableColor in surfaceColors -> UiCorner.dialogSurfaceColor(drawableColor)
+            drawableColor != null && drawableColor in surfaceColors ->
+                UiCorner.dialogSurfaceColor(drawableColor)
             else -> return
         }
         view.background = ColorDrawable(replacement)

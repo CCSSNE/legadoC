@@ -85,7 +85,9 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
         }
         binding.tabBarGlassView.visibility = View.VISIBLE
         binding.tabBarShellOverlay.visibility = View.VISIBLE
-        binding.tabIndicatorContainer.visibility = View.VISIBLE
+        // 分组标签自身负责选中态。这里不再叠加固定在最左侧的独立指示器，
+        // 避免与标签选中背景重复绘制，导致第一项异常发白且切换后指示器错位。
+        binding.tabIndicatorContainer.visibility = View.GONE
         binding.btnMoreGlassView.visibility = View.GONE
         binding.btnMoreShellOverlay.visibility = View.GONE
         binding.btnMore.setBackgroundResource(R.drawable.bg_more_icon_button_clear)
@@ -148,15 +150,6 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
             sourceViewGroup = binding.viewPagerBookshelf,
             cornerRadius = UiCorner.panelRadius(requireContext()),
             oval = false
-        )
-        host.setupAuxiliaryLiquidGlassSurface(
-            liquidGlassView = binding.tabIndicatorGlassView,
-            shellOverlay = binding.tabIndicatorOverlay,
-            sourceViewGroup = binding.viewPagerBookshelf,
-            cornerRadius = UiCorner.actionRadius(requireContext()),
-            oval = false,
-            selected = true,
-            indicator = true
         )
     }
 

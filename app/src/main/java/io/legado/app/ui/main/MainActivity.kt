@@ -1249,6 +1249,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             else -> AppConfig.liquidGlassLevel / 100f
         }
         val frostedMode = effectMode == "frosted"
+        val configuredAlpha = (AppConfig.uiLayoutAlpha.coerceIn(0, 100) / 100f)
         val blurRadius = if (frostedMode) {
             (10f + glassLevel * 24f).dpToPx()
         } else {
@@ -1276,6 +1277,8 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         }
         liquidGlassView.isVisible = true
         shellOverlay.isVisible = true
+        liquidGlassView.alpha = configuredAlpha
+        shellOverlay.alpha = configuredAlpha
         shellOverlay.background = createLiquidGlassShellDrawable(
             glassLevel = glassLevel,
             cornerRadius = cornerRadius,
@@ -1536,6 +1539,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         touchEffectEnabled: Boolean,
         sourceViewGroup: ViewGroup = binding.contentContainer,
     ) {
+        liquidGlassView.alpha = AppConfig.uiLayoutAlpha.coerceIn(0, 100) / 100f
         if (boundLiquidGlassViews[liquidGlassView] !== sourceViewGroup) {
             liquidGlassView.bind(sourceViewGroup)
             boundLiquidGlassViews[liquidGlassView] = sourceViewGroup

@@ -154,12 +154,9 @@ class RoundedTagBarView @JvmOverloads constructor(
         override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): TagViewHolder {
             val textView = LayoutInflater.from(parent.context)
                 .inflate(R.layout.item_bookshelf_group_tag, parent, false) as TextView
-            val selectedColor = UiCorner.surfaceColor(
-                ContextCompat.getColor(parent.context, R.color.background_card)
-            )
-            textView.background = UiCorner.actionSelector(
+            textView.background = UiCorner.softActionSelector(
                 android.graphics.Color.TRANSPARENT,
-                selectedColor,
+                ContextCompat.getColor(parent.context, R.color.background_card),
                 UiCorner.actionRadius(parent.context)
             )
             textView.setTextColor(
