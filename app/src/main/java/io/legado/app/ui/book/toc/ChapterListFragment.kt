@@ -20,6 +20,7 @@ import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.book.simulatedTotalChapterNum
+import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.ui.widget.recycler.UpLinearLayoutManager
@@ -51,7 +52,9 @@ class ChapterListFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_chapt
         viewModel.chapterListCallBack = this@ChapterListFragment
         val bbg = bottomBackground
         val btc = requireContext().getPrimaryTextColor(ColorUtils.isColorLight(bbg))
-        llChapterBaseInfo.setBackgroundColor(bbg)
+        llChapterBaseInfo.setBackgroundColor(
+            UiCorner.groupColor(UiCorner.SurfaceGroup.UI, bbg)
+        )
         tvCurrentChapterInfo.setTextColor(btc)
         ivChapterTop.setColorFilter(btc, PorterDuff.Mode.SRC_IN)
         ivChapterBottom.setColorFilter(btc, PorterDuff.Mode.SRC_IN)
