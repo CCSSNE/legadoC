@@ -186,6 +186,21 @@ private fun View.findDialogBlurTarget(): View? {
     val content = findViewById<ViewGroup>(android.R.id.content)
     if (content == null) return null
 
+    // DialogFragment 的根表面通常正好填满 Dialog 自己的窗口；读书页的
+    // 听书面板就是这种结构。不能把“填满弹窗窗口”误判成整屏背景，
+    // 否则只能退回到内部的小块，结果便是只模糊一小块区域。
+    val directSurface = (0 until content.childCount)
+        .asSequence()
+        .map(content::getChildAt)
+        .firstOrNull {
+            it.isDialogSurfaceCandidate(
+                decor = this,
+                requireBackground = false,
+                allowDialogWindowFill = true
+            )
+        }
+    if (directSurface != null) return directSurface
+
     val backgroundCandidates = ArrayList<View>()
     val directCandidates = ArrayList<View>()
     fun walk(view: View, direct: Boolean) {
@@ -210,11 +225,12 @@ private fun View.findDialogBlurTarget(): View? {
 
 private fun View.isDialogSurfaceCandidate(
     decor: View,
-    requireBackground: Boolean = true
+    requireBackground: Boolean = true,
+    allowDialogWindowFill: Boolean = false
 ): Boolean {
     if (!isAttachedToWindow || width <= 0 || height <= 0) return false
     val fillsWindow = width >= decor.width * 0.98f && height >= decor.height * 0.98f
-    if (fillsWindow) return false
+    if (fillsWindow && !allowDialogWindowFill) return false
     val background = background ?: return !requireBackground
     if (background is ColorDrawable && Color.alpha(background.color) == 0) return false
     return background.alpha > 0
