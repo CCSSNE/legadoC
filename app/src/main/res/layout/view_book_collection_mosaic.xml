@@ -2,65 +2,93 @@
 <io.legado.app.ui.main.bookshelf.BookCollectionMosaicLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="@color/background_card"
-    android:baselineAligned="false"
-    android:orientation="vertical"
-    android:padding="4dp">
+    android:background="@color/background_card">
 
     <LinearLayout
-        android:id="@+id/row1"
+        android:id="@+id/cover_content"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
+        android:layout_height="match_parent"
         android:baselineAligned="false"
-        android:orientation="horizontal">
+        android:orientation="vertical"
+        android:padding="4dp">
 
-        <io.legado.app.ui.widget.image.CoverImageView
-            android:id="@+id/iv_cover1"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_margin="2dp"
+        <LinearLayout
+            android:id="@+id/row1"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
             android:layout_weight="1"
-            android:scaleType="centerCrop"
-            android:src="@drawable/image_cover_default" />
+            android:baselineAligned="false"
+            android:orientation="horizontal">
 
-        <io.legado.app.ui.widget.image.CoverImageView
-            android:id="@+id/iv_cover2"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_margin="2dp"
+            <io.legado.app.ui.widget.image.CoverImageView
+                android:id="@+id/iv_cover1"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_margin="2dp"
+                android:layout_weight="1"
+                android:scaleType="centerCrop"
+                android:src="@drawable/image_cover_default" />
+
+            <io.legado.app.ui.widget.image.CoverImageView
+                android:id="@+id/iv_cover2"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_margin="2dp"
+                android:layout_weight="1"
+                android:scaleType="centerCrop"
+                android:src="@drawable/image_cover_default" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/row2"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
             android:layout_weight="1"
-            android:scaleType="centerCrop"
-            android:src="@drawable/image_cover_default" />
+            android:baselineAligned="false"
+            android:orientation="horizontal">
+
+            <io.legado.app.ui.widget.image.CoverImageView
+                android:id="@+id/iv_cover3"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_margin="2dp"
+                android:layout_weight="1"
+                android:scaleType="centerCrop"
+                android:src="@drawable/image_cover_default" />
+
+            <io.legado.app.ui.widget.image.CoverImageView
+                android:id="@+id/iv_cover4"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_margin="2dp"
+                android:layout_weight="1"
+                android:scaleType="centerCrop"
+                android:src="@drawable/image_cover_default" />
+
+        </LinearLayout>
 
     </LinearLayout>
 
-    <LinearLayout
-        android:id="@+id/row2"
+    <View
+        android:id="@+id/vw_shadow"
+        style="@style/Style.Shadow.Bottom"
+        android:layout_gravity="bottom"
+        android:importantForAccessibility="no" />
+
+    <TextView
+        android:id="@+id/tv_collection_name"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:baselineAligned="false"
-        android:orientation="horizontal">
-
-        <io.legado.app.ui.widget.image.CoverImageView
-            android:id="@+id/iv_cover3"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_margin="2dp"
-            android:layout_weight="1"
-            android:scaleType="centerCrop"
-            android:src="@drawable/image_cover_default" />
-
-        <io.legado.app.ui.widget.image.CoverImageView
-            android:id="@+id/iv_cover4"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_margin="2dp"
-            android:layout_weight="1"
-            android:scaleType="centerCrop"
-            android:src="@drawable/image_cover_default" />
-
-    </LinearLayout>
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|start"
+        android:layout_marginStart="8dp"
+        android:layout_marginEnd="8dp"
+        android:layout_marginBottom="6dp"
+        android:ellipsize="end"
+        android:includeFontPadding="false"
+        android:maxLines="1"
+        android:textColor="@color/white"
+        android:textSize="12sp"
+        android:visibility="gone" />
 
 </io.legado.app.ui.main.bookshelf.BookCollectionMosaicLayout>

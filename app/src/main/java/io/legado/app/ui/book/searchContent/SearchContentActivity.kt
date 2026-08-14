@@ -8,6 +8,7 @@ import android.view.MenuItem
 import android.widget.EditText
 import androidx.activity.viewModels
 import androidx.appcompat.widget.SearchView
+import androidx.core.content.ContextCompat
 import androidx.core.view.allViews
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
@@ -21,11 +22,13 @@ import io.legado.app.databinding.ActivitySearchContentBinding
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.isLocal
+import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.widget.recycler.UpLinearLayoutManager
 import io.legado.app.ui.widget.recycler.VerticalDivider
 import io.legado.app.utils.applyNavigationBarMargin
 import io.legado.app.utils.applyTint
+import io.legado.app.utils.dpToPx
 import io.legado.app.utils.invisible
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.postEvent
@@ -55,7 +58,30 @@ class SearchContentActivity :
     private var initJob: Job? = null
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        binding.llSearchBaseInfo.setBackgroundResource(R.drawable.bg_search_glass_panel)
+        val panelColor = ContextCompat.getColor(this, R.color.background_menu)
+        val actionColor = UiCorner.groupColor(
+            UiCorner.SurfaceGroup.UI,
+            panelColor,
+            pressed = true
+        )
+        val strokeColor = UiCorner.effectStrokeColor(primaryTextColor)
+        binding.llSearchBaseInfo.background = UiCorner.roundedStroke(
+            panelColor,
+            UiCorner.searchRadius(18f),
+            1.dpToPx(),
+            strokeColor
+        )
+        listOf(
+            binding.tvCurrentSearchInfo,
+            binding.ivSearchContentTop,
+            binding.ivSearchContentBottom
+        ).forEach { view ->
+            view.background = UiCorner.softActionSelector(
+                android.graphics.Color.TRANSPARENT,
+                actionColor,
+                UiCorner.actionRadius(this)
+            )
+        }
         binding.llSearchBaseInfo.applyNavigationBarMargin()
         binding.tvCurrentSearchInfo.setTextColor(primaryTextColor)
         binding.ivSearchContentTop.setColorFilter(primaryTextColor)

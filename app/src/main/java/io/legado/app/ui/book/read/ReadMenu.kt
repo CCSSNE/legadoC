@@ -199,7 +199,7 @@ class ReadMenu @JvmOverloads constructor(
         tvChapterUrl.setTextColor(
             ColorUtils.withAlpha(primaryTextColor, 0.72f)
         )
-        val menuOpacity = (ReadBookConfig.durConfig.readMenuAlpha / 100f).coerceIn(0.35f, 1f)
+        val menuAlpha = ReadBookConfig.durConfig.readMenuAlpha.coerceIn(35, 100)
         val isBgLight = ColorUtils.isColorLight(bgColor)
         val headerBaseColor = ColorUtils.blendColors(
             palette.surface,
@@ -216,14 +216,30 @@ class ReadMenu @JvmOverloads constructor(
             palette.primaryColor,
             if (isBgLight) 0.18f else 0.28f
         )
-        val sheetColor = ColorUtils.withAlpha(
+        val sheetColor = UiCorner.groupColor(
+            UiCorner.SurfaceGroup.READING,
             ReadBookConfig.durConfig.curReadMenuBgColor() ?: sheetBaseColor,
-            menuOpacity
+            menuAlpha
         )
-        val headerColor = ColorUtils.withAlpha(headerBaseColor, menuOpacity)
-        val actionColor = ColorUtils.withAlpha(actionBaseColor, menuOpacity)
-        val panelStrokeColor = palette.stroke
+        val headerColor = UiCorner.groupColor(
+            UiCorner.SurfaceGroup.READING,
+            headerBaseColor,
+            menuAlpha
+        )
+        val actionColor = UiCorner.groupColor(
+            UiCorner.SurfaceGroup.READING,
+            actionBaseColor,
+            menuAlpha
+        )
+        val panelStrokeColor = UiCorner.groupColor(
+            UiCorner.SurfaceGroup.READING,
+            palette.stroke,
+            menuAlpha
+        )
         vwMenuBg.setBackgroundColor(0x00000000)
+        dividerBrightnessTop.setBackgroundColor(panelStrokeColor)
+        dividerBrightnessBottom.setBackgroundColor(panelStrokeColor)
+        dividerActionTop.setBackgroundColor(panelStrokeColor)
         if (AppConfig.isEInkMode) {
             titleBar.setBackgroundResource(R.drawable.bg_eink_border_bottom)
             titleBar.toolbar.background = null

@@ -146,28 +146,24 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     private fun initTopBar() {
         binding.root.applyStatusBarPadding()
         binding.btnMenu.setColorFilter(secondaryTextColor)
-        val isNight = AppConfig.isNightTheme
-        val searchSurfaceColor = if (isNight) {
-            ColorUtils.adjustAlpha(Color.rgb(52, 52, 56), 0.42f)
-        } else {
-            ColorUtils.adjustAlpha(Color.rgb(120, 120, 128), 0.18f)
-        }
-        val cardColor = if (isNight) {
-            ColorUtils.adjustAlpha(Color.rgb(44, 44, 46), 0.45f)
-        } else {
+        val searchSurfaceColor = UiCorner.groupColor(
+            UiCorner.SurfaceGroup.UI,
             ContextCompat.getColor(this, R.color.background_menu)
-        }
-        val chipColor = if (isNight) {
-            ColorUtils.adjustAlpha(Color.rgb(58, 58, 62), 0.32f)
-        } else {
+        )
+        val cardColor = UiCorner.groupColor(
+            UiCorner.SurfaceGroup.UI,
+            ContextCompat.getColor(this, R.color.background_menu)
+        )
+        val chipColor = UiCorner.groupColor(
+            UiCorner.SurfaceGroup.UI,
             ContextCompat.getColor(this, R.color.background_card)
-        }
-        val chipPressedColor = if (isNight) {
-            ColorUtils.adjustAlpha(Color.rgb(82, 82, 86), 0.45f)
-        } else {
-            ContextCompat.getColor(this, R.color.background_menu)
-        }
-        val strokeColor = ColorUtils.adjustAlpha(primaryTextColor, if (isNight) 0.10f else 0.08f)
+        )
+        val chipPressedColor = UiCorner.groupColor(
+            UiCorner.SurfaceGroup.UI,
+            ContextCompat.getColor(this, R.color.background_menu),
+            pressed = true
+        )
+        val strokeColor = UiCorner.effectStrokeColor(primaryTextColor)
         binding.searchView.background = GradientDrawable().apply {
             cornerRadius = UiCorner.searchRadius(18f)
             setColor(searchSurfaceColor)

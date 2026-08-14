@@ -107,6 +107,9 @@
     <dimen name="ui_panel_radius">10dp</dimen>
     <dimen name="ui_action_radius">9dp</dimen>
 
+    <!-- Bookshelf collection cover -->
+    <dimen name="book_collection_cover_corner_radius">4dp</dimen>
+
     <!-- Manga reader floating chapter control -->
     <dimen name="manga_control_outer_margin_horizontal">16dp</dimen>
     <dimen name="manga_control_outer_margin_vertical">14dp</dimen>

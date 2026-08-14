@@ -4,7 +4,7 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import androidx.core.content.ContextCompat
 import android.view.View
-import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.GradientDrawable
 import io.legado.app.R
 import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ViewBookCollectionMosaicBinding
@@ -14,16 +14,25 @@ fun ViewBookCollectionMosaicBinding.loadCollectionCovers(
     books: List<Book>,
     fragment: Fragment? = null,
     lifecycle: Lifecycle? = null,
-    dialogSurface: Boolean = false
+    dialogSurface: Boolean = false,
+    collectionName: String? = null
 ) {
     val backgroundColor = ContextCompat.getColor(root.context, R.color.background_card)
-    root.background = ColorDrawable(
-        if (dialogSurface) {
-            UiCorner.dialogSurfaceColor(backgroundColor)
-        } else {
-            UiCorner.surfaceColor(backgroundColor)
-        }
-    )
+    root.background = GradientDrawable().apply {
+        shape = GradientDrawable.RECTANGLE
+        cornerRadius = root.resources.getDimension(R.dimen.book_collection_cover_corner_radius)
+        setColor(
+            if (dialogSurface) {
+                UiCorner.dialogSurfaceColor(backgroundColor)
+            } else {
+                UiCorner.surfaceColor(backgroundColor)
+            }
+        )
+    }
+    root.clipToOutline = true
+    vwShadow.visibility = if (dialogSurface) View.GONE else View.VISIBLE
+    tvCollectionName.text = collectionName
+    tvCollectionName.visibility = if (collectionName.isNullOrBlank()) View.GONE else View.VISIBLE
     val coverAlpha = if (dialogSurface) {
         UiCorner.dialogSurfaceAlpha()
     } else {

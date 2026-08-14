@@ -32,10 +32,8 @@ import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.putPrefInt
 import io.legado.app.utils.resizeAndRecycle
-import io.legado.app.lib.theme.UiCorner
 import splitties.init.appCtx
 import java.io.File
-import kotlin.math.roundToInt
 import androidx.core.graphics.drawable.toDrawable
 
 /**
@@ -494,12 +492,13 @@ object ReadBookConfig {
     val effectiveBgAlpha: Int
         get() {
             val isImageBackground = bg is BitmapDrawable || isNineBgImg
-            val alpha = if (AppConfig.readPageBackgroundTransparent && isImageBackground) {
-                bgAlpha * UiCorner.standardBarAlpha()
+            // 书页背景图片是独立的图片组：不读取全局 UI 透明度，也不读取底栏透明度。
+            // 关闭开关时保持图片不透明；开启后只使用阅读设置中的背景透明度。
+            return if (isImageBackground && !AppConfig.readPageBackgroundTransparent) {
+                100
             } else {
-                bgAlpha.toFloat()
+                bgAlpha.coerceIn(0, 100)
             }
-            return alpha.roundToInt().coerceIn(0, 100)
         }
 
     var pageAnim: Int

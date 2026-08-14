@@ -932,6 +932,7 @@ class BookInfoActivity :
         if (AppConfig.isEInkMode) return
         binding.bgBook.setImageDrawable(
             ThemeConfig.getBookInfoBgImage(this, windowManager.windowSize)
+                ?: ThemeConfig.getBgImage(this, windowManager.windowSize)
         )
     }
 

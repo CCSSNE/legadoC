@@ -12,6 +12,12 @@ import kotlin.math.roundToInt
 
 object UiCorner {
 
+    enum class SurfaceGroup {
+        UI,
+        READING,
+        DIALOG
+    }
+
     fun scale(): Float {
         return AppConfig.uiCornerScale.coerceIn(0f, 3f)
     }
@@ -73,6 +79,39 @@ object UiCorner {
     fun floatingGroupAlpha(): Float {
         val configuredAlpha = AppConfig.uiLayoutAlpha.coerceIn(0, 100) / 100f
         return (configuredAlpha * standardBarAlpha()).coerceIn(0f, 1f)
+    }
+
+    /**
+     * 读书界面表面组：读取菜单自己的不透明度，同时沿用全局悬浮块的玻璃规律。
+     * 读书页正文背景图不经过这里，避免 UI 透明度污染图片透明度。
+     */
+    fun readingGroupAlpha(menuAlpha: Int): Float {
+        return (menuAlpha.coerceIn(0, 100) / 100f * floatingGroupAlpha())
+            .coerceIn(0f, 1f)
+    }
+
+    fun readingSurfaceColor(
+        color: Int,
+        menuAlpha: Int,
+        pressed: Boolean = false
+    ): Int {
+        val alpha = Color.alpha(color) / 255f * readingGroupAlpha(menuAlpha) +
+            if (pressed) 0.08f else 0f
+        return ColorUtils.setAlphaComponent(color, (alpha.coerceIn(0f, 1f) * 255).roundToInt())
+    }
+
+    /**
+     * 所有可调表面统一从这里分派，避免普通 UI、读书 UI、弹窗再次各写一套透明算法。
+     */
+    fun groupColor(
+        group: SurfaceGroup,
+        color: Int,
+        readingMenuAlpha: Int = 100,
+        pressed: Boolean = false
+    ): Int = when (group) {
+        SurfaceGroup.UI -> surfaceColor(color, pressed)
+        SurfaceGroup.READING -> readingSurfaceColor(color, readingMenuAlpha, pressed)
+        SurfaceGroup.DIALOG -> dialogSurfaceColor(color)
     }
 
     fun dialogSurfaceColor(color: Int): Int {

@@ -13,6 +13,7 @@ import androidx.core.view.isVisible
 import io.legado.app.R
 import io.legado.app.databinding.ViewSearchMenuBinding
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.lib.theme.Selector
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
@@ -79,6 +80,7 @@ class SearchMenu @JvmOverloads constructor(
     }
 
     private fun initView() = binding.run {
+        val menuAlpha = ReadBookConfig.durConfig.readMenuAlpha.coerceIn(35, 100)
         val isBgLight = ColorUtils.isColorLight(bgColor)
         val themeSurfaceColor = context.getCompatColor(R.color.background_menu)
         val themeCardColor = context.getCompatColor(R.color.background_card)
@@ -94,8 +96,21 @@ class SearchMenu @JvmOverloads constructor(
             if (isBgLight) 0.80f else 0.70f
         )
         bottomBackgroundList = Selector.colorBuild()
-            .setDefaultColor(panelInnerColor)
-            .setPressedColor(ColorUtils.darkenColor(panelInnerColor))
+            .setDefaultColor(
+                UiCorner.groupColor(
+                    UiCorner.SurfaceGroup.READING,
+                    panelInnerColor,
+                    menuAlpha
+                )
+            )
+            .setPressedColor(
+                UiCorner.groupColor(
+                    UiCorner.SurfaceGroup.READING,
+                    panelInnerColor,
+                    menuAlpha,
+                    pressed = true
+                )
+            )
             .create()
         val panelStrokeColor = ColorUtils.adjustAlpha(
             if (isBgLight) dividerColor else textColor,
@@ -103,13 +118,39 @@ class SearchMenu @JvmOverloads constructor(
         )
         llBottomMenu.background = GradientDrawable().apply {
             cornerRadius = UiCorner.scaledDp(18F)
-            setColor(panelBaseColor)
-            setStroke(1.dpToPx(), panelStrokeColor)
+            setColor(
+                UiCorner.groupColor(
+                    UiCorner.SurfaceGroup.READING,
+                    panelBaseColor,
+                    menuAlpha
+                )
+            )
+            setStroke(
+                1.dpToPx(),
+                UiCorner.groupColor(
+                    UiCorner.SurfaceGroup.READING,
+                    panelStrokeColor,
+                    menuAlpha
+                )
+            )
         }
         llSearchBaseInfo.background = GradientDrawable().apply {
             cornerRadius = UiCorner.searchRadius(14F)
-            setColor(panelInnerColor)
-            setStroke(1.dpToPx(), panelStrokeColor)
+            setColor(
+                UiCorner.groupColor(
+                    UiCorner.SurfaceGroup.READING,
+                    panelInnerColor,
+                    menuAlpha
+                )
+            )
+            setStroke(
+                1.dpToPx(),
+                UiCorner.groupColor(
+                    UiCorner.SurfaceGroup.READING,
+                    panelStrokeColor,
+                    menuAlpha
+                )
+            )
         }
         tvCurrentSearchInfo.setTextColor(textColor)
         llBottomBg.setBackgroundColor(android.graphics.Color.TRANSPARENT)

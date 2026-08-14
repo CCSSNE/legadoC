@@ -72,8 +72,8 @@ object ReaderSheetStyle {
                 0f, 0f,
                 0f, 0f
             )
-            setColor(palette.surface)
-            setStroke(1.dpToPx(), palette.stroke)
+            setColor(UiCorner.dialogSurfaceColor(palette.surface))
+            setStroke(1.dpToPx(), UiCorner.dialogSurfaceColor(palette.stroke))
         }
     }
 

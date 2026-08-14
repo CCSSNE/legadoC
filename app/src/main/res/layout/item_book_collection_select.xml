@@ -16,8 +16,8 @@
         android:layout_height="88dp"
         app:cardBackgroundColor="@color/background_card"
         app:cardCornerRadius="7dp"
-        app:cardElevation="3dp"
-        app:cardUseCompatPadding="true"
+        app:cardElevation="0dp"
+        app:cardUseCompatPadding="false"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">

@@ -16,6 +16,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.ui.main.bookshelf.BookCollectionShelfItem
 import io.legado.app.ui.main.bookshelf.loadCollectionCovers
+import io.legado.app.utils.gone
 import io.legado.app.utils.invisible
 import io.legado.app.utils.toTimeAgo
 import io.legado.app.utils.visible
@@ -51,9 +52,19 @@ class BooksAdapterList2(
             binding.run {
                 renderSelectionMark(selectionOuter, selectionDot, item, callBack)
                 if (isSelectionPayload(payloads)) return
-                tvName.text = item.name
+                if (AppConfig.showBookname == 1) {
+                    tvName.gone()
+                } else {
+                    tvName.visible()
+                    tvName.text = item.name
+                }
                 tvCount.text = context.getString(R.string.book_collection_count, item.count)
-                coverMosaic.loadCollectionCovers(item.previewBooks, fragment, lifecycle)
+                coverMosaic.loadCollectionCovers(
+                    item.previewBooks,
+                    fragment,
+                    lifecycle,
+                    collectionName = item.name.takeIf { AppConfig.showBookname == 1 }
+                )
             }
             return
         }

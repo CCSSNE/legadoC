@@ -3,6 +3,7 @@ package io.legado.app.ui.book.read
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.util.AttributeSet
 import android.view.LayoutInflater
 import android.view.animation.Animation
@@ -13,9 +14,11 @@ import androidx.core.view.isVisible
 import io.legado.app.R
 import io.legado.app.databinding.ViewMangaMenuBinding
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.source.getSourceType
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
+import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.uiTypeface
@@ -100,6 +103,8 @@ class MangaMenu @JvmOverloads constructor(
 
     private fun initView() = binding.run {
         initAnimation()
+        val menuAlpha = ReadBookConfig.durConfig.readMenuAlpha.coerceIn(35, 100)
+        val palette = ReaderSheetStyle.resolve(context, bgColor)
         val textColor = context.getPrimaryTextColor(ColorUtils.isColorLight(bgColor))
         val secondaryTextColor = ColorUtils.withAlpha(textColor, 0.78f)
         titleBar.setTextColor(textColor)
@@ -115,11 +120,37 @@ class MangaMenu @JvmOverloads constructor(
             llTitleInfo.background = null
             bottomMenu.setBackgroundResource(R.drawable.bg_eink_border_top)
         } else {
-            titleBar.setBackgroundColor(ColorUtils.withAlpha(bgColor, 0.75f))
+            titleBar.background = GradientDrawable().apply {
+                setColor(
+                    UiCorner.groupColor(
+                        UiCorner.SurfaceGroup.READING,
+                        palette.surface,
+                        menuAlpha
+                    )
+                )
+            }
             titleBar.toolbar.background = null
             titleBarAddition.background = null
             llTitleInfo.background = null
             bottomMenu.setBackgroundColor(Color.TRANSPARENT)
+            llMangaControlPill.background = GradientDrawable().apply {
+                cornerRadius = resources.getDimension(R.dimen.manga_control_bar_radius) * UiCorner.scale()
+                setColor(
+                    UiCorner.groupColor(
+                        UiCorner.SurfaceGroup.READING,
+                        palette.panel,
+                        menuAlpha
+                    )
+                )
+                setStroke(
+                    resources.getDimensionPixelSize(R.dimen.manga_control_bar_stroke_width),
+                    UiCorner.groupColor(
+                        UiCorner.SurfaceGroup.READING,
+                        palette.stroke,
+                        menuAlpha
+                    )
+                )
+            }
         }
         if (AppConfig.showReadTitleBarAddition) {
             titleBarAddition.visible()

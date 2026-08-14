@@ -131,6 +131,7 @@ fun Dialog.applyDialogSurfaceBlur() {
  * 只处理现有主题资源和工具栏主色，不碰图标、输入框和自定义图片背景。
  */
 fun View.applyDialogSurfaceChildren() {
+    val root = this
     val surfaceColors = setOf(
         ContextCompat.getColor(context, R.color.background),
         ContextCompat.getColor(context, R.color.background_card),
@@ -140,12 +141,15 @@ fun View.applyDialogSurfaceChildren() {
     val dialogMenuColor = ContextCompat.getColor(context, R.color.background_menu)
     val headerNames = setOf(
         "action_bar",
+        "alertTitle",
         "header",
         "title_bar",
         "toolbar",
         "tool_bar",
         "topPanel",
-        "title_template"
+        "title_template",
+        "titleDivider",
+        "titleDividerNoCustom"
     )
     fun resourceName(view: View): String? {
         return runCatching { view.resources.getResourceEntryName(view.id) }.getOrNull()
@@ -186,7 +190,6 @@ fun View.applyDialogSurfaceChildren() {
             view.forEach(::walk)
         }
     }
-    val root = this
     walk(root)
     // 部分弹窗在首帧之后才给标题栏设置主题背景；第二次扫描覆盖这些延迟赋值。
     root.post { walk(root) }

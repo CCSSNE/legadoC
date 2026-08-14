@@ -74,9 +74,17 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
         RecyclerView.ViewHolder(binding.root) {
 
         fun onBind(item: BookCollectionShelfItem) = binding.run {
-            tvName.text = item.name
+            if (AppConfig.showBookname == 1) {
+                tvName.gone()
+            } else {
+                tvName.visible()
+                tvName.text = item.name
+            }
             tvCount.text = context.getString(R.string.book_collection_count, item.count)
-            coverMosaic.loadCollectionCovers(item.previewBooks)
+            coverMosaic.loadCollectionCovers(
+                item.previewBooks,
+                collectionName = item.name.takeIf { AppConfig.showBookname == 1 }
+            )
         }
 
         fun registerListener(item: Any) {
