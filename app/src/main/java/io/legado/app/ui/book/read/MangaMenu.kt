@@ -34,6 +34,8 @@ import io.legado.app.utils.applyNavigationBarPadding
 import io.legado.app.utils.gone
 import io.legado.app.utils.invisible
 import io.legado.app.utils.loadAnimation
+import io.legado.app.utils.LocalPopupBlur
+import io.legado.app.utils.findHostWindow
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.visible
@@ -67,6 +69,7 @@ class MangaMenu @JvmOverloads constructor(
         }
 
         override fun onAnimationEnd(animation: Animation) {
+            clearMenuBlur()
             this@MangaMenu.invisible()
             binding.titleBar.invisible()
             binding.bottomMenu.invisible()
@@ -90,6 +93,7 @@ class MangaMenu @JvmOverloads constructor(
             binding.run {
                 vwMenuBg.setOnClickListener { runMenuOut() }
             }
+            applyMenuBlur()
         }
 
         override fun onAnimationRepeat(animation: Animation) = Unit
@@ -103,6 +107,7 @@ class MangaMenu @JvmOverloads constructor(
     }
 
     private fun initView() = binding.run {
+        clearMenuBlur()
         initAnimation()
         val menuAlpha = ReadBookConfig.durConfig.readMenuAlpha.coerceIn(35, 100)
         val palette = ReaderSheetStyle.resolve(context, bgColor)
@@ -115,13 +120,16 @@ class MangaMenu @JvmOverloads constructor(
         tvPre.setTextColor(textColor)
         tvNext.setTextColor(textColor)
         if (AppConfig.isEInkMode) {
+            titleBlurSurface.background = null
+            bottomBlurSurface.background = null
             titleBar.setBackgroundResource(R.drawable.bg_eink_border_bottom)
             titleBar.toolbar.background = null
             titleBarAddition.background = null
             llTitleInfo.background = null
             bottomMenu.setBackgroundResource(R.drawable.bg_eink_border_top)
         } else {
-            titleBar.background = GradientDrawable().apply {
+            // 标题栏底色独立放在按钮下面，避免把右上角操作按钮纳入模糊区域。
+            titleBlurSurface.background = GradientDrawable().apply {
                 setColor(
                     UiCorner.groupColor(
                         UiCorner.SurfaceGroup.READING,
@@ -130,11 +138,7 @@ class MangaMenu @JvmOverloads constructor(
                     )
                 )
             }
-            titleBar.toolbar.background = null
-            titleBarAddition.background = null
-            llTitleInfo.background = null
-            bottomMenu.setBackgroundColor(Color.TRANSPARENT)
-            llMangaControlPill.background = GradientDrawable().apply {
+            bottomBlurSurface.background = GradientDrawable().apply {
                 cornerRadius = resources.getDimension(R.dimen.manga_control_bar_radius) * UiCorner.scale()
                 setColor(
                     UiCorner.groupColor(
@@ -152,6 +156,12 @@ class MangaMenu @JvmOverloads constructor(
                     )
                 )
             }
+            titleBar.background = null
+            titleBar.toolbar.background = null
+            titleBarAddition.background = null
+            llTitleInfo.background = null
+            bottomMenu.setBackgroundColor(Color.TRANSPARENT)
+            llMangaControlPill.background = null
         }
         if (AppConfig.showReadTitleBarAddition) {
             titleBarAddition.visible()
@@ -195,6 +205,19 @@ class MangaMenu @JvmOverloads constructor(
             menuInListener.onAnimationStart(menuBottomIn)
             menuInListener.onAnimationEnd(menuBottomIn)
         }
+    }
+
+    private fun applyMenuBlur() {
+        val hostWindow = context.findHostWindow() ?: return
+        LocalPopupBlur.apply(
+            hostWindow = hostWindow,
+            targets = listOf(binding.titleBlurSurface, binding.bottomBlurSurface),
+            captureOwner = this
+        )
+    }
+
+    private fun clearMenuBlur() {
+        LocalPopupBlur.clear(listOf(binding.titleBlurSurface, binding.bottomBlurSurface))
     }
 
 

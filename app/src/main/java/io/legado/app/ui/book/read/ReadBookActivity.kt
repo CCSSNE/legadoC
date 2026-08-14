@@ -133,6 +133,7 @@ import io.legado.app.utils.hexString
 import io.legado.app.utils.iconItemOnLongClick
 import io.legado.app.utils.invisible
 import io.legado.app.utils.isAbsUrl
+import io.legado.app.utils.applyLocalPopupBlur
 import io.legado.app.utils.isTrue
 import io.legado.app.utils.launch
 import io.legado.app.utils.navigationBarGravity
@@ -474,7 +475,9 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
         menu.findItem(R.id.menu_same_title_removed)?.isChecked =
             ReadBook.curTextChapter?.sameTitleRemoved == true
-        return super.onMenuOpened(featureId, menu)
+        return super.onMenuOpened(featureId, menu).also {
+            menu.applyLocalPopupBlur(window)
+        }
     }
 
     /**

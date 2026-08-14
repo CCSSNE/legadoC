@@ -26,12 +26,15 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.ItemTextBinding
 import io.legado.app.databinding.PopupActionMenuBinding
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
+import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.getPrefStringSet
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.gone
+import io.legado.app.utils.LocalPopupBlur
+import io.legado.app.utils.findHostWindow
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.sendToClip
@@ -101,6 +104,7 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
         binding.recyclerView.adapter = adapter
         binding.recyclerViewMore.adapter = adapter
         setOnDismissListener {
+            LocalPopupBlur.clear(contentView)
             if (!context.getPrefBoolean(PreferKey.expandTextMenu)) {
                 binding.ivMenuMore.setImageResource(R.drawable.ic_more_vert)
                 binding.recyclerViewMore.gone()
@@ -203,6 +207,15 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
             binding.recyclerView.removeAllViews()
             binding.recyclerViewMore.removeAllViews()
             showAtLocation(view, Gravity.TOP or Gravity.START, x, y)
+        }
+        contentView.post {
+            context.findHostWindow()?.let { hostWindow ->
+                LocalPopupBlur.apply(
+                    hostWindow,
+                    listOf(contentView),
+                    popupSurfaceAlpha = UiCorner.dialogSurfaceAlpha()
+                )
+            }
         }
     }
 

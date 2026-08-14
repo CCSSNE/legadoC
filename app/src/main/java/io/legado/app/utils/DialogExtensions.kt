@@ -4,18 +4,9 @@ import android.app.Activity
 import android.app.Dialog
 import android.content.Context
 import android.content.ContextWrapper
-import android.graphics.Bitmap
-import android.graphics.Color
-import android.graphics.Rect
 import android.graphics.drawable.ColorDrawable
-import android.graphics.drawable.BitmapDrawable
-import android.graphics.drawable.Drawable
-import android.graphics.drawable.LayerDrawable
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import android.view.Gravity
-import android.view.PixelCopy
 import android.view.View
 import android.view.ViewGroup
 import android.view.Window
@@ -101,36 +92,16 @@ fun Dialog.applyDialogSurfaceBlur() {
     dialogDecor.post {
         clearWindowDim()
         val blurTarget = dialogDecor.findDialogBlurTarget()
-        val hostDecor = activityWindow?.decorView
-        val fullWindow = activityWindow != null && hostDecor != null &&
-            dialogDecor.width >= hostDecor.width * 0.98f &&
-            dialogDecor.height >= hostDecor.height * 0.98f
-        val targetIsFullWindow = blurTarget == dialogDecor ||
-            (blurTarget.width >= dialogDecor.width * 0.98f &&
-                blurTarget.height >= dialogDecor.height * 0.98f)
-        val canUseNativeBlur = !fullWindow || targetIsFullWindow
-        val crossWindowBlurEnabled = Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
-            context.getSystemService(WindowManager::class.java)?.isCrossWindowBlurEnabled == true
 
         if (radius <= 0) {
             clearWindowBlur()
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-            canUseNativeBlur && crossWindowBlurEnabled
-        ) {
-            // Android 的窗口模糊只作用于这个弹窗窗口的边界，不再触碰宿主 Activity。
-            kotlin.runCatching {
-                dialogWindow.setBackgroundBlurRadius(radius)
-                val attributes = dialogWindow.attributes
-                dialogWindow.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-                attributes.setBlurBehindRadius(radius)
-                dialogWindow.attributes = attributes
-            }
         } else {
-            // 设备关闭跨窗口模糊时，只复制弹窗目标区域并做局部位图模糊。
-            // 绝不能再给 activityDecor 设置 RenderEffect，否则会把整页一起模糊。
+            // 不使用窗口级 setBackgroundBlurRadius/FLAG_BLUR_BEHIND。
+            // 这两条系统路径在当前模拟器上会把宿主阅读页整块模糊，
+            // 弹窗范围越大，越容易表现成“全局模糊”。统一只复制弹窗目标区域。
             clearWindowBlur()
             activityWindow?.let { hostWindow ->
-                dialogDecor.applyDialogBitmapBlur(hostWindow, blurTarget, radius)
+                LocalPopupBlur.apply(hostWindow, listOf(blurTarget), radius = radius)
             }
         }
         dialogDecor.applyDialogSurfaceChildren()
@@ -145,174 +116,6 @@ private fun View.findDialogBlurTarget(): View {
         return content.getChildAt(0)
     }
     return content ?: this
-}
-
-private fun View.applyDialogBitmapBlur(hostWindow: Window, target: View, radius: Int) {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || radius <= 0) return
-    if (!isAttachedToWindow || !target.isAttachedToWindow || width <= 0 || height <= 0) return
-    val hostDecor = hostWindow.decorView
-    if (hostDecor.width <= 0 || hostDecor.height <= 0) return
-
-    val targetLocation = IntArray(2)
-    val hostLocation = IntArray(2)
-    target.getLocationOnScreen(targetLocation)
-    hostDecor.getLocationOnScreen(hostLocation)
-    val left = (targetLocation[0] - hostLocation[0]).coerceIn(0, hostDecor.width - 1)
-    val top = (targetLocation[1] - hostLocation[1]).coerceIn(0, hostDecor.height - 1)
-    val right = (left + target.width).coerceAtMost(hostDecor.width)
-    val bottom = (top + target.height).coerceAtMost(hostDecor.height)
-    if (right <= left || bottom <= top) return
-
-    fun request(attempt: Int) {
-        if (attempt > 2 || !isAttachedToWindow || !target.isAttachedToWindow) return
-        val sourceRect = Rect(left, top, right, bottom)
-        val sourceBitmap = Bitmap.createBitmap(
-            sourceRect.width(),
-            sourceRect.height(),
-            Bitmap.Config.ARGB_8888
-        )
-        try {
-            PixelCopy.request(
-                hostWindow,
-                sourceRect,
-                sourceBitmap,
-                { result ->
-                    if (result == PixelCopy.SUCCESS) {
-                        applyDialogBlurLayer(target, blurBitmap(sourceBitmap, radius))
-                        sourceBitmap.recycle()
-                    } else {
-                        sourceBitmap.recycle()
-                        postDelayed({ request(attempt + 1) }, 60L)
-                    }
-                },
-                Handler(Looper.getMainLooper())
-            )
-        } catch (_: IllegalArgumentException) {
-            sourceBitmap.recycle()
-        }
-    }
-    request(0)
-}
-
-private fun applyDialogBlurLayer(target: View, blurredBitmap: Bitmap) {
-    val originalBackground = target.background
-    val blurredDrawable = BitmapDrawable(target.resources, blurredBitmap).apply {
-        gravity = Gravity.FILL
-        isFilterBitmap = true
-    }
-    val layers = if (originalBackground != null) {
-        arrayOf<Drawable>(blurredDrawable, originalBackground)
-    } else {
-        arrayOf<Drawable>(blurredDrawable)
-    }
-    val appliedBackground = LayerDrawable(layers)
-    target.background = appliedBackground
-    target.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
-        override fun onViewAttachedToWindow(v: View) = Unit
-
-        override fun onViewDetachedFromWindow(v: View) {
-            v.removeOnAttachStateChangeListener(this)
-            if (v.background === appliedBackground) {
-                v.background = originalBackground
-            }
-            if (!blurredBitmap.isRecycled) blurredBitmap.recycle()
-        }
-    })
-}
-
-private fun blurBitmap(source: Bitmap, radius: Int): Bitmap {
-    val sample = 4
-    val smallWidth = (source.width / sample).coerceAtLeast(1)
-    val smallHeight = (source.height / sample).coerceAtLeast(1)
-    val small = Bitmap.createScaledBitmap(source, smallWidth, smallHeight, true)
-    val pixels = IntArray(smallWidth * smallHeight)
-    val buffer = IntArray(pixels.size)
-    small.getPixels(pixels, 0, smallWidth, 0, 0, smallWidth, smallHeight)
-    val blurRadius = (radius / sample).coerceIn(1, 24)
-    repeat(3) {
-        blurHorizontal(pixels, buffer, smallWidth, smallHeight, blurRadius)
-        blurVertical(buffer, pixels, smallWidth, smallHeight, blurRadius)
-    }
-    val blurredSmall = Bitmap.createBitmap(smallWidth, smallHeight, Bitmap.Config.ARGB_8888)
-    blurredSmall.setPixels(pixels, 0, smallWidth, 0, 0, smallWidth, smallHeight)
-    if (small !== source && !small.isRecycled) small.recycle()
-    val result = Bitmap.createScaledBitmap(blurredSmall, source.width, source.height, true)
-    if (result !== blurredSmall && !blurredSmall.isRecycled) blurredSmall.recycle()
-    return result
-}
-
-private fun blurHorizontal(
-    source: IntArray,
-    target: IntArray,
-    width: Int,
-    height: Int,
-    radius: Int
-) {
-    val window = radius * 2 + 1
-    for (y in 0 until height) {
-        var alpha = 0
-        var red = 0
-        var green = 0
-        var blue = 0
-        for (offset in -radius..radius) {
-            val color = source[y * width + offset.coerceIn(0, width - 1)]
-            alpha += Color.alpha(color)
-            red += Color.red(color)
-            green += Color.green(color)
-            blue += Color.blue(color)
-        }
-        for (x in 0 until width) {
-            target[y * width + x] = Color.argb(
-                alpha / window,
-                red / window,
-                green / window,
-                blue / window
-            )
-            val removeColor = source[y * width + (x - radius).coerceIn(0, width - 1)]
-            val addColor = source[y * width + (x + radius + 1).coerceIn(0, width - 1)]
-            alpha += Color.alpha(addColor) - Color.alpha(removeColor)
-            red += Color.red(addColor) - Color.red(removeColor)
-            green += Color.green(addColor) - Color.green(removeColor)
-            blue += Color.blue(addColor) - Color.blue(removeColor)
-        }
-    }
-}
-
-private fun blurVertical(
-    source: IntArray,
-    target: IntArray,
-    width: Int,
-    height: Int,
-    radius: Int
-) {
-    val window = radius * 2 + 1
-    for (x in 0 until width) {
-        var alpha = 0
-        var red = 0
-        var green = 0
-        var blue = 0
-        for (offset in -radius..radius) {
-            val color = source[offset.coerceIn(0, height - 1) * width + x]
-            alpha += Color.alpha(color)
-            red += Color.red(color)
-            green += Color.green(color)
-            blue += Color.blue(color)
-        }
-        for (y in 0 until height) {
-            target[y * width + x] = Color.argb(
-                alpha / window,
-                red / window,
-                green / window,
-                blue / window
-            )
-            val removeColor = source[(y - radius).coerceIn(0, height - 1) * width + x]
-            val addColor = source[(y + radius + 1).coerceIn(0, height - 1) * width + x]
-            alpha += Color.alpha(addColor) - Color.alpha(removeColor)
-            red += Color.red(addColor) - Color.red(removeColor)
-            green += Color.green(addColor) - Color.green(removeColor)
-            blue += Color.blue(addColor) - Color.blue(removeColor)
-        }
-    }
 }
 
 /**

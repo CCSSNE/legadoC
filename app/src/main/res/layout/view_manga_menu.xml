@@ -15,6 +15,28 @@
         tools:layout_editor_absoluteX="0dp"
         tools:layout_editor_absoluteY="0dp" />
 
+    <View
+        android:id="@+id/title_blur_surface"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintBottom_toBottomOf="@id/title_bar"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <View
+        android:id="@+id/bottom_blur_surface"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginStart="@dimen/manga_control_outer_margin_horizontal"
+        android:layout_marginTop="@dimen/manga_control_outer_margin_vertical"
+        android:layout_marginEnd="@dimen/manga_control_outer_margin_horizontal"
+        android:layout_marginBottom="@dimen/manga_control_outer_margin_vertical"
+        app:layout_constraintBottom_toBottomOf="@id/bottom_menu"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="@id/bottom_menu" />
+
     <io.legado.app.ui.widget.TitleBar
         android:id="@+id/title_bar"
         android:layout_width="0dp"

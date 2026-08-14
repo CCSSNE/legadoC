@@ -177,5 +177,11 @@ $apk='D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_<版本>.ap
 ## 十四、弹窗模糊规则
 
 1. **禁止全局模糊宿主 Activity**：弹窗模糊不能把 `RenderEffect` 设置到宿主 Activity 的 `decorView`，否则会把整页壁纸和主页 UI 一起模糊。
-2. **优先使用窗口范围模糊**：Android 12 及以上且设备开启跨窗口模糊时，使用弹窗 Window 的 `setBackgroundBlurRadius` / `FLAG_BLUR_BEHIND`，其作用范围由弹窗窗口边界决定。
-3. **关闭跨窗口模糊时使用局部回退**：只用 `PixelCopy` 复制弹窗实际目标区域（普通弹窗、底部弹层或 `vw_bg`），缩小后做位图模糊，再作为该目标区域的背景层；不得退回 Activity 全屏 `RenderEffect`。弹窗窗口本身是全屏时，必须关闭全屏窗口模糊，只对识别出的弹窗面板回退。
+2. **统一使用目标区域模糊**：不使用 `setBackgroundBlurRadius` / `FLAG_BLUR_BEHIND`，因为全屏或大范围宿主窗口在当前设备上会把阅读页整体模糊并改变亮度。
+3. **只复制弹窗目标区域**：使用 `PixelCopy` 复制弹窗实际目标区域（普通弹窗、底部弹层、`vw_bg` 或 PopupWindow 内容），缩小后做位图模糊，再作为该目标区域的背景层；不得退回 Activity 全屏 `RenderEffect`。
+
+## 十五、阅读页菜单模糊规则
+
+1. 阅读主菜单、漫画菜单、搜索菜单属于宿主 Activity 内部的同窗口浮层，不会经过 Dialog 的模糊入口；必须由 `LocalPopupBlur` 在菜单动画结束后只暂时隐藏纯背景层，使用 PixelCopy 复制各自面板矩形，再把模糊图只铺回背景层。禁止隐藏菜单根节点或包含操作控件的容器，否则会产生抽动。
+2. 听书菜单属于底部 Dialog；阅读页右上角更多菜单和 PopupMenu 属于独立 PopupWindow，分别走 Dialog 局部模糊和 PopupWindow 内容区域局部模糊，禁止对阅读页根节点设置 RenderEffect。
+3. 浮层关闭、重新显示或切换主题时必须清理旧的位图背景和生命周期监听，不能把上一帧模糊图层叠加到下一次显示。

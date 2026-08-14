@@ -49,6 +49,8 @@ import io.legado.app.utils.invisible
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isDataUrl
 import io.legado.app.utils.loadAnimation
+import io.legado.app.utils.LocalPopupBlur
+import io.legado.app.utils.findHostWindow
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.showPopupMenu
@@ -120,6 +122,7 @@ class ReadMenu @JvmOverloads constructor(
         @SuppressLint("RtlHardcoded")
         override fun onAnimationEnd(animation: Animation) {
             binding.vwMenuBg.setOnClickListener { runMenuOut() }
+            applyMenuBlur()
             callBack.onReadMenuAvoidanceChanged(true)
             callBack.upSystemUiVisibility()
         }
@@ -133,6 +136,7 @@ class ReadMenu @JvmOverloads constructor(
         }
 
         override fun onAnimationEnd(animation: Animation) {
+            clearMenuBlur()
             this@ReadMenu.invisible()
             binding.titleBar.invisible()
             binding.bottomMenu.invisible()
@@ -179,6 +183,7 @@ class ReadMenu @JvmOverloads constructor(
     }
 
     private fun initView(reset: Boolean = false) = binding.run {
+        clearMenuBlur()
         if (AppConfig.isNightTheme) {
             tvQuickNightThemeLabel.text = context.getString(R.string.theme_day)
             fabNightTheme.contentDescription = context.getString(R.string.theme_day)
@@ -241,6 +246,8 @@ class ReadMenu @JvmOverloads constructor(
         dividerBrightnessBottom.setBackgroundColor(panelStrokeColor)
         dividerActionTop.setBackgroundColor(panelStrokeColor)
         if (AppConfig.isEInkMode) {
+            titleBlurSurface.background = null
+            bottomBlurSurface.background = null
             titleBar.setBackgroundResource(R.drawable.bg_eink_border_bottom)
             titleBar.toolbar.background = null
             titleBarAddition.background = null
@@ -249,17 +256,20 @@ class ReadMenu @JvmOverloads constructor(
             bottomMenu.background = null
             llBottomBg.setBackgroundResource(R.drawable.bg_eink_border_top)
         } else {
-            titleBar.background = createFillDrawable(headerColor)
-            titleBar.toolbar.background = null
-            titleBarAddition.background = null
-            llTitleInfo.background = null
-            bottomMenu.background = null
-            llBottomBg.background = createPanelDrawable(
+            // 标题栏底色独立放在按钮下面，避免把右上角的“更多”按钮纳入模糊区域。
+            titleBlurSurface.background = createFillDrawable(headerColor)
+            bottomBlurSurface.background = createPanelDrawable(
                 UiCorner.panelRadius(context),
                 sheetColor,
                 panelStrokeColor,
                 topOnly = true
             )
+            titleBar.background = null
+            titleBar.toolbar.background = null
+            titleBarAddition.background = null
+            llTitleInfo.background = null
+            bottomMenu.background = null
+            llBottomBg.background = null
             quickActionBarContainer.background = null
             llFloatingButton.background = null
             llBrightness.background = null
@@ -478,6 +488,19 @@ class ReadMenu @JvmOverloads constructor(
                 menuOutListener.onAnimationEnd(menuBottomOut)
             }
         }
+    }
+
+    private fun applyMenuBlur() {
+        val hostWindow = context.findHostWindow() ?: return
+        LocalPopupBlur.apply(
+            hostWindow = hostWindow,
+            targets = listOf(binding.titleBlurSurface, binding.bottomBlurSurface),
+            captureOwner = this
+        )
+    }
+
+    private fun clearMenuBlur() {
+        LocalPopupBlur.clear(listOf(binding.titleBlurSurface, binding.bottomBlurSurface))
     }
 
     private fun brightnessAuto(): Boolean {

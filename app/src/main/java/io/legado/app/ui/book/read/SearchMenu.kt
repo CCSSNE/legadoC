@@ -30,6 +30,8 @@ import io.legado.app.utils.dpToPx
 import io.legado.app.utils.getCompatColor
 import io.legado.app.utils.invisible
 import io.legado.app.utils.loadAnimation
+import io.legado.app.utils.LocalPopupBlur
+import io.legado.app.utils.findHostWindow
 import io.legado.app.utils.visible
 
 /**
@@ -80,6 +82,7 @@ class SearchMenu @JvmOverloads constructor(
     }
 
     private fun initView() = binding.run {
+        clearMenuBlur()
         val menuAlpha = ReadBookConfig.durConfig.readMenuAlpha.coerceIn(35, 100)
         val isBgLight = ColorUtils.isColorLight(bgColor)
         val themeSurfaceColor = context.getCompatColor(R.color.background_menu)
@@ -175,6 +178,19 @@ class SearchMenu @JvmOverloads constructor(
         binding.llBottomMenu.visible()
         binding.vwMenuBg.visible()
         binding.llBottomMenu.startAnimation(menuBottomIn)
+    }
+
+    private fun applyMenuBlur() {
+        val hostWindow = context.findHostWindow() ?: return
+        LocalPopupBlur.apply(
+            hostWindow = hostWindow,
+            targets = listOf(binding.llBottomMenu, binding.fabLeft, binding.fabRight),
+            captureOwner = this
+        )
+    }
+
+    private fun clearMenuBlur() {
+        LocalPopupBlur.clear(listOf(binding.llBottomMenu, binding.fabLeft, binding.fabRight))
     }
 
     fun runMenuOut(onMenuOutEnd: (() -> Unit)? = null) {
@@ -273,6 +289,7 @@ class SearchMenu @JvmOverloads constructor(
             @SuppressLint("RtlHardcoded")
             override fun onAnimationEnd(animation: Animation) {
                 binding.vwMenuBg.setOnClickListener { runMenuOut() }
+                applyMenuBlur()
                 callBack.upSystemUiVisibility()
             }
 
@@ -287,6 +304,7 @@ class SearchMenu @JvmOverloads constructor(
             }
 
             override fun onAnimationEnd(animation: Animation) {
+                clearMenuBlur()
                 isMenuOutAnimating = false
                 binding.llBottomMenu.invisible()
                 binding.vwMenuBg.invisible()

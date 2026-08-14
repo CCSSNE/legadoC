@@ -38,7 +38,8 @@ fun View.showPopupMenu(
     actions: List<PopupMenuAction>
 ): Boolean {
     if (actions.isEmpty()) return false
-    PopupMenu(context, this).apply {
+    val popup = PopupMenu(context, this)
+    popup.apply {
         actions.forEachIndexed { index, action ->
             menu.add(Menu.NONE, index, index, action.title).apply {
                 action.iconRes?.let(::setIcon)
@@ -51,6 +52,7 @@ fun View.showPopupMenu(
         }
         show()
         showScrollIndicators()
+        context.findHostWindow()?.let { hostWindow -> popup.applyLocalPopupBlur(hostWindow) }
     }
     return true
 }
@@ -60,13 +62,15 @@ fun View.showPopupMenu(
     prepare: (Menu.() -> Unit)? = null,
     onClick: (MenuItem) -> Boolean
 ): Boolean {
-    PopupMenu(context, this).apply {
+    val popup = PopupMenu(context, this)
+    popup.apply {
         inflate(menuRes)
         prepare?.invoke(menu)
         menu.applyUiMenuStyle(context)
         setOnMenuItemClickListener(onClick)
         show()
         showScrollIndicators()
+        context.findHostWindow()?.let { hostWindow -> popup.applyLocalPopupBlur(hostWindow) }
     }
     return true
 }

@@ -54,6 +54,7 @@ class ReadAloudDialog : BaseDialogFragment(R.layout.dialog_read_aloud),
                 binding.rootView
             )
         }
+        dialog?.applyDialogSurfaceBlur()
     }
 
     override fun onDismiss(dialog: DialogInterface) {
