@@ -5,6 +5,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import androidx.core.content.ContextCompat
 import androidx.core.view.isGone
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -17,6 +18,7 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.DialogBookGroupSelectBinding
 import io.legado.app.databinding.ItemBookGroupSelectBinding
+import io.legado.app.lib.theme.UiCorner
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.toastOnUi
@@ -52,7 +54,10 @@ class BookGroupSelectDialog() : BaseDialogFragment(R.layout.dialog_book_group_se
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        view.setBackgroundResource(R.drawable.bg_book_collection_sheet)
+        view.background = UiCorner.dialogTopRounded(
+            ContextCompat.getColor(requireContext(), R.color.background_card),
+            UiCorner.scaledDp(24f)
+        )
         binding.btnClose.setOnClickListener {
             dismissAllowingStateLoss()
         }

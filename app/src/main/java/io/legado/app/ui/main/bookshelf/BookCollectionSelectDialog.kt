@@ -6,6 +6,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import androidx.core.content.ContextCompat
 import android.widget.EditText
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.ItemTouchHelper
@@ -21,6 +22,7 @@ import io.legado.app.data.entities.BookCollectionWithItems
 import io.legado.app.databinding.DialogBookCollectionSelectBinding
 import io.legado.app.databinding.ItemBookCollectionSelectBinding
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.theme.UiCorner
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.toastOnUi
@@ -87,7 +89,10 @@ class BookCollectionSelectDialog() : BaseDialogFragment(R.layout.dialog_book_col
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        view.setBackgroundResource(R.drawable.bg_book_collection_sheet)
+        view.background = UiCorner.dialogTopRounded(
+            ContextCompat.getColor(requireContext(), R.color.background_card),
+            UiCorner.scaledDp(24f)
+        )
         binding.btnClose.setOnClickListener {
             dismissAllowingStateLoss()
         }
@@ -232,6 +237,11 @@ class BookCollectionSelectDialog() : BaseDialogFragment(R.layout.dialog_book_col
             tvCount.text = context.getString(
                 R.string.book_collection_count,
                 source.books.size + source.childCollections.size
+            )
+            coverCard.setCardBackgroundColor(
+                UiCorner.dialogSurfaceColor(
+                    ContextCompat.getColor(context, R.color.background_card)
+                )
             )
             coverMosaic.loadCollectionCovers(item.previewBooks, this@BookCollectionSelectDialog, lifecycle)
         }

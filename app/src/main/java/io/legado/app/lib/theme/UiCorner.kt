@@ -126,6 +126,19 @@ object UiCorner {
         return opaqueRounded(dialogSurfaceColor(color), radius)
     }
 
+    fun dialogTopRounded(color: Int, radius: Float): GradientDrawable {
+        return GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadii = floatArrayOf(
+                radius, radius,
+                radius, radius,
+                0f, 0f,
+                0f, 0f
+            )
+            setColor(dialogSurfaceColor(color))
+        }
+    }
+
     fun roundedStroke(color: Int, radius: Float, strokeWidth: Int, strokeColor: Int): GradientDrawable {
         return rounded(color, radius).apply {
             setStroke(strokeWidth, strokeColor)

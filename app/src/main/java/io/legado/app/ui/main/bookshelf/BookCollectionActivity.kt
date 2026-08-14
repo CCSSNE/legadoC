@@ -2,12 +2,14 @@ package io.legado.app.ui.main.bookshelf
 
 import android.content.Intent
 import android.os.Bundle
+import android.graphics.drawable.ColorDrawable
 import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.ViewGroup
 import android.widget.CheckBox
 import android.widget.LinearLayout
 import androidx.activity.addCallback
+import androidx.core.content.ContextCompat
 import androidx.core.view.isGone
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
@@ -25,6 +27,7 @@ import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.theme.UiCorner
 import io.legado.app.model.SourceCallBack
 import io.legado.app.model.localBook.LocalBook
 import io.legado.app.ui.book.info.BookInfoActivity
@@ -76,6 +79,9 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
     )
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
+        binding.bookActionBar.background = ColorDrawable(
+            UiCorner.surfaceColor(ContextCompat.getColor(this, R.color.background_card))
+        )
         val spanCount = AppConfig.bookshelfLayout.takeIf { it >= 2 } ?: 3
         binding.rvBooks.layoutManager = GridLayoutManager(this, spanCount)
         binding.rvBooks.clipToPadding = false
