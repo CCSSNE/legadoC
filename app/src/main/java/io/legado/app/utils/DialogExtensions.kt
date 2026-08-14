@@ -5,6 +5,7 @@ import android.app.Dialog
 import android.content.Context
 import android.content.ContextWrapper
 import android.graphics.Color
+import android.graphics.Rect
 import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.view.Gravity
@@ -118,7 +119,11 @@ fun Dialog.applyDialogSurfaceBlur() {
 
     hideWindowForPreparation()
 
-    fun prepare(attempt: Int) {
+    fun prepare(
+        attempt: Int,
+        previousTarget: View? = null,
+        previousBounds: Rect? = null
+    ) {
         dialogDecor.post {
             if (dialogBlurGenerations[dialogWindow] != generation) return@post
             clearWindowDim()
@@ -143,12 +148,29 @@ fun Dialog.applyDialogSurfaceBlur() {
                     revealWindow()
                 }
             } else {
-                LocalPopupBlur.apply(
-                    activityWindow,
-                    listOfNotNull(blurTarget),
-                    radius = radius,
-                    onReady = ::revealWindow
-                )
+                val targetBounds = blurTarget.screenBounds()
+                if (targetBounds == null) {
+                    revealWindow()
+                } else if (previousTarget !== blurTarget || previousBounds != targetBounds) {
+                    // onStart() 之后仍可能有 setLayout、底部 gravity 或系统 inset
+                    // 的二次布局。必须连续两次读到同一块屏幕矩形，才允许 PixelCopy；
+                    // 否则就会把旧位置的截图贴到新位置，表现为“只有几块在模糊”。
+                    if (attempt < DIALOG_BLUR_MAX_ATTEMPTS) {
+                        dialogDecor.postDelayed(
+                            { prepare(attempt + 1, blurTarget, targetBounds) },
+                            DIALOG_BLUR_RETRY_DELAY_MS
+                        )
+                    } else {
+                        revealWindow()
+                    }
+                } else {
+                    LocalPopupBlur.apply(
+                        activityWindow,
+                        listOfNotNull(blurTarget),
+                        radius = radius,
+                        onReady = ::revealWindow
+                    )
+                }
             }
         }
     }
@@ -196,6 +218,15 @@ private fun View.isDialogSurfaceCandidate(
     val background = background ?: return !requireBackground
     if (background is ColorDrawable && Color.alpha(background.color) == 0) return false
     return background.alpha > 0
+}
+
+private fun View.screenBounds(): Rect? {
+    if (!isAttachedToWindow || width <= 0 || height <= 0) return null
+    val location = IntArray(2)
+    return runCatching {
+        getLocationOnScreen(location)
+        Rect(location[0], location[1], location[0] + width, location[1] + height)
+    }.getOrNull()
 }
 
 /**

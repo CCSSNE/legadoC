@@ -237,16 +237,12 @@ object LocalPopupBlur {
     private fun sourceRect(hostDecor: View, target: View): Rect? {
         val targetLocation = IntArray(2)
         val hostLocation = IntArray(2)
-        val sameWindow = target.rootView === hostDecor ||
-            target.windowToken != null && target.windowToken == hostDecor.windowToken
-        if (sameWindow) {
-            target.getLocationInWindow(targetLocation)
-            hostDecor.getLocationInWindow(hostLocation)
-        } else {
-            // PopupWindow/Dialog 与宿主是不同窗口，只能用屏幕坐标换算到宿主窗口。
-            target.getLocationOnScreen(targetLocation)
-            hostDecor.getLocationOnScreen(hostLocation)
-        }
+        // Window token 不能用来判断两个 View 是否属于同一个窗口：Dialog 和
+        // PopupWindow 可能复用宿主 token，但它们仍有独立的窗口坐标原点。
+        // PixelCopy 的源窗口是 hostWindow，因此统一用屏幕坐标换算到宿主 decor，
+        // 同窗口和跨窗口都不会把底部弹窗误算到屏幕顶部。
+        target.getLocationOnScreen(targetLocation)
+        hostDecor.getLocationOnScreen(hostLocation)
         val rawLeft = targetLocation[0] - hostLocation[0]
         val rawTop = targetLocation[1] - hostLocation[1]
         val rawRight = rawLeft + target.width
