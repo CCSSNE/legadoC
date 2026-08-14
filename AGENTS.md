@@ -173,3 +173,9 @@ $apk='D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_<版本>.ap
 2. **Java 原生内存不足的确认处理**：若正式编译出现 `Native memory allocation failed`、`Kotlin daemon has been unexpectedly lost`、`Connection reset` 或 Gradle daemon 消失，先执行 `gradlew --stop`，确认并清理残留的 Gradle/Java 编译进程；然后使用正式的 `assembleAppC`，附加 `--no-daemon --max-workers=1 -Dkotlin.incremental=false -Dksp.incremental=false -Dkotlin.compiler.execution.strategy=in-process` 重试。每 30 秒检查进程 CPU、内存、日志和 APK 产物，不能只等待固定超时。
 3. **编译失败必须先读实际错误再重跑**：如果 Kotlin 编译失败，先查看标准错误中的具体文件、行号和 unresolved reference 等真实错误，修复后再重新执行正式 APK 编译；不能把源码错误误判成内存问题，也不能只重复执行同一条命令。
 4. **编译前删除旧 APK 只限于精确产物文件**：项目规则要求编译前移除旧安装包时，只能根据已确认的完整路径删除 `app\build\outputs\apk\app\c` 下的旧 APK；不得删除源码、`AGENTS.md`、构建配置或整个工作区。删除后必须重新生成并用 `aapt`、`apksigner` 验证新 APK。
+
+## 十四、弹窗模糊规则
+
+1. **禁止全局模糊宿主 Activity**：弹窗模糊不能把 `RenderEffect` 设置到宿主 Activity 的 `decorView`，否则会把整页壁纸和主页 UI 一起模糊。
+2. **优先使用窗口范围模糊**：Android 12 及以上且设备开启跨窗口模糊时，使用弹窗 Window 的 `setBackgroundBlurRadius` / `FLAG_BLUR_BEHIND`，其作用范围由弹窗窗口边界决定。
+3. **关闭跨窗口模糊时使用局部回退**：只用 `PixelCopy` 复制弹窗实际目标区域（普通弹窗、底部弹层或 `vw_bg`），缩小后做位图模糊，再作为该目标区域的背景层；不得退回 Activity 全屏 `RenderEffect`。弹窗窗口本身是全屏时，必须关闭全屏窗口模糊，只对识别出的弹窗面板回退。
