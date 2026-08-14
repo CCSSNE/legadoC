@@ -451,10 +451,12 @@ private fun findPopupTarget(source: Any): View? {
     fun visit(value: Any?, depth: Int): View? {
         if (value == null || depth > 7 || !visited.add(value)) return null
         if (value is PopupWindow) {
-            // PopupWindow 的列表 contentView 外面还有 PopupDecorView/mPopupView，
-            // 圆角、内边距和阴影都画在外壳上。优先取外壳，避免模糊矩形少一圈；
-            // 旧实现只取 contentView，正是右侧/顶部范围不准的来源。
-            val popupSurface = listOf("mDecorView", "mPopupView")
+            // PopupWindow 的 mDecorView 只负责事件分发和承载子树，真正绘制
+            // 背景、圆角和内边距的是 mBackgroundView。把 mDecorView 当目标时，
+            // 模糊层会被它里面不透明的 mBackgroundView 完全盖住，结果就是
+            // “弹窗范围对了，但弹窗中间没有模糊”。先取背景外壳，再兼容
+            // AppCompat/厂商实现可能存在的 mPopupView，最后才用 decor 兜底。
+            val popupSurface = listOf("mBackgroundView", "mPopupView", "mContentView", "mDecorView")
                 .asSequence()
                 .mapNotNull { fieldName ->
                     runCatching {
