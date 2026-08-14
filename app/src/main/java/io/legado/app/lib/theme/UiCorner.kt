@@ -82,6 +82,15 @@ object UiCorner {
         return ColorUtils.setAlphaComponent(color, alpha)
     }
 
+    /**
+     * 弹窗内部图片和嵌套卡片使用的统一表面不透明度。
+     * 弹窗透明度 0% 表示不透明，100% 表示最透明。
+     */
+    fun dialogSurfaceAlpha(): Float {
+        return ((100 - AppConfig.dialogAlpha.coerceIn(0, 100)) / 100f)
+            .coerceIn(0f, 1f)
+    }
+
     fun dialogBlurRadius(): Int {
         val standardRadiusDp = when (AppConfig.bottomBarEffectMode) {
             "frosted" -> 10f + AppConfig.frostedGlassLevel.coerceIn(0, 100) / 100f * 24f

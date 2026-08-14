@@ -13,14 +13,25 @@ import io.legado.app.lib.theme.UiCorner
 fun ViewBookCollectionMosaicBinding.loadCollectionCovers(
     books: List<Book>,
     fragment: Fragment? = null,
-    lifecycle: Lifecycle? = null
+    lifecycle: Lifecycle? = null,
+    dialogSurface: Boolean = false
 ) {
+    val backgroundColor = ContextCompat.getColor(root.context, R.color.background_card)
     root.background = ColorDrawable(
-        UiCorner.surfaceColor(ContextCompat.getColor(root.context, R.color.background_card))
+        if (dialogSurface) {
+            UiCorner.dialogSurfaceColor(backgroundColor)
+        } else {
+            UiCorner.surfaceColor(backgroundColor)
+        }
     )
+    val coverAlpha = if (dialogSurface) {
+        UiCorner.dialogSurfaceAlpha()
+    } else {
+        UiCorner.floatingGroupAlpha()
+    }
     val covers = listOf(ivCover1, ivCover2, ivCover3, ivCover4)
     covers.forEachIndexed { index, imageView ->
-        imageView.alpha = UiCorner.floatingGroupAlpha()
+        imageView.alpha = coverAlpha
         val book = books.getOrNull(index)
         if (book == null) {
             // 缺书的空位保持占位，不显示封面也不放大已有封面
@@ -28,7 +39,7 @@ fun ViewBookCollectionMosaicBinding.loadCollectionCovers(
         } else {
             imageView.visibility = View.VISIBLE
             imageView.loadThumb(book, false, fragment, lifecycle)
-            imageView.alpha = UiCorner.floatingGroupAlpha()
+            imageView.alpha = coverAlpha
         }
     }
     // 行始终占位，避免剩余封面被放大填充空位

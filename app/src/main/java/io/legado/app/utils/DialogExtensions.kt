@@ -138,6 +138,15 @@ fun View.applyDialogSurfaceChildren() {
         ContextCompat.getColor(context, R.color.dialog_surface)
     )
     val dialogMenuColor = ContextCompat.getColor(context, R.color.background_menu)
+    val headerNames = setOf(
+        "action_bar",
+        "header",
+        "title_bar",
+        "toolbar",
+        "tool_bar",
+        "topPanel",
+        "title_template"
+    )
     fun resourceName(view: View): String? {
         return runCatching { view.resources.getResourceEntryName(view.id) }.getOrNull()
     }
@@ -151,7 +160,12 @@ fun View.applyDialogSurfaceChildren() {
 
     fun rewrite(view: View) {
         val name = resourceName(view)
-        if (view is Toolbar || name == "topPanel" || name == "title_template") {
+        val className = view.javaClass.simpleName
+        val isHeaderClass = view is Toolbar ||
+            className == "TitleBar" ||
+            className == "AppBarLayout" ||
+            className.endsWith("AppBarLayout")
+        if (isHeaderClass || name in headerNames) {
             // 标题仍由原控件绘制，但不再给它单独铺一块色块。
             clearHeaderSurface(view)
             return
@@ -172,7 +186,10 @@ fun View.applyDialogSurfaceChildren() {
             view.forEach(::walk)
         }
     }
-    walk(this)
+    val root = this
+    walk(root)
+    // 部分弹窗在首帧之后才给标题栏设置主题背景；第二次扫描覆盖这些延迟赋值。
+    root.post { walk(root) }
 }
 
 fun Dialog.applyAdaptiveDim() {

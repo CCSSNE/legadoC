@@ -243,7 +243,12 @@ class BookCollectionSelectDialog() : BaseDialogFragment(R.layout.dialog_book_col
                     ContextCompat.getColor(context, R.color.background_card)
                 )
             )
-            coverMosaic.loadCollectionCovers(item.previewBooks, this@BookCollectionSelectDialog, lifecycle)
+            coverMosaic.loadCollectionCovers(
+                item.previewBooks,
+                this@BookCollectionSelectDialog,
+                lifecycle,
+                dialogSurface = true
+            )
         }
 
         override fun registerListener(
