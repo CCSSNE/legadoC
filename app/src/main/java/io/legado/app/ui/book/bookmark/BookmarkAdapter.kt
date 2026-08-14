@@ -7,6 +7,7 @@ import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.databinding.ItemBookmarkBinding
 import io.legado.app.utils.gone
+import io.legado.app.utils.visible
 import splitties.views.onClick
 import splitties.views.onLongClick
 
@@ -24,10 +25,12 @@ class BookmarkAdapter(context: Context, val callback: Callback) :
         payloads: MutableList<Any>
     ) {
         binding.tvChapterName.text = item.chapterName
+        binding.tvPageTag.visible(item.isPageBookmark)
         binding.tvBookText.gone(item.bookText.isEmpty())
         binding.tvBookText.text = item.bookText
-        binding.tvContent.gone(item.content.isEmpty())
+        binding.tvContent.gone(item.content.isEmpty() || item.isPageBookmark)
         binding.tvContent.text = item.content
+        // 整页书签只保留位置与页面文字，不展示普通书签的备注。
     }
 
     override fun registerListener(holder: ItemViewHolder, binding: ItemBookmarkBinding) {

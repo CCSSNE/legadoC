@@ -65,6 +65,13 @@ class HandleFileActivity :
 
     private val selectImage = registerForActivityResult(SelectImageContract()) {
         it.uri?.let { uri ->
+            if (uri.isContentScheme()) {
+                val modeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                try {
+                    contentResolver.takePersistableUriPermission(uri, modeFlags)
+                } catch (_: SecurityException) {
+                }
+            }
             onResult(Intent().setData(uri))
         } ?: finish()
     }

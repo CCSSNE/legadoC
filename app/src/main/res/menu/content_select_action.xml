@@ -12,7 +12,7 @@
 
     <item
         android:id="@+id/menu_bookmark"
-        android:title="@string/bookmark" />
+        android:title="@string/bookmark_add" />
 
     <item
         android:id="@+id/menu_paragraph_bookmark"

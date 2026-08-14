@@ -1,17 +1,146 @@
 # 项目总规则（阅读 C / legadoC）
 
-## 编译与验证
+> 本文件是项目唯一总规则。所有开发、编译、测试、发布行为都必须遵守。
+> 用户明确要求：规则只写在 AGENTS.md，docs 下除 api.md 与截图外的文档已删除。
+
+## 一、真机禁令（最高优先级，违者严重）
+
+1. **绝对禁止对用户的真机执行任何操作**：包括 adb install/uninstall、am force-stop、logcat -c、push/pull、shell、截图、点击等一切 adb 操作。
+2. 需要安装/测试 APK 时，只允许操作**雷电模拟器**；执行任何 adb 命令前，必须先确认目标设备是模拟器（序列号如 `emulator-5554` 或雷电的 `127.0.0.1:5555`），不确定时一律不做，禁止裸 `adb install` 命中未知设备。
+3. 真机上的任何异常排查都只通过用户描述、代码分析和日志文件进行，不主动连接真机。
+4. 每次代码改动后的功能测试：重新编译 → 安装到雷电模拟器 → 在模拟器中复现/验证。模拟器未就绪时不得退而求其次在真机上测试。
+
+## 二、测试（模拟器）
+
+1. 本机固定使用**雷电模拟器（LDPlayer）**，路径：`F:\leidian\LDPlayer14\dnplayer.exe`。未启动时先自行尝试启动；失败则请用户手动打开。
+2. 安装命令必须限定模拟器序列号（如 `-s emulator-5554` 或 `-s 127.0.0.1:5555`），不允许裸 `adb install`。
+3. 测试过程中遇到崩溃：收集崩溃日志 → 定位代码问题 → 修复 → 重新编译 → 再到模拟器回归验证。
+4. 测试素材：尽量拿真实的小说测试；`C:\Users\user\Documents\leidian14\Pictures` 与雷电模拟器 Pictures 文件夹互通，里面放了小说可直接导入。
+
+## 三、编译与验证
 
 1. 验证任何代码改动，**一律直接编译正式版**：`.\gradlew.bat ':app:assembleAppC'`（带 `-Pabi=arm64-v8a`、递增的 `-PVERSION_CODE` / `-PVERSION_NAME`），产物必须来自 `app\build\outputs\apk\app\c`。
-2. **禁止**只跑 `compileAppCKotlin`、`processAppCResources` 等中间任务来"验证"改动——它们不产出 APK，跑完也没有交付物。具体流程见 `docs/BUILD_LEGADO_C_ANDROID.md`。
-3. 版本号必须按 `docs/BUILD_LEGADO_C_ANDROID.md` 第 7 条基线单调递增，编译前先确认基线、删除旧包。
+2. **禁止**只跑 `compileAppCKotlin`、`processAppCResources` 等中间任务来"验证"改动——它们不产出 APK，跑完也没有交付物。
+3. 交付给用户安装时只编译 `appC` 变体，禁止 debug 编译；禁止把 `app\build\outputs\apk\app\debug` 的 `.debug` 包当阅读 C 包交付。
+4. 覆盖安装给用户测试时，必须显式传入 `VERSION_CODE` 和 `VERSION_NAME`，不依赖默认版本号逻辑（默认逻辑受 git 提交数和编译时间影响，容易打出不能覆盖升级的包）。
 
-## 长命令实时监控（强制）
+## 四、版本号规则
+
+1. 每次编译安装包前，先确认已安装版本的 `versionCode`（能连模拟器时用 `adb -s <模拟器> shell dumpsys package io.legado.app.c` 查；不能连时用第 7 条"最近一次已交付"基线）。
+2. 新包 `VERSION_CODE` 必须大于上一交付；按已交付线每次 `+1`。不能只看当前输出目录，更不能复用旧值。
+3. `VERSION_NAME` 格式是 `3.26.MMddHH`（默认按 GMT+8 编译时刻生成），并且每次交付必须大于上一包；也可以沿用/顺延上一包名加一。
+4. 删除旧包本身不提供版本号：版本号必须在删除前从模拟器或第 7 条基线确认好；第 7 条是"最近一次已交付"的唯一持久记录，每次交付后必须当场更新，否则下一包会复用旧值、破坏单调递增。
+5. 编译之前必须删除旧安装包，禁止把老包改名冒充新包。
+
+## 五、编译命令（本机环境）
+
+- JDK 17: `C:\Program Files\Eclipse Adoptium\jdk-17.0.19.10-hotspot`
+- Android SDK: `D:\AI\audio\android-sdk`
+- Gradle user home: `D:\AI\audio\android-gradle-user-home`
+- Gradle wrapper: `8.14.4`，compileSdk: `36`
+- 已恢复 Kotlin/KSP 增量编译和 Gradle daemon、多 worker；`GRADLE_USER_HOME` 在 D 盘与项目同盘，无跨盘增量缓存问题；内存由 `-Xmx6g` 兜底。首次编译全量，第二次起增量。
+
+```powershell
+$OutputEncoding=[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+$env:JAVA_HOME='C:\Program Files\Eclipse Adoptium\jdk-17.0.19.10-hotspot'
+$env:ANDROID_HOME='D:\AI\audio\android-sdk'
+$env:ANDROID_SDK_ROOT='D:\AI\audio\android-sdk'
+$env:GRADLE_USER_HOME='D:\AI\audio\android-gradle-user-home'
+$env:Path = @(
+  "$env:JAVA_HOME\bin",
+  "$env:ANDROID_HOME\cmdline-tools\latest\bin",
+  "$env:ANDROID_HOME\platform-tools"
+) + ($env:Path -split ';') -join ';'
+
+$versionCode=<新版本号>
+$versionName='3.26.<MMddHH>'
+.\gradlew.bat ':app:assembleAppC' '-Pabi=arm64-v8a' "-PVERSION_CODE=$versionCode" "-PVERSION_NAME=$versionName" --console=plain --warning-mode=summary
+```
+
+- 后台启动编译并轮询日志可行：用 `Start-Process` 拉起 `gradlew.bat`（或写 .bat 脚本），标准输出和错误输出分别重定向到两个文件，编译结束后退出码写文件，轮询该文件判断完成；不要用固定短超时死等。
+- 注意：cmd.exe 内联重定向（`/c` 带 `> file 2> file`）偶尔会失效导致编译根本没启动、日志为空——此时改用 .bat 脚本文件方式最可靠。
+
+## 六、长命令实时监控（强制）
 
 1. 任何可能超过 30 秒的命令（编译、打包、长脚本等），**必须加实时监控**，不允许干等或只启动不管。
 2. **每 30 秒探测一次**：检查进程是否存活、CPU 是否在增长、日志/产物是否有更新。
    - 进程 CPU 持续增长、日志在写 = 正常运行，继续等待。
    - CPU 停滞且无日志更新 = 疑似卡死，立即终止并报告，不干等。
 3. **命令不能超过 30 秒超时**：单次等待/探测间隔不超过 30 秒；超时未完成必须主动检查状态并向用户说明，而不是无限死等。
-4. 编译结束（成功或失败）后：执行 `.\gradlew.bat --stop` 并清理残留 Gradle/Kotlin daemon 进程（按 PID `Stop-Process`），不留待机进程占内存。
+4. 编译结束（成功或失败）后：执行 `.\gradlew.bat --stop` 并清理残留 Gradle/Kotlin daemon 进程（按 PID `Stop-Process -Force`），不留待机进程占内存。
 5. 任何异常（BUILD FAILED、OOM、进程异常退出、日志停滞）必须明确告知用户原因和下一步，不允许静默忽略。
+
+## 七、已交付版本基线（新 → 旧）
+
+- `3.26.081409c` / `10571`：2026-08-14 编译交付（选中文本弹窗的书签/段落书签恒定为"添加"（去掉命中旧书签即编辑）；目录书签页打开自动定位到当前章节第一个书签（无则取章节距离最近，列表/网格都生效）；单击普通书签除切换备注气泡外，额外弹出临时"编辑当前标签"悬浮窗（重叠命中规则=文本更短优先、相同创建更晚优先，点其他区域消失）；整页书签与普通书签彻底分开：阅读页单击不劫持/不弹气泡/不弹编辑、目录列表带"整页"标记、多选批量编辑不受限）。
+- `3.26.081408c` / `10570`：2026-08-13 编译交付（经典模式下原生 EPUB 布局生成空页时回退到同章 HTML，兼容本应用导出的缺失封面资源 EPUB）。
+- `3.26.081327c` / `10564`：2026-08-13 编译交付（修复选区手柄"球/杆乱飞"：手柄锚点从"图右/左边缘"改为"球杆中线"（定位 `x - width/2`），拖动映射改为"手指按在球上→杆尖跟随"（水平不再 ±width、垂直按 `v.height - 12dp` 动态取球心偏移，球+杆 28dp、仅圆球 12dp），球始终跟手、杆尖对准选区边界；反向拖动与跨页复制不受影响）。
+- `3.26.081326c` / `10563`：2026-08-13 编译交付（选区手柄：手柄底部加很细的竖杆（球+杆，长边/8 的角落区域同包还含跨页复制触发区域加大）；阅读设置新增"选区颜色"（背景色，支持透明度）、"选区手柄颜色"（球+杆整体上色，支持透明度）、"选区手柄样式"（圆球加杆/仅圆球/无手柄 三选，默认球+杆；无手柄时不可拖动调整选区）。
+- `3.26.081325c` / `10561`：2026-08-13 编译交付（跨页复制触发区域加大：右下角物理正方形区域，边长=屏幕长边 1/8（竖屏约纵向 1/8×横向 1/4，横屏自动反转，方屏 1/8×1/8），停留 500ms 不变）。
+- `3.26.081323c` / `10559`：2026-08-13 编译交付（整页书签添加动效改为"标签尖角钉在页面顶边、从固定顶边长出来"：可见高度=下拉距离 1:1，长满 64dp 后标签固定不动、页面继续下滑，松手超过阈值添加成功后回弹期间标签保持满尺寸留在右上角；删除模式不变）。
+- `3.26.081322c` / `10558`：2026-08-13 编译交付（整页书签标签常驻时被正文裁剪裁掉右半部分，标签绘制改为始终先于正文裁剪，常驻/下拉标签完整显示）。
+- `3.26.081321c` / `10557`：2026-08-13 编译交付（整页书签下拉动效大修：下拉抢占提前到 8dp 并全程独占、翻页 delegate 不再抢事件（修复页面不跟手）；标签绘制移到正文裁剪前并贴页顶右上角（修复标签乱飞/被裁）；选区开始的手势与长按后拖动不再触发下拉（修复抢手势）；删除模式回弹期间标签消失；页首匹配收紧至 80% 前缀）。
+- `3.26.081317c` / `10553`：2026-08-13 编译交付（新增：下拉添加/删除整页书签（翻页模式，页面跟手下移+书签从顶部延伸+松手回弹动效，右上角拟真标签按页首文字匹配显示，全局颜色可设）；跨页复制（选区时手指移到最右下角停留片刻自动翻页继续选择）；选区放大镜开关（默认关）。书签表新增 isPageBookmark 字段，DB 升级至 99）。
+- `3.26.081316c` / `10552`：2026-08-13 编译交付（EPUB 导出背景色支持透明度；PDF 导出对话框回退干净）。
+- `3.26.081315c` / `10551`：2026-08-13 编译交付（项目总规则落盘 AGENTS.md）。
+- `3.26.081314c` / `10550`：2026-08-13 编译交付（书架"全部"分组可关闭）。
+- `3.26.081313c` / `10549`：2026-08-13 编译交付（更新检查误报修复）。
+- `3.26.081312c` / `10548`：2026-08-13 编译交付（增量缓存修复等）。
+- `3.26.081311c` / `10547`：2026-08-13 编译交付（TXT(zip) 替换规则外挂）。
+- `3.26.081310c` / `10546`：2026-08-12 编译交付（TXT 导出拆分 txt_zip）。
+- `3.26.081309c` / `10545`：2026-08-12 编译交付（EPUB 媒体 0 字节修复、书签侧车）。
+- `3.26.081308c` / `10544`：从 `app\build\outputs\apk\app\c\base.apk` 读取的上一包版本。
+- `3.26.081306c` / `10542`：2026-08-12 编译交付（配图导入导出修复）。
+- `3.26.081136c` / `10538`：2026-08-12 编译交付（音频块交互增强）。
+- `3.26.081134c` / `10536`：2026-08-12 编译交付（配图保存根因修复）。
+- `3.26.081132c` / `10534`：2026-08-12 编译交付（媒体类型识别）。
+- `3.26.081131c` / `10533`：2026-08-12 编译交付（书签）。
+- `3.26.081130c` / `10532`：2026-08-12 编译交付（配图选择器 */*）。
+- `3.26.081129c` / `10531`：2026-08-12 编译交付（配图媒体扩展）。
+- `3.26.081128c` / `10530`：2026-08-12 编译交付（配图目录）。
+- `3.26.081127c` / `10529`：2026-08-12 编译交付（书签功能）。
+- `3.26.081126c` / `10528`：2026-08-12 编译交付（配图第二轮修复）。
+- `3.26.081124c` / `10526`：2026-08-12 编译交付。
+- `3.26.081123c` / `10525`：2026-08-12 编译交付。
+- `3.26.081122c` / `10524`：2026-08-11 交付。
+- `3.26.081121c` / `10523`：2026-08-11 交付。
+- `3.26.062205c` / `10491`：更早交付。
+
+后续覆盖包必须从 `3.26.081409c` / `10571` 起步（实际编译时刻的 `MMddHH` 更大时取实际值）。
+
+## 八、编译失败处理
+
+1. Kotlin 增量缓存已注册冲突，或资源合并阶段某个 `build\intermediates` 目录删不掉：
+   - 停掉 Gradle daemon → 删除 `app\build`、`modules\book\build`、`modules\rhino\build` → 重跑；仍失败追加 `--no-daemon`、`-Dkotlin.incremental=false`、`--max-workers=1` 冷编译定位。
+2. Kotlin 编译阶段 `Native memory allocation failed` / `Kotlin daemon has been unexpectedly lost` / `Connection reset`：
+   - 停 daemon → 追加 `--max-workers=1` 重跑；仍崩溃再追加 `--no-daemon` 和 `-Dkotlin.incremental=false`，并把 `gradle.properties` 中 `kotlin.incremental`、`ksp.incremental` 临时改回 `false`，稳定后恢复。
+
+## 九、产物验证
+
+```powershell
+$apk='D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_<版本>.apk'
+& "$env:ANDROID_HOME\build-tools\36.0.0\aapt.exe" dump badging $apk
+& "$env:ANDROID_HOME\build-tools\36.0.0\apksigner.bat" verify --print-certs $apk
+```
+
+预期：包名 `io.legado.app.c`、`versionName=3.26.xxxxxxc`、中文名 `阅读 C`、`native-code: arm64-v8a`、签名 `CN=Android Debug`。`apksigner` 提示部分 `META-INF` 条目未受签名保护是正常现象，退出码 0 即通过。
+
+## 十、发布 Release（每次发布必做）
+
+1. **发布前**：确认 APK 是 appC 变体、产物来自 `app\build\outputs\apk\app\c`；用 aapt 验证包名/versionCode 递增/versionName 格式/中文名/native-code；用 apksigner 验证签名。
+2. **tag 与版本名一致**（如 `v3.26.081317c`），`target_commitish` 指向 `own` 分支最新提交。
+3. **Release 正文禁止在命令行直接粘贴中文参数**（Windows 管道会把中文变问号）。正文必须写成 UTF-8 无 BOM 的 JSON 文件：
+   - 用 Python 生成，注意设置 `PYTHONUTF8=1`（否则 Windows 下 Python 按 GBK 读源文件，中文变乱码）；`json.dump(payload, f, ensure_ascii=False, indent=2)`。
+   - 用 `curl.exe --data-binary "@文件"` 提交（PowerShell 里必须写 `curl.exe`，避免被解析成 Invoke-WebRequest 别名）。
+4. **APK 资产上传**：`Content-Type: application/octet-stream`，`curl.exe --data-binary @apk` 上传二进制，禁止经过 PowerShell 文本管道。
+5. **发布后必须复查**：
+   - 拉取刚创建的 release，检查 name/body 中文是否乱码、`draft=false`、`prerelease=false`、`tag_name` 与版本名一致、`target_commitish` 指向最新提交。
+   - 打开 GitHub 网页版 Release 页面实际查看中文是否正常、排版是否正确。
+   - 确认资产列表里有 APK，`size` 与本地一致，下载链接返回 200。
+   - 如乱码：用 API `PATCH /repos/.../releases/{id}` 修正（UTF-8 无 BOM JSON），修正后重新抓网页复查。
+6. PowerShell 的 `>` 重定向和 `Out-File` 默认写 UTF-16，会破坏 JSON/二进制，必须用 Python 或显式 UTF-8 无 BOM 写文件。
+
+## 十一、git 提交
+
+- 提交前检查 `git status`、`git diff`、`git log`；只暂存要提交的文件，不提交临时文件（如 `$logErr`、`$logOut`、构建日志、APK）。
+- 提交信息简洁，写清楚改动内容，风格与仓库历史一致。

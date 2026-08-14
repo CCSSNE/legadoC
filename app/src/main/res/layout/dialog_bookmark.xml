@@ -73,6 +73,7 @@
                 </io.legado.app.ui.widget.text.TextInputLayout>
 
                 <TextView
+                    android:id="@+id/tv_bookmark_style"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:paddingTop="8dp"
@@ -81,6 +82,7 @@
                     android:textSize="13sp" />
 
                 <LinearLayout
+                    android:id="@+id/ll_bookmark_styles"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical">

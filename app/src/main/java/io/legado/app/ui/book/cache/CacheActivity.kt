@@ -409,6 +409,7 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
             fun upTypeView() {
                 val isEpub = exportType == "epub"
                 val isTxtZip = exportType == "txt_zip"
+                val isPdf = exportType == "pdf"
                 tabExportBar.visibility = if (isEpub) View.VISIBLE else View.GONE
                 // txt_zip 正文直接复制原始文件，编码/多线程/章节名/图片文件选项不生效，隐藏；
                 // 替换净化有效（规则作为外挂数据导出，导入时同步还原）
@@ -416,8 +417,11 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
                 rowUseReplace.visibility = if (isEpub) View.GONE else View.VISIBLE
                 rowParallelExport.visibility = if (isEpub || isTxtZip) View.GONE else View.VISIBLE
                 rowNoChapterName.visibility = if (isEpub || isTxtZip) View.GONE else View.VISIBLE
-                rowExportPicsFile.visibility = if (isEpub || isTxtZip) View.GONE else View.VISIBLE
-                rowExportBookmarks.visibility = if (isEpub) View.GONE else View.VISIBLE
+                // PDF 已回退为纯文本导出：图片文件与书签选项不生效，隐藏
+                rowExportPicsFile.visibility =
+                    if (isEpub || isTxtZip || isPdf) View.GONE else View.VISIBLE
+                rowExportBookmarks.visibility =
+                    if (isEpub || isPdf) View.GONE else View.VISIBLE
                 rowCustomExport.visibility = View.GONE
                 showExportConfigTab(ExportConfigTab.BASE, isEpub)
                 llCustomExport.visibility = View.GONE
@@ -644,7 +648,7 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
                 ?: ReadBookConfig.paragraphSpacing).coerceIn(0, 120),
             epubParagraphIndent = tvEpubParagraphIndentValue.text?.toString()?.takeIf { it.isNotBlank() }
                 ?: ReadBookConfig.paragraphIndent.length.toString(),
-            epubBackgroundColor = tvEpubBackgroundColorValue.text?.toString()?.normalizeCssColor()
+            epubBackgroundColor = tvEpubBackgroundColorValue.text?.toString()?.normalizeCssColor8()
                 ?: defaultEpubBackgroundColor(),
             epubBackgroundImagePath = epubBackgroundImagePath(),
             epubUseBackgroundImage = !epubBackgroundImagePath().isNullOrBlank()
@@ -679,7 +683,7 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
                 return false
             }
             binding.tvEpubTextColorValue.error = null
-            if (exportConfig.epubBackgroundColor.normalizeCssColor() == null) {
+            if (exportConfig.epubBackgroundColor.normalizeCssColor8() == null) {
                 binding.tvEpubBackgroundColorValue.error = "Error"
                 return false
             }
@@ -838,8 +842,8 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
     private fun showEpubColorPicker(dialogId: Int, colorText: String?) {
         activeExportStyleBinding ?: return
         ColorPickerDialog.newBuilder()
-            .setColor(colorText.normalizeCssColor()?.toColorInt() ?: ReadBookConfig.textColor)
-            .setShowAlphaSlider(false)
+            .setColor(colorText.toCssColorInt8() ?: ReadBookConfig.textColor)
+            .setShowAlphaSlider(dialogId == EPUB_BACKGROUND_COLOR)
             .setDialogType(ColorPickerDialog.TYPE_CUSTOM)
             .setDialogId(dialogId)
             .show(this)
@@ -850,7 +854,8 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
             when (dialogId) {
                 EPUB_TITLE_COLOR -> setEpubTitleColor(color.toCssHex())
                 EPUB_TEXT_COLOR -> setEpubTextColor(color.toCssHex())
-                EPUB_BACKGROUND_COLOR -> setEpubBackgroundColor(color.toCssHex())
+                // 背景色带透明度：存 8 位 hex，透明度可自由调节
+                EPUB_BACKGROUND_COLOR -> setEpubBackgroundColor(color.toCssHex8())
             }
         }
     }
@@ -931,9 +936,9 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
     }
 
     private fun DialogExportBookConfigBinding.setEpubBackgroundColor(color: String) {
-        val cssColor = color.normalizeCssColor() ?: defaultEpubBackgroundColor()
+        val cssColor = color.normalizeCssColor8() ?: defaultEpubBackgroundColor()
         tvEpubBackgroundColorValue.text = cssColor
-        vwEpubBackgroundColorSwatch.background = ColorDrawable(cssColor.toColorInt())
+        vwEpubBackgroundColorSwatch.background = ColorDrawable(cssColor.toCssColorInt8() ?: 0xFF000000.toInt())
     }
 
     private fun DialogExportBookConfigBinding.setEpubBackgroundImage(path: String?) {
@@ -991,12 +996,41 @@ private fun Int.toCssHex(): String {
     return "#%06X".format(0xFFFFFF and this)
 }
 
+/** 带透明度的 8 位 hex（#AARRGGBB 语义转 #RRGGBBAA，与 CSS 一致） */
+private fun Int.toCssHex8(): String {
+    val argb = this
+    val a = (argb ushr 24) and 0xFF
+    val r = (argb ushr 16) and 0xFF
+    val g = (argb ushr 8) and 0xFF
+    val b = argb and 0xFF
+    return "#%02X%02X%02X%02X".format(r, g, b, a)
+}
+
 private fun String?.normalizeCssColor(): String? {
     val text = this?.trim()?.takeIf { it.isNotBlank() } ?: return null
     val cssText = if (text.startsWith("#")) text else "#$text"
     return kotlin.runCatching {
         cssText.toColorInt().toCssHex()
     }.getOrNull()
+}
+
+/** 解析 #RRGGBB / #RRGGBBAA（CSS 语义，alpha 在最后）为 ARGB int，非法返回 null */
+private fun String?.toCssColorInt8(): Int? {
+    val text = this?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val cssText = if (text.startsWith("#")) text else "#$text"
+    return kotlin.runCatching {
+        val hex = cssText.substring(1)
+        when (hex.length) {
+            6 -> Color.argb(255, hex.substring(0, 2).toInt(16), hex.substring(2, 4).toInt(16), hex.substring(4, 6).toInt(16))
+            8 -> Color.argb(hex.substring(6, 8).toInt(16), hex.substring(0, 2).toInt(16), hex.substring(2, 4).toInt(16), hex.substring(4, 6).toInt(16))
+            else -> error("invalid color")
+        }
+    }.getOrNull()
+}
+
+/** 背景色专用：解析 6/8 位 hex，保留透明度（8 位时输出 #RRGGBBAA） */
+private fun String?.normalizeCssColor8(): String? {
+    return toCssColorInt8()?.toCssHex8()
 }
 
 private fun TextView.setBooleanValue(value: Boolean) {
@@ -1017,9 +1051,9 @@ private const val EPUB_ASSET_BACKGROUND_PREFIX = "asset://bg/"
 private fun defaultEpubBackgroundColor(): String {
     val config = ReadBookConfig.durConfig
     if (config.curBgType() == 0) {
-        return config.curBgStr().normalizeCssColor() ?: "#FFFFFF"
+        return config.curBgStr().normalizeCssColor8() ?: "#FFFFFF"
     }
-    return AppConfig.epubExportBackgroundColor.normalizeCssColor() ?: "#FFFFFF"
+    return AppConfig.epubExportBackgroundColor.normalizeCssColor8() ?: "#FFFFFF"
 }
 
 private fun defaultEpubBackgroundImagePath(): String? {

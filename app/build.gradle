@@ -365,9 +365,9 @@ gradle.taskGraph.whenReady { graph ->
     }.each { task ->
         throw new GradleException(
             "============================================================\n" +
-            "DEBUG BUILD IS BLOCKED. See docs/BUILD_LEGADO_C_ANDROID.md\n" +
+            "DEBUG BUILD IS BLOCKED. See AGENTS.md\n" +
             "已拦截 DEBUG 构建！本项目禁止生成 debug 包，构建已中止。\n" +
-            "请停止构建，重新阅读构建文档：docs/BUILD_LEGADO_C_ANDROID.md\n" +
+            "请停止构建，重新阅读项目总规则：AGENTS.md\n" +
             "正确做法：只编译 appC 变体，例如\n" +
             "  gradlew :app:assembleAppC -PVERSION_CODE=<新版本号> -PVERSION_NAME=3.26.MMddHH\n" +
             "============================================================"

@@ -8,10 +8,15 @@ import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
+import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.util.AttributeSet
+import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
+import android.widget.LinearLayout
+import android.widget.PopupWindow
 import android.widget.ScrollView
 import android.widget.TextView
 import android.text.Layout
@@ -38,6 +43,7 @@ import io.legado.app.lib.dialogs.alert
 import io.legado.app.model.ReadBook
 import io.legado.app.model.localBook.EpubFile
 import io.legado.app.ui.association.OpenUrlConfirmActivity
+import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.book.read.page.delegate.PageDelegate
 import io.legado.app.ui.book.read.page.entities.TextLine
 import io.legado.app.ui.book.read.page.entities.TextPage
@@ -76,7 +82,6 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     var selectAble = AppConfig.textSelectAble
     val selectedPaint by lazy {
         Paint().apply {
-            color = context.getCompatColor(R.color.btn_bg_press_2)
             style = Paint.Style.FILL
         }
     }
@@ -99,6 +104,12 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     private var bubbleNoStyleClickPref = true
     private var bubbleBgAlpha = 80
     private var bubbleBgColor = 0
+    private var bubbleStrokeShow = true
+    private var bubbleStrokeAlpha = 80
+    private var bubbleStrokeColor = 0
+    private var bubbleArrowShow = true
+    private var bubbleArrowAlpha = 80
+    private var bubbleArrowColor = 0
     private val bubbleBgPaint = Paint()
     private val bubbleStrokePaint = Paint()
     private val bubbleArrowPaint = Paint()
@@ -109,6 +120,21 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     private val bubbleGap = 6f.dpToPx()
     private val bubbleMaxWidth = 280f.dpToPx()
     private val bubbleArrowSize = 6f.dpToPx()
+    //整页书签右上角标签
+    private val pageBookmarkPaint = Paint()
+    private val pageBookmarkPath = Path()
+    private var pageBookmarkColor = 0
+    //单击书签弹出的"编辑当前标签"临时悬浮窗
+    private var bookmarkEditPopup: PopupWindow? = null
+
+    //下拉添加/删除整页书签动效：页面跟手位移量（仅非滚动模式）
+    private var pullDownOffset = 0f
+    //下拉动效中是否为"添加"模式（当前页无整页书签时下拉）；删除模式标签跟随页面下移
+    private var pullDownAdding = false
+    //删除模式松手回弹期间隐藏标签
+    private var pullDownRemoving = false
+    //添加成功后的回弹期间保持动效标签满尺寸显示（页面回弹，标签留在右上角）
+    private var pullDownKeepFull = false
     var isMainView = false
     var longScreenshot = false
     var reverseStartCursor = false
@@ -145,6 +171,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     }
 
     override fun onDetachedFromWindow() {
+        dismissBookmarkEditPopup()
         AudioBlockPlayer.removeStateChangeListener(audioBlockStateListener)
         super.onDetachedFromWindow()
     }
@@ -154,6 +181,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
      */
     fun setContent(textPage: TextPage, resetBackgroundOffset: Boolean = true) {
         if (this.textPage !== textPage) {
+            dismissBookmarkEditPopup()
             nativeSelectedText = null
             nativeSelectionRect = null
         }
@@ -171,10 +199,19 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
 
     fun setBookmarks(list: List<Bookmark>) {
         bookmarks = list
+        // 新书签列表到达：动效标签由常驻标签接管，保持位置不变
+        pullDownKeepFull = false
         bubbleShowAllPref = context.getPrefBoolean(PreferKey.bookmarkNoteBubbleShowAll, true)
         bubbleNoStyleClickPref = context.getPrefBoolean(PreferKey.bookmarkNoteBubbleOnNoStyleClick, true)
         bubbleBgAlpha = context.getPrefInt(PreferKey.bookmarkNoteBubbleBgAlpha, 80).coerceIn(0, 100)
         bubbleBgColor = context.getPrefInt(PreferKey.bookmarkNoteBubbleColor, 0)
+        bubbleStrokeShow = context.getPrefBoolean(PreferKey.bookmarkNoteBubbleStrokeShow, true)
+        bubbleStrokeAlpha = context.getPrefInt(PreferKey.bookmarkNoteBubbleStrokeAlpha, 80).coerceIn(0, 100)
+        bubbleStrokeColor = context.getPrefInt(PreferKey.bookmarkNoteBubbleStrokeColor, 0)
+        bubbleArrowShow = context.getPrefBoolean(PreferKey.bookmarkNoteBubbleArrowShow, true)
+        bubbleArrowAlpha = context.getPrefInt(PreferKey.bookmarkNoteBubbleArrowAlpha, 80).coerceIn(0, 100)
+        bubbleArrowColor = context.getPrefInt(PreferKey.bookmarkNoteBubbleArrowColor, 0)
+        pageBookmarkColor = context.getPrefInt(PreferKey.pageBookmarkColor, 0)
         bubbleLayoutCache.clear()
         invalidate()
     }
@@ -188,6 +225,8 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     )
 
     private fun shouldShowBubble(bookmark: Bookmark): Boolean {
+        // 整页书签只是位置标记，不支持备注气泡
+        if (bookmark.isPageBookmark) return false
         if (bookmark.content.isBlank()) return false
         return if (bubbleShowAllPref) {
             !bubbleDismissed.contains(bookmark.time)
@@ -217,10 +256,192 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         invalidate()
     }
 
+    /**
+     * 单击书签时弹出的临时悬浮窗，唯一选项"编辑当前标签"。
+     * 与选中文本后的操作悬浮窗同性质：点其他区域即消失。
+     */
+    private fun showBookmarkEditPopup(bookmark: Bookmark, x: Float, y: Float) {
+        bookmarkEditPopup?.dismiss()
+        val textView = TextView(context).apply {
+            text = context.getString(R.string.bookmark_edit_current)
+            textSize = 12f
+            gravity = Gravity.CENTER
+            minWidth = 52.dpToPx()
+            setTextColor(context.getCompatColor(R.color.primaryText))
+            setPadding(12.dpToPx(), 0, 12.dpToPx(), 0)
+            setBackgroundResource(R.drawable.bg_popup_action_item)
+            setOnClickListener {
+                dismissBookmarkEditPopup()
+                // editPos >= 0：编辑页显示"删除"按钮（与目录长按入口一致）
+                activity?.showDialogFragment(BookmarkDialog(bookmark, 0))
+            }
+        }
+        val content = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundResource(R.drawable.bg_popup_action_modern)
+            addView(
+                textView,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    34.dpToPx()
+                ).apply {
+                    setMargins(3.dpToPx(), 3.dpToPx(), 3.dpToPx(), 3.dpToPx())
+                }
+            )
+        }
+        val popup = PopupWindow(
+            content,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply {
+            // 与选中文字菜单一样由阅读页的下一次点击关闭，不抢走这次点击。
+            isFocusable = false
+            isOutsideTouchable = false
+            isTouchable = true
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                elevation = 14f.dpToPx()
+            }
+            setOnDismissListener {
+                if (bookmarkEditPopup === this) {
+                    bookmarkEditPopup = null
+                }
+            }
+        }
+        bookmarkEditPopup = popup
+        content.measure(
+            View.MeasureSpec.UNSPECIFIED,
+            View.MeasureSpec.UNSPECIFIED
+        )
+        val loc = IntArray(2)
+        getLocationOnScreen(loc)
+        val margin = 12.dpToPx()
+        val popupW = content.measuredWidth
+        val popupH = content.measuredHeight
+        val screenW = resources.displayMetrics.widthPixels
+        val screenH = resources.displayMetrics.heightPixels
+        val showX = (loc[0] + x.toInt() - popupW / 2)
+            .coerceIn(margin, screenW - popupW - margin)
+        val showY = (loc[1] + y.toInt() + 20.dpToPx())
+            .coerceAtMost(screenH - popupH - margin)
+            .coerceAtLeast(margin)
+        popup.showAtLocation(this, Gravity.NO_GRAVITY, showX, showY)
+    }
+
+    private fun dismissBookmarkEditPopup() {
+        bookmarkEditPopup?.let {
+            it.dismiss()
+            bookmarkEditPopup = null
+        }
+    }
+
     private fun drawBookmarkBubbles(canvas: Canvas) {
         if (bookmarks.isEmpty()) return
         val bubbles = collectBubbles()
         bubbles.forEach { drawBubble(canvas, it) }
+    }
+
+    /**
+     * 整页书签右上角标签：页首文字与整页书签记录匹配时，从页面右侧延伸出小标签。
+     * 按文本匹配而非页码，排版/文字变更后依然能对上。
+     * 滚动模式下翻页方向为纵向，标签改为横向从右侧向页内生长，长度=满长的一半；
+     * 翻页模式保持纵向从顶边垂下，长度=满长。
+     * 此函数在正文 clipRect 之前调用：下拉时标签要延伸到页面顶部露出的空白区，
+     * 不能被正文裁剪裁掉。
+     */
+    private fun drawPageBookmarkTabs(canvas: Canvas) {
+        // 删除模式松手回弹期间：书签随回弹消失
+        if (pullDownRemoving) return
+        // 下拉添加进行中：当前页还没有书签，强制画出动效标签。
+        // 标签尖角钉在页面顶边，从固定顶边"长"出来：可见高度=下拉距离，
+        // 长满一个标签高后不再生长；页面继续下滑，标签留在顶部。
+        // 画在屏幕空间（抵消画布的下拉 translate），超出视图顶边的部分被视图边界自然裁掉。
+        // 添加成功后（pullDownKeepFull）回弹期间保持满尺寸留在原地，直到新书签加载进来接管。
+        if ((pullDownAdding && pullDownOffset > 0f) || pullDownKeepFull) {
+            val tabHeight = pageBookmarkTabHeight()
+            val reveal = if (pullDownKeepFull) {
+                tabHeight
+            } else {
+                min(pullDownOffset, tabHeight)
+            }
+            canvas.save()
+            canvas.translate(0f, -pullDownOffset)
+            drawPageBookmarkTabShape(canvas, visibleRect.top + reveal - tabHeight)
+            canvas.restore()
+        }
+        if (bookmarks.none { it.isPageBookmark }) return
+        val last = if (callBack.isScroll) 2 else 0
+        for (rel in 0..last) {
+            val offset = relativeOffset(rel)
+            if (rel > 0 && offset >= ChapterProvider.visibleHeight) break
+            val page = relativePage(rel)
+            if (page.isMsgPage) continue
+            val pageHead = page.text.trim().take(40)
+            if (pageHead.isBlank()) continue
+            val matched = bookmarks.any { it.isPageBookmark && isPageTextMatched(it.bookText, pageHead) }
+            if (!matched) continue
+            // 添加动效期间（含松手回弹）标签固定在屏幕位置，不随页面 translate 移动：
+            // 标签是从顶部长出来的，长好后留在原地，而不是跟着页面"从页面冒出来"
+            val top = if (pullDownAdding && pullDownOffset > 0f) {
+                visibleRect.top + offset - pullDownOffset
+            } else {
+                visibleRect.top + offset
+            }
+            drawPageBookmarkTabShape(canvas, top)
+        }
+    }
+
+    /** 整页书签匹配：书签记录文本与页首文本公共前缀占比 ≥ 80% 视为命中 */
+    private fun isPageTextMatched(bookmarkText: String, pageHead: String): Boolean {
+        val bm = bookmarkText.trim()
+        if (bm.isEmpty() || pageHead.isEmpty()) return false
+        var common = 0
+        val max = minOf(bm.length, pageHead.length)
+        while (common < max && bm[common] == pageHead[common]) {
+            common++
+        }
+        return common.toFloat() >= max * 0.8f
+    }
+
+    private fun pageBookmarkTabHeight(): Float = 64f.dpToPx()
+
+    /** 画右上角标签：右侧延伸的小圆角标签，带一个朝向书页的尖角 */
+    private fun drawPageBookmarkTabShape(canvas: Canvas, top: Float) {
+        val color = if (pageBookmarkColor != 0) {
+            pageBookmarkColor
+        } else {
+            appCtx.accentColor
+        }
+        pageBookmarkPaint.color = color
+        pageBookmarkPaint.style = Paint.Style.FILL
+        pageBookmarkPaint.isAntiAlias = true
+        val tabWidth = 22f.dpToPx()
+        val tabHeight = pageBookmarkTabHeight()
+        // 右上角：标签从页面右边缘延伸出来
+        val right = visibleRect.right + tabWidth * 0.35f
+        pageBookmarkPath.reset()
+        if (callBack.isScroll) {
+            // 滚动模式：翻页方向为纵向，标签改为横向——钉在页面右边、向页内生长，
+            // 长度=满长的一半，厚度=原标签宽，尖角朝页内（尖端在左端）
+            val len = tabHeight / 2f
+            val cut = 8f.dpToPx() / 2f
+            pageBookmarkPath.moveTo(right - len, top + tabWidth / 2f)
+            pageBookmarkPath.lineTo(right - len + cut, top)
+            pageBookmarkPath.lineTo(right, top)
+            pageBookmarkPath.lineTo(right, top + tabWidth)
+            pageBookmarkPath.lineTo(right - len + cut, top + tabWidth)
+            pageBookmarkPath.close()
+        } else {
+            // 翻页模式：纵向标签，钉在页面顶边、垂向页内，尖角朝下
+            val corner = min(8f.dpToPx(), tabHeight * 0.125f)
+            pageBookmarkPath.moveTo(right - tabWidth, top)
+            pageBookmarkPath.lineTo(right, top)
+            pageBookmarkPath.lineTo(right, top + tabHeight - corner)
+            pageBookmarkPath.lineTo(right - tabWidth / 2, top + tabHeight)
+            pageBookmarkPath.lineTo(right - tabWidth, top + tabHeight - corner)
+            pageBookmarkPath.close()
+        }
+        canvas.drawPath(pageBookmarkPath, pageBookmarkPaint)
     }
 
     private fun collectBubbles(): List<BubbleData> {
@@ -476,11 +697,23 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         bubbleBgPaint.isAntiAlias = true
         canvas.drawRoundRect(rect, bubbleCornerRadius, bubbleCornerRadius, bubbleBgPaint)
 
-        bubbleStrokePaint.color = appCtx.accentColor
-        bubbleStrokePaint.style = Paint.Style.STROKE
-        bubbleStrokePaint.strokeWidth = 1f.dpToPx()
-        bubbleStrokePaint.isAntiAlias = true
-        canvas.drawRoundRect(rect, bubbleCornerRadius, bubbleCornerRadius, bubbleStrokePaint)
+        if (bubbleStrokeShow) {
+            val strokeColor = if (bubbleStrokeColor != 0) {
+                bubbleStrokeColor
+            } else {
+                appCtx.accentColor
+            }
+            bubbleStrokePaint.color = Color.argb(
+                Color.alpha(strokeColor) * bubbleStrokeAlpha / 100,
+                Color.red(strokeColor),
+                Color.green(strokeColor),
+                Color.blue(strokeColor)
+            )
+            bubbleStrokePaint.style = Paint.Style.STROKE
+            bubbleStrokePaint.strokeWidth = 1f.dpToPx()
+            bubbleStrokePaint.isAntiAlias = true
+            canvas.drawRoundRect(rect, bubbleCornerRadius, bubbleCornerRadius, bubbleStrokePaint)
+        }
 
         val layout = bubbleLayoutCache[data.bookmark.time]
             ?: buildBubbleLayout(
@@ -496,6 +729,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     }
 
     private fun drawBubbleArrow(canvas: Canvas, bubble: RectF, anchor: RectF) {
+        if (!bubbleArrowShow) return
         val startX: Float
         val startY: Float
         val endX = anchor.centerX()
@@ -517,7 +751,17 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
             startY = bubble.centerY()
             endY = anchor.right
         }
-        bubbleArrowPaint.color = appCtx.accentColor
+        val arrowColor = if (bubbleArrowColor != 0) {
+            bubbleArrowColor
+        } else {
+            appCtx.accentColor
+        }
+        bubbleArrowPaint.color = Color.argb(
+            Color.alpha(arrowColor) * bubbleArrowAlpha / 100,
+            Color.red(arrowColor),
+            Color.green(arrowColor),
+            Color.blue(arrowColor)
+        )
         bubbleArrowPaint.style = Paint.Style.STROKE
         bubbleArrowPaint.strokeWidth = 1.5f.dpToPx()
         bubbleArrowPaint.pathEffect = DashPathEffect(floatArrayOf(5f.dpToPx(), 4f.dpToPx()), 0f)
@@ -550,12 +794,17 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         return null
     }
 
-    private fun findBookmarkAt(x: Float, y: Float): Bookmark? {
+    /**
+     * 点击位置命中的普通书签：把点击落到文本位置，再按"书签文本更短 > 创建更晚"
+     * 从所有覆盖该位置的书签中选一个（整页书签不参与单击交互）。
+     */
+    private fun findClickBookmarkAt(x: Float, y: Float): Bookmark? {
         var result: Bookmark? = null
-        touch(x, y) { _, _, _, _, column ->
-            if (column is TextColumn && column.bookmarkTime != 0L) {
-                result = bookmarks.firstOrNull { it.time == column.bookmarkTime }
-            }
+        touch(x, y) { _, textPos, textPage, _, _ ->
+            val chapter = textPage.getTextChapter()
+            val pos = chapter.getReadLength(textPage.index) +
+                textPage.getPosByLineColumn(textPos.lineIndex, textPos.columnIndex)
+            result = findClickBookmark(pos, textPage.chapterIndex)
         }
         return result
     }
@@ -575,9 +824,15 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         if (longScreenshot) {
             canvas.translate(0f, scrollY.toFloat())
         }
+        if (pullDownOffset != 0f) {
+            canvas.translate(0f, pullDownOffset)
+        }
         drawScrollFollowBackground(canvas)
         drawPaperEffect(canvas)
         check(!visibleRect.isEmpty) { "visibleRect 为空" }
+        // 整页书签标签先于正文裁剪绘制：标签要从页面右边缘延伸出来，
+        // 若受正文 clipRect 限制，伸出正文的部分会被裁掉（常驻标签只剩一半）
+        drawPageBookmarkTabs(canvas)
         if (!textPage.hasEpubBackground()) {
             canvas.clipRect(visibleRect)
         }
@@ -586,9 +841,53 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     }
 
     /**
+     * 设置下拉位移：页面内容跟手下移；0 表示复位
+     */
+    fun setPullDownOffset(offset: Float) {
+        pullDownOffset = offset
+        invalidate()
+    }
+
+    /**
+     * 设置下拉模式：true=添加（当前页无整页书签），false=删除（已有书签）
+     */
+    fun setPullDownAdding(adding: Boolean) {
+        pullDownAdding = adding
+        invalidate()
+    }
+
+    /**
+     * 删除模式松手回弹期间隐藏当前页标签（书签随回弹消失）
+     */
+    fun setPullDownRemoving(removing: Boolean) {
+        pullDownRemoving = removing
+        invalidate()
+    }
+
+    /**
+     * 添加成功后的回弹期间保持动效标签满尺寸显示（页面回弹，标签留在右上角）
+     */
+    fun setPullDownKeepFull(keep: Boolean) {
+        pullDownKeepFull = keep
+        invalidate()
+    }
+
+    fun getPullDownOffset(): Float {
+        return pullDownOffset
+    }
+
+    /**
      * 绘制页面
      */
     private fun drawPage(canvas: Canvas) {
+        //选区颜色：阅读设置可选，默认取按钮按压背景色；支持透明度
+        val selectionColor = context.getPrefInt(PreferKey.selectionBgColor, 0)
+        AppLog.put("SELDBG drawPage selectionColor=$selectionColor selectedPaint=${selectedPaint.color}")
+        selectedPaint.color = if (selectionColor != 0) {
+            selectionColor
+        } else {
+            context.getCompatColor(R.color.btn_bg_press_2)
+        }
         var relativeOffset = relativeOffset(0)
         textPage.draw(this, canvas, relativeOffset)
         if (callBack.isScroll) {
@@ -849,6 +1148,8 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
      */
     @Suppress("UNUSED_ANONYMOUS_PARAMETER")
     fun click(x: Float, y: Float): Boolean {
+        // 临时“编辑当前标签”菜单不应遮挡后续阅读操作。
+        dismissBookmarkEditPopup()
         val currentTime = System.currentTimeMillis()
         val debounceClick = currentTime - lastClickTime < 300L //300毫秒防抖和双击
         lastClickTime = currentTime
@@ -862,12 +1163,14 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
             onBubbleClick(it)
             return true
         }
-        findBookmarkAt(x, y)?.let {
-            // 无备注的书签不劫持点击，保持原有的点击行为（翻页/区域点击等）
+        // 单击普通书签：切换备注气泡（有备注时）+ 弹出"编辑当前标签"悬浮窗；
+        // 整页书签不参与单击交互，保持原有的点击行为（翻页/区域点击等）
+        findClickBookmarkAt(x, y)?.let {
             if (it.content.isNotBlank()) {
                 onBookmarkBodyClick(it)
-                return true
             }
+            showBookmarkEditPopup(it, x, y)
+            return true
         }
         handleEpubNoteClick(x, y)?.let { return it }
         var handled = false
@@ -1354,7 +1657,8 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         val textColumn = textLine.getColumn(charIndex)
         upSelectedEnd(
             if (charIndex > -1) textColumn.end else textColumn.start,
-            textLine.lineBottom + relativeOffset(relativePage)
+            textLine.lineBottom + relativeOffset(relativePage),
+            textLine.lineTop + relativeOffset(relativePage)
         )
         upSelectChars()
     }
@@ -1369,6 +1673,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         }
         val last = if (callBack.isScroll) 2 else 0
         val textPos = TextPos(0, 0, 0)
+        var selCount = 0
         for (relativePos in 0..last) {
             textPos.relativePagePos = relativePos
             val textPage = relativePage(relativePos)
@@ -1380,6 +1685,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
                         val compareStart = textPos.compare(selectStart)
                         val compareEnd = textPos.compare(selectEnd)
                         column.selected = compareStart >= 0 && compareEnd <= 0
+                        if (column.selected) selCount++
                         column.isSearchResult =
                             column.selected && callBack.isSelectingSearchResult
                         if (column.isSearchResult) {
@@ -1389,6 +1695,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
                 }
             }
         }
+        AppLog.put("SELDBG upSelectChars selCount=$selCount start=$selectStart end=$selectEnd")
         postInvalidate()
     }
 
@@ -1398,9 +1705,9 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         }
     }
 
-    private fun upSelectedEnd(x: Float, y: Float) {
+    private fun upSelectedEnd(x: Float, y: Float, top: Float) {
         callBack.run {
-            upSelectedEnd(x + imgBgPaddingStart, y + headerHeight)
+            upSelectedEnd(x + imgBgPaddingStart, y + headerHeight, top + headerHeight)
         }
     }
 
@@ -1522,7 +1829,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
             nativeSelectionRect = hitRect
             postInvalidate()
             upSelectedStart(hitRect.left, hitRect.bottom, hitRect.top)
-            upSelectedEnd(hitRect.right, hitRect.bottom)
+            upSelectedEnd(hitRect.right, hitRect.bottom, hitRect.top)
             return selection.text
         }
         return null
@@ -1535,8 +1842,6 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
                 val startPos = chapter.getReadLength(page.index) +
                     page.getPosByLineColumn(selectStart.lineIndex, selectStart.columnIndex)
                 val text = getSelectedText()
-                // 选中的文字命中已有书签时，直接进入该书签的设置页面
-                findHitBookmark(startPos, startPos + text.length)?.let { return it }
                 return book.createBookMark().apply {
                     chapterIndex = page.chapterIndex
                     chapterPos = startPos
@@ -1549,23 +1854,21 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     }
 
     /**
-     * 选中的文字与已有书签重叠时，按“重叠更多 > 书签更短 > 创建更晚”的优先级
-     * 选出一个书签，用于直接进入其设置页面；未命中返回 null。
+     * 点击某个文本位置时命中的书签：取所有覆盖该位置的普通书签
+     * （整页书签不参与单击交互），按“书签文本更短 > 创建更晚”的优先级
+     * 选出一个用于"编辑当前标签"；未命中返回 null。
      */
-    private fun findHitBookmark(selStart: Int, selEnd: Int): Bookmark? {
+    private fun findClickBookmark(pos: Int, chapterIndex: Int): Bookmark? {
         return bookmarks
-            .mapNotNull { existing ->
-                val oldStart = existing.chapterPos
-                val oldEnd = existing.chapterPos + existing.bookText.length
-                val overlap = min(selEnd, oldEnd) - max(selStart, oldStart)
-                if (overlap <= 0) null else existing to overlap
-            }
+            .asSequence()
+            .filter { !it.isPageBookmark }
+            .filter { it.chapterIndex == chapterIndex }
+            .filter { pos >= it.chapterPos && pos < it.chapterPos + it.bookText.length }
             .sortedWith(
-                compareByDescending<Pair<Bookmark, Int>> { it.second }
-                    .thenBy { it.first.bookText.length }
-                    .thenByDescending { it.first.time }
+                compareBy<Bookmark> { it.bookText.length }
+                    .thenByDescending { it.time }
             )
-            .firstOrNull()?.first
+            .firstOrNull()
     }
 
     /**
@@ -1582,8 +1885,6 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
                     startPage.getPosByLineColumn(selectStart.lineIndex, selectStart.columnIndex)
                 val selEnd = chapter.getReadLength(endPage.index) +
                     endPage.getPosByLineColumn(selectEnd.lineIndex, selectEnd.columnIndex)
-                // 选中的文字命中已有书签时，直接进入该书签的设置页面
-                findHitBookmark(selStart, selEnd)?.let { return it }
                 val paragraphs = chapter.paragraphs
                 val startParagraph = paragraphs.firstOrNull { selStart in it.chapterIndices }
                 val endParagraph = paragraphs.firstOrNull { selEnd in it.chapterIndices }
@@ -1707,7 +2008,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         val isScroll: Boolean
         var isSelectingSearchResult: Boolean
         fun upSelectedStart(x: Float, y: Float, top: Float)
-        fun upSelectedEnd(x: Float, y: Float)
+        fun upSelectedEnd(x: Float, y: Float, top: Float)
         fun onImageLongPress(x: Float, y: Float, src: String)
         fun onCancelSelect()
         fun onLongScreenshotTouchEvent(event: MotionEvent): Boolean

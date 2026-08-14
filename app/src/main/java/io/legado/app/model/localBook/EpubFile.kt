@@ -118,6 +118,11 @@ class EpubFile(var book: Book) {
         }
 
         @Synchronized
+        internal fun getHtmlContent(book: Book, chapter: BookChapter): String? {
+            return getEFile(book).getHtmlContent(chapter)
+        }
+
+        @Synchronized
         internal fun preloadNativeLayouts(book: Book, hrefs: List<String>) {
             if (hrefs.isEmpty()) return
             val file = getEFile(book)
@@ -465,6 +470,44 @@ class EpubFile(var book: Book) {
             dumpEpubChapterDebug(chapter, rawResources, text)
         }
         return READABLE_CONTENT_VERSION_FLAG + text
+    }
+
+    /** 原生布局无法生成页面时，给经典模式提供同一章节的 HTML 回退内容。 */
+    private fun getHtmlContent(chapter: BookChapter): String? {
+        val contents = epubSpineContents ?: epubBookContents ?: return null
+        val nextChapterFirstResourceHref = chapter.getVariable("nextUrl").substringBeforeLast("#")
+        val currentChapterFirstResourceHref = chapter.url.substringBeforeLast("#")
+        findEpubResource(currentChapterFirstResourceHref)?.takeIf { it.isEpubBookInfoResource() }?.let {
+            return ""
+        }
+        val isLastChapter = nextChapterFirstResourceHref.isBlank()
+        val includeNextChapterResource = !chapter.endFragmentId.isNullOrBlank()
+        val chapterResources = collectChapterResources(
+            contents = contents,
+            currentHref = currentChapterFirstResourceHref,
+            nextHref = nextChapterFirstResourceHref,
+            includeNextResource = includeNextChapterResource,
+            isLastChapter = isLastChapter
+        )
+        if (chapterResources.isEmpty()) return null
+
+        val elements = Elements()
+        chapterResources.forEachIndexed { index, res ->
+            elements.add(
+                when {
+                    index == 0 && index == chapterResources.lastIndex ->
+                        getBody(res, chapter.startFragmentId, chapter.endFragmentId, buildNativeDom = false)
+                    index == 0 -> getBody(res, chapter.startFragmentId, null, buildNativeDom = false)
+                    index == chapterResources.lastIndex && includeNextChapterResource && !isLastChapter &&
+                        res.href == nextChapterFirstResourceHref ->
+                        getBody(res, null, chapter.endFragmentId, buildNativeDom = false)
+                    else -> getBody(res, null, null, buildNativeDom = false)
+                }
+            )
+        }
+        return elements.joinToString("\n") { it.html().trim() }
+            .trim()
+            .takeIf { it.isNotBlank() }
     }
 
     private data class ReadableInlineStyle(

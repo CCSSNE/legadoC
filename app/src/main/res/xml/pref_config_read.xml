@@ -281,6 +281,72 @@
         app:iconSpaceReserved="false"
         app:isBottomBackground="true" />
 
+    <io.legado.app.lib.prefs.Preference
+        android:key="bookmarkNoteBubbleStroke"
+        android:summary="@string/bookmark_note_bubble_stroke_summary"
+        android:title="@string/bookmark_note_bubble_stroke"
+        app:iconSpaceReserved="false"
+        app:isBottomBackground="true" />
+
+    <io.legado.app.lib.prefs.Preference
+        android:key="bookmarkNoteBubbleArrow"
+        android:summary="@string/bookmark_note_bubble_arrow_summary"
+        android:title="@string/bookmark_note_bubble_arrow"
+        app:iconSpaceReserved="false"
+        app:isBottomBackground="true" />
+
+    <io.legado.app.lib.prefs.SwitchPreference
+        android:defaultValue="true"
+        android:key="pageBookmarkPullDown"
+        android:summary="@string/page_bookmark_pull_down_summary"
+        android:title="@string/page_bookmark_pull_down"
+        app:iconSpaceReserved="false"
+        app:isBottomBackground="true" />
+
+    <io.legado.app.lib.prefs.Preference
+        android:key="pageBookmarkColor"
+        android:summary="@string/page_bookmark_color_summary"
+        android:title="@string/page_bookmark_color"
+        app:iconSpaceReserved="false"
+        app:isBottomBackground="true" />
+
+    <io.legado.app.lib.prefs.SwitchPreference
+        android:defaultValue="true"
+        android:key="crossPageCopy"
+        android:summary="@string/cross_page_copy_summary"
+        android:title="@string/cross_page_copy"
+        app:iconSpaceReserved="false"
+        app:isBottomBackground="true" />
+
+    <io.legado.app.lib.prefs.SwitchPreference
+        android:defaultValue="true"
+        android:key="selectionMagnifier"
+        android:summary="@string/selection_magnifier_summary"
+        android:title="@string/selection_magnifier"
+        app:iconSpaceReserved="false"
+        app:isBottomBackground="true" />
+
+    <io.legado.app.lib.prefs.Preference
+        android:key="selectionBgColor"
+        android:summary="@string/selection_bg_color_summary"
+        android:title="@string/selection_bg_color"
+        app:iconSpaceReserved="false"
+        app:isBottomBackground="true" />
+
+    <io.legado.app.lib.prefs.Preference
+        android:key="selectionHandleColor"
+        android:summary="@string/selection_handle_color_summary"
+        android:title="@string/selection_handle_color"
+        app:iconSpaceReserved="false"
+        app:isBottomBackground="true" />
+
+    <io.legado.app.lib.prefs.Preference
+        android:key="selectionHandleStyle"
+        android:summary="@string/selection_handle_style_summary"
+        android:title="@string/selection_handle_style"
+        app:iconSpaceReserved="false"
+        app:isBottomBackground="true" />
+
     <io.legado.app.lib.prefs.SwitchPreference
         android:defaultValue="true"
         android:key="showReadTitleAddition"

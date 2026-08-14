@@ -155,7 +155,9 @@ class TextChapterLayout(
     private val chapterBookmarks: List<Bookmark> by lazy {
         runCatching {
             appDb.bookmarkDao.getByBook(book.name, book.author)
-                .filter { it.chapterIndex == bookChapter.index }
+                // 整页书签只是页面位置标记，绝不能参与正文样式命中；
+                // 否则它会覆盖同位置普通书签的效果。
+                .filter { !it.isPageBookmark && it.chapterIndex == bookChapter.index }
                 .sortedBy { it.chapterPos }
         }.getOrDefault(emptyList())
     }
@@ -451,7 +453,7 @@ class TextChapterLayout(
                     return@forEachIndexed
                 } else if (text.startsWith(EpubFile.NATIVE_CONTENT_FLAG)) {
                     if (isClassicEpub) {
-                        setTypeNativeEpubLayout(text)
+                        setTypeNativeEpubLayout(text, imageStyle)
                     }
                     return@forEachIndexed
                 } else if (text.startsWith("<usehtml")) {
@@ -1001,7 +1003,7 @@ class TextChapterLayout(
     /**
      * 排版html样式
      */
-    private suspend fun setTypeNativeEpubLayout(rawNativeEntry: String): Boolean {
+    private suspend fun setTypeNativeEpubLayout(rawNativeEntry: String, imageStyle: String?): Boolean {
         if (!isClassicEpub) {
             AppLog.put("EPUB Native Layout abort: 当前书籍不是 EPUB, book=${book.name}")
             return false
@@ -1061,8 +1063,24 @@ class TextChapterLayout(
             rendered = true
         }
         if (!rendered) {
-            val reason = "getNativeLayout 全部返回空"
-            setTypeEpubDiagnosticPage(reason, "hrefs=${hrefs.joinToString()}")
+            val fallbackHtml = EpubFile.getHtmlContent(book, bookChapter)
+            if (!fallbackHtml.isNullOrBlank()) {
+                val pageCount = textPages.size
+                val lineCount = pendingTextPage.lines.size
+                setTypeHtml(imageStyle, book, fallbackHtml)
+                rendered = textPages.size > pageCount || pendingTextPage.lines.size > lineCount ||
+                    pendingTextPage.hasEpubContent()
+                if (rendered) {
+                    AppLog.putDebug(
+                        "EPUB Native Layout fallback to HTML: " +
+                            "chapter=${bookChapter.index}:${bookChapter.title}, hrefs=${hrefs.joinToString()}"
+                    )
+                }
+            }
+            if (!rendered) {
+                val reason = "getNativeLayout 全部返回空"
+                setTypeEpubDiagnosticPage(reason, "hrefs=${hrefs.joinToString()}")
+            }
         }
         return true
     }

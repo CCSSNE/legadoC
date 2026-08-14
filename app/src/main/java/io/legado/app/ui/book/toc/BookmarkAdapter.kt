@@ -106,10 +106,13 @@ class BookmarkAdapter(private val context: Context, val callback: Callback) :
             is ListHolder -> {
                 val binding = holder.binding
                 binding.tvChapterName.text = item.chapterName
+                binding.tvPageTag.visible(item.isPageBookmark)
                 binding.tvBookText.gone(item.bookText.isEmpty())
                 binding.tvBookText.text = item.bookText
-                binding.tvContent.gone(item.content.isEmpty())
+                binding.tvContent.gone(item.content.isEmpty() || item.isPageBookmark)
                 binding.tvContent.text = item.content
+                binding.vStyleColor.gone(item.isPageBookmark)
+                binding.tvStyle.gone(item.isPageBookmark)
                 binding.vStyleColor.background.setTint(styleColor(item))
                 binding.tvStyle.text = styleText(item)
                 upSelectionUi(binding.selectionOuter, binding.selectionDot, selectionMode, selected)
@@ -125,9 +128,12 @@ class BookmarkAdapter(private val context: Context, val callback: Callback) :
             is GridHolder -> {
                 val binding = holder.binding
                 binding.tvChapterName.text = item.chapterName
+                binding.tvPageTag.visible(item.isPageBookmark)
                 binding.tvBookText.text = item.bookText
-                binding.tvContent.visible(item.content.isNotEmpty())
+                binding.tvContent.visible(item.content.isNotEmpty() && !item.isPageBookmark)
                 binding.tvContent.text = item.content
+                binding.vStyleColor.gone(item.isPageBookmark)
+                binding.tvStyle.gone(item.isPageBookmark)
                 binding.vStyleColor.background.setTint(styleColor(item))
                 binding.tvStyle.text = styleText(item)
                 upSelectionUi(binding.selectionOuter, binding.selectionDot, selectionMode, selected)
@@ -162,10 +168,12 @@ class BookmarkAdapter(private val context: Context, val callback: Callback) :
     }
 
     private fun styleColor(item: Bookmark): Int {
+        if (item.isPageBookmark) return 0
         return if (item.color != 0) item.color else appCtx.accentColor
     }
 
     private fun styleText(item: Bookmark): String {
+        if (item.isPageBookmark) return ""
         if (item.style == BookmarkStyle.NONE) return ""
         val names = arrayListOf<String>()
         if (item.style and BookmarkStyle.SINGLE_UNDERLINE != 0) {

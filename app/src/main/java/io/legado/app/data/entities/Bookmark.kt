@@ -23,5 +23,7 @@ data class Bookmark(
     var content: String = "",
     var style: Int = 0,
     var color: Int = 0,
-    var styleColors: String = ""
+    var styleColors: String = "",
+    //整页书签标记：右上角拟真标签，整页文本记录在 bookText，按页首文字匹配显示
+    var isPageBookmark: Boolean = false
 ) : Parcelable

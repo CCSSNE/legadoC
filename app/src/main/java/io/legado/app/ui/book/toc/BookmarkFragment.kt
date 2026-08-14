@@ -10,6 +10,7 @@ import android.widget.LinearLayout
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.LinearLayoutManager
 import com.jaredrummler.android.colorpicker.ColorPickerDialog
 import com.jaredrummler.android.colorpicker.ColorPickerDialogListener
 import com.jaredrummler.android.colorpicker.ColorShape
@@ -18,6 +19,7 @@ import io.legado.app.base.VMBaseFragment
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
+import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.data.entities.BookmarkStyle
 import io.legado.app.databinding.FragmentBookmarkBinding
@@ -28,6 +30,7 @@ import io.legado.app.lib.prefs.ColorPreference
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.view.ThemeCheckBox
+import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.widget.dialog.showActionBottomSheet
@@ -54,6 +57,7 @@ import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.abs
 import splitties.init.appCtx
 
 
@@ -63,9 +67,10 @@ class BookmarkFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_bookmark
     TocViewModel.BookmarkCallBack {
     override val viewModel by activityViewModels<TocViewModel>()
     private val binding by viewBinding(FragmentBookmarkBinding::bind)
-    private var mLayoutManager: UpLinearLayoutManager? = null
+    private var mLayoutManager: LinearLayoutManager? = null
     private val adapter by lazy { BookmarkAdapter(requireContext(), this) }
     private var durChapterIndex = 0
+    private var durChapterPos = 0
     private var gridSpan = 0
     private var exportSelectedBookmarks: List<Bookmark> = emptyList()
     private var batchColorTargets: List<Bookmark> = emptyList()
@@ -85,6 +90,7 @@ class BookmarkFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_bookmark
         initRecyclerView()
         viewModel.bookData.observe(this) {
             durChapterIndex = it.durChapterIndex
+            durChapterPos = it.durChapterPos
             upBookmark(null)
         }
     }
@@ -123,20 +129,41 @@ class BookmarkFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_bookmark
             }.flowOn(IO).collect {
                 adapter.setItems(it)
                 binding.tvEmpty.visibility = if (it.isEmpty()) View.VISIBLE else View.GONE
-                var scrollPos = 0
-                withContext(Dispatchers.Default) {
-                    adapter.getItems().forEachIndexed { index, bookmark ->
-                        if (bookmark.chapterIndex >= durChapterIndex) {
-                            return@withContext
-                        }
-                        scrollPos = index
-                    }
-                }
-                if (gridSpan == 0) {
-                    mLayoutManager?.scrollToPositionWithOffset(scrollPos, 0)
-                }
+                mLayoutManager?.scrollToPositionWithOffset(
+                    findInitialScrollPosition(adapter.getItems(), book),
+                    0
+                )
             }
         }
+    }
+
+    /**
+     * 打开目录书签页时，优先把当前页面内的第一条书签顶到列表首位；
+     * 当前页没有时退到当前章节第一条，章节也没有才取章节距离最近的一条。
+     */
+    private fun findInitialScrollPosition(items: List<Bookmark>, book: Book): Int {
+        if (items.isEmpty()) return 0
+        val currentPage = ReadBook.takeIf { it.book?.bookUrl == book.bookUrl }
+            ?.curTextChapter
+            ?.getPage(ReadBook.durPageIndex)
+        if (currentPage != null && currentPage.chapterIndex == durChapterIndex) {
+            val pageStart = currentPage.chapterPosition
+            val pageEnd = pageStart + currentPage.charSize
+            val pageFirst = items.indexOfFirst { bookmark ->
+                bookmark.chapterIndex == durChapterIndex &&
+                    bookmark.chapterPos >= pageStart && bookmark.chapterPos < pageEnd
+            }
+            if (pageFirst >= 0) return pageFirst
+        }
+        items.indexOfFirst { it.chapterIndex == durChapterIndex }
+            .takeIf { it >= 0 }
+            ?.let { return it }
+        return items.indices.minWithOrNull(
+            compareBy<Int> { abs(items[it].chapterIndex - durChapterIndex) }
+                .thenBy { if (items[it].chapterIndex < durChapterIndex) 0 else 1 }
+                .thenBy { abs(items[it].chapterPos - durChapterPos) }
+                .thenBy { it }
+        ) ?: 0
     }
 
     /** 显示模式：列表 / 网格二列 / 网格三列 */
@@ -164,7 +191,9 @@ class BookmarkFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_bookmark
             else -> getString(R.string.bookmark_list_mode)
         }
         if (gridSpan > 0) {
-            binding.recyclerView.layoutManager = GridLayoutManager(requireContext(), gridSpan)
+            val layoutManager = GridLayoutManager(requireContext(), gridSpan)
+            mLayoutManager = layoutManager
+            binding.recyclerView.layoutManager = layoutManager
             if (binding.recyclerView.itemDecorationCount > 0) {
                 binding.recyclerView.removeItemDecorationAt(0)
             }
@@ -288,7 +317,7 @@ class BookmarkFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_bookmark
     }
 
     private fun editSelectedRemark() {
-        val selected = adapter.selectedItems()
+        val selected = adapter.selectedItems().filterNot { it.isPageBookmark }
         if (selected.isEmpty()) return
         val editText = EditText(requireContext())
         alert(R.string.bookmark_edit_remark) {
@@ -302,7 +331,7 @@ class BookmarkFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_bookmark
     }
 
     private fun editSelectedStyle() {
-        val selected = adapter.selectedItems()
+        val selected = adapter.selectedItems().filterNot { it.isPageBookmark }
         if (selected.isEmpty()) return
         val styleBoxes = arrayListOf<ThemeCheckBox>()
         val container = LinearLayout(requireContext()).apply {
@@ -356,7 +385,7 @@ class BookmarkFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_bookmark
     }
 
     private fun editSelectedColor() {
-        val selected = adapter.selectedItems()
+        val selected = adapter.selectedItems().filterNot { it.isPageBookmark }
         if (selected.isEmpty()) return
         batchColorTargets = selected
         val dialog = ColorPreference.ColorPickerDialogCompat.newBuilder()

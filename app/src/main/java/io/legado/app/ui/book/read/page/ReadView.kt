@@ -10,13 +10,13 @@ import android.view.MotionEvent
 import android.view.ViewConfiguration
 import android.view.WindowInsets
 import android.widget.FrameLayout
-import android.widget.Magnifier
 import io.legado.app.R
 import io.legado.app.constant.PageAnim
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
+import io.legado.app.constant.PreferKey
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.service.BaseReadAloudService
@@ -40,6 +40,8 @@ import io.legado.app.ui.book.read.page.provider.ChapterProvider
 import io.legado.app.ui.book.read.page.provider.LayoutProgressListener
 import io.legado.app.ui.book.read.page.provider.TextPageFactory
 import io.legado.app.utils.activity
+import io.legado.app.utils.dpToPx
+import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.invisible
 import io.legado.app.utils.longToastOnUi
 import io.legado.app.utils.showDialogFragment
@@ -47,6 +49,7 @@ import io.legado.app.utils.throttle
 import java.text.BreakIterator
 import java.util.Locale
 import kotlin.math.abs
+import kotlin.math.max
 
 /**
  * 阅读视图
@@ -100,6 +103,79 @@ class ReadView(context: Context, attrs: AttributeSet) :
     private var pressOnTextSelected = false
     private val initialTextPos = TextPos(0, 0, 0)
 
+    //下拉添加整页书签手势（跟手位移 + 回弹动效）
+    private var pullDownStartY = 0f
+    private var pullDownArmed = false
+    private var pullDownTriggered = false
+    private var pullDownAdding = false
+    private var pullDownAnimator: android.animation.ValueAnimator? = null
+    // 抢占阈值：远小于翻页手势 slop，一旦出现明显向下拖动立即独占，
+    // 之后不再把任何事件交给翻页 delegate（避免 delegate 截图覆盖页面导致"页面不跟手"）
+    private val pullDownGrabDistance get() = 8f.dpToPx()
+    private val pullDownThreshold get() = 100f.dpToPx()
+
+    //跨页复制：手指停在右下角触发翻页，跨页后选区延续；手指持续停在角落则持续跨页（无限跨页，含跨章）
+    private var crossPageArmed = false
+    private var crossPageFlipped = false
+    // 上次 MOVE 时手指是否仍在角落：翻页后仍在角落则直接续上下一轮计时
+    private var crossPageInCorner = false
+    private val crossPageTimeout = 500L
+    private val crossPageRepeatTimeout = 1000L
+    private val crossPageRunnable = Runnable {
+        if (crossPageArmed) {
+            crossPageFlipped = true
+            crossPageArmed = false
+            onCrossPageFlip()
+        }
+    }
+
+    /**
+     * 下拉松手回弹：页面位移动画复位到 0，结束后清空动效状态
+     */
+    private fun animatePullDownReset() {
+        pullDownAnimator?.cancel()
+        pullDownAnimator = android.animation.ValueAnimator.ofFloat(
+            curPage.getPullDownOffset(),
+            0f
+        ).apply {
+            duration = 200L
+            addUpdateListener {
+                curPage.setPullDownOffset(it.animatedValue as Float)
+            }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    curPage.setPullDownOffset(0f)
+                    curPage.setPullDownAdding(false)
+                    curPage.setPullDownRemoving(false)
+                    curPage.setPullDownKeepFull(false)
+                }
+            })
+            start()
+        }
+    }
+
+    /**
+     * 跨页复制：直接切到下一页（无动画，避免被持续触摸打断），并把选区延续到新页顶部。
+     * 翻页后手指仍停在角落则继续计时，停留 500ms 再跨下一页；手指移出角落即停（无限跨页，含跨章）
+     */
+    private fun onCrossPageFlip() {
+        if (!isTextSelected) return
+        val delegate = pageDelegate ?: return
+        if (!delegate.hasNext()) return
+        curPage.cancelSelect()
+        isTextSelected = false
+        fillPage(PageDirection.NEXT)
+        // 切页后新页内容已就绪，立即在新页顶部建立选区，起点=页首，后续手指移动继续扩展
+        curPage.selectStartMoveIndex(TextPos(0, 0, 0))
+        isTextSelected = true
+        invalidate()
+        // 手指仍停在角落：续上下一轮计时，持续停留持续跨页
+        if (crossPageInCorner && !crossPageArmed) {
+            crossPageArmed = true
+            postDelayed(crossPageRunnable, crossPageRepeatTimeout)
+        }
+    }
+
     private val slopSquare by lazy { ViewConfiguration.get(context).scaledTouchSlop }
     private val doubleTapSlop by lazy { ViewConfiguration.get(context).scaledDoubleTapSlop }
     private var pageSlopSquare: Int = slopSquare
@@ -116,7 +192,6 @@ class ReadView(context: Context, attrs: AttributeSet) :
     private val brRect = RectF()
     private val boundary by lazy { BreakIterator.getWordInstance(Locale.getDefault()) }
     private val upProgressThrottle = throttle(200) { post { upProgress() } }
-    private var selectionMagnifier: Magnifier? = null
     private val doubleTapTimeout: Long get() = AppConfig.readAloudDoubleTapTimeout.toLong()
     private var pendingSingleTap: Runnable? = null
     private var pendingSingleTapTime = 0L
@@ -219,6 +294,8 @@ class ReadView(context: Context, attrs: AttributeSet) :
                     return true
                 }
                 callBack.screenOffTimerStart()
+                // 记录按下时是否已处于选区：选区状态下手势一律不触发下拉标签
+                val wasTextSelected = isTextSelected
                 if (isTextSelected) {
                     curPage.cancelSelect()
                     isTextSelected = false
@@ -230,12 +307,51 @@ class ReadView(context: Context, attrs: AttributeSet) :
                 postDelayed(longPressRunnable, longPressTimeout)
                 pressDown = true
                 isMove = false
+                pullDownTriggered = false
+                pullDownAnimator?.cancel()
+                // 翻页动画进行中（页面未稳定）不允许触发下拉书签：pageDelegate?.onDown() 稍后会
+                // 把 isRunning 清零，必须在此处先读取，否则"翻页翻到一半按下并下滑"会误触发
+                pullDownArmed = pageDelegate?.isRunning != true &&
+                    !isScroll &&
+                    !wasTextSelected &&
+                    !callBack.isMenuActive() &&
+                    context.getPrefBoolean(PreferKey.pageBookmarkPullDown, true)
+                if (pullDownArmed) {
+                    pullDownStartY = event.y
+                    pullDownAdding = !callBack.hasPageBookmarkOnCurrentPage()
+                    curPage.setPullDownAdding(pullDownAdding)
+                    curPage.setPullDownOffset(0f)
+                    curPage.setPullDownKeepFull(false)
+                }
                 pageDelegate?.onTouch(event)
                 pageDelegate?.onDown()
                 setStartPoint(event.x, event.y, false)
             }
 
             MotionEvent.ACTION_MOVE -> {
+                if (pullDownArmed) {
+                    val deltaY = event.y - pullDownStartY
+                    val deltaX = abs(event.x - startX)
+                    if (!pullDownTriggered && !isTextSelected) {
+                        // 出现明显向下拖动（且纵向占优）立即独占手势：
+                        // 阈值远小于翻页 slop，抢占后再也不把事件交给翻页 delegate，
+                        // 避免 delegate 截图覆盖页面导致"页面不跟手"
+                        if (deltaY > pullDownGrabDistance && deltaY >= deltaX) {
+                            pullDownTriggered = true
+                            longPressed = false
+                            removeCallbacks(longPressRunnable)
+                            pageDelegate?.abortAnim()
+                        }
+                    }
+                    if (pullDownTriggered) {
+                        curPage.setPullDownOffset(deltaY.coerceAtLeast(0f))
+                        return true
+                    }
+                    // 已出现向下趋势但尚未达到抢占阈值：拦住事件，不给翻页手势
+                    if (deltaY > 0f && deltaY > deltaX) {
+                        return true
+                    }
+                }
                 if (audioDragging) {
                     curPage.hitAudioTrack(event.x, event.y)?.let {
                         curPage.audioTrackSeek(it, event.x)
@@ -252,8 +368,30 @@ class ReadView(context: Context, attrs: AttributeSet) :
                     longPressed = false
                     removeCallbacks(longPressRunnable)
                     if (isTextSelected) {
-                        selectText(event.x, event.y)
-                        showSelectionMagnifier(event.x, event.y)
+                        //跨页复制：手指进入右下角物理正方形区域（边长=长边/8）并停留后自动翻页（滚动模式无跨页概念）。
+                        // 手指持续停在角落持续跨页，移出角落即停，再进入再次开始
+                        if (!isScroll && context.getPrefBoolean(PreferKey.crossPageCopy, true)) {
+                            val cornerSize = max(width, height) / 8f
+                            val inCorner = event.x > width - cornerSize &&
+                                event.y > height - cornerSize
+                            crossPageInCorner = inCorner
+                            if (inCorner) {
+                                if (!crossPageArmed) {
+                                    crossPageArmed = true
+                                    postDelayed(crossPageRunnable, crossPageTimeout)
+                                }
+                            } else {
+                                crossPageArmed = false
+                                removeCallbacks(crossPageRunnable)
+                            }
+                        }
+                        if (crossPageFlipped) {
+                            //跨页后：起点固定新页页首，只移动终点继续扩展选择
+                            curPage.selectEndMove(event.x, event.y)
+                        } else {
+                            selectText(event.x, event.y)
+                        }
+                        callBack.updateSelectionFinger(event.x, event.y)
                     } else {
                         pageDelegate?.onTouch(event)
                     }
@@ -262,6 +400,30 @@ class ReadView(context: Context, attrs: AttributeSet) :
 
             MotionEvent.ACTION_UP -> {
                 dismissSelectionMagnifier()
+                crossPageArmed = false
+                crossPageFlipped = false
+                crossPageInCorner = false
+                removeCallbacks(crossPageRunnable)
+                if (pullDownArmed && pullDownTriggered) {
+                    val deltaY = (event.y - pullDownStartY).coerceAtLeast(0f)
+                    pullDownArmed = false
+                    pullDownTriggered = false
+                    if (deltaY >= pullDownThreshold) {
+                        if (pullDownAdding) {
+                            if (callBack.addPageBookmark()) {
+                                // 添加成功：回弹期间标签保持满尺寸留在原地，直到新书签加载接管
+                                curPage.setPullDownKeepFull(true)
+                            }
+                        } else {
+                            callBack.removePageBookmark()
+                            // 删除模式：回弹过程中书签消失
+                            curPage.setPullDownRemoving(true)
+                        }
+                    }
+                    animatePullDownReset()
+                    return true
+                }
+                pullDownArmed = false
                 if (audioDragging) {
                     audioDragging = false
                     curPage.hitAudioTrack(event.x, event.y)?.let {
@@ -289,6 +451,17 @@ class ReadView(context: Context, attrs: AttributeSet) :
 
             MotionEvent.ACTION_CANCEL -> {
                 dismissSelectionMagnifier()
+                crossPageArmed = false
+                crossPageFlipped = false
+                crossPageInCorner = false
+                removeCallbacks(crossPageRunnable)
+                if (pullDownArmed && pullDownTriggered) {
+                    pullDownArmed = false
+                    pullDownTriggered = false
+                    animatePullDownReset()
+                    return true
+                }
+                pullDownArmed = false
                 if (audioDragging) {
                     audioDragging = false
                     return true
@@ -309,6 +482,10 @@ class ReadView(context: Context, attrs: AttributeSet) :
     }
 
     fun cancelSelect(clearSearchResult: Boolean = false) {
+        crossPageArmed = false
+        crossPageFlipped = false
+        crossPageInCorner = false
+        removeCallbacks(crossPageRunnable)
         if (isTextSelected) {
             dismissSelectionMagnifier()
             curPage.cancelSelect(clearSearchResult)
@@ -361,6 +538,8 @@ class ReadView(context: Context, attrs: AttributeSet) :
      * 长按选择
      */
     private fun onLongPress() {
+        // 长按进入选区后，本次手势不再允许下拉标签
+        pullDownArmed = false
         kotlin.runCatching {
             val handled = curPage.longPress(startX, startY) { textPos: TextPos ->
                 isTextSelected = true
@@ -427,7 +606,6 @@ class ReadView(context: Context, attrs: AttributeSet) :
                 }
                 curPage.selectStartMoveIndex(startPos)
                 curPage.selectEndMoveIndex(endPos)
-                showSelectionMagnifier(startX, startY)
             }
             if (handled && curPage.hasNativeSelection()) {
                 isTextSelected = true
@@ -437,16 +615,8 @@ class ReadView(context: Context, attrs: AttributeSet) :
         }
     }
 
-    private fun showSelectionMagnifier(x: Float, y: Float) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P || !isAttachedToWindow) return
-        val safeX = x.coerceIn(0f, width.toFloat())
-        val safeY = y.coerceIn(0f, height.toFloat())
-        (selectionMagnifier ?: Magnifier(this).also { selectionMagnifier = it }).show(safeX, safeY)
-    }
-
     private fun dismissSelectionMagnifier() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
-        selectionMagnifier?.dismiss()
+        callBack.dismissSelectionMagnifier()
     }
 
     private fun handleTapUp() {
@@ -602,6 +772,8 @@ class ReadView(context: Context, attrs: AttributeSet) :
                     ReadAloud.resume(context)
                 }
             }
+
+            14 -> callBack.showForceMainMenu()
         }
     }
 
@@ -613,12 +785,14 @@ class ReadView(context: Context, attrs: AttributeSet) :
             val compare = initialTextPos.compare(textPos)
             when {
                 compare > 0 -> {
-                    curPage.selectStartMoveIndex(textPos)
+                    // 反向：先更新静端点（初始位置），最后更新动端点（手指位置），
+                    // 保证最后一个 upSelectedX 回调是动杆，放大镜画面中心跟随动杆
                     curPage.selectEndMoveIndex(
                         initialTextPos.relativePagePos,
                         initialTextPos.lineIndex,
                         initialTextPos.columnIndex - 1
                     )
+                    curPage.selectStartMoveIndex(textPos)
                 }
 
                 else -> {
@@ -909,11 +1083,18 @@ class ReadView(context: Context, attrs: AttributeSet) :
     interface CallBack {
         val isInitFinish: Boolean
         fun showActionMenu()
+        fun showForceMainMenu()
         fun screenOffTimerStart()
         fun showTextActionMenu()
         fun autoPageStop()
         fun openChapterList()
         fun addBookmark()
+        fun addPageBookmark(): Boolean
+        fun removePageBookmark()
+        fun hasPageBookmarkOnCurrentPage(): Boolean
+        fun dismissSelectionMagnifier()
+        fun updateSelectionFinger(x: Float, y: Float)
+        fun isMenuActive(): Boolean
         fun changeReplaceRuleState()
         fun openSearchActivity(searchWord: String?)
         fun upSystemUiVisibility()

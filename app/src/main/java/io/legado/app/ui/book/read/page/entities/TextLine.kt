@@ -7,6 +7,7 @@ import android.graphics.Paint.FontMetrics
 import android.os.Build
 import android.text.TextPaint
 import androidx.annotation.Keep
+import io.legado.app.constant.AppLog
 import io.legado.app.help.PaintPool
 import io.legado.app.help.book.isImage
 import io.legado.app.help.config.AppConfig
@@ -165,8 +166,10 @@ data class TextLine(
 
     private fun drawTextLine(view: ContentTextView, canvas: Canvas) {
         if (checkFastDraw()) {
+            AppLog.put("SELDBG line fastDraw")
             fastDrawTextLine(view, canvas)
         } else {
+            AppLog.put("SELDBG line normalDraw")
             for (i in columns.indices) {
                 columns[i].draw(view, canvas)
             }

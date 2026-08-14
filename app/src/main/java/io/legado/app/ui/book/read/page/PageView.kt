@@ -611,6 +611,26 @@ class PageView(context: Context) : FrameLayout(context) {
         binding.contentTextView.cancelSelect(clearSearchResult)
     }
 
+    fun setPullDownOffset(offset: Float) {
+        binding.contentTextView.setPullDownOffset(offset)
+    }
+
+    fun setPullDownAdding(adding: Boolean) {
+        binding.contentTextView.setPullDownAdding(adding)
+    }
+
+    fun setPullDownRemoving(removing: Boolean) {
+        binding.contentTextView.setPullDownRemoving(removing)
+    }
+
+    fun setPullDownKeepFull(keep: Boolean) {
+        binding.contentTextView.setPullDownKeepFull(keep)
+    }
+
+    fun getPullDownOffset(): Float {
+        return binding.contentTextView.getPullDownOffset()
+    }
+
     fun createBookmark(): Bookmark? {
         return binding.contentTextView.createBookmark()
     }

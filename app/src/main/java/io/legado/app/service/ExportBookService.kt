@@ -29,6 +29,7 @@ import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.book.getLiteralExportFileName
 import io.legado.app.help.book.isLocalModified
+import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalTxt
 import io.legado.app.help.illustration.IllustrationHelp
 import io.legado.app.help.illustration.imageSrcsFromJson
@@ -308,6 +309,11 @@ class ExportBookService : BaseService() {
                 try {
                     book ?: throw NoStackTraceException("获取${bookUrl}书籍出错")
                     refreshChapterList(book)
+                    if (exportConfig.type == "epub" &&
+                        appDb.bookChapterDao.getChapterCount(book.bookUrl) == 0
+                    ) {
+                        throw NoStackTraceException("EPUB 导出失败：书籍没有解析出章节目录")
+                    }
                     notificationContentText = getString(
                         R.string.export_book_notification_content,
                         book.name,
@@ -347,17 +353,21 @@ class ExportBookService : BaseService() {
     }
 
     private fun refreshChapterList(book: Book) {
-        if (!book.isLocalModified()) {
+        if (!book.isLocal) {
             return
         }
-        kotlin.runCatching {
-            LocalBook.getChapterList(book)
-        }.onSuccess {
-            appDb.bookChapterDao.delByBook(book.bookUrl)
-            appDb.bookChapterDao.insert(*it.toTypedArray())
-            appDb.bookDao.update(book)
-            ReadBook.onChapterListUpdated(book)
+        val existingChapterCount = appDb.bookChapterDao.getChapterCount(book.bookUrl)
+        if (!book.isLocalModified() && existingChapterCount > 0) {
+            return
         }
+        val chapters = LocalBook.getChapterList(book)
+        if (chapters.isEmpty()) {
+            throw NoStackTraceException("书籍<${book.name}>没有解析出章节目录")
+        }
+        appDb.bookChapterDao.delByBook(book.bookUrl)
+        appDb.bookChapterDao.insert(*chapters.toTypedArray())
+        appDb.bookDao.update(book)
+        ReadBook.onChapterListUpdated(book)
     }
 
     private data class SrcData(
@@ -761,6 +771,9 @@ class ExportBookService : BaseService() {
     }
 
     private suspend fun exportEpub(fileDoc: FileDoc, book: Book, config: ExportConfig) {
+        if (appDb.bookChapterDao.getChapterCount(book.bookUrl) == 0) {
+            throw NoStackTraceException("EPUB 导出失败：书籍没有章节目录")
+        }
         val filename = book.getLiteralExportFileName("epub", config.bookExportFileName)
 
         val epubBook = EpubBook()
@@ -1028,7 +1041,7 @@ class ExportBookService : BaseService() {
         val paragraphSpacing = config.epubParagraphSpacing.coerceIn(0, 120)
         val textColor = config.epubTextColor.normalizeCssColor("#3E3D3B")
         val titleColor = config.epubTitleColor.normalizeCssColor("#3F83E8")
-        val backgroundColor = config.epubBackgroundColor.normalizeCssColor("#FFFFFF")
+        val backgroundColor = config.epubBackgroundColor.normalizeCssColorWithAlpha("#FFFFFF")
         val paragraphIndent = config.epubParagraphIndent.normalizeCssLength()
         val fontFamily = when {
             embeddedFontHref != null -> "\"LegadoExportFont\", "
@@ -1513,10 +1526,30 @@ private fun String?.normalizeCssColor(default: String): String {
     val text = this?.trim()?.takeIf { it.isNotBlank() } ?: return default
     val color = if (text.startsWith("#")) text else "#$text"
     return if (Regex("^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$").matches(color)) {
-        if (color.length == 9) "#${color.takeLast(6)}" else color.uppercase()
+        if (color.length == 9) {
+            // #RRGGBBAA：去掉透明度，保留 #RRGGBB
+            "#${color.substring(1, 7)}".uppercase()
+        } else {
+            color.uppercase()
+        }
     } else {
         default
     }
+}
+
+/** 背景色专用：保留透明度，输出 rgba(r,g,b,a)（兼容性最好的 CSS 写法，所有阅读器支持） */
+private fun String?.normalizeCssColorWithAlpha(default: String): String {
+    val text = this?.trim()?.takeIf { it.isNotBlank() } ?: return default
+    val color = if (text.startsWith("#")) text else "#$text"
+    if (!Regex("^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$").matches(color)) {
+        return default
+    }
+    val hex = color.substring(1)
+    val r = hex.substring(0, 2).toInt(16)
+    val g = hex.substring(2, 4).toInt(16)
+    val b = hex.substring(4, 6).toInt(16)
+    val a = if (hex.length == 8) hex.substring(6, 8).toInt(16) / 255f else 1f
+    return "rgba($r, $g, $b, $a)"
 }
 
 private fun String?.normalizeCssLength(): String {

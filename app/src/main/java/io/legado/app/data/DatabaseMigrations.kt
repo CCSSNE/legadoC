@@ -22,7 +22,17 @@ object DatabaseMigrations {
             migration_39_40, migration_40_41, migration_41_42, migration_42_43,
             migration_90_91, migration_91_92, migration_92_93, migration_93_94,
             migration_94_95, migration_95_96, migration_96_97, migration_97_98,
+            migration_98_99,
         )
+    }
+
+    private val migration_98_99 = object : Migration(98, 99) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // 整页书签标记（右上角拟真标签）
+            db.execSQL(
+                "ALTER TABLE bookmarks ADD COLUMN isPageBookmark INTEGER NOT NULL DEFAULT 0"
+            )
+        }
     }
 
     private val migration_97_98 = object : Migration(97, 98) {

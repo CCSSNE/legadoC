@@ -14,6 +14,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
+import androidx.appcompat.widget.SwitchCompat
 import androidx.preference.Preference
 import com.jaredrummler.android.colorpicker.ColorPickerDialog
 import com.jaredrummler.android.colorpicker.ColorPickerDialogListener
@@ -42,12 +43,22 @@ import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.putPrefInt
+import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.removePref
 import io.legado.app.utils.setEdgeEffectColor
 import splitties.init.appCtx
 
 class MoreConfigDialog : BasePrefDialogFragment() {
     private val readPreferTag = "readPreferenceFragment"
+
+    private companion object {
+        const val COLOR_DIALOG_BUBBLE_BG = 1
+        const val COLOR_DIALOG_BUBBLE_STROKE = 2
+        const val COLOR_DIALOG_BUBBLE_ARROW = 3
+        const val COLOR_DIALOG_PAGE_BOOKMARK = 4
+        const val COLOR_DIALOG_SELECTION_BG = 5
+        const val COLOR_DIALOG_SELECTION_HANDLE = 6
+    }
 
     override fun onStart() {
         super.onStart()
@@ -214,6 +225,18 @@ class MoreConfigDialog : BasePrefDialogFragment() {
                 PreferKey.paddingDisplayCutouts -> {
                     postEvent(EventBus.UP_CONFIG, arrayListOf(2))
                 }
+
+                // 整页书签/备注气泡外观设置变更：立即重注书签刷新绘制，
+                // 底部弹窗内修改不会触发 onResume，不刷新就看不到新颜色
+                PreferKey.pageBookmarkColor,
+                PreferKey.bookmarkNoteBubbleColor,
+                PreferKey.bookmarkNoteBubbleBgAlpha,
+                PreferKey.bookmarkNoteBubbleStrokeColor,
+                PreferKey.bookmarkNoteBubbleStrokeAlpha,
+                PreferKey.bookmarkNoteBubbleArrowColor,
+                PreferKey.bookmarkNoteBubbleArrowAlpha -> {
+                    (activity as? ReadBookActivity)?.reloadPageBookmarkConfig()
+                }
             }
         }
 
@@ -318,6 +341,20 @@ class MoreConfigDialog : BasePrefDialogFragment() {
 
                 PreferKey.bookmarkNoteBubbleBgAlpha -> showBubbleBgAlphaDialog()
                 PreferKey.bookmarkNoteBubbleColor -> showBubbleColorDialog()
+                PreferKey.bookmarkNoteBubbleStroke -> showBubbleStrokeDialog()
+                PreferKey.bookmarkNoteBubbleArrow -> showBubbleArrowDialog()
+                PreferKey.pageBookmarkColor -> showPageBookmarkColorDialog()
+                PreferKey.selectionBgColor -> showSelectionColorDialog(
+                    title = R.string.selection_bg_color,
+                    prefKey = PreferKey.selectionBgColor,
+                    dialogId = COLOR_DIALOG_SELECTION_BG
+                )
+                PreferKey.selectionHandleColor -> showSelectionColorDialog(
+                    title = R.string.selection_handle_color,
+                    prefKey = PreferKey.selectionHandleColor,
+                    dialogId = COLOR_DIALOG_SELECTION_HANDLE
+                )
+                PreferKey.selectionHandleStyle -> showSelectionHandleStyleDialog()
             }
             return super.onPreferenceTreeClick(preference)
         }
@@ -401,20 +438,266 @@ class MoreConfigDialog : BasePrefDialogFragment() {
                 .setShowColorShades(true)
                 .setShowDefaultColorButton(true)
                 .setColor(if (current != 0) current else appCtx.accentColor)
-                .setDialogId(1)
+                .setDialogId(COLOR_DIALOG_BUBBLE_BG)
                 .create()
             dialog.setColorPickerDialogListener(this)
             dialog.show(parentFragmentManager, "bookmark_bubble_color_picker")
         }
 
-        override fun onColorSelected(dialogId: Int, color: Int) {
-            val value = if (color == ColorPreference.ColorPickerDialogCompat.DEFAULT_COLOR) {
-                0
-            } else {
-                color
+        /**
+         * 气泡框线：弹窗内设置是否显示、透明度与颜色
+         */
+        private fun showBubbleStrokeDialog() {
+            showBubbleLineDialog(
+                title = R.string.bookmark_note_bubble_stroke,
+                showPrefKey = PreferKey.bookmarkNoteBubbleStrokeShow,
+                alphaPrefKey = PreferKey.bookmarkNoteBubbleStrokeAlpha,
+                colorPrefKey = PreferKey.bookmarkNoteBubbleStrokeColor,
+                showTitle = R.string.bookmark_note_bubble_stroke_show,
+                alphaTitle = R.string.bookmark_note_bubble_stroke_alpha,
+                colorTitle = R.string.bookmark_note_bubble_stroke_color,
+                dialogId = COLOR_DIALOG_BUBBLE_STROKE
+            )
+        }
+
+        /**
+         * 气泡箭头：弹窗内设置是否显示、透明度与颜色
+         */
+        private fun showBubbleArrowDialog() {
+            showBubbleLineDialog(
+                title = R.string.bookmark_note_bubble_arrow,
+                showPrefKey = PreferKey.bookmarkNoteBubbleArrowShow,
+                alphaPrefKey = PreferKey.bookmarkNoteBubbleArrowAlpha,
+                colorPrefKey = PreferKey.bookmarkNoteBubbleArrowColor,
+                showTitle = R.string.bookmark_note_bubble_arrow_show,
+                alphaTitle = R.string.bookmark_note_bubble_arrow_alpha,
+                colorTitle = R.string.bookmark_note_bubble_arrow_color,
+                dialogId = COLOR_DIALOG_BUBBLE_ARROW
+            )
+        }
+
+        /**
+         * 气泡框线/箭头通用设置弹窗：是否显示开关 + 透明度滑杆 + 颜色选择行
+         */
+        private fun showBubbleLineDialog(
+            title: Int,
+            showPrefKey: String,
+            alphaPrefKey: String,
+            colorPrefKey: String,
+            showTitle: Int,
+            alphaTitle: Int,
+            colorTitle: Int,
+            dialogId: Int
+        ) {
+            val context = requireContext()
+            val showSwitch = androidx.appcompat.widget.SwitchCompat(context)
+            showSwitch.isChecked = context.getPrefBoolean(showPrefKey, true)
+            val alphaValue = TextView(context).apply {
+                val current = context.getPrefInt(alphaPrefKey, 80).coerceIn(0, 100)
+                text = "$current%"
+                textSize = 14f
+                setTextColor(context.getCompatColor(R.color.primaryText))
             }
-            requireContext().putPrefInt(PreferKey.bookmarkNoteBubbleColor, value)
-            // 返回阅读页时 onResume 重新注入书签数据，气泡按新颜色刷新
+            val alphaSeekBar = ThemeSeekBar(context, null).apply {
+                max = 100
+                progress = context.getPrefInt(alphaPrefKey, 80).coerceIn(0, 100)
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                        alphaValue.text = "$progress%"
+                    }
+
+                    override fun onStartTrackingTouch(seekBar: SeekBar?) {
+                    }
+
+                    override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                    }
+                })
+            }
+            val currentColor = context.getPrefInt(colorPrefKey, 0)
+            val colorRow = TextView(context).apply {
+                text = if (currentColor != 0) {
+                    "#%06X".format(0xFFFFFF and currentColor)
+                } else {
+                    context.getString(R.string.bookmark_note_bubble_color_default)
+                }
+                textSize = 14f
+                setTextColor(context.getCompatColor(R.color.primaryText))
+                setPadding(0, 12.dpToPx(), 0, 12.dpToPx())
+                setOnClickListener {
+                    val dialog = ColorPreference.ColorPickerDialogCompat.newBuilder()
+                        .setDialogType(ColorPickerDialog.TYPE_PRESETS)
+                        .setDialogTitle(colorTitle)
+                        .setColorShape(ColorShape.CIRCLE)
+                        .setPresets(ColorPickerDialog.MATERIAL_COLORS)
+                        .setAllowPresets(true)
+                        .setAllowCustom(true)
+                        .setShowAlphaSlider(true)
+                        .setShowColorShades(true)
+                        .setShowDefaultColorButton(true)
+                        .setColor(if (currentColor != 0) currentColor else appCtx.accentColor)
+                        .setDialogId(dialogId)
+                        .create()
+                    dialog.setColorPickerDialogListener(this@ReadPreferenceFragment)
+                    dialog.show(parentFragmentManager, "bookmark_bubble_line_color_picker")
+                }
+            }
+            val container = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                val pad = 16.dpToPx()
+                setPadding(pad, pad, pad, pad)
+                addView(
+                    TextView(context).apply {
+                        text = context.getString(showTitle)
+                        textSize = 14f
+                        setTextColor(context.getCompatColor(R.color.primaryText))
+                    }
+                )
+                addView(showSwitch)
+                addView(
+                    TextView(context).apply {
+                        text = context.getString(alphaTitle)
+                        textSize = 14f
+                        setTextColor(context.getCompatColor(R.color.primaryText))
+                    }
+                )
+                addView(alphaValue)
+                addView(alphaSeekBar)
+                addView(
+                    TextView(context).apply {
+                        text = context.getString(colorTitle)
+                        textSize = 14f
+                        setTextColor(context.getCompatColor(R.color.primaryText))
+                    }
+                )
+                addView(colorRow)
+            }
+            alert(getString(title)) {
+                customView { container }
+                okButton {
+                    context.putPrefBoolean(showPrefKey, showSwitch.isChecked)
+                    context.putPrefInt(alphaPrefKey, alphaSeekBar.progress)
+                    // 返回阅读页时 onResume 会重新注入书签数据，气泡按新设置刷新
+                }
+                noButton()
+            }
+        }
+
+        /**
+         * 整页书签标签颜色：弹窗内选择颜色；"默认颜色"表示自动取主题强调色
+         */
+        private fun showPageBookmarkColorDialog() {
+            val current = requireContext().getPrefInt(PreferKey.pageBookmarkColor, 0)
+            val dialog = ColorPreference.ColorPickerDialogCompat.newBuilder()
+                .setDialogType(ColorPickerDialog.TYPE_PRESETS)
+                .setDialogTitle(R.string.page_bookmark_color)
+                .setColorShape(ColorShape.CIRCLE)
+                .setPresets(ColorPickerDialog.MATERIAL_COLORS)
+                .setAllowPresets(true)
+                .setAllowCustom(true)
+                .setShowAlphaSlider(false)
+                .setShowColorShades(true)
+                .setShowDefaultColorButton(true)
+                .setColor(if (current != 0) current else appCtx.accentColor)
+                .setDialogId(COLOR_DIALOG_PAGE_BOOKMARK)
+                .create()
+            dialog.setColorPickerDialogListener(this)
+            dialog.show(parentFragmentManager, "page_bookmark_color_picker")
+        }
+
+        /**
+         * 选区颜色/选区手柄颜色：弹窗内选择颜色，支持调整透明度；"默认颜色"表示使用内置默认色
+         */
+        private fun showSelectionColorDialog(title: Int, prefKey: String, dialogId: Int) {
+            val current = requireContext().getPrefInt(prefKey, 0)
+            val dialog = ColorPreference.ColorPickerDialogCompat.newBuilder()
+                .setDialogType(ColorPickerDialog.TYPE_PRESETS)
+                .setDialogTitle(title)
+                .setColorShape(ColorShape.CIRCLE)
+                .setPresets(ColorPickerDialog.MATERIAL_COLORS)
+                .setAllowPresets(true)
+                .setAllowCustom(true)
+                .setShowAlphaSlider(true)
+                .setShowColorShades(true)
+                .setShowDefaultColorButton(true)
+                .setColor(if (current != 0) current else appCtx.accentColor)
+                .setDialogId(dialogId)
+                .create()
+            dialog.setColorPickerDialogListener(this)
+            dialog.show(parentFragmentManager, "selection_color_picker")
+        }
+
+        /**
+         * 选区手柄样式：圆球加杆 / 仅圆球 / 无手柄，三选一
+         */
+        private fun showSelectionHandleStyleDialog() {
+            alert(getString(R.string.selection_handle_style)) {
+                items(
+                    listOf(
+                        getString(R.string.selection_handle_style_ball_stem),
+                        getString(R.string.selection_handle_style_ball),
+                        getString(R.string.selection_handle_style_none)
+                    ),
+                    onItemSelected = { _, index ->
+                        requireContext().putPrefInt(PreferKey.selectionHandleStyle, index)
+                    }
+                )
+            }
+        }
+
+        override fun onColorSelected(dialogId: Int, color: Int) {
+            when (dialogId) {
+                COLOR_DIALOG_BUBBLE_BG -> {
+                    val value = if (color == ColorPreference.ColorPickerDialogCompat.DEFAULT_COLOR) {
+                        0
+                    } else {
+                        color
+                    }
+                    requireContext().putPrefInt(PreferKey.bookmarkNoteBubbleColor, value)
+                }
+                COLOR_DIALOG_BUBBLE_STROKE -> {
+                    val value = if (color == ColorPreference.ColorPickerDialogCompat.DEFAULT_COLOR) {
+                        0
+                    } else {
+                        color
+                    }
+                    requireContext().putPrefInt(PreferKey.bookmarkNoteBubbleStrokeColor, value)
+                }
+                COLOR_DIALOG_BUBBLE_ARROW -> {
+                    val value = if (color == ColorPreference.ColorPickerDialogCompat.DEFAULT_COLOR) {
+                        0
+                    } else {
+                        color
+                    }
+                    requireContext().putPrefInt(PreferKey.bookmarkNoteBubbleArrowColor, value)
+                }
+                COLOR_DIALOG_PAGE_BOOKMARK -> {
+                    val value = if (color == ColorPreference.ColorPickerDialogCompat.DEFAULT_COLOR) {
+                        0
+                    } else {
+                        color
+                    }
+                    requireContext().putPrefInt(PreferKey.pageBookmarkColor, value)
+                }
+                COLOR_DIALOG_SELECTION_BG -> {
+                    val value = if (color == ColorPreference.ColorPickerDialogCompat.DEFAULT_COLOR) {
+                        0
+                    } else {
+                        color
+                    }
+                    requireContext().putPrefInt(PreferKey.selectionBgColor, value)
+                    // 重绘当前页，选区背景色立即生效
+                    postEvent(EventBus.UP_CONFIG, arrayListOf(9))
+                }
+                COLOR_DIALOG_SELECTION_HANDLE -> {
+                    val value = if (color == ColorPreference.ColorPickerDialogCompat.DEFAULT_COLOR) {
+                        0
+                    } else {
+                        color
+                    }
+                    requireContext().putPrefInt(PreferKey.selectionHandleColor, value)
+                }
+            }
+            // onSharedPreferenceChanged 已监听相关键：颜色保存后立即重注书签刷新绘制
         }
 
         override fun onDialogDismissed(dialogId: Int) {

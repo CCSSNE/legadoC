@@ -97,6 +97,7 @@ import io.legado.app.ui.book.read.config.TipConfigDialog.Companion.TIP_COLOR
 import io.legado.app.ui.book.read.config.TipConfigDialog.Companion.TIP_DIVIDER_COLOR
 import io.legado.app.ui.book.read.page.ContentTextView
 import io.legado.app.ui.book.read.page.ReadView
+import io.legado.app.ui.book.read.page.SelectionHandleDrawable
 import io.legado.app.ui.book.read.page.delegate.ScrollPageDelegate
 import io.legado.app.ui.book.read.page.entities.PageDirection
 import io.legado.app.ui.book.read.page.entities.TextPage
@@ -125,6 +126,7 @@ import io.legado.app.utils.buildMainHandler
 import io.legado.app.utils.dismissDialogFragment
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.getPrefBoolean
+import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.gone
 import io.legado.app.utils.hexString
@@ -295,6 +297,8 @@ class ReadBookActivity : BaseReadBookActivity(),
         binding.cursorRight.setColorFilter(accentColor)
         binding.cursorLeft.setOnTouchListener(this)
         binding.cursorRight.setOnTouchListener(this)
+        binding.selectionMagnifierView.bindSource(binding.readView)
+        binding.selectionMagnifierView.bindOverlays(binding.cursorLeft, binding.cursorRight)
         binding.readAiPanel.attach(this)
         binding.btnReadAloudOriginalProgress.setOnClickListener {
             backToReadAloudProgress()
@@ -724,9 +728,9 @@ class ReadBookActivity : BaseReadBookActivity(),
                 val axisValue = event.getAxisValue(MotionEvent.AXIS_VSCROLL)
                 LogUtils.d("onGenericMotionEvent", "axisValue = $axisValue")
                 // 获得垂直坐标上的滚动方向
-                if (axisValue < 0.0f) { // 滚轮向下滚
+                if (axisValue < 0.0f) { // 滚轮向下
                     mouseWheelPage(PageDirection.NEXT, axisValue)
-                } else { // 滚轮向上滚
+                } else { // 滚轮向上
                     mouseWheelPage(PageDirection.PREV, axisValue)
                 }
                 return true
@@ -808,35 +812,29 @@ class ReadBookActivity : BaseReadBookActivity(),
         when (event.action) {
             MotionEvent.ACTION_DOWN -> textActionMenu.dismiss()
             MotionEvent.ACTION_MOVE -> {
+                if (getPrefBoolean(PreferKey.selectionMagnifier, true)) {
+                    binding.selectionMagnifierView.setFinger(event.rawX, event.rawY)
+                }
+                val handleX = selectionHandleTouchX(v.id, event.rawX)
+                val handleY = event.rawY - selectionHandleDragOffset()
                 when (v.id) {
                     R.id.cursor_left -> if (!readView.curPage.getReverseStartCursor()) {
-                        readView.curPage.selectStartMove(
-                            event.rawX + cursorLeft.width,
-                            event.rawY - cursorLeft.height
-                        )
+                        readView.curPage.selectStartMove(handleX, handleY)
                     } else {
-                        readView.curPage.selectEndMove(
-                            event.rawX - cursorRight.width,
-                            event.rawY - cursorRight.height
-                        )
+                        readView.curPage.selectEndMove(handleX, handleY)
                     }
 
                     R.id.cursor_right -> if (readView.curPage.getReverseEndCursor()) {
-                        readView.curPage.selectStartMove(
-                            event.rawX + cursorLeft.width,
-                            event.rawY - cursorLeft.height
-                        )
+                        readView.curPage.selectStartMove(handleX, handleY)
                     } else {
-                        readView.curPage.selectEndMove(
-                            event.rawX - cursorRight.width,
-                            event.rawY - cursorRight.height
-                        )
+                        readView.curPage.selectEndMove(handleX, handleY)
                     }
                 }
             }
 
             MotionEvent.ACTION_UP -> {
                 readView.curPage.resetReverseCursor()
+                dismissSelectionMagnifier()
                 showTextActionMenu()
             }
         }
@@ -847,20 +845,156 @@ class ReadBookActivity : BaseReadBookActivity(),
      * 更新文字选择开始位置
      */
     override fun upSelectedStart(x: Float, y: Float, top: Float) = binding.run {
-        cursorLeft.x = x - cursorLeft.width
-        cursorLeft.y = y
-        cursorLeft.visible(true)
+        val style = selectionHandleStyle()
+        val lineHeight = (y - top).coerceAtLeast(1f)
+        selectionHandleLeftRodHeight = lineHeight
+        selectionHandleLeftTextBottomY = y
+        selectionHandleLeftBottomY = if (style == 0) {
+            y + selectionHandleDropletDiameter
+        } else {
+            y + selectionHandleBallOnlyHeight
+        }
+        upSelectionHandle()
+        cursorLeft.x = if (style == 0) {
+            x - cursorLeft.width / 2f - selectionHandleDropletRadius
+        } else {
+            x - cursorLeft.width / 2f
+        }
+        cursorLeft.y = if (style == 0) top else y
         textMenuPosition.x = x
         textMenuPosition.y = top
+        if (getPrefBoolean(PreferKey.selectionMagnifier, true)) {
+            selectionMagnifierView.setHandle(x, y)
+        }
     }
 
     /**
      * 更新文字选择结束位置
      */
-    override fun upSelectedEnd(x: Float, y: Float) = binding.run {
-        cursorRight.x = x
-        cursorRight.y = y
-        cursorRight.visible(true)
+    override fun upSelectedEnd(x: Float, y: Float, top: Float) = binding.run {
+        val style = selectionHandleStyle()
+        val lineHeight = (y - top).coerceAtLeast(1f)
+        selectionHandleRightRodHeight = lineHeight
+        selectionHandleRightBottomY = if (style == 0) {
+            y + selectionHandleDropletDiameter
+        } else {
+            y + selectionHandleBallOnlyHeight
+        }
+        upSelectionHandle()
+        cursorRight.x = if (style == 0) {
+            x - cursorRight.width / 2f + selectionHandleDropletRadius
+        } else {
+            x - cursorRight.width / 2f
+        }
+        cursorRight.y = if (style == 0) top else y
+        if (getPrefBoolean(PreferKey.selectionMagnifier, true)) {
+            selectionMagnifierView.setHandle(x, y)
+        }
+    }
+
+    /**
+     * 球+杆样式的固定球体尺寸；杆高由当前文字行的 top/bottom 动态决定。
+     */
+    private val selectionHandleDropletDiameter = 16.dpToPx().toFloat()
+
+    /**
+     * 仅球样式的固定 View 高度。
+     */
+    private val selectionHandleBallOnlyHeight = 24.dpToPx().toFloat()
+
+    /**
+     * 球+杆样式中，手指按在水滴球心时，命中行底所需减去的距离。
+     */
+    private val selectionHandleDropletRadius = 8.dpToPx().toFloat()
+
+    /**
+     * 仅球样式中，手指按在球心时，命中行底所需减去的距离。
+     */
+    private val selectionHandleBallOnlyCenter = 12.dpToPx().toFloat()
+
+    private var selectionHandleLeftTextBottomY = 0f
+    private var selectionHandleLeftBottomY = 0f
+    private var selectionHandleRightBottomY = 0f
+    private var selectionHandleLeftRodHeight = 1f
+    private var selectionHandleRightRodHeight = 1f
+
+    private fun selectionHandleStyle(): Int {
+        return getPrefInt(PreferKey.selectionHandleStyle, 0).coerceIn(0, 2)
+    }
+
+    /**
+     * 球+杆样式的水滴尖角位于球心的内侧 8dp，拖动时把手指坐标还原为尖角坐标。
+     */
+    private fun selectionHandleTouchX(viewId: Int, rawX: Float): Float {
+        if (selectionHandleStyle() != 0) return rawX
+        return if (viewId == R.id.cursor_left) {
+            rawX + selectionHandleDropletRadius
+        } else {
+            rawX - selectionHandleDropletRadius
+        }
+    }
+
+    /**
+     * 拖动时手指（按在球上）到锚点的偏移，使球心跟随手指：
+     * 球+杆：杆高=文字行高，水滴尖端=行底，球心=行底+8dp → 偏移 = 8dp
+     * 仅球：锚点=行底，球心=锚点+12dp → 偏移 = 12dp
+     */
+    private fun selectionHandleDragOffset(): Float {
+        return if (selectionHandleStyle() == 0) {
+            selectionHandleDropletRadius
+        } else {
+            selectionHandleBallOnlyCenter
+        }
+    }
+
+    /**
+     * 选区手柄：样式（球+杆/仅球/无）、颜色（支持透明度）与可见性统一在这里应用
+     */
+    private fun upSelectionHandle() {
+        val style = selectionHandleStyle()
+        if (style == 2) {
+            binding.cursorLeft.invisible()
+            binding.cursorRight.invisible()
+            return
+        }
+        if (style == 1) {
+            binding.cursorLeft.setImageResource(R.drawable.ic_cursor_left_ball)
+            binding.cursorRight.setImageResource(R.drawable.ic_cursor_right_ball)
+        } else {
+            binding.cursorLeft.setImageDrawable(
+                SelectionHandleDrawable(
+                    SelectionHandleDrawable.Side.LEFT,
+                    selectionHandleLeftRodHeight
+                )
+            )
+            binding.cursorRight.setImageDrawable(
+                SelectionHandleDrawable(
+                    SelectionHandleDrawable.Side.RIGHT,
+                    selectionHandleRightRodHeight
+                )
+            )
+        }
+        val handleColor = getPrefInt(PreferKey.selectionHandleColor, 0)
+        val color = if (handleColor != 0) handleColor else accentColor
+        binding.cursorLeft.setColorFilter(color, android.graphics.PorterDuff.Mode.SRC_IN)
+        binding.cursorRight.setColorFilter(color, android.graphics.PorterDuff.Mode.SRC_IN)
+        binding.cursorLeft.visible(true)
+        binding.cursorRight.visible(true)
+    }
+
+    /**
+     * 关闭选区放大镜
+     */
+    override fun dismissSelectionMagnifier() {
+        binding.selectionMagnifierView.dismiss()
+    }
+
+    /**
+     * 选区拖动中更新放大镜镜片位置（跟随手指）
+     */
+    override fun updateSelectionFinger(x: Float, y: Float) {
+        if (!getPrefBoolean(PreferKey.selectionMagnifier, true)) return
+        binding.selectionMagnifierView.setFinger(x, y)
     }
 
     /**
@@ -869,6 +1003,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun onCancelSelect() = binding.run {
         cursorLeft.invisible()
         cursorRight.invisible()
+        selectionMagnifierView.dismiss()
         textActionMenu.dismiss()
     }
 
@@ -888,9 +1023,9 @@ class ReadBookActivity : BaseReadBookActivity(),
         val startX = binding.textMenuPosition.x.toInt()
         val topY = binding.textMenuPosition.y.toInt()
         val endX = binding.cursorRight.x.toInt()
-        val startTextBottomY = binding.cursorLeft.y.toInt()
-        val startBottomY = binding.cursorLeft.y.toInt() + binding.cursorLeft.height
-        val endBottomY = binding.cursorRight.y.toInt() + binding.cursorRight.height
+        val startTextBottomY = selectionHandleLeftTextBottomY.toInt()
+        val startBottomY = selectionHandleLeftBottomY.toInt()
+        val endBottomY = selectionHandleRightBottomY.toInt()
         val centerX = ((startX + endX) / 2f).toInt()
         val bottomY = maxOf(startBottomY, endBottomY)
         lastTextMenuAnchor = ReadAiFloatingPanel.Anchor(
@@ -916,7 +1051,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     override val selectedText: String get() = binding.readView.getSelectText()
 
     /**
-     * 计算选区对应的配图插入锚点。
+     * 计算选区对应的配图插入锚点：
      *
      * 规则：任意文本选区都以第一段为插入边界，插到第一段与下一段之间；
      * 跨多段时（如选中 1/2/3 段）仍只取第一段，插到 1~2 段之间；
@@ -1089,7 +1224,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             return
         }
         if (binding.readView.isScroll) {
-            // 滚动视图时滚动,否则翻页
+            // 滚动视图时滚动，否则翻页
             (binding.readView.pageDelegate as? ScrollPageDelegate)?.curPage?.scroll((distance * 50).toInt())
         } else {
             keyPageDebounce(direction, mouseWheel = true, longPress = false)
@@ -1320,6 +1455,13 @@ class ReadBookActivity : BaseReadBookActivity(),
             BaseReadAloudService.isRun && AppConfig.readAloudHideFloatingWindow -> showReadAloudDialog()
             else -> binding.readMenu.runMenuIn()
         }
+    }
+
+    /**
+     * 强制显示主菜单（听书/自动翻页/全文搜索时也直接打开阅读主菜单）
+     */
+    override fun showForceMainMenu() {
+        binding.readMenu.runMenuIn()
     }
 
     /**
@@ -1625,7 +1767,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
     }
 
-    /* 恢复到 全文搜索/进度条跳转前的位置 */
+    /* 恢复到：全文搜索/进度条跳转前的位置 */
     private fun restoreLastBookProcess() {
         if (confirmRestoreProcess == true) {
             ReadBook.restoreLastBookProgress()
@@ -2110,6 +2252,91 @@ class ReadBookActivity : BaseReadBookActivity(),
             }
             showDialogFragment(BookmarkDialog(bookmark))
         }
+    }
+
+    override fun addPageBookmark(): Boolean {
+        val book = ReadBook.book
+        val page = ReadBook.curTextChapter?.getPage(ReadBook.durPageIndex)
+        if (book == null || page == null) {
+            return false
+        }
+        val pageText = page.text.trim()
+        if (pageText.isBlank()) {
+            return false
+        }
+        // 同页已存在整页书签时不重复添加
+        val exists = appDb.bookmarkDao.getByBook(book.name, book.author).any {
+            it.isPageBookmark &&
+                it.chapterIndex == ReadBook.durChapterIndex &&
+                it.bookText.trim() == pageText
+        }
+        if (exists) {
+            toastOnUi(R.string.page_bookmark_added)
+            return false
+        }
+        val bookmark = book.createBookMark().apply {
+            chapterIndex = ReadBook.durChapterIndex
+            chapterPos = ReadBook.durChapterPos
+            chapterName = page.title
+            bookText = pageText
+            isPageBookmark = true
+        }
+        appDb.bookmarkDao.insert(bookmark)
+        bookmarkLoadChapterIndex = -1
+        upChapterBookmarks()
+        toastOnUi(R.string.page_bookmark_added)
+        return true
+    }
+
+    /** 当前页是否有整页书签（按页首文字匹配） */
+    override fun hasPageBookmarkOnCurrentPage(): Boolean {
+        val book = ReadBook.book ?: return false
+        val page = ReadBook.curTextChapter?.getPage(ReadBook.durPageIndex) ?: return false
+        val pageHead = page.text.trim().take(40)
+        if (pageHead.isBlank()) return false
+        return appDb.bookmarkDao.getByBook(book.name, book.author).any {
+            it.isPageBookmark && isPageTextMatched(it.bookText, pageHead)
+        }
+    }
+
+    /** 是否处于菜单/弹层激活状态（此时下拉添加整页书签应无效） */
+    override fun isMenuActive(): Boolean {
+        return textActionMenu.isShowing || binding.readMenu.canShowMenu
+    }
+
+    override fun removePageBookmark() {
+        val book = ReadBook.book ?: return
+        val page = ReadBook.curTextChapter?.getPage(ReadBook.durPageIndex) ?: return
+        val pageHead = page.text.trim().take(40)
+        if (pageHead.isBlank()) return
+        val target = appDb.bookmarkDao.getByBook(book.name, book.author).firstOrNull {
+            it.isPageBookmark && isPageTextMatched(it.bookText, pageHead)
+        } ?: return
+        appDb.bookmarkDao.delete(target)
+        bookmarkLoadChapterIndex = -1
+        upChapterBookmarks()
+        toastOnUi(R.string.page_bookmark_removed)
+    }
+
+    /** 整页书签匹配：书签记录文本与页首文本公共前缀占比 ≥ 80% 视为命中（与 ContentTextView 一致） */
+    private fun isPageTextMatched(bookmarkText: String, pageHead: String): Boolean {
+        val bm = bookmarkText.trim()
+        if (bm.isEmpty() || pageHead.isEmpty()) return false
+        var common = 0
+        val max = minOf(bm.length, pageHead.length)
+        while (common < max && bm[common] == pageHead[common]) {
+            common++
+        }
+        return common.toFloat() >= max * 0.8f
+    }
+
+    /**
+     * 整页书签/备注气泡外观设置（颜色、透明度等）变更后立即重注当前章节书签，
+     * 让阅读页按新设置刷新，无需等待 onResume 或翻章
+     */
+    fun reloadPageBookmarkConfig() {
+        bookmarkLoadChapterIndex = -1
+        upChapterBookmarks()
     }
 
     override fun changeReplaceRuleState() {

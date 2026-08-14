@@ -6,10 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.result.ActivityResult
 import androidx.activity.result.ActivityResultLauncher
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContract
-import androidx.activity.result.contract.ActivityResultContracts
-import splitties.init.appCtx
 
 fun <T> ActivityResultLauncher<T?>.launch() {
     launch(null)
@@ -17,27 +14,23 @@ fun <T> ActivityResultLauncher<T?>.launch() {
 
 class SelectImageContract : ActivityResultContract<Int?, SelectImageContract.Result>() {
 
-    private val delegate = ActivityResultContracts.PickVisualMedia()
     private var requestCode: Int? = null
-    private var useFallback = false
 
     override fun createIntent(context: Context, input: Int?): Intent {
         requestCode = input
-        val intent = Intent(Intent.ACTION_GET_CONTENT)
+        // 用 OPEN_DOCUMENT 替代 GET_CONTENT：返回的 uri 支持 takePersistableUriPermission，
+        // 否则临时权限在发起方 Activity 结束后失效，后台服务读取（如 EPUB 导出嵌入背景图）会失败
+        return Intent(Intent.ACTION_OPEN_DOCUMENT)
             .addCategory(Intent.CATEGORY_OPENABLE)
             .setType("image/*")
-        if (intent.resolveActivity(appCtx.packageManager) == null) {
-            useFallback = true
-            val request = PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-            return delegate.createIntent(context, request)
-        }
-        return intent
+            .addFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+            )
     }
 
     override fun parseResult(resultCode: Int, intent: Intent?): Result {
-        val uri = if (useFallback) {
-            delegate.parseResult(resultCode, intent)
-        } else if (resultCode == RESULT_OK) {
+        val uri = if (resultCode == RESULT_OK) {
             intent?.data
         } else {
             null

@@ -23,6 +23,7 @@ import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.getCompatColor
+import io.legado.app.utils.gone
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -67,10 +68,23 @@ class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark, true),
         this.bookmark = bookmark
         val editPos = arguments.getInt("editPos", -1)
         effectColorMap.clear()
-        effectColorMap.putAll(BookmarkStyle.parseStyleColors(bookmark.styleColors))
-        checkStyleBoxes(bookmark.style)
-        initStyleCheckBoxes()
-        rebuildEffectColorRows()
+        if (bookmark.isPageBookmark) {
+            // 整页书签只保存页面位置，不允许在普通书签编辑器里写备注或效果。
+            binding.toolBar.title = getString(R.string.bookmark_page_tag)
+            binding.editBookText.isEnabled = false
+            binding.editBookText.isFocusable = false
+            binding.editBookText.isFocusableInTouchMode = false
+            binding.editBookText.isClickable = false
+            (binding.editContent.parent as? View)?.gone()
+            binding.tvBookmarkStyle.gone()
+            binding.llBookmarkStyles.gone()
+            binding.llEffectColors.gone()
+        } else {
+            effectColorMap.putAll(BookmarkStyle.parseStyleColors(bookmark.styleColors))
+            checkStyleBoxes(bookmark.style)
+            initStyleCheckBoxes()
+            rebuildEffectColorRows()
+        }
         binding.tvFooterLeft.visible(editPos >= 0)
         binding.run {
             tvChapterName.text = bookmark.chapterName
@@ -80,10 +94,18 @@ class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark, true),
                 dismiss()
             }
             tvOk.setOnClickListener {
-                bookmark.bookText = editBookText.text?.toString() ?: ""
-                bookmark.content = editContent.text?.toString() ?: ""
-                bookmark.style = getCheckedStyles()
-                bookmark.styleColors = BookmarkStyle.toStyleColorsJson(effectColorMap)
+                if (bookmark.isPageBookmark) {
+                    // 防止历史数据或批量编辑遗留的普通书签属性污染整页书签。
+                    bookmark.content = ""
+                    bookmark.style = BookmarkStyle.NONE
+                    bookmark.color = 0
+                    bookmark.styleColors = ""
+                } else {
+                    bookmark.bookText = editBookText.text?.toString() ?: ""
+                    bookmark.content = editContent.text?.toString() ?: ""
+                    bookmark.style = getCheckedStyles()
+                    bookmark.styleColors = BookmarkStyle.toStyleColorsJson(effectColorMap)
+                }
                 lifecycleScope.launch {
                     withContext(IO) {
                         appDb.bookmarkDao.insert(bookmark)

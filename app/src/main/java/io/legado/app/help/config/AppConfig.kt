@@ -55,7 +55,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var editTemeAuto = appCtx.getPrefBoolean(PreferKey.editTemeAuto)
     var isEInkMode = appCtx.getPrefString(PreferKey.themeMode) == "3"
     var clickActionTL = appCtx.getPrefInt(PreferKey.clickActionTL, 2)
-    var clickActionTC = appCtx.getPrefInt(PreferKey.clickActionTC, 0)
+    var clickActionTC = appCtx.getPrefInt(PreferKey.clickActionTC, 14)
     var clickActionTR = appCtx.getPrefInt(PreferKey.clickActionTR, 1)
     var clickActionML = appCtx.getPrefInt(PreferKey.clickActionML, 2)
     var clickActionMC = appCtx.getPrefInt(PreferKey.clickActionMC, 0)
@@ -94,7 +94,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
                 appCtx.getPrefInt(PreferKey.clickActionTL, 2)
 
             PreferKey.clickActionTC -> clickActionTC =
-                appCtx.getPrefInt(PreferKey.clickActionTC, 0)
+                appCtx.getPrefInt(PreferKey.clickActionTC, 14)
 
             PreferKey.clickActionTR -> clickActionTR =
                 appCtx.getPrefInt(PreferKey.clickActionTR, 1)
