@@ -1064,7 +1064,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         }
 
     var ttsFlowSys: Boolean
-        get() = appCtx.getPrefBoolean(PreferKey.ttsFollowSys, true)
+        get() = appCtx.getPrefBoolean(PreferKey.ttsFollowSys, false)
         set(value) {
             appCtx.putPrefBoolean(PreferKey.ttsFollowSys, value)
         }
@@ -1072,7 +1072,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val noAnimScrollPage: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.noAnimScrollPage, false)
 
-    const val defaultSpeechRate = 5
+    const val defaultSpeechRate = 30
 
     var ttsSpeechRate: Int
         get() = appCtx.getPrefInt(PreferKey.ttsSpeechRate, defaultSpeechRate)
@@ -1480,7 +1480,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         get() = appCtx.getPrefBoolean(PreferKey.readAloudFloatOnDesktop, false)
 
     val readAloudHideFloatingWindow
-        get() = appCtx.getPrefBoolean(PreferKey.readAloudHideFloatingWindow, false)
+        get() = appCtx.getPrefBoolean(PreferKey.readAloudHideFloatingWindow, true)
 
     val replaceEnableDefault get() = appCtx.getPrefBoolean(PreferKey.replaceEnableDefault, true)
 
@@ -1525,7 +1525,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         get() = appCtx.getPrefBoolean(PreferKey.volumeKeyPage, true)
 
     val volumeKeyPageOnPlay
-        get() = appCtx.getPrefBoolean(PreferKey.volumeKeyPageOnPlay, true)
+        get() = appCtx.getPrefBoolean(PreferKey.volumeKeyPageOnPlay, false)
 
     val illustrationAudioVolumeKey
         get() = appCtx.getPrefBoolean(PreferKey.illustrationAudioVolumeKey, true)

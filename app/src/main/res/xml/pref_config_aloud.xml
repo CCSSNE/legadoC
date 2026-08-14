@@ -49,7 +49,7 @@
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.SwitchPreference
-            android:defaultValue="false"
+            android:defaultValue="true"
             android:key="readAloudHideFloatingWindow"
             android:summary="@string/read_aloud_hide_floating_window_summary"
             android:title="@string/read_aloud_hide_floating_window"

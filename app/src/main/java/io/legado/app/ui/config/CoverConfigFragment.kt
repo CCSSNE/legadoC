@@ -48,9 +48,9 @@ class CoverConfigFragment : PreferenceFragment(),
         upPreferenceSummary(PreferKey.defaultCover, getPrefString(PreferKey.defaultCover))
         upPreferenceSummary(PreferKey.defaultCoverDark, getPrefString(PreferKey.defaultCoverDark))
         findPreference<SwitchPreference>(PreferKey.coverShowAuthor)
-            ?.isEnabled = getPrefBoolean(PreferKey.coverShowName)
+            ?.isEnabled = getPrefBoolean(PreferKey.coverShowName, true)
         findPreference<SwitchPreference>(PreferKey.coverShowAuthorN)
-            ?.isEnabled = getPrefBoolean(PreferKey.coverShowNameN)
+            ?.isEnabled = getPrefBoolean(PreferKey.coverShowNameN, true)
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {

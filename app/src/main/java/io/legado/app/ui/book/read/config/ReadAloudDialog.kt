@@ -116,7 +116,7 @@ class ReadAloudDialog : BaseDialogFragment(R.layout.dialog_read_aloud),
         upPlayState()
         upSpeakEngineSummary()
         upTimerText(BaseReadAloudService.timeMinute)
-        cbTtsFollowSys.isChecked = requireContext().getPrefBoolean("ttsFollowSys", true)
+        cbTtsFollowSys.isChecked = requireContext().getPrefBoolean("ttsFollowSys", false)
         upTtsSpeechRateEnabled(!cbTtsFollowSys.isChecked)
         upSeekTimer()
     }

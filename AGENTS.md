@@ -144,3 +144,20 @@ $apk='D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_<版本>.ap
 
 - 提交前检查 `git status`、`git diff`、`git log`；只暂存要提交的文件，不提交临时文件（如 `$logErr`、`$logOut`、构建日志、APK）。
 - 提交信息简洁，写清楚改动内容，风格与仓库历史一致。
+
+## 十二、设置默认值必须前后端一致（防"假关闭/假开启"）
+
+> 2026-08-14 修复音量键翻页问题时的经验教训，务必遵守。
+
+1. **每个设置项有两处默认值，改任何一处时必须同时核对另一处**：
+   - **前端（界面显示）**：`app\src\main\res\xml\pref_config_*.xml` 里的 `android:defaultValue`。
+   - **真正生效**：`AppConfig.kt` 里的 getter（`getPrefBoolean(PreferKey.xxx, <默认>)`、`getPrefInt`、`getPrefString`），以及散落在各文件的 `getPrefBoolean("xxx", <默认>)` / `getPrefBoolean(PreferKey.xxx)`（无第二参默认 `false`）。
+2. **两处不一致的症状**：设置界面显示"开/关"与实际行为相反，即"假关闭/假开启"——用户看到开关是关的，实际却生效；或看到是开的，实际却没作用。这属于隐蔽 bug，用户会反复遇到。
+3. **改默认值时**：要么同时改 XML 的 `android:defaultValue` 和代码 getter 的默认值，使其一致；要么至少保证"界面显示的默认值 == 代码读取的默认值"。
+4. **如何排查**：对每个带 `android:defaultValue` 的 key，全库搜索其所有 `getPrefBoolean/Int/String(PreferKey.xxx 或 "xxx")` 读取点，逐一对比默认值；特别注意 `getPrefBoolean(PreferKey.xxx)` 不带第二参数 = 默认 `false`，极易与 XML 默认 `true` 冲突。
+5. **本次已修复**（3.26.081411c / 10573）：
+   - `volumeKeyPageOnPlay`：XML 默认 `false`，AppConfig 读取默认原为 `true` → 改为 `false`（界面显示关、实际仍翻页 → 现在一致）。
+   - `updateCheckOnStart`：XML 默认 `true`，MainActivity / MyFragment 读取默认原为 `false` → 改为 `true`（界面显示开、实际不检查更新 → 现在一致）。
+   - `coverShowName` / `coverShowNameN`：封面设置页"显示作者"开关可用性判断读取默认原为 `false`，与 XML 默认 `true` 不一致 → 改为 `true`。
+6. 另有多处字符串/整数类默认不一致（如 `screenOrientation`、`clickImgWay`、`doublePageHorizontal` XML 默认 `"0"` 而代码读 null 走 else 分支），因行为与默认项等价暂未改，改这些设置默认时需一并核对。
+
