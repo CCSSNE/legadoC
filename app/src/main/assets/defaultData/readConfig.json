@@ -1,11 +1,11 @@
 [
   {
-    "bgStr": "#ffc0edc6",
+    "bgStr": "护眼漫绿.jpg",
     "bgStrEInk": "#FFFFFF",
-    "bgStrNight": "#000000",
-    "bgType": 0,
+    "bgStrNight": "宁静夜色.jpg",
+    "bgType": 1,
     "bgTypeEInk": 0,
-    "bgTypeNight": 0,
+    "bgTypeNight": 1,
     "darkStatusIcon": true,
     "darkStatusIconEInk": true,
     "darkStatusIconNight": false,
