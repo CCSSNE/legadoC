@@ -273,7 +273,7 @@ class ThemeConfigFragment : PreferenceFragment(),
             .setMinValue(0)
             .setValue(AppConfig.uiLayoutAlpha)
             .setCustomButton(R.string.btn_default_s) {
-                putPrefInt(PreferKey.uiLayoutAlpha, 0)
+                putPrefInt(PreferKey.uiLayoutAlpha, 50)
             }
             .show {
                 putPrefInt(PreferKey.uiLayoutAlpha, it.coerceIn(0, 100))
@@ -287,7 +287,7 @@ class ThemeConfigFragment : PreferenceFragment(),
             .setMinValue(0)
             .setValue(AppConfig.bookshelfCoverAlpha)
             .setCustomButton(R.string.btn_default_s) {
-                putPrefInt(PreferKey.bookshelfCoverAlpha, 30)
+                putPrefInt(PreferKey.bookshelfCoverAlpha, 20)
             }
             .show {
                 putPrefInt(PreferKey.bookshelfCoverAlpha, it.coerceIn(0, 100))

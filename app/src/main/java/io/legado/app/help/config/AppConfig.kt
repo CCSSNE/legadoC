@@ -1155,14 +1155,14 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var uiLayoutAlpha: Int
         get() = appCtx.getPrefInt(
             PreferKey.uiLayoutAlpha,
-            appCtx.getPrefInt(PreferKey.uiCornerEffectLevel, 0)
+            appCtx.getPrefInt(PreferKey.uiCornerEffectLevel, 50)
         ).coerceIn(0, 100)
         set(value) {
             appCtx.putPrefInt(PreferKey.uiLayoutAlpha, value.coerceIn(0, 100))
         }
 
     var bookshelfCoverAlpha: Int
-        get() = appCtx.getPrefInt(PreferKey.bookshelfCoverAlpha, 30).coerceIn(0, 100)
+        get() = appCtx.getPrefInt(PreferKey.bookshelfCoverAlpha, 20).coerceIn(0, 100)
         set(value) {
             appCtx.putPrefInt(PreferKey.bookshelfCoverAlpha, value.coerceIn(0, 100))
         }
