@@ -58,10 +58,16 @@ object SurfaceBackdrop {
         installResult(target, state, style, null)
     }
 
-    /** Updates geometry/tint without discarding an already captured backdrop. */
+    /**
+     * Updates geometry/tint without invalidating an in-flight capture.
+     *
+     * Dialog fragments commonly refresh their palette from onResume(), after their
+     * base class has already started PixelCopy in onStart(). A style-only update is
+     * not a new visual generation: the pending bitmap still belongs to this exact
+     * target, and must be installed with the newest style when it arrives.
+     */
     fun updateStyle(target: View, style: SurfaceStyle) {
         val state = stateFor(target)
-        state.generation += 1
         state.style = style
         installResult(target, state, style, state.bitmap)
     }
@@ -86,7 +92,9 @@ object SurfaceBackdrop {
             }
             completed = true
             if (state.generation == generation && target.isAttachedToWindow) {
-                installResult(target, state, style, bitmap)
+                // updateStyle() is allowed while PixelCopy is pending. It changes
+                // presentation only; capture ownership stays with this generation.
+                installResult(target, state, state.style ?: style, bitmap)
             } else {
                 bitmap?.recycleSafely()
             }

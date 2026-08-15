@@ -21,6 +21,7 @@ import io.legado.app.databinding.ActivityCacheManageBinding
 import io.legado.app.help.AppWebDav
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
+import io.legado.app.lib.theme.SegmentedControlStyle
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
@@ -82,17 +83,6 @@ class CacheManageActivity :
     }
 
     private fun initView() = binding.run {
-        tabBar.background = UiCorner.rounded(
-            ContextCompat.getColor(this@CacheManageActivity, R.color.background_menu),
-            UiCorner.panelRadius(this@CacheManageActivity)
-        )
-        listOf(btnBooks, btnAudio, btnVideo, btnManga, btnStats).forEach {
-            it.background = UiCorner.softActionSelector(
-                Color.TRANSPARENT,
-                ContextCompat.getColor(this@CacheManageActivity, R.color.background_card),
-                UiCorner.actionRadius(this@CacheManageActivity)
-            )
-        }
         listOf(cardStatsTotal, cardStatsDetail, cardStatsCache).forEach {
             it.background = UiCorner.rounded(
                 ContextCompat.getColor(this@CacheManageActivity, R.color.background_card),
@@ -234,16 +224,28 @@ class CacheManageActivity :
     }
 
     private fun updateTabs(mode: CacheManageMode?) = binding.run {
-        btnBooks.isSelected = mode == CacheManageMode.BOOK
-        btnAudio.isSelected = mode == CacheManageMode.AUDIO
-        btnVideo.isSelected = mode == CacheManageMode.VIDEO
-        btnManga.isSelected = mode == CacheManageMode.MANGA
-        btnStats.isSelected = mode == null
-        btnBooks.setTextColor(if (mode == CacheManageMode.BOOK) accentColor else primaryTextColor)
-        btnAudio.setTextColor(if (mode == CacheManageMode.AUDIO) accentColor else primaryTextColor)
-        btnVideo.setTextColor(if (mode == CacheManageMode.VIDEO) accentColor else primaryTextColor)
-        btnManga.setTextColor(if (mode == CacheManageMode.MANGA) accentColor else primaryTextColor)
-        btnStats.setTextColor(if (mode == null) accentColor else primaryTextColor)
+        SegmentedControlStyle.apply(
+            track = tabBar,
+            items = listOf(btnBooks, btnAudio, btnVideo, btnManga, btnStats),
+            selectedIndex = when (mode) {
+                CacheManageMode.BOOK -> 0
+                CacheManageMode.AUDIO -> 1
+                CacheManageMode.VIDEO -> 2
+                CacheManageMode.MANGA -> 3
+                null -> 4
+            },
+            palette = SegmentedControlStyle.Palette(
+                trackColor = UiCorner.surfaceColor(
+                    ContextCompat.getColor(this@CacheManageActivity, R.color.background_menu)
+                ),
+                selectedColor = UiCorner.surfaceColor(
+                    ContextCompat.getColor(this@CacheManageActivity, R.color.background_card),
+                    pressed = true
+                ),
+                textColor = this@CacheManageActivity.primaryTextColor,
+                selectedTextColor = this@CacheManageActivity.accentColor
+            )
+        )
     }
 
     private fun renderStats(summary: CacheSummary) = binding.run {

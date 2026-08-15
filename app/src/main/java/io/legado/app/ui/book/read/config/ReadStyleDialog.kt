@@ -48,6 +48,7 @@ import io.legado.app.lib.prefs.ColorPreference.ColorPickerDialogCompat
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.bottomBackground
+import io.legado.app.lib.theme.SegmentedControlStyle
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.surface.SurfaceCorners
 import io.legado.app.lib.theme.surface.SurfaceStyle
@@ -423,30 +424,17 @@ class ReadStyleDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_book_
         llTextGroup.visibility = if (tab == StyleTab.TEXT) View.VISIBLE else View.GONE
         panelPageAnim.visibility = if (tab == StyleTab.PAGE) View.VISIBLE else View.GONE
         panelColorBackground.visibility = if (tab == StyleTab.STYLE) View.VISIBLE else View.GONE
-        val bg = ReadBookConfig.durConfig.curReadMenuBgColor() ?: defaultReadMenuBgColor()
-        val palette = ReaderSheetStyle.resolve(requireContext(), bg)
-        val isLight = ColorUtils.isColorLight(bg)
-        val menuOpacity = (ReadBookConfig.durConfig.readMenuAlpha / 100f).coerceIn(0.35f, 1f)
-        val selectedBackground = ColorUtils.blendColors(
-            palette.surface,
-            palette.primaryColor,
-            if (isLight) 0.26f else 0.2f
+        val tabs = listOf(btnTabText, btnTabStyle, btnTabPage)
+        SegmentedControlStyle.apply(
+            track = tabEditBar,
+            items = tabs,
+            selectedIndex = when (tab) {
+                StyleTab.TEXT -> 0
+                StyleTab.STYLE -> 1
+                StyleTab.PAGE -> 2
+            },
+            palette = readerSegmentedControlPalette()
         )
-        listOf(
-            btnTabText to StyleTab.TEXT,
-            btnTabPage to StyleTab.PAGE,
-            btnTabStyle to StyleTab.STYLE
-        ).forEach { (tabView, itemTab) ->
-            tabView.isSelected = itemTab == tab
-            tabView.background = if (itemTab == tab) {
-                UiCorner.opaqueRounded(
-                    ColorUtils.withAlpha(selectedBackground, menuOpacity),
-                    UiCorner.actionRadius(requireContext())
-                )
-            } else {
-                ColorDrawable(Color.TRANSPARENT)
-            }
-        }
         if (requestLayout) {
             rootView.requestLayout()
         }
@@ -515,22 +503,9 @@ class ReadStyleDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_book_
     private fun updateDialogStyle() = binding.run {
         val bg = ReadBookConfig.durConfig.curReadMenuBgColor() ?: defaultReadMenuBgColor()
         val palette = ReaderSheetStyle.resolve(requireContext(), bg)
-        val menuOpacity = (ReadBookConfig.durConfig.readMenuAlpha / 100f).coerceIn(0.35f, 1f)
         primaryTextColor = palette.textColor
         secondaryTextColor = palette.secondaryTextColor
         updateDialogSurfaceStyle()
-
-        val isLight = ColorUtils.isColorLight(bg)
-        val tabBg = ColorUtils.blendColors(
-            bg,
-            palette.primaryColor,
-            if (isLight) 0.16f else 0.16f
-        )
-        tabEditBar.background = UiCorner.opaqueRounded(
-            ColorUtils.withAlpha(tabBg, menuOpacity),
-            UiCorner.panelRadius(requireContext())
-        )
-        showStyleTab(currentStyleTab, requestLayout = false)
 
         ivEdit.setColorFilter(secondaryTextColor, PorterDuff.Mode.SRC_IN)
         tvRestore.background = UiCorner.opaqueRoundedStroke(
@@ -540,6 +515,26 @@ class ReadStyleDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_book_
             ColorUtils.withAlpha(primaryTextColor, 0.45f)
         )
         applyDialogTextColors()
+        showStyleTab(currentStyleTab, requestLayout = false)
+    }
+
+    private fun readerSegmentedControlPalette(): SegmentedControlStyle.Palette {
+        val bg = ReadBookConfig.durConfig.curReadMenuBgColor() ?: defaultReadMenuBgColor()
+        val palette = ReaderSheetStyle.resolve(requireContext(), bg)
+        val isLight = ColorUtils.isColorLight(bg)
+        val menuOpacity = (ReadBookConfig.durConfig.readMenuAlpha / 100f).coerceIn(0.35f, 1f)
+        val trackColor = ColorUtils.blendColors(bg, palette.primaryColor, 0.16f)
+        val selectedColor = ColorUtils.blendColors(
+            palette.surface,
+            palette.primaryColor,
+            if (isLight) 0.26f else 0.2f
+        )
+        return SegmentedControlStyle.Palette(
+            trackColor = UiCorner.dialogSurfaceColor(ColorUtils.withAlpha(trackColor, menuOpacity)),
+            selectedColor = UiCorner.dialogSurfaceColor(ColorUtils.withAlpha(selectedColor, menuOpacity)),
+            textColor = palette.textColor,
+            selectedTextColor = palette.accentColor
+        )
     }
 
     private fun applyDialogTextColors() = binding.run {
@@ -633,37 +628,18 @@ class ReadStyleDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_book_
     }
 
     private fun updateThemeModeTabs() = binding.run {
-        val bg = ReadBookConfig.durConfig.curReadMenuBgColor() ?: defaultReadMenuBgColor()
-        val palette = ReaderSheetStyle.resolve(requireContext(), bg)
-        val isLight = ColorUtils.isColorLight(bg)
-        val selectedBackground = ColorUtils.blendColors(
-            palette.surface,
-            palette.primaryColor,
-            if (isLight) 0.26f else 0.2f
+        val tabs = listOf(btnThemeLight, btnThemeDark, btnThemeEink)
+        val currentMode = currentReadThemeMode()
+        SegmentedControlStyle.apply(
+            track = themeModeEditBar,
+            items = tabs,
+            selectedIndex = when (currentMode) {
+                StyleThemeMode.LIGHT -> 0
+                StyleThemeMode.DARK -> 1
+                StyleThemeMode.EINK -> 2
+            },
+            palette = readerSegmentedControlPalette()
         )
-        val menuOpacity = (ReadBookConfig.durConfig.readMenuAlpha / 100f).coerceIn(0.35f, 1f)
-        themeModeEditBar.background = UiCorner.opaqueRounded(
-            ColorUtils.withAlpha(
-                ColorUtils.blendColors(bg, palette.primaryColor, if (isLight) 0.16f else 0.16f),
-                menuOpacity
-            ),
-            UiCorner.panelRadius(requireContext())
-        )
-        listOf(
-            btnThemeLight to StyleThemeMode.LIGHT,
-            btnThemeDark to StyleThemeMode.DARK,
-            btnThemeEink to StyleThemeMode.EINK
-        ).forEach { (tabView, mode) ->
-            tabView.isSelected = mode == currentReadThemeMode()
-            tabView.background = if (tabView.isSelected) {
-                UiCorner.opaqueRounded(
-                    ColorUtils.withAlpha(selectedBackground, menuOpacity),
-                    UiCorner.actionRadius(requireContext())
-                )
-            } else {
-                ColorDrawable(Color.TRANSPARENT)
-            }
-        }
     }
 
     override val curFontPath: String

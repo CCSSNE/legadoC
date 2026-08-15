@@ -9,10 +9,12 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.Window
 import android.view.WindowManager
+import android.widget.LinearLayout
 import androidx.appcompat.app.AlertDialog
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+import androidx.core.view.children
 import androidx.core.view.forEach
 import androidx.fragment.app.DialogFragment
 import io.legado.app.R
@@ -27,6 +29,7 @@ import java.util.WeakHashMap
 
 private val preparedDialogWindowAlphas = WeakHashMap<Window, Float>()
 private val dialogBlurGenerations = WeakHashMap<Window, Int>()
+private val movedAlertTitlePanels = WeakHashMap<View, Boolean>()
 
 fun AlertDialog.applyTint(): AlertDialog {
     applyAlertSurface()
@@ -68,7 +71,59 @@ fun AlertDialog.applyAlertSurface() {
     ).forEach { id ->
         panel.findViewById<View>(id)?.background = null
     }
+    moveAlertTitleIntoContent(panel)
     applyDialogSurfaceBlur(panel)
+}
+
+/** Keeps an AlertDialog title semantic without leaving it in a top chrome panel. */
+private fun moveAlertTitleIntoContent(panel: View) {
+    val topPanel = panel.findViewById<View>(androidx.appcompat.R.id.topPanel) ?: return
+    if (movedAlertTitlePanels.put(topPanel, true) == null) {
+        val title = topPanel.findFirstTitleText()
+        if (title != null) {
+            val contentPanel = requireNotNull(
+                panel.findViewById<ViewGroup>(androidx.appcompat.R.id.contentPanel)
+            ) { "AppCompat AlertDialog title requires a content panel" }
+            (title.parent as? ViewGroup)?.removeView(title)
+            val originalContent = contentPanel.children.toList()
+            val contentColumn = LinearLayout(panel.context).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(
+                    title,
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                )
+            }
+            originalContent.forEach { child ->
+                contentPanel.removeView(child)
+                contentColumn.addView(
+                    child,
+                    LinearLayout.LayoutParams(
+                        child.layoutParams.width,
+                        child.layoutParams.height.takeUnless {
+                            it == ViewGroup.LayoutParams.MATCH_PARENT
+                        } ?: ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                )
+            }
+            contentPanel.visibility = View.VISIBLE
+            contentPanel.addView(
+                contentColumn,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
+    }
+    topPanel.visibility = View.GONE
+}
+
+private fun View.findFirstTitleText(): android.widget.TextView? {
+    if (this is android.widget.TextView && text?.isNotBlank() == true) return this
+    return (this as? ViewGroup)?.children?.firstNotNullOfOrNull { it.findFirstTitleText() }
 }
 
 /** Shared host policy for the three AndroidX preference dialog variants. */

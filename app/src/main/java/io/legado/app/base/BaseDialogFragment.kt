@@ -19,6 +19,7 @@ import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.lib.dialogs.applyHeaderlessDialogChrome
 import io.legado.app.lib.theme.applyUiBodyTypeface
 import io.legado.app.lib.theme.surface.SurfaceStyles
 import io.legado.app.lib.theme.surface.SurfaceStyle
@@ -44,9 +45,7 @@ abstract class BaseDialogFragment(
 
     override fun onStart() {
         super.onStart()
-        if (adaptationSoftKeyboard) {
-            dialog?.window?.setBackgroundDrawableResource(R.color.transparent)
-        } else if (AppConfig.isEInkMode) {
+        if (AppConfig.isEInkMode) {
             dialog?.window?.let {
                 it.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
                 val attr = it.attributes
@@ -104,6 +103,7 @@ abstract class BaseDialogFragment(
             view.applyUiBodyTypeface(requireContext())
         }
         onFragmentCreated(view, savedInstanceState)
+        dialogSurfaceView(view).applyHeaderlessDialogChrome()
         observeLiveBus()
     }
 
