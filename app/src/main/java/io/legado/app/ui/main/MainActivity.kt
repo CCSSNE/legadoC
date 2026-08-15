@@ -1056,6 +1056,10 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
     private fun setupLiquidGlass() {
         binding.run {
+            val surfaceAlpha = UiCorner.uiLayoutSurfaceAlpha()
+            bottomNavigationShellOverlay.alpha = surfaceAlpha
+            searchButtonShellOverlay.alpha = surfaceAlpha
+            bottomNavigationIndicatorOverlay.alpha = surfaceAlpha
             if (AppConfig.isEInkMode) {
                 bottomNavigationGlassView.visibility = android.view.View.GONE
                 bottomNavigationIndicatorContainer.visibility = android.view.View.GONE
@@ -1230,6 +1234,8 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         selected: Boolean = false,
         indicator: Boolean = false
     ) {
+        val surfaceAlpha = UiCorner.uiLayoutSurfaceAlpha()
+        shellOverlay.alpha = surfaceAlpha
         if (AppConfig.isEInkMode) {
             liquidGlassView.isVisible = false
             shellOverlay.isVisible = true
@@ -1249,7 +1255,6 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             else -> AppConfig.liquidGlassLevel / 100f
         }
         val frostedMode = effectMode == "frosted"
-        val surfaceAlpha = UiCorner.uiLayoutSurfaceAlpha()
         val blurRadius = if (frostedMode) {
             (10f + glassLevel * 24f).dpToPx()
         } else {
@@ -1337,7 +1342,6 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
     private fun createSolidBottomShellDrawable(cornerRadius: Float, oval: Boolean): GradientDrawable {
         val baseColor = bottomBackground
-        val alpha = (AppConfig.liquidGlassLevel / 100f).coerceIn(0f, 1f)
         val strokeColor = AppColorUtils.withAlpha(
             if (AppColorUtils.isColorLight(baseColor)) Color.BLACK else Color.WHITE,
             0.10f
@@ -1347,7 +1351,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             if (!oval) {
                 this.cornerRadius = cornerRadius
             }
-            setColor(AppColorUtils.withAlpha(baseColor, alpha))
+            setColor(baseColor)
             setStroke(1.dpToPx(), strokeColor)
         }
     }
@@ -1382,9 +1386,8 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         val baseColor = bottomBackground
         val isLight = AppColorUtils.isColorLight(baseColor)
         val surface = if (binding.sideNavigationBackground.isVisible) {
-            AppColorUtils.withAlpha(
-                if (AppConfig.isNightTheme) Color.BLACK else Color.WHITE,
-                (if (AppConfig.isNightTheme) 0.20f else 0.42f) * UiCorner.floatingGroupAlpha()
+            UiCorner.surfaceColor(
+                if (AppConfig.isNightTheme) Color.BLACK else Color.WHITE
             )
         } else {
             AppColorUtils.blendColors(
@@ -1445,9 +1448,8 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         val isLight = AppColorUtils.isColorLight(baseColor)
         val fill = if (selected) {
             if (binding.sideNavigationBackground.isVisible) {
-                AppColorUtils.withAlpha(
-                    if (AppConfig.isNightTheme) Color.BLACK else Color.WHITE,
-                    (if (AppConfig.isNightTheme) 0.18f else 0.34f) * UiCorner.floatingGroupAlpha()
+                UiCorner.surfaceColor(
+                    if (AppConfig.isNightTheme) Color.BLACK else Color.WHITE
                 )
             } else {
                 UiCorner.surfaceColor(
@@ -1506,9 +1508,9 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         } else {
             AppColorUtils.blendColors(baseColor, Color.BLACK, 0.24f)
         }
-        val startAlpha = (0.32f + glassLevel * 0.44f).coerceIn(0f, 0.86f)
-        val centerAlpha = (0.24f + glassLevel * 0.38f).coerceIn(0f, 0.74f)
-        val endAlpha = (0.18f + glassLevel * 0.32f).coerceIn(0f, 0.66f)
+        val startAlpha = 1f
+        val centerAlpha = 1f
+        val endAlpha = 1f
         val selectedBoost = if (selected) 0.08f else 0f
         val strokeAlpha = (0.22f + glassLevel * 0.22f + selectedBoost).coerceIn(0f, 0.58f)
         return GradientDrawable(

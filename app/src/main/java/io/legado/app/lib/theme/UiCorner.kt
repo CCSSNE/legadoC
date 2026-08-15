@@ -63,26 +63,6 @@ object UiCorner {
     fun effectMode(): String = AppConfig.bottomBarEffectMode
 
     /**
-     * 标准底栏的表面不透明度，供需要与底栏保持同一透明规律的独立界面使用。
-     * 不包含全局悬浮块组透明度，避免把两个设置混成一个值。
-     */
-    fun standardBarAlpha(): Float {
-        return when {
-            AppConfig.isEInkMode -> 1f
-            AppConfig.bottomBarEffectMode == "solid" -> {
-                AppConfig.liquidGlassLevel.coerceIn(0, 100) / 100f
-            }
-            else -> {
-                val level = when (AppConfig.bottomBarEffectMode) {
-                    "frosted" -> AppConfig.frostedGlassLevel
-                    else -> AppConfig.liquidGlassLevel
-                }.coerceIn(0, 100) / 100f
-                (0.24f + level * 0.38f).coerceIn(0f, 1f)
-            }
-        }
-    }
-
-    /**
      * 全局界面透明度转换得到的物理表面不透明度。
      * 设置值 0% 表示不透明，100% 表示全透明；所有 UI 表面都必须经此入口换算。
      */
@@ -96,7 +76,7 @@ object UiCorner {
      * 搜索条、卡片、分组条、底部导航等浮层表面都从这里取全局系数。
      */
     fun floatingGroupAlpha(): Float {
-        return (uiLayoutSurfaceAlpha() * standardBarAlpha()).coerceIn(0f, 1f)
+        return uiLayoutSurfaceAlpha()
     }
 
     /**
