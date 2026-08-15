@@ -71,54 +71,136 @@ fun AlertDialog.applyAlertSurface() {
     ).forEach { id ->
         panel.findViewById<View>(id)?.background = null
     }
-    moveAlertTitleIntoContent(panel)
+    moveAlertTitleIntoBody(panel)
     applyDialogSurfaceBlur(panel)
 }
 
 /** Keeps an AlertDialog title semantic without leaving it in a top chrome panel. */
-private fun moveAlertTitleIntoContent(panel: View) {
+private fun moveAlertTitleIntoBody(panel: View) {
     val topPanel = panel.findViewById<View>(androidx.appcompat.R.id.topPanel) ?: return
     if (movedAlertTitlePanels.put(topPanel, true) == null) {
         val title = topPanel.findFirstTitleText()
         if (title != null) {
-            val contentPanel = requireNotNull(
-                panel.findViewById<ViewGroup>(androidx.appcompat.R.id.contentPanel)
-            ) { "AppCompat AlertDialog title requires a content panel" }
             (title.parent as? ViewGroup)?.removeView(title)
-            val originalContent = contentPanel.children.toList()
-            val contentColumn = LinearLayout(panel.context).apply {
-                orientation = LinearLayout.VERTICAL
-                addView(
-                    title,
-                    LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    )
-                )
+            val customPanel = panel.findViewById<ViewGroup>(androidx.appcompat.R.id.customPanel)
+                ?.takeIf { it.visibility != View.GONE }
+            if (customPanel == null) {
+                moveAlertTitleIntoContentPanel(panel, title)
+            } else {
+                moveAlertTitleIntoCustomPanel(customPanel, title)
             }
-            originalContent.forEach { child ->
-                contentPanel.removeView(child)
-                contentColumn.addView(
-                    child,
-                    LinearLayout.LayoutParams(
-                        child.layoutParams.width,
-                        child.layoutParams.height.takeUnless {
-                            it == ViewGroup.LayoutParams.MATCH_PARENT
-                        } ?: ViewGroup.LayoutParams.WRAP_CONTENT
-                    )
-                )
-            }
-            contentPanel.visibility = View.VISIBLE
-            contentPanel.addView(
-                contentColumn,
-                ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                )
-            )
         }
     }
     topPanel.visibility = View.GONE
+}
+
+private fun moveAlertTitleIntoContentPanel(panel: View, title: View) {
+    val contentPanel = requireNotNull(
+        panel.findViewById<ViewGroup>(androidx.appcompat.R.id.contentPanel)
+    ) { "AppCompat AlertDialog title requires a content panel" }
+    val originalContent = contentPanel.children.toList()
+    val contentColumn = LinearLayout(panel.context).apply {
+        orientation = LinearLayout.VERTICAL
+        addView(
+            title,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+    }
+    originalContent.forEach { child ->
+        contentPanel.removeView(child)
+        contentColumn.addView(
+            child,
+            LinearLayout.LayoutParams(
+                child.layoutParams.width,
+                child.layoutParams.height.takeUnless {
+                    it == ViewGroup.LayoutParams.MATCH_PARENT
+                } ?: ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+    }
+    contentPanel.visibility = View.VISIBLE
+    contentPanel.addView(
+        contentColumn,
+        ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+    )
+}
+
+private fun moveAlertTitleIntoCustomPanel(customPanel: ViewGroup, title: View) {
+    val customContainer = requireNotNull(
+        customPanel.findViewById<ViewGroup>(androidx.appcompat.R.id.custom)
+    ) { "AppCompat custom AlertDialog title requires a custom container" }
+    require(customContainer.childCount == 1) {
+        "AppCompat custom AlertDialog title requires exactly one custom content view"
+    }
+    val customContent = customContainer.getChildAt(0)
+    customContainer.removeView(customContent)
+    customPanel.removeAllViews()
+    customPanel.addView(
+        HeaderlessAlertCustomContent(customPanel.context, title, customContent),
+        ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+    )
+}
+
+/** Measures a title and custom body together so AppCompat keeps one middle panel and its footer. */
+private class HeaderlessAlertCustomContent(
+    context: Context,
+    private val title: View,
+    private val content: View
+) : ViewGroup(context) {
+
+    init {
+        addView(title)
+        addView(content)
+    }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val widthMode = MeasureSpec.getMode(widthMeasureSpec)
+        val width = MeasureSpec.getSize(widthMeasureSpec)
+        val contentWidth = (width - paddingLeft - paddingRight).coerceAtLeast(0)
+        val childWidthSpec = MeasureSpec.makeMeasureSpec(
+            contentWidth,
+            if (widthMode == MeasureSpec.UNSPECIFIED) MeasureSpec.UNSPECIFIED else MeasureSpec.EXACTLY
+        )
+        title.measure(childWidthSpec, MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
+
+        val heightMode = MeasureSpec.getMode(heightMeasureSpec)
+        val availableContentHeight = if (heightMode == MeasureSpec.UNSPECIFIED) {
+            0
+        } else {
+            (MeasureSpec.getSize(heightMeasureSpec) - paddingTop - paddingBottom - title.measuredHeight)
+                .coerceAtLeast(0)
+        }
+        val contentHeightSpec = MeasureSpec.makeMeasureSpec(
+            availableContentHeight,
+            if (heightMode == MeasureSpec.UNSPECIFIED) MeasureSpec.UNSPECIFIED else MeasureSpec.AT_MOST
+        )
+        content.measure(childWidthSpec, contentHeightSpec)
+
+        val desiredWidth = paddingLeft + paddingRight + maxOf(title.measuredWidth, content.measuredWidth)
+        val desiredHeight = paddingTop + paddingBottom + title.measuredHeight + content.measuredHeight
+        setMeasuredDimension(
+            resolveSizeAndState(desiredWidth, widthMeasureSpec, 0),
+            resolveSizeAndState(desiredHeight, heightMeasureSpec, 0)
+        )
+    }
+
+    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+        val contentLeft = paddingLeft
+        val contentRight = width - paddingRight
+        val titleTop = paddingTop
+        val titleBottom = titleTop + title.measuredHeight
+        title.layout(contentLeft, titleTop, contentRight, titleBottom)
+        content.layout(contentLeft, titleBottom, contentRight, titleBottom + content.measuredHeight)
+    }
 }
 
 private fun View.findFirstTitleText(): android.widget.TextView? {
