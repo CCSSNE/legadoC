@@ -3,7 +3,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-ALLOWED_SERIAL = "127.0.0.1:5555"
+ALLOWED_SERIAL = "emulator-5554"
 LDCONSOLE = Path(r"F:\leidian\LDPlayer14\ldconsole.exe")
 
 
