@@ -762,7 +762,7 @@
     <string name="dialog_alpha">弹窗透明度</string>
     <string name="dialog_alpha_value">%d%%</string>
     <string name="dialog_blur">弹窗模糊度</string>
-    <string name="dialog_blur_value">标准模糊的 %d%%</string>
+    <string name="dialog_blur_value">%d%%</string>
     <string name="ui_corner_search_follow">搜索栏跟随圆角</string>
     <string name="ui_corner_search_follow_summary">允许搜索栏使用全局圆角倍率</string>
     <string name="move_search_to_bookshelf">搜索入口移到书架</string>

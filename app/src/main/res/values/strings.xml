@@ -938,7 +938,7 @@
     <string name="dialog_alpha">Dialog opacity</string>
     <string name="dialog_alpha_value">%d%%</string>
     <string name="dialog_blur">Dialog blur</string>
-    <string name="dialog_blur_value">%d%% of standard blur</string>
+    <string name="dialog_blur_value">%d%%</string>
     <string name="ui_corner_search_follow">Search bars follow corner scale</string>
     <string name="ui_corner_search_follow_summary">Allow search bars to use the global corner radius scale</string>
     <string name="move_search_to_bookshelf">Move search to bookshelf</string>
