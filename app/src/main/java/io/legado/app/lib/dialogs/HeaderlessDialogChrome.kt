@@ -85,7 +85,7 @@ private fun findActionHost(toolbar: Toolbar): ViewGroup? {
     var current: View? = toolbar
     while (current != null) {
         when (current) {
-            is LinearLayout, is ConstraintLayout -> return current as ViewGroup
+            is LinearLayout, is ConstraintLayout -> return current
         }
         current = current.parent as? View
     }
@@ -103,6 +103,10 @@ private fun ViewGroup.addBottomActionRow(actionRow: View) {
         )
 
         is ConstraintLayout -> {
+            val bottomAnchoredChildren = children.toList().filter { child ->
+                (child.layoutParams as? ConstraintLayout.LayoutParams)?.bottomToBottom ==
+                    ConstraintSet.PARENT_ID
+            }
             val actionId = View.generateViewId()
             actionRow.id = actionId
             addView(
@@ -117,9 +121,13 @@ private fun ViewGroup.addBottomActionRow(actionRow: View) {
                 connect(actionId, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START)
                 connect(actionId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END)
                 connect(actionId, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM)
+                bottomAnchoredChildren.forEach { child ->
+                    if (child.id == View.NO_ID) child.id = View.generateViewId()
+                    clear(child.id, ConstraintSet.BOTTOM)
+                    connect(child.id, ConstraintSet.BOTTOM, actionId, ConstraintSet.TOP)
+                }
                 applyTo(this@addBottomActionRow)
             }
-            setPadding(paddingLeft, paddingTop, paddingRight, paddingBottom + 48.dpToPx())
         }
     }
 }
