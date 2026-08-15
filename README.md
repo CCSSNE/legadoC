@@ -1,18 +1,18 @@
 <table align="center">
   <tr>
-    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/PixPin_2026-08-11_12-39-35.png" width="100%" alt="界面截图 1" /></td>
-    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/PixPin_2026-08-11_12-40-52.png" width="100%" alt="界面截图 2" /></td>
-    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/PixPin_2026-08-11_12-42-01.png" width="100%" alt="界面截图 3" /></td>
+    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/1.png" width="100%" alt="界面截图 1" /></td>
+    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/2.png" width="100%" alt="界面截图 2" /></td>
+    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/3.png" width="100%" alt="界面截图 3" /></td>
   </tr>
   <tr>
-    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/PixPin_2026-08-12_17-58-54.png" width="100%" alt="界面截图 4" /></td>
-    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/PixPin_2026-08-12_11-52-38.png" width="100%" alt="界面截图 5" /></td>
-    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/PixPin_2026-08-12_17-59-56.png" width="100%" alt="界面截图 6" /></td>
+    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/4.png" width="100%" alt="界面截图 4" /></td>
+    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/5.png" width="100%" alt="界面截图 5" /></td>
+    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/6.png" width="100%" alt="界面截图 6" /></td>
   </tr>
   <tr>
-    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/PixPin_2026-08-12_18-00-29.png" width="100%" alt="界面截图 7" /></td>
-    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/PixPin_2026-08-12_18-01-13.png" width="100%" alt="界面截图 8" /></td>
-    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/PixPin_2026-08-14_04-51-21.png" width="100%" alt="界面截图 9" /></td>
+    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/7.png" width="100%" alt="界面截图 7" /></td>
+    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/8.png" width="100%" alt="界面截图 8" /></td>
+    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/9.png" width="100%" alt="界面截图 9" /></td>
   </tr>
 </table>
 
@@ -27,6 +27,26 @@
 阅读C Bug排期 https://docs.qq.com/doc/DVmtiSHZza1VPZWdG
 
 ## 更新记录
+
+### 2026-08-15
+
+**默认主题与透明度**
+
+- 内置 Pre 默认炫彩背景，日间主题与夜间主题首次使用时均自动应用；用户仍可在主题管理中替换。
+- 全局界面透明度统一为 `0%` 完全不透明、`100%` 完全透明，数值、显示和实际渲染保持一致；主题、书架、顶部分类条、底部导航等界面同步生效。
+- 弹窗透明度、弹窗模糊度改为统一的百分比控制；弹窗模糊度不再显示多余的“标准模糊度”说明。
+- 新增独立的“书架封面透明度”：只控制书架中的普通书封面和合集封面拼图，不再被全局界面透明度误关联；加入合集/分组弹窗内的预览按弹窗透明度显示。
+
+**统一弹窗与菜单**
+
+- 继续统一 Dialog、底部面板、PopupWindow 与阅读页浮层的玻璃表面：模糊只作用于实际面板范围，不再压暗或模糊整页背景；背景准备完成后才显示面板，避免首帧闪白、范围错位和重开残影。
+- 所有广义弹窗移除独立顶栏，标题需要保留时作为内容首行；书签、日志、帮助、替换、阅读设置等弹窗同步使用统一样式。
+- 修复编辑内容页底部“保存 / 重置 / 全部复制”操作区的位置，按钮不再跑入正文编辑区域。
+
+**阅读与书架交互**
+
+- 阅读主菜单在局部模糊完成后以 `200ms` 淡入，关闭时以 `200ms` 淡出；上下两块面板保持同一节奏。
+- 主页面及同类“更多”菜单打开时沿用原有模糊准备，关闭时统一以 `100ms` 淡出；点菜单项、返回键和点外部关闭均生效。
 
 ### 2026-08-14
 
@@ -76,6 +96,18 @@
   - 启动时检查更新：默认改为开启（原界面显示开、实际不检查）。
   - 封面设置页"显示作者"开关可用性判断对齐默认值。
   - 朗读跟随系统语速：默认改为关闭；隐藏悬浮窗默认改为开启；朗读默认语速由 5 调整为 30。
+
+**界面透明与局部模糊**
+
+- 新增全局界面透明度、弹窗透明度和弹窗模糊度设置；主题页面、书架分类条、底部导航、列表浮层与常用设置界面统一使用透明玻璃风格。
+- 弹窗、菜单和阅读页浮层改为只模糊自身真实可见区域：取消系统整页压暗与全窗口模糊，背景截图、圆角裁剪、着色和描边统一处理。
+- 修复普通弹窗、底部面板、右上角更多、书架更多、阅读主菜单、漫画菜单、搜索菜单等浮层的模糊范围、坐标和首次显示时机，避免先出现实色面板再替换背景。
+- 书签弹窗、目录底部操作条、缓存管理页、合集选择与分组选择面板补齐透明与局部模糊效果。
+
+**弹窗与书架细节**
+
+- 统一移除弹窗独立顶部栏，保留内容标题和标准底部操作区，避免空白头部占位。
+- 书架合集卡片补齐封面拼图、圆角、阴影与名称显示；合集管理和选择面板同步统一视觉样式。
 
 ### 2026-08-13
 
