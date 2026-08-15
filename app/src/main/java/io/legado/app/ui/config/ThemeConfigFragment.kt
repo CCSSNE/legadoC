@@ -309,7 +309,7 @@ class ThemeConfigFragment : PreferenceFragment(),
             .setMinValue(0)
             .setValue(AppConfig.dialogAlpha)
             .setCustomButton(R.string.btn_default_s) {
-                putPrefInt(PreferKey.dialogAlpha, 0)
+                putPrefInt(PreferKey.dialogAlpha, 70)
             }
             .show {
                 putPrefInt(PreferKey.dialogAlpha, it.coerceIn(0, 100))
@@ -323,7 +323,7 @@ class ThemeConfigFragment : PreferenceFragment(),
             .setMinValue(0)
             .setValue(AppConfig.dialogBlur)
             .setCustomButton(R.string.btn_default_s) {
-                putPrefInt(PreferKey.dialogBlur, 100)
+                putPrefInt(PreferKey.dialogBlur, 70)
             }
             .show {
                 putPrefInt(PreferKey.dialogBlur, it.coerceIn(0, 100))
@@ -361,7 +361,7 @@ class ThemeConfigFragment : PreferenceFragment(),
                 }
 
                 2 -> {
-                    removePref(bgKey)
+                    putPrefString(bgKey, "")
                     upTheme(isNight)
                 }
             }
