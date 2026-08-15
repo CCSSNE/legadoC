@@ -490,16 +490,7 @@ object ReadBookConfig {
         }
 
     val effectiveBgAlpha: Int
-        get() {
-            val isImageBackground = bg is BitmapDrawable || isNineBgImg
-            // 书页背景图片是独立的图片组：不读取全局 UI 透明度，也不读取底栏透明度。
-            // 关闭开关时保持图片不透明；开启后只使用阅读设置中的背景透明度。
-            return if (isImageBackground && !AppConfig.readPageBackgroundTransparent) {
-                100
-            } else {
-                bgAlpha.coerceIn(0, 100)
-            }
-        }
+        get() = bgAlpha.coerceIn(0, 100)
 
     var pageAnim: Int
         get() = config.curPageAnim()

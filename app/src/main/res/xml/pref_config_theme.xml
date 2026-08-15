@@ -28,13 +28,6 @@
         android:title="@string/main_immersion_status_bar"
         app:iconSpaceReserved="false" />
 
-    <io.legado.app.lib.prefs.SwitchPreference
-        android:defaultValue="true"
-        android:key="readPageBackgroundTransparent"
-        android:summary="@string/read_page_background_transparent_summary"
-        android:title="@string/read_page_background_transparent"
-        app:iconSpaceReserved="false" />
-
     <io.legado.app.lib.prefs.Preference
         android:defaultValue="50"
         android:key="dialogAlpha"

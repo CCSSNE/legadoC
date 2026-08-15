@@ -193,10 +193,6 @@ class ThemeConfigFragment : PreferenceFragment(),
         when (key) {
             PreferKey.launcherIcon -> LauncherIconHelp.changeIcon(getPrefString(key))
             PreferKey.mainTransparentStatusBar -> recreateActivities()
-            PreferKey.readPageBackgroundTransparent -> {
-                postEvent(EventBus.UP_CONFIG, arrayListOf(3))
-                recreateActivities()
-            }
             PreferKey.uiLayoutAlpha -> {
                 upPreferenceSummary(PreferKey.uiLayoutAlpha)
                 recreateActivities()

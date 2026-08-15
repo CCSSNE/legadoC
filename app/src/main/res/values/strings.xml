@@ -939,8 +939,6 @@
     <string name="dialog_alpha_value">%d%%</string>
     <string name="dialog_blur">Dialog blur</string>
     <string name="dialog_blur_value">%d%% of standard blur</string>
-    <string name="read_page_background_transparent">Transparent reading-page background</string>
-    <string name="read_page_background_transparent_summary">When enabled, use the reading background opacity setting for the page image; when disabled, keep the page image opaque. Global interface opacity does not affect the page image.</string>
     <string name="ui_corner_search_follow">Search bars follow corner scale</string>
     <string name="ui_corner_search_follow_summary">Allow search bars to use the global corner radius scale</string>
     <string name="move_search_to_bookshelf">Move search to bookshelf</string>

@@ -95,7 +95,6 @@ object BackupConfig {
         PreferKey.uiCornerScale,
         PreferKey.uiLayoutAlpha,
         PreferKey.bookshelfCoverAlpha,
-        PreferKey.readPageBackgroundTransparent,
         PreferKey.uiCornerSearchFollow,
         PreferKey.uiCornerReplyFollow,
         PreferKey.tNavBar,

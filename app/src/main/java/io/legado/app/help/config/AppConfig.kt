@@ -1179,9 +1179,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefInt(PreferKey.dialogBlur, value.coerceIn(0, 100))
         }
 
-    val readPageBackgroundTransparent: Boolean
-        get() = appCtx.getPrefBoolean(PreferKey.readPageBackgroundTransparent, true)
-
     @Deprecated("Use uiLayoutAlpha")
     var uiCornerEffectMode: String
         get() = "solid"
