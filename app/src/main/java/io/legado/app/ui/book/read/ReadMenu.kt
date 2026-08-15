@@ -2,6 +2,9 @@ package io.legado.app.ui.book.read
 
 import android.content.Context
 import android.database.ContentObserver
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.ObjectAnimator
 import android.graphics.PorterDuff
 import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
@@ -10,6 +13,7 @@ import android.provider.Settings
 import android.util.AttributeSet
 import android.view.LayoutInflater
 import android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.SeekBar
 import androidx.core.view.isGone
@@ -73,6 +77,7 @@ class ReadMenu @JvmOverloads constructor(
     private var confirmSkipToChapter: Boolean = false
     private var isMenuOutAnimating = false
     private var menuBlurGeneration = 0
+    private var menuFadeAnimator: ObjectAnimator? = null
     private val immersiveMenu: Boolean
         get() = AppConfig.readBarStyleFollowPage && ReadBookConfig.durConfig.curBgType() == 0
     private var bgColor: Int = if (immersiveMenu) {
@@ -438,6 +443,7 @@ class ReadMenu @JvmOverloads constructor(
     }
 
     override fun onDetachedFromWindow() {
+        cancelMenuFade()
         super.onDetachedFromWindow()
         contentObserver?.let {
             context.contentResolver.unregisterContentObserver(it)
@@ -447,6 +453,9 @@ class ReadMenu @JvmOverloads constructor(
 
     fun runMenuIn() {
         val generation = ++menuBlurGeneration
+        cancelMenuFade()
+        isMenuOutAnimating = false
+        onMenuOutEnd = null
         callBack.onMenuShow()
         clearMenuBlur()
         this.visible()
@@ -458,8 +467,11 @@ class ReadMenu @JvmOverloads constructor(
         post {
             applyMenuBlur {
                 if (generation != menuBlurGeneration || !isVisible || isMenuOutAnimating) return@applyMenuBlur
-                alpha = originalAlpha
-                onMenuShownEnd()
+                fadeMenuTo(generation, originalAlpha) {
+                    if (!isMenuOutAnimating) {
+                        onMenuShownEnd()
+                    }
+                }
             }
         }
     }
@@ -468,13 +480,43 @@ class ReadMenu @JvmOverloads constructor(
         if (isMenuOutAnimating) {
             return
         }
-        menuBlurGeneration++
+        val generation = ++menuBlurGeneration
+        cancelMenuFade()
         callBack.onMenuHide()
         this.onMenuOutEnd = onMenuOutEnd
         if (this.isVisible) {
             onMenuHiddenStart()
-            onMenuHiddenEnd()
+            fadeMenuTo(generation, 0f) {
+                if (isMenuOutAnimating) {
+                    onMenuHiddenEnd()
+                }
+            }
         }
+    }
+
+    private fun cancelMenuFade() {
+        val animator = menuFadeAnimator ?: return
+        menuFadeAnimator = null
+        animator.cancel()
+    }
+
+    private fun fadeMenuTo(generation: Int, targetAlpha: Float, onEnd: () -> Unit) {
+        cancelMenuFade()
+        val animator = ObjectAnimator.ofFloat(this, "alpha", alpha, targetAlpha).apply {
+            duration = 200L
+            interpolator = DecelerateInterpolator(1.5f)
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    if (menuFadeAnimator !== animation) return
+                    menuFadeAnimator = null
+                    if (generation == menuBlurGeneration) {
+                        onEnd()
+                    }
+                }
+            })
+        }
+        menuFadeAnimator = animator
+        animator.start()
     }
 
     private fun applyMenuBlur(onReady: () -> Unit) {
