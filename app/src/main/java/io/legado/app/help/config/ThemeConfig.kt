@@ -54,6 +54,8 @@ object ThemeConfig {
 
     private const val DEFAULT_BACKGROUND_ASSET = "defaultData/pre_default_background.png"
     private const val DEFAULT_BACKGROUND_FILE = "pre_default_background.png"
+    private const val MISAPPLIED_READER_DAY_BACKGROUND_FILE = "护眼漫绿.jpg"
+    private const val MISAPPLIED_READER_NIGHT_BACKGROUND_FILE = "宁静夜色.jpg"
     private const val DEFAULT_DAY_PRIMARY = 0xFFF1F2F6.toInt()
     private const val DEFAULT_NIGHT_PRIMARY = 0xFF252528.toInt()
     private const val DEFAULT_DAY_PRIMARY_HEX = "#F1F2F6"
@@ -77,8 +79,19 @@ object ThemeConfig {
      */
     fun installDefaultBackgrounds(context: Context) {
         val preferences = context.defaultSharedPreferences
-        val needsDayBackground = !preferences.contains(PreferKey.bgImage)
-        val needsNightBackground = !preferences.contains(PreferKey.bgImageN)
+        val defaultDir = File(context.filesDir, "defaultData")
+        val misappliedDayPath = File(
+            defaultDir,
+            MISAPPLIED_READER_DAY_BACKGROUND_FILE
+        ).absolutePath
+        val misappliedNightPath = File(
+            defaultDir,
+            MISAPPLIED_READER_NIGHT_BACKGROUND_FILE
+        ).absolutePath
+        val needsDayBackground = !preferences.contains(PreferKey.bgImage) ||
+            preferences.getString(PreferKey.bgImage, null) == misappliedDayPath
+        val needsNightBackground = !preferences.contains(PreferKey.bgImageN) ||
+            preferences.getString(PreferKey.bgImageN, null) == misappliedNightPath
         if (!needsDayBackground && !needsNightBackground) return
 
         val backgroundFile = File(context.filesDir, "defaultData/$DEFAULT_BACKGROUND_FILE")
