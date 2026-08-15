@@ -21,7 +21,7 @@
         app:isBottomBackground="true" />
 
     <io.legado.app.lib.prefs.SwitchPreference
-        android:defaultValue="false"
+        android:defaultValue="true"
         android:key="hideStatusBar"
         android:title="@string/pt_hide_status_bar"
         app:iconSpaceReserved="false"
