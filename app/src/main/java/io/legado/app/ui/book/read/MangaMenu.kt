@@ -3,7 +3,6 @@ package io.legado.app.ui.book.read
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
 import android.util.AttributeSet
 import android.view.LayoutInflater
 import android.view.animation.Animation
@@ -19,6 +18,8 @@ import io.legado.app.help.source.getSourceType
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.UiCorner
+import io.legado.app.lib.theme.surface.SurfaceCorners
+import io.legado.app.lib.theme.surface.SurfaceStyles
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.uiTypeface
@@ -34,7 +35,7 @@ import io.legado.app.utils.applyNavigationBarPadding
 import io.legado.app.utils.gone
 import io.legado.app.utils.invisible
 import io.legado.app.utils.loadAnimation
-import io.legado.app.utils.LocalPopupBlur
+import io.legado.app.utils.SurfaceBackdrop
 import io.legado.app.utils.findHostWindow
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.startActivity
@@ -120,6 +121,7 @@ class MangaMenu @JvmOverloads constructor(
         tvPre.setTextColor(textColor)
         tvNext.setTextColor(textColor)
         if (AppConfig.isEInkMode) {
+            SurfaceBackdrop.clear(listOf(titleBlurSurface, bottomBlurSurface))
             titleBlurSurface.background = null
             bottomBlurSurface.background = null
             titleBar.setBackgroundResource(R.drawable.bg_eink_border_bottom)
@@ -129,33 +131,36 @@ class MangaMenu @JvmOverloads constructor(
             bottomMenu.setBackgroundResource(R.drawable.bg_eink_border_top)
         } else {
             // 标题栏底色独立放在按钮下面，避免把右上角操作按钮纳入模糊区域。
-            titleBlurSurface.background = GradientDrawable().apply {
-                setColor(
-                    UiCorner.groupColor(
-                        UiCorner.SurfaceGroup.READING,
-                        palette.surface,
-                        menuAlpha
-                    )
+            SurfaceBackdrop.installStatic(
+                titleBlurSurface,
+                SurfaceStyles.reading(
+                    tintColor = UiCorner.groupColor(
+                        UiCorner.SurfaceGroup.READING, palette.surface, menuAlpha
+                    ),
+                    cornerRadiusPx = 0f,
+                    corners = SurfaceCorners.NONE
                 )
-            }
-            bottomBlurSurface.background = GradientDrawable().apply {
-                cornerRadius = resources.getDimension(R.dimen.manga_control_bar_radius) * UiCorner.scale()
-                setColor(
-                    UiCorner.groupColor(
+            )
+            SurfaceBackdrop.installStatic(
+                bottomBlurSurface,
+                SurfaceStyles.reading(
+                    tintColor = UiCorner.groupColor(
                         UiCorner.SurfaceGroup.READING,
                         palette.panel,
                         menuAlpha
-                    )
-                )
-                setStroke(
-                    resources.getDimensionPixelSize(R.dimen.manga_control_bar_stroke_width),
-                    UiCorner.groupColor(
+                    ),
+                    cornerRadiusPx = resources.getDimension(R.dimen.manga_control_bar_radius) * UiCorner.scale(),
+                    corners = SurfaceCorners.ALL,
+                    strokeColor = UiCorner.groupColor(
                         UiCorner.SurfaceGroup.READING,
                         palette.stroke,
                         menuAlpha
-                    )
+                    ),
+                    strokeWidthPx = resources.getDimensionPixelSize(
+                        R.dimen.manga_control_bar_stroke_width
+                    ).toFloat()
                 )
-            }
+            )
             titleBar.background = null
             titleBar.toolbar.background = null
             titleBarAddition.background = null
@@ -223,16 +228,16 @@ class MangaMenu @JvmOverloads constructor(
             onReady()
             return
         }
-        LocalPopupBlur.apply(
+        SurfaceBackdrop.refresh(
             hostWindow = hostWindow,
             targets = listOf(binding.titleBlurSurface, binding.bottomBlurSurface),
-            captureOwner = this,
+            clearSameWindowSurfaceBeforeCapture = true,
             onReady = onReady
         )
     }
 
     private fun clearMenuBlur() {
-        LocalPopupBlur.clear(listOf(binding.titleBlurSurface, binding.bottomBlurSurface))
+        SurfaceBackdrop.cancel(listOf(binding.titleBlurSurface, binding.bottomBlurSurface))
     }
 
 

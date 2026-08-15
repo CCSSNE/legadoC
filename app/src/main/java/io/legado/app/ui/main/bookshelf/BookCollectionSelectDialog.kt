@@ -13,7 +13,7 @@ import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
+import io.legado.app.base.BaseBottomSheetDialogFragment
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.constant.EventBus
@@ -34,7 +34,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class BookCollectionSelectDialog() : BaseDialogFragment(R.layout.dialog_book_collection_select) {
+class BookCollectionSelectDialog() : BaseBottomSheetDialogFragment(R.layout.dialog_book_collection_select) {
 
     constructor(bookUrls: ArrayList<String>) : this() {
         arguments = Bundle().apply {
@@ -89,10 +89,6 @@ class BookCollectionSelectDialog() : BaseDialogFragment(R.layout.dialog_book_col
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        view.background = UiCorner.dialogTopRounded(
-            ContextCompat.getColor(requireContext(), R.color.background_card),
-            UiCorner.scaledDp(24f)
-        )
         binding.btnClose.setOnClickListener {
             dismissAllowingStateLoss()
         }

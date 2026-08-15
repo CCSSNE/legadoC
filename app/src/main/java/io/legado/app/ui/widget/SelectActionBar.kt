@@ -8,7 +8,6 @@ import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
 import android.widget.FrameLayout
-import android.widget.PopupMenu
 import androidx.annotation.MenuRes
 import androidx.annotation.StringRes
 import io.legado.app.R
@@ -25,6 +24,7 @@ import io.legado.app.utils.applyUiMenuTitleSize
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.applyNavigationBarPadding
 import io.legado.app.utils.visible
+import io.legado.app.ui.widget.menu.SurfacePopupMenu
 
 
 @Suppress("unused")
@@ -79,7 +79,7 @@ class SelectActionBar @JvmOverloads constructor(
     }
 
     fun inflateMenu(@MenuRes resId: Int): Menu? {
-        val popupMenu = PopupMenu(context, binding.ivMenuMore)
+        val popupMenu = SurfacePopupMenu(context, binding.ivMenuMore)
         popupMenu.inflate(resId)
         selMenu = popupMenu.menu
         selMenu?.applyUiMenuTitleSize(context)
@@ -96,7 +96,7 @@ class SelectActionBar @JvmOverloads constructor(
     }
 
     private fun showSelectionMenu(menu: Menu) {
-        PopupMenu(context, binding.ivMenuMore).apply {
+        SurfacePopupMenu(context, binding.ivMenuMore).apply {
             val itemMap = hashMapOf<Int, MenuItem>()
             for (index in 0 until menu.size()) {
                 val item = menu.getItem(index)

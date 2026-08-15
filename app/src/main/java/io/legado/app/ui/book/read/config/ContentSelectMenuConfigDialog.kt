@@ -8,9 +8,7 @@ import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.DialogContentSelectMenuConfigBinding
-import io.legado.app.lib.theme.dialogSurfaceBackground
 import io.legado.app.lib.theme.view.ThemeCheckBox
-import io.legado.app.utils.applyDialogSurfaceBlur
 import io.legado.app.utils.checkByIndex
 import io.legado.app.utils.getCheckedIndex
 import io.legado.app.utils.getPrefString
@@ -50,15 +48,9 @@ class ContentSelectMenuConfigDialog : BaseDialogFragment(R.layout.dialog_content
     override fun onStart() {
         super.onStart()
         setLayout(0.9f, ViewGroup.LayoutParams.WRAP_CONTENT)
-        // BaseDialogFragment 已在窗口首次创建时准备一次；尺寸确定后再重新准备，
-        // 确保这块实际外壳而非工具栏或内部控件成为局部模糊目标。
-        dialog?.window?.decorView?.post {
-            dialog?.applyDialogSurfaceBlur()
-        }
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        view.background = requireContext().dialogSurfaceBackground
         binding.toolBar.setBackgroundColor(Color.TRANSPARENT)
         initData()
         binding.tvCancel.onClick {

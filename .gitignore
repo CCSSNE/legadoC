@@ -24,3 +24,9 @@ package-lock.json
 export-patch.bat
 update.patch
 .build_trash/
+.android-dev-venv/
+.android-dev-venv-py310/
+__pycache__/
+tools/android-dev/bin/
+test-records/android-dev/
+.dsh-vision-toolkit/

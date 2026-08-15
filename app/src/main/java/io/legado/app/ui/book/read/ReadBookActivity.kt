@@ -16,6 +16,7 @@ import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
 import android.widget.FrameLayout
+import android.widget.ImageButton
 import androidx.activity.addCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
@@ -133,8 +134,6 @@ import io.legado.app.utils.hexString
 import io.legado.app.utils.iconItemOnLongClick
 import io.legado.app.utils.invisible
 import io.legado.app.utils.isAbsUrl
-import io.legado.app.utils.LocalPopupBlur
-import io.legado.app.utils.applyLocalPopupBlur
 import io.legado.app.utils.isTrue
 import io.legado.app.utils.launch
 import io.legado.app.utils.navigationBarGravity
@@ -450,7 +449,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.book_read, menu)
+        menuInflater.inflate(R.menu.book_read_toolbar, menu)
         menu.iconItemOnLongClick(R.id.menu_change_source) {
             it.showPopupMenu(
                 R.menu.book_read_change_source,
@@ -463,6 +462,13 @@ class ReadBookActivity : BaseReadBookActivity(),
                 onClick = ::onMenuItemClick
             )
         }
+        menu.findItem(R.id.menu_read_surface_more)?.let { item ->
+            item.actionView?.findViewById<ImageButton>(R.id.item)?.apply {
+                contentDescription = item.title
+                setImageDrawable(item.icon)
+                setOnClickListener(::showReadOverflowMenu)
+            }
+        }
         binding.readMenu.refreshMenuColorFilter()
         return super.onCompatCreateOptionsMenu(menu)
     }
@@ -473,22 +479,26 @@ class ReadBookActivity : BaseReadBookActivity(),
         return super.onPrepareOptionsMenu(menu)
     }
 
-    override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
-        menu.findItem(R.id.menu_same_title_removed)?.isChecked =
-            ReadBook.curTextChapter?.sameTitleRemoved == true
-        // AppCompat 会在这个回调返回后才真正创建 PopupWindow；先趁阅读主菜单
-        // 已经绘制完成时缓存宿主整页模糊图，避免弹窗显示后再异步替换背景。
-        val popupBlurGeneration = LocalPopupBlur.preparePopupBlur(window)
-        return super.onMenuOpened(featureId, menu).also {
-            menu.applyLocalPopupBlur(window, popupBlurGeneration)
-        }
+    private fun showReadOverflowMenu(anchor: View) {
+        anchor.showPopupMenu(
+            R.menu.book_read,
+            prepare = {
+                removeGroup(R.id.menu_group_on_line)
+                removeGroup(R.id.menu_group_text)
+                removeGroup(R.id.menu_group_local)
+                findItem(R.id.menu_same_title_removed)?.isChecked =
+                    ReadBook.curTextChapter?.sameTitleRemoved == true
+                upMenu(this)
+            },
+            onClick = ::onMenuItemClick
+        )
     }
 
     /**
      * 更新菜单
      */
-    private fun upMenu() {
-        val menu = menu ?: return
+    private fun upMenu(targetMenu: Menu? = menu) {
+        val menu = targetMenu ?: return
         val book = ReadBook.book ?: return
         val onLine = !book.isLocal
         for (i in 0 until menu.size) {

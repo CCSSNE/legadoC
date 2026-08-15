@@ -10,9 +10,10 @@ import androidx.lifecycle.LifecycleEventObserver
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.applyUiBodyTypeface
-import io.legado.app.lib.theme.dialogSurfaceBackground
+import io.legado.app.lib.theme.surface.SurfaceStyles
+import io.legado.app.lib.theme.surface.SurfaceStyle
+import io.legado.app.utils.SurfaceBackdrop
 import io.legado.app.utils.applyAdaptiveDim
-import io.legado.app.utils.applyDialogSurfaceChildren
 import io.legado.app.utils.dpToPx
 
 
@@ -47,19 +48,32 @@ abstract class BasePrefDialogFragment(
             })
         } else {
             dialog?.window?.setBackgroundDrawableResource(R.color.transparent)
-            dialog?.applyAdaptiveDim()
+            view?.let { root ->
+                dialog?.applyAdaptiveDim(
+                    dialogSurfaceView(root),
+                    dialogSurfaceStyle(requireContext())
+                )
+            }
         }
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         view.clipToOutline = true
-        if (!AppConfig.isEInkMode && view.background == null) {
-            view.background = requireContext().dialogSurfaceBackground
-        }
         if (!AppConfig.isEInkMode) {
+            SurfaceBackdrop.installStatic(
+                dialogSurfaceView(view),
+                dialogSurfaceStyle(requireContext())
+            )
             view.applyUiBodyTypeface(requireContext())
-            view.post { view.applyDialogSurfaceChildren() }
         }
+    }
+
+    protected open fun dialogSurfaceView(root: View): View {
+        return root.findViewById(R.id.vw_bg) ?: root
+    }
+
+    protected open fun dialogSurfaceStyle(context: android.content.Context): SurfaceStyle {
+        return SurfaceStyles.dialog(context)
     }
 }

@@ -1,0 +1,46 @@
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <group android:id="@+id/menu_group_on_line">
+        <item
+            android:id="@+id/menu_change_source"
+            android:icon="@drawable/ic_exchange"
+            android:title="@string/change_origin"
+            app:showAsAction="always" />
+        <item
+            android:id="@+id/menu_refresh"
+            android:icon="@drawable/ic_refresh_black_24dp"
+            android:title="@string/refresh"
+            app:showAsAction="always" />
+        <item
+            android:id="@+id/menu_download"
+            android:icon="@drawable/ic_download_line"
+            android:title="@string/offline_cache"
+            app:showAsAction="always" />
+    </group>
+
+    <group android:id="@+id/menu_group_text">
+        <item
+            android:id="@+id/menu_toc_regex"
+            android:icon="@drawable/ic_exchange"
+            android:title="@string/txt_toc_rule"
+            android:visible="false"
+            app:showAsAction="always" />
+    </group>
+
+    <group android:id="@+id/menu_group_local">
+        <item
+            android:id="@+id/menu_set_charset"
+            android:icon="@drawable/ic_translate"
+            android:title="@string/set_charset"
+            app:showAsAction="always" />
+    </group>
+
+    <item
+        android:id="@+id/menu_read_surface_more"
+        android:icon="@drawable/ic_more_vert"
+        android:title="@string/more_menu"
+        app:actionLayout="@layout/view_action_button"
+        app:showAsAction="always" />
+
+</menu>

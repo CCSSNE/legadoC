@@ -23,6 +23,8 @@ import io.legado.app.lib.theme.applyUiBodyTypeface
 import io.legado.app.lib.theme.applyUiTitleTypeface
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.surface.SurfaceStyles
+import io.legado.app.utils.SurfaceBackdrop
 import io.legado.app.utils.applyAdaptiveDim
 import io.legado.app.utils.dpToPx
 
@@ -71,11 +73,7 @@ object ExpandableTagSelector {
     ) {
         val root = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            background = UiCorner.dialogRounded(
-                ContextCompat.getColor(context, R.color.dialog_surface),
-                UiCorner.panelRadius(context)
-            )
-            clipToOutline = true
+            SurfaceBackdrop.installStatic(this, SurfaceStyles.dialog(context))
         }
         val titleView = TextView(context).apply {
             text = title
@@ -84,7 +82,7 @@ object ExpandableTagSelector {
             textSize = 18f
             gravity = Gravity.CENTER_VERTICAL
             setPadding(16.dpToPx(), 0, 16.dpToPx(), 0)
-            setBackgroundColor(UiCorner.dialogSurfaceColor(context.primaryColor))
+            background = null
         }
         root.addView(
             titleView,
@@ -161,7 +159,7 @@ object ExpandableTagSelector {
             .show()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        dialog.applyAdaptiveDim()
+        dialog.applyAdaptiveDim(root)
     }
 
     private fun createGridRow(context: Context): LinearLayout {

@@ -1,0 +1,30 @@
+unique_session_name: "legadoC_perfetto_winscope"
+buffers: {
+  size_kb: 32768
+  fill_policy: RING_BUFFER
+}
+duration_ms: {{DURATION_MS}}
+data_sources: {
+  config: {
+    name: "linux.ftrace"
+    ftrace_config: {
+      ftrace_events: "sched/sched_switch"
+      ftrace_events: "sched/sched_wakeup"
+      atrace_categories: "view"
+      atrace_categories: "wm"
+      atrace_categories: "am"
+      atrace_categories: "gfx"
+      atrace_categories: "input"
+      atrace_categories: "binder_driver"
+      atrace_apps: "io.legado.app.c"
+    }
+  }
+}
+data_sources: {
+  config: {
+    name: "linux.process_stats"
+    process_stats_config: {
+      scan_all_processes_on_start: true
+    }
+  }
+}

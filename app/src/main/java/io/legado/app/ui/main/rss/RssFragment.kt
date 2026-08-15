@@ -12,7 +12,6 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.LinearLayout
-import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.widget.SearchView
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
@@ -43,6 +42,7 @@ import io.legado.app.ui.rss.article.RssArticlesFragment
 import io.legado.app.ui.rss.article.RssSortActivity
 import io.legado.app.ui.rss.article.RssSortViewModel
 import io.legado.app.ui.rss.favorites.RssFavoritesActivity
+import io.legado.app.ui.widget.menu.SurfacePopupMenu
 import io.legado.app.ui.rss.read.ReadRssActivity
 import io.legado.app.ui.rss.source.edit.RssSourceEditActivity
 import io.legado.app.ui.rss.source.manage.RssSourceActivity
@@ -287,7 +287,7 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss), MainF
     private fun showRssMoreMenu() {
         val source = selectedRssSource
         val webVisible = binding.rssWebContainer.isVisible
-        PopupMenu(requireContext(), binding.btnRssMore).apply {
+        SurfacePopupMenu(requireContext(), binding.btnRssMore).apply {
             menu.add(Menu.NONE, R.id.menu_read_record, Menu.NONE, R.string.history)
                 .setIcon(R.drawable.ic_history)
             // menu.add(Menu.NONE, MENU_RSS_FAVORITES, Menu.NONE, R.string.favorite)

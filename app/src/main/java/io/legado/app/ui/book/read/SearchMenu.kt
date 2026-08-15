@@ -20,6 +20,8 @@ import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
+import io.legado.app.lib.theme.surface.SurfaceCorners
+import io.legado.app.lib.theme.surface.SurfaceStyles
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.searchContent.SearchResult
@@ -30,7 +32,7 @@ import io.legado.app.utils.dpToPx
 import io.legado.app.utils.getCompatColor
 import io.legado.app.utils.invisible
 import io.legado.app.utils.loadAnimation
-import io.legado.app.utils.LocalPopupBlur
+import io.legado.app.utils.SurfaceBackdrop
 import io.legado.app.utils.findHostWindow
 import io.legado.app.utils.visible
 
@@ -120,24 +122,20 @@ class SearchMenu @JvmOverloads constructor(
             if (isBgLight) dividerColor else textColor,
             if (isBgLight) 1f else 0.14f
         )
-        llBottomMenu.background = GradientDrawable().apply {
-            cornerRadius = UiCorner.scaledDp(18F)
-            setColor(
-                UiCorner.groupColor(
-                    UiCorner.SurfaceGroup.READING,
-                    panelBaseColor,
-                    menuAlpha
-                )
+        SurfaceBackdrop.installStatic(
+            llBottomMenu,
+            SurfaceStyles.reading(
+                tintColor = UiCorner.groupColor(
+                    UiCorner.SurfaceGroup.READING, panelBaseColor, menuAlpha
+                ),
+                cornerRadiusPx = UiCorner.scaledDp(18F),
+                corners = SurfaceCorners.ALL,
+                strokeColor = UiCorner.groupColor(
+                    UiCorner.SurfaceGroup.READING, panelStrokeColor, menuAlpha
+                ),
+                strokeWidthPx = 1.dpToPx().toFloat()
             )
-            setStroke(
-                1.dpToPx(),
-                UiCorner.groupColor(
-                    UiCorner.SurfaceGroup.READING,
-                    panelStrokeColor,
-                    menuAlpha
-                )
-            )
-        }
+        )
         llSearchBaseInfo.background = GradientDrawable().apply {
             cornerRadius = UiCorner.searchRadius(14F)
             setColor(
@@ -196,16 +194,16 @@ class SearchMenu @JvmOverloads constructor(
             onReady()
             return
         }
-        LocalPopupBlur.apply(
+        SurfaceBackdrop.refresh(
             hostWindow = hostWindow,
-            targets = listOf(binding.llBottomMenu, binding.fabLeft, binding.fabRight),
-            captureOwner = this,
+            target = binding.llBottomMenu,
+            clearSameWindowSurfaceBeforeCapture = true,
             onReady = onReady
         )
     }
 
     private fun clearMenuBlur() {
-        LocalPopupBlur.clear(listOf(binding.llBottomMenu, binding.fabLeft, binding.fabRight))
+        SurfaceBackdrop.cancel(binding.llBottomMenu)
     }
 
     fun runMenuOut(onMenuOutEnd: (() -> Unit)? = null) {

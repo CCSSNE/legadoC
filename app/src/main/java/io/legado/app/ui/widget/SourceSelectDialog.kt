@@ -21,6 +21,8 @@ import io.legado.app.lib.theme.applyUiBodyTypeface
 import io.legado.app.lib.theme.applyUiLabelStyle
 import io.legado.app.lib.theme.applyUiSectionTitleStyle
 import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.surface.SurfaceStyles
+import io.legado.app.utils.SurfaceBackdrop
 import io.legado.app.utils.applyAdaptiveDim
 import io.legado.app.utils.dpToPx
 
@@ -108,10 +110,7 @@ object SourceSelectDialog {
             orientation = LinearLayout.VERTICAL
             isFocusable = true
             isFocusableInTouchMode = true
-            background = UiCorner.dialogRounded(
-                ContextCompat.getColor(context, R.color.dialog_surface),
-                UiCorner.panelRadius(context)
-            )
+            SurfaceBackdrop.installStatic(this, SurfaceStyles.dialog(context))
             setPadding(14.dpToPx(), 14.dpToPx(), 14.dpToPx(), 12.dpToPx())
             addView(
                 TextView(context).apply {
@@ -146,7 +145,7 @@ object SourceSelectDialog {
         }
         dialog.show()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        dialog.applyAdaptiveDim()
+        dialog.applyAdaptiveDim(container)
     }
 
     private class SourceOptionView(context: android.content.Context) : TextView(context) {

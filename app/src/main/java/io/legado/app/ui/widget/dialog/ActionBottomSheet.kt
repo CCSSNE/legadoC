@@ -1,6 +1,7 @@
 package io.legado.app.ui.widget.dialog
 
 import android.content.Context
+import android.graphics.Color
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -11,6 +12,9 @@ import com.google.android.material.bottomsheet.BottomSheetDialog
 import io.legado.app.R
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.theme.UiCorner
+import io.legado.app.lib.theme.surface.SurfaceCorners
+import io.legado.app.lib.theme.surface.SurfaceStyles
+import io.legado.app.utils.SurfaceBackdrop
 import io.legado.app.utils.applyAdaptiveDim
 import io.legado.app.utils.dpToPx
 
@@ -26,9 +30,9 @@ fun showActionBottomSheet(
     val dialog = BottomSheetDialog(context)
     val layout = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
-        background = UiCorner.rounded(
-            ContextCompat.getColor(context, R.color.background_card),
-            UiCorner.panelRadius(context)
+        SurfaceBackdrop.installStatic(
+            this,
+            SurfaceStyles.dialog(context, SurfaceCorners.TOP)
         )
     }
     val selectableBackground = context.theme.obtainStyledAttributes(
@@ -77,5 +81,7 @@ fun showActionBottomSheet(
     }
     dialog.setContentView(layout)
     dialog.show()
-    dialog.applyAdaptiveDim()
+    dialog.findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)
+        ?.setBackgroundColor(Color.TRANSPARENT)
+    dialog.applyAdaptiveDim(layout)
 }

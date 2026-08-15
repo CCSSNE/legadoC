@@ -8,6 +8,9 @@ import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.UiCorner
+import io.legado.app.lib.theme.surface.SurfaceCorners
+import io.legado.app.lib.theme.surface.SurfaceStyle
+import io.legado.app.lib.theme.surface.SurfaceStyles
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.getCompatColor
@@ -63,18 +66,18 @@ object ReaderSheetStyle {
         )
     }
 
-    fun topSheetDrawable(palette: Palette, radiusDp: Float = 10f): GradientDrawable {
-        val radius = UiCorner.scaledDp(radiusDp)
-        return GradientDrawable().apply {
-            cornerRadii = floatArrayOf(
-                radius, radius,
-                radius, radius,
-                0f, 0f,
-                0f, 0f
-            )
-            setColor(UiCorner.dialogSurfaceColor(palette.surface))
-            setStroke(1.dpToPx(), UiCorner.dialogSurfaceColor(palette.stroke))
-        }
+    fun topSheetSurfaceStyle(
+        context: Context,
+        baseColor: Int = context.bottomBackground
+    ): SurfaceStyle {
+        val palette = resolve(context, baseColor)
+        return SurfaceStyles.reading(
+            tintColor = UiCorner.dialogSurfaceColor(palette.surface),
+            cornerRadiusPx = UiCorner.scaledDp(10f),
+            corners = SurfaceCorners.TOP,
+            strokeColor = UiCorner.dialogSurfaceColor(palette.stroke),
+            strokeWidthPx = 1.dpToPx().toFloat()
+        )
     }
 
     fun blockDrawable(fillColor: Int, strokeColor: Int, radiusDp: Float = 10f): GradientDrawable {

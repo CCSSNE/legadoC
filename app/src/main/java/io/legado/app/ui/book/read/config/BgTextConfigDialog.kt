@@ -17,7 +17,6 @@ import androidx.core.graphics.toColorInt
 import androidx.core.view.isGone
 import com.jaredrummler.android.colorpicker.ColorPickerDialog
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.databinding.DialogEditTextBinding
@@ -76,7 +75,7 @@ import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.utils.setSelectionSafely
 import kotlinx.coroutines.launch
 
-class BgTextConfigDialog : BaseDialogFragment(R.layout.dialog_read_bg_text) {
+class BgTextConfigDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_bg_text) {
 
     companion object {
         const val TEXT_COLOR = 121
@@ -143,8 +142,6 @@ class BgTextConfigDialog : BaseDialogFragment(R.layout.dialog_read_bg_text) {
         val isLight = ColorUtils.isColorLight(bg)
         primaryTextColor = requireContext().getPrimaryTextColor(isLight)
         secondaryTextColor = requireContext().getSecondaryTextColor(isLight)
-        rootView.background = ReaderSheetStyle.topSheetDrawable(ReaderSheetStyle.resolve(requireContext(), bg))
-        rootView.clipToOutline = true
         rootView.applyUiBodyTypefaceDeep(requireContext().uiTypeface())
         tvNameTitle.setTextColor(primaryTextColor)
         tvName.setTextColor(secondaryTextColor)

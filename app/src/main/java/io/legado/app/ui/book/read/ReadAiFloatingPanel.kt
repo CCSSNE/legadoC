@@ -14,7 +14,6 @@ import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.FrameLayout
 import android.widget.LinearLayout
-import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
@@ -38,6 +37,7 @@ import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.main.ai.AiChatMessage
+import io.legado.app.ui.widget.menu.SurfacePopupMenu
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.sendToClip
@@ -690,7 +690,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
     }
 
     private fun showMessageActions(anchor: View, message: ReadAiMessage) {
-        PopupMenu(context, anchor).apply {
+        SurfacePopupMenu(context, anchor).apply {
             menu.add(0, actionCopyMessage, 0, R.string.copy_text)
             if (message.id.isNotBlank()) {
                 menu.add(0, actionDeleteMessage, 1, R.string.delete)

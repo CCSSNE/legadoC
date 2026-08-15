@@ -1,6 +1,7 @@
 package io.legado.app.ui.book.read.config
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.DialogInterface
 import android.graphics.Color
 import android.graphics.PorterDuff
@@ -24,7 +25,6 @@ import androidx.recyclerview.widget.RecyclerView
 import com.github.liuyueyi.quick.transfer.constants.TransType
 import com.jaredrummler.android.colorpicker.ColorPickerDialog
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.constant.EventBus
@@ -46,10 +46,12 @@ import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.prefs.ColorPreference.ColorPickerDialogCompat
 import io.legado.app.lib.theme.accentColor
-import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.UiCorner
+import io.legado.app.lib.theme.surface.SurfaceCorners
+import io.legado.app.lib.theme.surface.SurfaceStyle
+import io.legado.app.lib.theme.surface.SurfaceStyles
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.read.ReadBookActivity
@@ -98,8 +100,21 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.Locale
 
-class ReadStyleDialog : BaseDialogFragment(R.layout.dialog_read_book_style),
+class ReadStyleDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_book_style),
     FontSelectDialog.CallBack {
+
+    override fun dialogSurfaceStyle(context: Context): SurfaceStyle {
+        val bg = ReadBookConfig.durConfig.curReadMenuBgColor() ?: defaultReadMenuBgColor()
+        val menuOpacity = (ReadBookConfig.durConfig.readMenuAlpha / 100f).coerceIn(0.35f, 1f)
+        val palette = ReaderSheetStyle.resolve(context, bg)
+        return SurfaceStyles.reading(
+            tintColor = UiCorner.dialogSurfaceColor(ColorUtils.withAlpha(bg, menuOpacity)),
+            cornerRadiusPx = UiCorner.scaledDp(10f),
+            corners = SurfaceCorners.TOP,
+            strokeColor = UiCorner.dialogSurfaceColor(palette.stroke),
+            strokeWidthPx = 1.dpToPx().toFloat()
+        )
+    }
 
     private val binding by viewBinding(DialogReadBookStyleBinding::bind)
     private val callBack get() = activity as? ReadBookActivity
@@ -503,9 +518,7 @@ class ReadStyleDialog : BaseDialogFragment(R.layout.dialog_read_book_style),
         val menuOpacity = (ReadBookConfig.durConfig.readMenuAlpha / 100f).coerceIn(0.35f, 1f)
         primaryTextColor = palette.textColor
         secondaryTextColor = palette.secondaryTextColor
-        rootView.background = ReaderSheetStyle.topSheetDrawable(
-            palette.copy(surface = ColorUtils.withAlpha(bg, menuOpacity))
-        )
+        updateDialogSurfaceStyle()
 
         val isLight = ColorUtils.isColorLight(bg)
         val tabBg = ColorUtils.blendColors(

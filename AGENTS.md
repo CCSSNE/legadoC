@@ -72,6 +72,7 @@ $versionName='3.26.<MMddHH>'
 
 ## 七、已交付版本基线（新 → 旧）
 
+- `3.26.081523c` / `10602`：2026-08-14 编译、安装到雷电模拟器并完成弹窗模糊回归（修复 `AlertDialog.Builder.show()` 首次暴露 `parentPanel` 时尚未 attach/layout、尺寸为 `0×0` 而直接回退为纯透明着色的问题；统一 `SurfaceBackdrop` 等待宿主和目标 attach、连续两帧几何稳定后再 PixelCopy。Frida 实测同一次“弹窗透明度”操作先有静态 `0×0` 安装，随后获得 `1368×741` 非回收 Bitmap；截图确认仅弹窗范围内底图模糊、面板外清晰）。
 - `3.26.081509c` / `10598`：2026-08-14 编译交付（弹窗范围模糊改为宿主整页低分辨率模糊图预缓存后按当前 PopupWindow 背景外壳裁剪安装；移除 contentView/ListView/旧外壳兜底与外壳/列表双层异步取图；按弹窗代号丢弃迟到结果；背景 Drawable 使用独立副本；阅读页更多菜单在主菜单回调阶段预缓存，模拟器完成阅读页与快速开关回归）。
 - `3.26.081507c` / `10596`：2026-08-14 编译交付（修复普通弹窗与读书听书底部弹窗只模糊内部小块的问题：优先取 Dialog 自己窗口内的外层根表面，即使表面填满底部 Dialog 窗口也不再误判为整屏容器；PixelCopy 跨窗口裁剪改用源 Window 坐标，普通弹窗和读书弹窗在模拟器复测为整块范围模糊，面板外正文与壁纸保持清晰）。
 - `3.26.081505c` / `10594`：2026-08-14 编译交付（PopupWindow 局部模糊优先使用 `mBackgroundView` 背景外壳，预先隐藏未布局外壳后再安装局部模糊，修复阅读页更多菜单范围偏移与首帧闪变；保留阅读主菜单和普通弹窗的局部模糊准备态）。
@@ -179,6 +180,7 @@ $apk='D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_<版本>.ap
 4. PixelCopy 必须使用当前项目 compileSdk 可编译的 Window 复制重载（系统内部仍走硬件复制）；只有在项目 stubs 明确提供 `PixelCopy.Request.ofWindow()` 时才可切换到构建器路径。仍需等待复制回调和模糊背景安装完成后再显示浮层。显示/隐藏期间使用代际标记，过期回调不得把已关闭或重新打开的浮层显示出来。
 5. 关闭系统整屏 `DIM_BEHIND` 或系统窗口模糊只为避免整体亮度下降；弹窗的灰黑/浅灰底色、透明度和模糊度仍由统一弹窗表面组控制。
 6. Dialog 的局部截图必须等目标面板连续两帧的屏幕位置和尺寸一致后再执行；`onStart()` 后的 `setLayout`、底部定位和系统 inset 可能触发二次布局，不能在第一次非零尺寸时直接抓图。
+7. `AlertDialog.Builder.show()` 的 `parentPanel` 可在 `show()` 返回后、第一次 Window attach/layout 前就被取得，此时 `width/height` 均可为 `0`。这不是“没有可模糊目标”，不得直接显示纯 tint 后返回；`SurfaceBackdrop` 必须从主线程重试，先等待宿主 decor 与目标均 attach，再要求连续两帧稳定几何，之后才 PixelCopy。2026-08-14 已以“弹窗透明度”实测：静态安装 `0×0` 后必须继续到 `1368×741` 的非空 Bitmap 安装；这是所有经 `SurfaceBackdrop.apply/refresh` 的 Dialog 与自有 PopupWindow 的共同生命周期规则。
 
 ## 十三、已确认编译经验
 
@@ -188,6 +190,7 @@ $apk='D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_<版本>.ap
 4. **编译前删除旧 APK 只限于精确产物文件**：项目规则要求编译前移除旧安装包时，只能根据已确认的完整路径删除 `app\build\outputs\apk\app\c` 下的旧 APK；不得删除源码、`AGENTS.md`、构建配置或整个工作区。删除后必须重新生成并用 `aapt`、`apksigner` 验证新 APK。
 5. **编译异常必须形成闭环记录**：任何编译异常、参数错误、构建脚本行为差异或已确认的警告处理方式，在解决后都必须把“现象、根因、修复方法、是否交付”写回本节；下一次编译前必须先检索本节并复核旧经验。已失效或错误的经验可以直接修正或删除，不能让同一个异常重复消耗编译时间。
 6. **本项目的持续记录要求（用户原话）**： “编译出现了任何异常都往 agent md 里面写，包括这句话也往 agent md 里面写。任何编译异常最后解决都要把解决方法往 agent md 里面写。”
+7. **2026-08-14 统一 Surface 重构编译异常**：第一次用 `Start-Process` 加重定向启动时出现日志为空、Gradle/Java 进程仍存活但 CPU 与日志连续两个探测周期无增长，按长命令规则终止，未产出、未交付；改用 `.bat` 文件启动正式冷编译后，第一次真实失败原因为 `findHostWindow` 引用缺失和 nullable `MenuItem.title` 类型错误，读取具体 Kotlin 报错并修复。随后使用 `assembleAppC --no-daemon --max-workers=1 -Dkotlin.incremental=false -Dksp.incremental=false -Dkotlin.compiler.execution.strategy=in-process` 成功产包。结论：后台重定向异常与源码错误必须分开判断，不能把真实编译错误继续当作内存或守护进程问题重跑。
 
 ## 十四、弹窗模糊规则
 
@@ -197,9 +200,10 @@ $apk='D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_<版本>.ap
 
 ## 十五、阅读页菜单模糊规则
 
-1. 阅读主菜单、漫画菜单、搜索菜单属于宿主 Activity 内部的同窗口浮层，不会经过 Dialog 的模糊入口；必须由 `LocalPopupBlur` 在菜单动画结束后只暂时隐藏纯背景层，使用 PixelCopy 复制各自面板矩形，再把模糊图只铺回背景层。禁止隐藏菜单根节点或包含操作控件的容器，否则会产生抽动。
-2. 听书菜单属于底部 Dialog；阅读页右上角更多菜单和 PopupMenu 属于独立 PopupWindow，分别走 Dialog 局部模糊和 PopupWindow 的 `mBackgroundView` 背景外壳局部模糊，禁止对阅读页根节点设置 RenderEffect。`mDecorView` 只负责承载和事件分发，不能优先作为模糊目标，否则实心背景外壳会盖住模糊图。
-3. 浮层关闭、重新显示或切换主题时必须清理旧的位图背景和生命周期监听，不能把上一帧模糊图层叠加到下一次显示。
+1. 阅读主菜单、漫画菜单、搜索菜单属于宿主 Activity 内部的同窗口浮层，不经过 Dialog 入口；统一由 `SurfaceBackdrop` 接收调用方明确声明的纯背景层，使用 PixelCopy 复制对应矩形，再由 `SurfaceDrawable` 在同一裁剪路径内绘制模糊底图、透明着色和描边。禁止扫描控件树猜目标，禁止隐藏或替换包含操作控件的内容层。
+2. 听书菜单属于底部 Dialog，必须由 Dialog 基类声明真实面板；阅读页右上角“更多”、书架“更多”和通用菜单统一使用应用自有 `SurfacePopupMenu`，其可见外壳就是唯一模糊目标。禁止反射 `mBackgroundView` / `mDecorView` 等 PopupWindow 私有字段，也禁止缓存宿主整页模糊图后再猜坐标裁剪。
+3. 几何形状、着色、描边和模糊底图必须由同一个 `SurfaceStyle` / `SurfaceDrawable` 实例描述，不能再用“矩形 BitmapDrawable + 另一层圆角颜色”的叠层方式；否则圆角和透明度会再次相互破坏。
+4. 浮层关闭、重新显示、切换主题或子菜单改变尺寸时必须递增显示代际，丢弃迟到回调并释放旧位图；子菜单尺寸变化后必须重新按稳定后的矩形取图，不能拉伸上一层菜单截图。
 
 ## 十六、局部模糊与弹窗圆角禁区（2026-08-14 复盘结论）
 
@@ -213,3 +217,32 @@ $apk='D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_<版本>.ap
 5. **动画同样止损**：阅读主菜单当前不得恢复从下往上/从上往下的进入退出动画。它与“显示前完成局部模糊安装”的首帧要求冲突，曾导致先显示后换背景的闪动/抽动；除非先有不依赖显示后异步换背景的完整方案并完成验证。
 6. **停止条件**：同一结构路线连续两次无法同时满足“直角、透明、范围模糊”时，立即停止该路线，记录冲突和截图，不得在后续版本继续通过改颜色、改透明度、改圆角半径或新增兜底层反复尝试。只有方案结构发生实质改变，才可重新开始。
 7. **改动纪律**：修改任何弹窗外壳前，先列出它属于哪一类（Dialog、PopupWindow、Activity 内浮层）及其背景层；修改后必须逐项截图验收。不能因为一个界面看起来成功，就假定共用样式下的其他弹窗也已成功。
+
+## 十七、复杂 UI / 疑难问题的分层调试（只在升级条件满足时使用）
+
+1. **默认路径仍是 ADB / uiautomator2**：一般功能错误、点击失败、控件状态、页面跳转、崩溃和普通布局问题，先用雷电模拟器上的 ADB、`uiautomator2`、截图和 logcat。不得因为工具已安装就对普通问题默认启动 Perfetto、Winscope 或 Frida。
+2. **升级条件**：只有在普通手段无法解释，或同一结构路线已重复失败，并且明确怀疑帧时序、线程调度、Window/Surface 合成、运行时真实对象或隐藏调用链时，才进入高级链路。
+3. **统一证据流**：
+
+   ```text
+   uiautomator2 / ADB
+           │
+           ▼
+   ──────── AI ────────
+    │       │        │
+    │       │        └── Perfetto
+    │       │            看时间 / 线程 / 帧
+    │       │
+    │       └────────── Winscope trace
+    │                    看 Window / Surface / Layer
+    │
+    └────────────────── Frida / AI Debug Probe
+                         看真实运行时对象和调用链
+   ```
+
+4. **工具选择**：UI 层级、可见性、点击目标不一致用 `uiautomator2`；卡顿、竞争、首帧和异步先后关系用 Perfetto；窗口边界、层级、裁剪、Surface 位置和合成结果用 Winscope；源码推断与真实对象不一致、需要确认具体类实例或方法调用栈时才用 Frida / AI Debug Probe。
+5. **同一次复现**：高级证据必须围绕一个明确动作窗口采集。Winscope 和 Perfetto 必须并行覆盖同一次复现，记录开始时间、操作、结束时间；禁止先操作一次抓 Window，再操作另一次抓 Perfetto 后强行拼结论。
+6. **本机入口**：环境检查与脚本统一放在 `tools\android-dev`；先运行 `verify-env.ps1`，再按需运行 `capture-perfetto.ps1`、`capture-winscope-android14.ps1` 或 `run-frida-probe.ps1`。输出放入已忽略的 `test-records\android-dev`，不得提交 trace、截图、临时 Frida 二进制或虚拟环境。当前雷电 Android 14 是 user build，系统服务拒绝 WindowManager 时间序列 tracing；脚本必须明确记录 `window-surface-snapshots` 降级模式，采集同一 Perfetto 时间窗前后的 Window/Surface proto 快照，禁止把静态快照谎报成 WM trace。若以后更换支持 tracing 的系统镜像，脚本才使用 `window-manager-trace` 模式。
+7. **Frida 安全边界**：只允许雷电模拟器固定序列号 `127.0.0.1:5555`；默认只读对象和记录调用栈，方法跟踪必须限定包、类、方法和最长 30 秒，保持原调用返回路径，不修改业务字段或返回值。`InvokeOnce` 只允许用于已审查、无副作用的零参数方法；Java 全运行时反优化只在怀疑 ART 优化漏钩时显式启用，不能作为默认。Frida 17 的 Python Agent 必须显式装载 `frida-tools` 自带 Java Bridge；`Java is not defined`、脚本 error、初始化事件缺失都必须判失败，禁止只打印错误后假报成功。结束后必须卸载脚本、停止并删除模拟器临时 Frida server，不留常驻服务。
+8. **真机禁令仍然优先**：本节所有 ADB、uiautomator2、Perfetto、Winscope 和 Frida 操作均只允许雷电模拟器；不得将“高级排障”作为连接用户真机的例外。
+9. **结论要求**：最终结论必须把 UI 层级、时间线、Window/Surface 和运行时调用证据对齐，明确“看到什么、排除了什么、根因是什么、结构上如何修”，不能只凭某一张截图或某一条堆栈继续叠补丁。

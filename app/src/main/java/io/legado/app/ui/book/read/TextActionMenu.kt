@@ -26,14 +26,14 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.ItemTextBinding
 import io.legado.app.databinding.PopupActionMenuBinding
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
-import io.legado.app.lib.theme.UiCorner
+import io.legado.app.lib.theme.surface.SurfaceStyles
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.getPrefStringSet
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.gone
-import io.legado.app.utils.LocalPopupBlur
+import io.legado.app.utils.SurfaceBackdrop
 import io.legado.app.utils.findHostWindow
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.printOnDebug
@@ -87,6 +87,7 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
         @SuppressLint("InflateParams")
         contentView = binding.root
         binding.root.applyUiBodyTypefaceDeep(context.uiTypeface())
+        SurfaceBackdrop.installStatic(contentView, SurfaceStyles.popup(context))
 
         isTouchable = true
         isOutsideTouchable = false
@@ -106,7 +107,7 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
         binding.recyclerViewMore.adapter = adapter
         setOnDismissListener {
             blurGeneration++
-            LocalPopupBlur.clear(contentView)
+            SurfaceBackdrop.cancel(contentView)
             contentView.alpha = 1f
             if (!context.getPrefBoolean(PreferKey.expandTextMenu)) {
                 binding.ivMenuMore.setImageResource(R.drawable.ic_more_vert)
@@ -204,6 +205,7 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
         }
         val originalAlpha = contentView.alpha.takeIf { it > 0f } ?: 1f
         val generation = ++blurGeneration
+        SurfaceBackdrop.installStatic(contentView, SurfaceStyles.popup(context))
         contentView.alpha = 0f
         if (isShowing) {
             // 已显示时原地更新位置与尺寸，避免重建窗口造成闪动
@@ -215,10 +217,9 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
             showAtLocation(view, Gravity.TOP or Gravity.START, x, y)
         }
         context.findHostWindow()?.let { hostWindow ->
-            LocalPopupBlur.apply(
-                hostWindow,
-                listOf(contentView),
-                popupSurfaceAlpha = UiCorner.dialogSurfaceAlpha(),
+            SurfaceBackdrop.refresh(
+                hostWindow = hostWindow,
+                target = contentView,
                 onReady = {
                     if (generation == blurGeneration && isShowing) {
                         contentView.alpha = originalAlpha

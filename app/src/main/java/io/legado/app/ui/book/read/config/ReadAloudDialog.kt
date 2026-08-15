@@ -11,7 +11,6 @@ import android.view.WindowManager
 import android.view.animation.LinearInterpolator
 import android.widget.SeekBar
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
 import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
 import io.legado.app.lib.dialogs.SelectItem
@@ -31,7 +30,7 @@ import io.legado.app.utils.*
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
 
-class ReadAloudDialog : BaseDialogFragment(R.layout.dialog_read_aloud),
+class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud),
     SpeakEngineDialog.CallBack {
     private val callBack: CallBack? get() = activity as? CallBack
     private val binding by viewBinding(DialogReadAloudBinding::bind)
@@ -54,7 +53,6 @@ class ReadAloudDialog : BaseDialogFragment(R.layout.dialog_read_aloud),
                 binding.rootView
             )
         }
-        dialog?.applyDialogSurfaceBlur()
     }
 
     override fun onDismiss(dialog: DialogInterface) {
@@ -82,7 +80,6 @@ class ReadAloudDialog : BaseDialogFragment(R.layout.dialog_read_aloud),
         val textColor = requireContext().getPrimaryTextColor(isLight)
         val palette = ReaderSheetStyle.resolve(requireContext())
         binding.run {
-            rootView.background = ReaderSheetStyle.topSheetDrawable(palette)
             panelTransport.background = null
             panelTimer.background = null
             panelTts.background = null

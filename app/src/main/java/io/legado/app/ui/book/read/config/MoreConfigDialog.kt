@@ -20,7 +20,6 @@ import com.jaredrummler.android.colorpicker.ColorPickerDialog
 import com.jaredrummler.android.colorpicker.ColorPickerDialogListener
 import com.jaredrummler.android.colorpicker.ColorShape
 import io.legado.app.R
-import io.legado.app.base.BasePrefDialogFragment
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
@@ -48,7 +47,7 @@ import io.legado.app.utils.removePref
 import io.legado.app.utils.setEdgeEffectColor
 import splitties.init.appCtx
 
-class MoreConfigDialog : BasePrefDialogFragment() {
+class MoreConfigDialog : BaseReaderSheetPrefDialogFragment() {
     private val readPreferTag = "readPreferenceFragment"
 
     private companion object {
@@ -89,7 +88,6 @@ class MoreConfigDialog : BasePrefDialogFragment() {
     ): View {
         (activity as ReadBookActivity).bottomDialog++
         return FrameLayout(requireContext()).apply {
-            background = ReaderSheetStyle.topSheetDrawable(ReaderSheetStyle.resolve(requireContext()))
             clipChildren = true
             clipToPadding = true
             clipToOutline = true

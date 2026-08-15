@@ -20,9 +20,10 @@ import io.legado.app.constant.AppLog
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.lib.theme.applyUiBodyTypeface
-import io.legado.app.lib.theme.dialogSurfaceBackground
+import io.legado.app.lib.theme.surface.SurfaceStyles
+import io.legado.app.lib.theme.surface.SurfaceStyle
+import io.legado.app.utils.SurfaceBackdrop
 import io.legado.app.utils.applyAdaptiveDim
-import io.legado.app.utils.applyDialogSurfaceChildren
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.setBackgroundKeepPadding
 import kotlinx.coroutines.CoroutineScope
@@ -70,7 +71,12 @@ abstract class BaseDialogFragment(
             })
         } else {
             dialog?.window?.setBackgroundDrawableResource(R.color.transparent)
-            dialog?.applyAdaptiveDim()
+            view?.let { root ->
+                dialog?.applyAdaptiveDim(
+                    dialogSurfaceView(root),
+                    dialogSurfaceStyle(requireContext())
+                )
+            }
         }
     }
 
@@ -89,16 +95,15 @@ abstract class BaseDialogFragment(
         if (adaptationSoftKeyboard) {
             view.findViewById<View>(R.id.vw_bg)?.setOnClickListener(null)
             view.setOnClickListener { dismiss() }
-        } else if (!AppConfig.isEInkMode) {
-            view.background = requireContext().dialogSurfaceBackground
         }
         if (!AppConfig.isEInkMode) {
+            SurfaceBackdrop.installStatic(
+                dialogSurfaceView(view),
+                dialogSurfaceStyle(requireContext())
+            )
             view.applyUiBodyTypeface(requireContext())
         }
         onFragmentCreated(view, savedInstanceState)
-        if (!AppConfig.isEInkMode) {
-            view.applyDialogSurfaceChildren()
-        }
         observeLiveBus()
     }
 
@@ -126,6 +131,22 @@ abstract class BaseDialogFragment(
     ) = Coroutine.async(scope, context) { block() }
 
     open fun observeLiveBus() {
+    }
+
+    protected open fun dialogSurfaceView(root: View): View {
+        return root.findViewById(R.id.vw_bg) ?: root
+    }
+
+    protected open fun dialogSurfaceStyle(context: android.content.Context): SurfaceStyle {
+        return SurfaceStyles.dialog(context)
+    }
+
+    protected fun updateDialogSurfaceStyle() {
+        val root = view ?: return
+        SurfaceBackdrop.updateStyle(
+            dialogSurfaceView(root),
+            dialogSurfaceStyle(requireContext())
+        )
     }
 
     fun findParentTextInputLayout(view: View): TextInputLayout? {

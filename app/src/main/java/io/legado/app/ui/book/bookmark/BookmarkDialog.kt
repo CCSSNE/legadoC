@@ -20,7 +20,6 @@ import io.legado.app.data.entities.BookmarkStyle
 import io.legado.app.databinding.DialogBookmarkBinding
 import io.legado.app.lib.prefs.ColorPreference
 import io.legado.app.lib.theme.accentColor
-import io.legado.app.lib.theme.dialogSurfaceBackground
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.getCompatColor
 import io.legado.app.utils.gone
@@ -53,9 +52,6 @@ class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark, true),
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        // 这个弹窗同时有自定义卡片和 Toolbar，不能依赖通用弹窗扫描覆盖 shape_card_view。
-        // 卡片本体和标题栏都直接接入弹窗表面组，避免标题区域单独变成不透明色块。
-        binding.vwBg.background = requireContext().dialogSurfaceBackground
         binding.toolBar.background = null
         val arguments = arguments ?: let {
             dismiss()

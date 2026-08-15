@@ -4,44 +4,32 @@ import android.app.Activity
 import android.app.Dialog
 import android.content.Context
 import android.content.ContextWrapper
-import android.graphics.Color
-import android.graphics.Rect
-import android.graphics.drawable.ColorDrawable
-import android.os.Build
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.Window
 import android.view.WindowManager
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.widget.Toolbar
-import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
 import androidx.core.view.forEach
 import androidx.fragment.app.DialogFragment
-import com.google.android.material.R as MaterialR
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.Selector
 import io.legado.app.lib.theme.ThemeStore
-import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
-import io.legado.app.lib.theme.dialogSurfaceBackground
-import io.legado.app.lib.theme.primaryColor
-import io.legado.app.lib.theme.primaryColorDark
+import io.legado.app.lib.theme.surface.SurfaceStyles
+import io.legado.app.lib.theme.surface.SurfaceStyle
 import splitties.systemservices.windowManager
 import java.util.WeakHashMap
 
-private const val DIALOG_BLUR_MAX_ATTEMPTS = 24
-private const val DIALOG_BLUR_RETRY_DELAY_MS = 16L
 private val preparedDialogWindowAlphas = WeakHashMap<Window, Float>()
 private val dialogBlurGenerations = WeakHashMap<Window, Int>()
 
 fun AlertDialog.applyTint(): AlertDialog {
-    window?.setBackgroundDrawable(context.dialogSurfaceBackground)
-    applyAdaptiveDim()
+    applyAlertSurface()
     val colorStateList = Selector.colorBuild()
         .setDefaultColor(ThemeStore.accentColor(context))
         .setPressedColor(ColorUtils.darkenColor(ThemeStore.accentColor(context)))
@@ -59,263 +47,120 @@ fun AlertDialog.applyTint(): AlertDialog {
         listView?.forEach {
             it.applyTint(context.accentColor)
         }
-        window?.decorView?.applyDialogSurfaceChildren()
         applyMaxWidthIfFloating()
     }
     return this
 }
 
-fun Dialog.applyDialogSurfaceBlur() {
+/** Uses AppCompat's documented alert panel as the single visible surface. */
+fun AlertDialog.applyAlertSurface() {
     val dialogWindow = window ?: return
-    val dialogDecor = dialogWindow.decorView
-    val radius = if (AppConfig.isEInkMode) 0 else UiCorner.dialogBlurRadius()
-    val activityWindow = context.findActivity()?.window
+    dialogWindow.setBackgroundDrawableResource(android.R.color.transparent)
+    val decor = dialogWindow.decorView
+    // The alert hierarchy may not exist before show(). Never fall back to decor:
+    // doing so creates a second, window-sized surface behind parentPanel.
+    val panel = decor.findViewById<View>(androidx.appcompat.R.id.parentPanel) ?: return
+    intArrayOf(
+        androidx.appcompat.R.id.topPanel,
+        androidx.appcompat.R.id.contentPanel,
+        androidx.appcompat.R.id.buttonPanel,
+        androidx.appcompat.R.id.customPanel
+    ).forEach { id ->
+        panel.findViewById<View>(id)?.background = null
+    }
+    applyDialogSurfaceBlur(panel)
+}
+
+/** Shared host policy for the three AndroidX preference dialog variants. */
+fun Dialog.applyPreferenceDialogSurface() {
+    if (AppConfig.isEInkMode) {
+        val dialogWindow = window ?: return
+        dialogWindow.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        dialogWindow.attributes = dialogWindow.attributes.apply {
+            dimAmount = 0f
+            windowAnimations = 0
+        }
+        dialogWindow.setBackgroundDrawableResource(R.color.transparent)
+        when (dialogWindow.attributes.gravity) {
+            Gravity.TOP -> dialogWindow.decorView.setBackgroundResource(R.drawable.bg_eink_border_bottom)
+            Gravity.BOTTOM -> dialogWindow.decorView.setBackgroundResource(R.drawable.bg_eink_border_top)
+            else -> {
+                val padding = 2.dpToPx()
+                dialogWindow.decorView.setPadding(padding, padding, padding, padding)
+                dialogWindow.decorView.setBackgroundResource(R.drawable.bg_eink_border_dialog)
+            }
+        }
+    } else {
+        (this as? AlertDialog)?.applyAlertSurface()
+    }
+}
+
+/**
+ * Applies one glass surface to the exact panel owned by the dialog.
+ *
+ * The panel is explicit by design. A full-screen click-outside root and the visible
+ * panel are not interchangeable, even when each fills its own window.
+ */
+fun Dialog.applyDialogSurfaceBlur(
+    surface: View,
+    style: SurfaceStyle = SurfaceStyles.dialog(context)
+) {
+    val dialogWindow = window ?: return
+    val target = surface
+
+    fun clearSystemWindowEffects() {
+        dialogWindow.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        dialogWindow.attributes = dialogWindow.attributes.apply { dimAmount = 0f }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            kotlin.runCatching {
+                dialogWindow.setBackgroundBlurRadius(0)
+                dialogWindow.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                dialogWindow.attributes = dialogWindow.attributes.apply {
+                    setBlurBehindRadius(0)
+                }
+            }
+        }
+    }
+
+    clearSystemWindowEffects()
+    if (AppConfig.isEInkMode) return
+
+    val hostWindow = context.findActivity()?.window
     val generation = (dialogBlurGenerations[dialogWindow] ?: 0) + 1
     dialogBlurGenerations[dialogWindow] = generation
-
-    fun clearWindowDim() {
-        val attributes = dialogWindow.attributes
-        if (attributes.flags and WindowManager.LayoutParams.FLAG_DIM_BEHIND == 0 &&
-            attributes.dimAmount == 0f
-        ) {
-            return
-        }
-        dialogWindow.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-        attributes.dimAmount = 0f
-        dialogWindow.attributes = attributes
-    }
-
-    // 弹窗的玻璃效果不应再叠加系统整屏变暗层；否则弹窗一出现，底图亮度就会整体下降。
-    clearWindowDim()
-
-    fun hideWindowForPreparation() {
-        if (radius <= 0 || activityWindow == null) return
-        val alpha = dialogWindow.attributes.alpha
-        if (alpha <= 0f) return
-        if (!preparedDialogWindowAlphas.containsKey(dialogWindow)) {
-            preparedDialogWindowAlphas[dialogWindow] = alpha
-        }
-        dialogWindow.attributes = dialogWindow.attributes.apply { this.alpha = 0f }
-    }
+    SurfaceBackdrop.installStatic(target, style)
 
     fun revealWindow() {
         if (dialogBlurGenerations[dialogWindow] != generation) return
-        val alpha = preparedDialogWindowAlphas.remove(dialogWindow) ?: return
+        val alpha = preparedDialogWindowAlphas[dialogWindow] ?: return
         if (dialogWindow.decorView.isAttachedToWindow) {
+            preparedDialogWindowAlphas.remove(dialogWindow)
             dialogWindow.attributes = dialogWindow.attributes.apply { this.alpha = alpha }
         }
     }
 
-    fun clearWindowBlur() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
-        kotlin.runCatching {
-            dialogWindow.setBackgroundBlurRadius(0)
-            dialogWindow.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-            dialogWindow.attributes = dialogWindow.attributes.apply {
-                setBlurBehindRadius(0)
-            }
-        }
+    if (style.blurRadiusPx <= 0 || hostWindow == null) {
+        revealWindow()
+        return
     }
-
-    hideWindowForPreparation()
-
-    fun prepare(
-        attempt: Int,
-        previousTarget: View? = null,
-        previousBounds: Rect? = null
-    ) {
-        dialogDecor.post {
-            if (dialogBlurGenerations[dialogWindow] != generation) return@post
-            clearWindowDim()
-            clearWindowBlur()
-            dialogDecor.applyDialogSurfaceChildren()
-            val blurTarget = dialogDecor.findDialogBlurTarget()
-            val targetReady = blurTarget != null &&
-                blurTarget.isAttachedToWindow &&
-                blurTarget.width > 0 &&
-                blurTarget.height > 0
-
-            if (radius <= 0 || activityWindow == null) {
-                revealWindow()
-            } else if (!dialogDecor.isAttachedToWindow || !targetReady) {
-                if (attempt < DIALOG_BLUR_MAX_ATTEMPTS) {
-                    dialogDecor.postDelayed(
-                        { prepare(attempt + 1) },
-                        DIALOG_BLUR_RETRY_DELAY_MS
-                    )
-                } else {
-                    // 不能让异常布局把弹窗永久藏住；宁可显示无模糊弹窗，也不显示全局错误模糊。
-                    revealWindow()
-                }
-            } else {
-                val targetBounds = blurTarget.screenBounds()
-                if (targetBounds == null) {
-                    revealWindow()
-                } else if (previousTarget !== blurTarget || previousBounds != targetBounds) {
-                    // onStart() 之后仍可能有 setLayout、底部 gravity 或系统 inset
-                    // 的二次布局。必须连续两次读到同一块屏幕矩形，才允许 PixelCopy；
-                    // 否则就会把旧位置的截图贴到新位置，表现为“只有几块在模糊”。
-                    if (attempt < DIALOG_BLUR_MAX_ATTEMPTS) {
-                        dialogDecor.postDelayed(
-                            { prepare(attempt + 1, blurTarget, targetBounds) },
-                            DIALOG_BLUR_RETRY_DELAY_MS
-                        )
-                    } else {
-                        revealWindow()
-                    }
-                } else {
-                    LocalPopupBlur.apply(
-                        activityWindow,
-                        listOfNotNull(blurTarget),
-                        radius = radius,
-                        onReady = ::revealWindow
-                    )
-                }
-            }
-        }
+    val alpha = dialogWindow.attributes.alpha
+    if (alpha > 0f) {
+        preparedDialogWindowAlphas.putIfAbsent(dialogWindow, alpha)
+        dialogWindow.attributes = dialogWindow.attributes.apply { this.alpha = 0f }
     }
-
-    prepare(0)
-}
-
-private fun View.findDialogBlurTarget(): View? {
-    findViewById<View>(R.id.vw_bg)?.takeIf { it.isDialogSurfaceCandidate(this) }?.let { return it }
-    findViewById<View>(MaterialR.id.design_bottom_sheet)
-        ?.takeIf { it.isDialogSurfaceCandidate(this) }
-        ?.let { return it }
-    val content = findViewById<ViewGroup>(android.R.id.content)
-    if (content == null) return null
-
-    // DialogFragment 的根表面通常正好填满 Dialog 自己的窗口；读书页的
-    // 听书面板就是这种结构。不能把“填满弹窗窗口”误判成整屏背景，
-    // 否则只能退回到内部的小块，结果便是只模糊一小块区域。
-    val directSurface = (0 until content.childCount)
-        .asSequence()
-        .map(content::getChildAt)
-        .firstOrNull {
-            it.isDialogSurfaceCandidate(
-                decor = this,
-                requireBackground = false,
-                allowDialogWindowFill = true
-            )
-        }
-    if (directSurface != null) return directSurface
-
-    val backgroundCandidates = ArrayList<View>()
-    val directCandidates = ArrayList<View>()
-    fun walk(view: View, direct: Boolean) {
-        if (view !== content) {
-            if (view.isDialogSurfaceCandidate(this)) {
-                if (view.background != null) backgroundCandidates += view
-            }
-            if (direct && view.isDialogSurfaceCandidate(this, requireBackground = false)) {
-                directCandidates += view
-            }
-        }
-        if (view is ViewGroup) {
-            for (index in 0 until view.childCount) {
-                walk(view.getChildAt(index), direct = view === content)
-            }
-        }
-    }
-    walk(content, direct = false)
-    return (backgroundCandidates + directCandidates)
-        .maxByOrNull { it.width.toLong() * it.height.toLong() }
-}
-
-private fun View.isDialogSurfaceCandidate(
-    decor: View,
-    requireBackground: Boolean = true,
-    allowDialogWindowFill: Boolean = false
-): Boolean {
-    if (!isAttachedToWindow || width <= 0 || height <= 0) return false
-    val fillsWindow = width >= decor.width * 0.98f && height >= decor.height * 0.98f
-    if (fillsWindow && !allowDialogWindowFill) return false
-    val background = background ?: return !requireBackground
-    if (background is ColorDrawable && Color.alpha(background.color) == 0) return false
-    return background.alpha > 0
-}
-
-private fun View.screenBounds(): Rect? {
-    if (!isAttachedToWindow || width <= 0 || height <= 0) return null
-    val location = IntArray(2)
-    return runCatching {
-        getLocationOnScreen(location)
-        Rect(location[0], location[1], location[0] + width, location[1] + height)
-    }.getOrNull()
-}
-
-/**
- * 把弹窗内部仍然写死的背景色接入统一的弹窗表面组。
- * 只处理现有主题资源和工具栏主色，不碰图标、输入框和自定义图片背景。
- */
-fun View.applyDialogSurfaceChildren() {
-    val root = this
-    val surfaceColors = setOf(
-        ContextCompat.getColor(context, R.color.background),
-        ContextCompat.getColor(context, R.color.background_card),
-        ContextCompat.getColor(context, R.color.background_menu),
-        ContextCompat.getColor(context, R.color.dialog_surface)
+    SurfaceBackdrop.apply(
+        hostWindow = hostWindow,
+        target = target,
+        style = style,
+        onReady = ::revealWindow
     )
-    val dialogMenuColor = ContextCompat.getColor(context, R.color.background_menu)
-    val headerNames = setOf(
-        "action_bar",
-        "alertTitle",
-        "header",
-        "title_bar",
-        "toolbar",
-        "tool_bar",
-        "topPanel",
-        "title_template",
-        "titleDivider",
-        "titleDividerNoCustom"
-    )
-    fun resourceName(view: View): String? {
-        return runCatching { view.resources.getResourceEntryName(view.id) }.getOrNull()
-    }
-
-    fun clearHeaderSurface(view: View) {
-        view.background = ColorDrawable(android.graphics.Color.TRANSPARENT)
-        view.backgroundTintList = null
-        view.elevation = 0f
-        view.stateListAnimator = null
-    }
-
-    fun rewrite(view: View) {
-        val name = resourceName(view)
-        val className = view.javaClass.simpleName
-        val isHeaderClass = view is Toolbar ||
-            className == "TitleBar" ||
-            className == "AppBarLayout" ||
-            className.endsWith("AppBarLayout")
-        if (isHeaderClass || name in headerNames) {
-            // 标题仍由原控件绘制，但不再给它单独铺一块色块。
-            clearHeaderSurface(view)
-            return
-        }
-        val drawableColor = (view.background as? ColorDrawable)?.color
-        val replacement = when {
-            drawableColor == context.primaryColor || drawableColor == context.primaryColorDark ->
-                UiCorner.dialogSurfaceColor(dialogMenuColor)
-            drawableColor != null && drawableColor in surfaceColors ->
-                UiCorner.dialogSurfaceColor(drawableColor)
-            else -> return
-        }
-        view.background = ColorDrawable(replacement)
-    }
-    fun walk(view: View) {
-        rewrite(view)
-        if (view is ViewGroup) {
-            view.forEach(::walk)
-        }
-    }
-    walk(root)
-    // 部分弹窗在首帧之后才给标题栏设置主题背景；第二次扫描覆盖这些延迟赋值。
-    root.post { walk(root) }
 }
 
-fun Dialog.applyAdaptiveDim() {
-    applyDialogSurfaceBlur()
+fun Dialog.applyAdaptiveDim(
+    surface: View,
+    style: SurfaceStyle = SurfaceStyles.dialog(context)
+) {
+    applyDialogSurfaceBlur(surface, style)
 }
 
 private fun Context.findActivity(): Activity? {

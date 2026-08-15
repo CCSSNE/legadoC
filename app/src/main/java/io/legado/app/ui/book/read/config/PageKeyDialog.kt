@@ -6,7 +6,8 @@ import android.view.KeyEvent
 import android.view.ViewGroup
 import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.DialogPageKeyBinding
-import io.legado.app.lib.theme.dialogSurfaceBackground
+import io.legado.app.lib.theme.surface.SurfaceStyles
+import io.legado.app.utils.SurfaceBackdrop
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.hideSoftInput
 import io.legado.app.utils.putPrefString
@@ -22,15 +23,14 @@ class PageKeyDialog(context: Context) : Dialog(context) {
     override fun onStart() {
         super.onStart()
         window?.setBackgroundDrawableResource(android.R.color.transparent)
-        applyDialogSurfaceBlur()
+        applyDialogSurfaceBlur(binding.contentView)
         setLayout(0.9f, ViewGroup.LayoutParams.WRAP_CONTENT)
     }
 
     init {
         setContentView(binding.root)
         binding.run {
-            contentView.background = context.dialogSurfaceBackground
-            contentView.clipToOutline = true
+            SurfaceBackdrop.installStatic(contentView, SurfaceStyles.dialog(context))
             etPrev.setText(context.getPrefString(PreferKey.prevKeys))
             etNext.setText(context.getPrefString(PreferKey.nextKeys))
             tvReset.onClick {

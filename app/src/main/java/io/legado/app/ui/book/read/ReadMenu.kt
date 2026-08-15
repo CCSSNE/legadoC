@@ -28,6 +28,8 @@ import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.buttonDisabledColor
 import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.UiCorner
+import io.legado.app.lib.theme.surface.SurfaceCorners
+import io.legado.app.lib.theme.surface.SurfaceStyles
 import io.legado.app.model.ReadBook
 import io.legado.app.model.SourceCallBack
 import io.legado.app.model.analyzeRule.AnalyzeUrl
@@ -46,7 +48,7 @@ import io.legado.app.utils.gone
 import io.legado.app.utils.invisible
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isDataUrl
-import io.legado.app.utils.LocalPopupBlur
+import io.legado.app.utils.SurfaceBackdrop
 import io.legado.app.utils.findHostWindow
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.putPrefBoolean
@@ -155,10 +157,6 @@ class ReadMenu @JvmOverloads constructor(
         setStroke(1.dpToPx(), strokeColor)
     }
 
-    private fun createFillDrawable(color: Int) = GradientDrawable().apply {
-        setColor(color)
-    }
-
     private fun initView(reset: Boolean = false) = binding.run {
         clearMenuBlur()
         if (AppConfig.isNightTheme) {
@@ -222,6 +220,7 @@ class ReadMenu @JvmOverloads constructor(
         dividerBrightnessBottom.setBackgroundColor(panelStrokeColor)
         dividerActionTop.setBackgroundColor(panelStrokeColor)
         if (AppConfig.isEInkMode) {
+            SurfaceBackdrop.clear(listOf(titleBlurSurface, bottomBlurSurface))
             titleBlurSurface.background = null
             bottomBlurSurface.background = null
             titleBar.setBackgroundResource(R.drawable.bg_eink_border_bottom)
@@ -233,12 +232,23 @@ class ReadMenu @JvmOverloads constructor(
             llBottomBg.setBackgroundResource(R.drawable.bg_eink_border_top)
         } else {
             // 标题栏底色独立放在按钮下面，避免把右上角的“更多”按钮纳入模糊区域。
-            titleBlurSurface.background = createFillDrawable(headerColor)
-            bottomBlurSurface.background = createPanelDrawable(
-                UiCorner.compactSurfaceRadius(context),
-                sheetColor,
-                panelStrokeColor,
-                topOnly = true
+            SurfaceBackdrop.installStatic(
+                titleBlurSurface,
+                SurfaceStyles.reading(
+                    tintColor = headerColor,
+                    cornerRadiusPx = 0f,
+                    corners = SurfaceCorners.NONE
+                )
+            )
+            SurfaceBackdrop.installStatic(
+                bottomBlurSurface,
+                SurfaceStyles.reading(
+                    tintColor = sheetColor,
+                    cornerRadiusPx = UiCorner.compactSurfaceRadius(context),
+                    corners = SurfaceCorners.TOP,
+                    strokeColor = panelStrokeColor,
+                    strokeWidthPx = 1.dpToPx().toFloat()
+                )
             )
             titleBar.background = null
             titleBar.toolbar.background = null
@@ -472,16 +482,16 @@ class ReadMenu @JvmOverloads constructor(
             onReady()
             return
         }
-        LocalPopupBlur.apply(
+        SurfaceBackdrop.refresh(
             hostWindow = hostWindow,
             targets = listOf(binding.titleBlurSurface, binding.bottomBlurSurface),
-            captureOwner = this,
+            clearSameWindowSurfaceBeforeCapture = true,
             onReady = onReady
         )
     }
 
     private fun clearMenuBlur() {
-        LocalPopupBlur.clear(listOf(binding.titleBlurSurface, binding.bottomBlurSurface))
+        SurfaceBackdrop.cancel(listOf(binding.titleBlurSurface, binding.bottomBlurSurface))
     }
 
     private fun brightnessAuto(): Boolean {

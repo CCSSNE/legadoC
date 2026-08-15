@@ -9,7 +9,6 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.SeekBar
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
 import io.legado.app.databinding.DialogAutoReadBinding
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.lib.theme.bottomBackground
@@ -23,7 +22,7 @@ import io.legado.app.utils.viewbindingdelegate.viewBinding
 import java.util.Locale
 
 
-class AutoReadDialog : BaseDialogFragment(R.layout.dialog_auto_read) {
+class AutoReadDialog : BaseReaderSheetDialogFragment(R.layout.dialog_auto_read) {
 
     private val binding by viewBinding(DialogAutoReadBinding::bind)
     private val callBack: CallBack? get() = activity as? CallBack
@@ -58,7 +57,6 @@ class AutoReadDialog : BaseDialogFragment(R.layout.dialog_auto_read) {
         val isLight = ColorUtils.isColorLight(bg)
         val textColor = requireContext().getPrimaryTextColor(isLight)
         val palette = ReaderSheetStyle.resolve(requireContext(), bg)
-        root.background = ReaderSheetStyle.topSheetDrawable(palette)
         rbAutoReadModeScroll.setTextColor(textColor)
         rbAutoReadModeTimed.setTextColor(textColor)
         tvReadSpeedTitle.setTextColor(textColor)

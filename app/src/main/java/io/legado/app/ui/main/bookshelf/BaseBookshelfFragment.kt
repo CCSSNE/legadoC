@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
-import androidx.appcompat.widget.PopupMenu
 import androidx.core.view.indices
 import androidx.fragment.app.activityViewModels
 import androidx.fragment.app.viewModels
@@ -21,10 +20,7 @@ import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.DirectLinkUpload
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
-import io.legado.app.utils.LocalPopupBlur
-import io.legado.app.utils.applyLocalPopupBlur
 import io.legado.app.utils.applyUiMenuStyle
-import io.legado.app.utils.findHostWindow
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.cache.CacheActivity
 import io.legado.app.ui.book.group.GroupManageDialog
@@ -36,6 +32,7 @@ import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.main.MainFragmentInterface
 import io.legado.app.ui.main.MainViewModel
 import io.legado.app.ui.widget.dialog.WaitDialog
+import io.legado.app.ui.widget.menu.SurfacePopupMenu
 import io.legado.app.utils.checkByIndex
 import io.legado.app.utils.getCheckedIndex
 import io.legado.app.utils.isAbsUrl
@@ -116,19 +113,14 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
     }
 
     protected fun showBookshelfMenu(anchor: View) {
-        PopupMenu(requireContext(), anchor).apply {
+        SurfacePopupMenu(requireContext(), anchor).apply {
             inflate(R.menu.main_bookshelf)
             menu.applyUiMenuStyle(requireContext())
             setOnMenuItemClickListener {
                 onCompatOptionsItemSelected(it)
                 true
             }
-            val hostWindow = requireContext().findHostWindow()
-            val popupBlurGeneration = hostWindow?.let { LocalPopupBlur.preparePopupBlur(it) }
             show()
-            if (hostWindow != null && popupBlurGeneration != null) {
-                applyLocalPopupBlur(hostWindow, popupBlurGeneration)
-            }
         }
     }
 

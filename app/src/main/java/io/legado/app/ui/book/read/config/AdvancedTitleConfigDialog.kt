@@ -10,12 +10,12 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.CheckBox
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.TextView
-import androidx.cardview.widget.CardView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
@@ -34,13 +34,15 @@ import io.legado.app.lib.theme.applyUiInputStyle
 import io.legado.app.lib.theme.applyUiLabelStyle
 import io.legado.app.lib.theme.applyUiSectionTitleStyle
 import io.legado.app.lib.theme.applyUiSubtleButtonStyle
-import io.legado.app.lib.theme.dialogSurfaceBackground
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
+import io.legado.app.lib.theme.surface.SurfaceStyles
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.code.CodeEditActivity
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.utils.dpToPx
+import io.legado.app.utils.SurfaceBackdrop
+import io.legado.app.utils.applyDialogSurfaceBlur
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.readText
 import io.legado.app.utils.sendToClip
@@ -50,6 +52,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class AdvancedTitleConfigDialog : DialogFragment() {
+
+    private var dialogSurface: View? = null
 
     private val currentBook: Book?
         get() = ReadBook.book
@@ -113,6 +117,9 @@ class AdvancedTitleConfigDialog : DialogFragment() {
                 (resources.displayMetrics.widthPixels * 0.92f).toInt(),
                 (resources.displayMetrics.heightPixels * 0.78f).toInt()
             )
+        }
+        dialogSurface?.let { surface ->
+            dialog?.applyDialogSurfaceBlur(surface)
         }
     }
 
@@ -361,12 +368,8 @@ class AdvancedTitleConfigDialog : DialogFragment() {
             )
         }
 
-        val container = CardView(context).apply {
-            radius = 16.dpToPx().toFloat()
-            cardElevation = 0f
-            preventCornerOverlap = false
-            useCompatPadding = false
-            background = context.dialogSurfaceBackground
+        val container = FrameLayout(context).apply {
+            SurfaceBackdrop.installStatic(this, SurfaceStyles.dialog(context))
             addView(
                 scrollView,
                 ViewGroup.LayoutParams(
@@ -375,6 +378,7 @@ class AdvancedTitleConfigDialog : DialogFragment() {
                 )
             )
         }
+        dialogSurface = container
         container.applyUiBodyTypefaceDeep(context.uiTypeface())
 
         return AlertDialog.Builder(context)

@@ -9,9 +9,7 @@ import androidx.appcompat.app.AlertDialog
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.applyUiBodyTypeface
-import io.legado.app.lib.theme.dialogSurfaceBackground
-import io.legado.app.utils.applyDialogSurfaceBlur
-import io.legado.app.utils.applyDialogSurfaceChildren
+import io.legado.app.utils.applyAlertSurface
 import io.legado.app.utils.applyTint
 
 internal class AndroidAlertBuilder(override val ctx: Context) : AlertBuilder<AlertDialog> {
@@ -151,6 +149,7 @@ internal class AndroidAlertBuilder(override val ctx: Context) : AlertBuilder<Ale
         val dialog = builder.create()
         dialog.setOnShowListener {
             dialog.applyDialogTypeface()
+            dialog.applyDialogWindowStyle()
         }
         dialog.applyDialogWindowStyle()
         return dialog
@@ -181,10 +180,9 @@ internal class AndroidAlertBuilder(override val ctx: Context) : AlertBuilder<Ale
                 attributes = attr
                 setBackgroundDrawableResource(R.drawable.bg_eink_border_dialog)
             } else {
-                setBackgroundDrawable(ctx.dialogSurfaceBackground)
+                setBackgroundDrawableResource(android.R.color.transparent)
             }
         }
-        applyDialogSurfaceBlur()
-        window?.decorView?.post { window?.decorView?.applyDialogSurfaceChildren() }
+        if (!AppConfig.isEInkMode) applyAlertSurface()
     }
 }

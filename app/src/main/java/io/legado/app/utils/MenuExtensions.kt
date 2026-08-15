@@ -17,7 +17,6 @@ import android.widget.ImageButton
 import android.widget.ListView
 import androidx.annotation.DrawableRes
 import androidx.annotation.MenuRes
-import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.view.menu.MenuBuilder
 import androidx.appcompat.view.menu.MenuItemImpl
 import androidx.appcompat.view.menu.SubMenuBuilder
@@ -26,6 +25,7 @@ import io.legado.app.R
 import io.legado.app.constant.Theme
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.uiTypeface
+import io.legado.app.ui.widget.menu.SurfacePopupMenu
 import java.lang.reflect.Method
 
 data class PopupMenuAction(
@@ -38,7 +38,7 @@ fun View.showPopupMenu(
     actions: List<PopupMenuAction>
 ): Boolean {
     if (actions.isEmpty()) return false
-    val popup = PopupMenu(context, this)
+    val popup = SurfacePopupMenu(context, this)
     popup.apply {
         actions.forEachIndexed { index, action ->
             menu.add(Menu.NONE, index, index, action.title).apply {
@@ -50,13 +50,7 @@ fun View.showPopupMenu(
             actions.getOrNull(item.itemId)?.onClick?.invoke()
             true
         }
-        val hostWindow = context.findHostWindow()
-        val popupBlurGeneration = hostWindow?.let { LocalPopupBlur.preparePopupBlur(it) }
         show()
-        showScrollIndicators()
-        if (hostWindow != null && popupBlurGeneration != null) {
-            popup.applyLocalPopupBlur(hostWindow, popupBlurGeneration)
-        }
     }
     return true
 }
@@ -66,19 +60,13 @@ fun View.showPopupMenu(
     prepare: (Menu.() -> Unit)? = null,
     onClick: (MenuItem) -> Boolean
 ): Boolean {
-    val popup = PopupMenu(context, this)
+    val popup = SurfacePopupMenu(context, this)
     popup.apply {
         inflate(menuRes)
         prepare?.invoke(menu)
         menu.applyUiMenuStyle(context)
         setOnMenuItemClickListener(onClick)
-        val hostWindow = context.findHostWindow()
-        val popupBlurGeneration = hostWindow?.let { LocalPopupBlur.preparePopupBlur(it) }
         show()
-        showScrollIndicators()
-        if (hostWindow != null && popupBlurGeneration != null) {
-            popup.applyLocalPopupBlur(hostWindow, popupBlurGeneration)
-        }
     }
     return true
 }
@@ -124,22 +112,6 @@ private class MenuTypefaceSpan(
 
     override fun updateMeasureState(textPaint: TextPaint) {
         textPaint.typeface = typeface
-    }
-}
-
-private fun PopupMenu.showScrollIndicators() {
-    runCatching {
-        val popupField = PopupMenu::class.java.getDeclaredField("mPopup")
-        popupField.isAccessible = true
-        val popup = popupField.get(this)
-        val getPopup = popup.javaClass.getDeclaredMethod("getPopup")
-        getPopup.isAccessible = true
-        val listPopupWindow = getPopup.invoke(popup)
-        val listView = listPopupWindow.javaClass.getMethod("getListView")
-            .invoke(listPopupWindow) as? ListView
-        listView?.apply {
-            applyMenuScrollIndicators()
-        }
     }
 }
 

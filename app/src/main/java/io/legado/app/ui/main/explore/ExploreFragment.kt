@@ -8,7 +8,6 @@ import android.view.MenuItem
 import android.widget.PopupWindow
 import android.view.SubMenu
 import android.view.View
-import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.widget.SearchView
 import androidx.core.os.bundleOf
 import androidx.core.view.isGone
@@ -43,6 +42,7 @@ import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.book.explore.ExploreShowAdapter
 import io.legado.app.ui.book.explore.ExploreShowActivity
+import io.legado.app.ui.widget.menu.SurfacePopupMenu
 import io.legado.app.ui.book.SearchBookOpenHelper
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
@@ -508,7 +508,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     }
 
     private fun showDiscoverMoreMenu() {
-        PopupMenu(requireContext(), binding.btnDiscoverMore).apply {
+        SurfacePopupMenu(requireContext(), binding.btnDiscoverMore).apply {
             menu.add(Menu.NONE, MENU_DISCOVER_LOGIN, Menu.NONE, R.string.login).apply {
                 isVisible = selectedDiscoverSourcePart?.hasLoginUrl == true
                 setIcon(R.drawable.ic_bottom_person)

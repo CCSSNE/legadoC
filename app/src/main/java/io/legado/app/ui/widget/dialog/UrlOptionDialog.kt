@@ -7,9 +7,10 @@ import android.view.ViewGroup
 import io.legado.app.R
 import io.legado.app.constant.AppConst
 import io.legado.app.databinding.DialogUrlOptionEditBinding
-import io.legado.app.lib.theme.dialogSurfaceBackground
+import io.legado.app.lib.theme.surface.SurfaceStyles
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.utils.GSON
+import io.legado.app.utils.SurfaceBackdrop
 import io.legado.app.utils.applyDialogSurfaceBlur
 import io.legado.app.utils.setLayout
 
@@ -21,13 +22,13 @@ class UrlOptionDialog(context: Context, private val success: (String) -> Unit) :
         super.onStart()
         setLayout(1f, ViewGroup.LayoutParams.MATCH_PARENT)
         window?.setBackgroundDrawableResource(R.color.transparent)
-        applyDialogSurfaceBlur()
+        applyDialogSurfaceBlur(binding.vwBg)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(binding.root)
-        binding.vwBg.background = context.dialogSurfaceBackground
+        SurfaceBackdrop.installStatic(binding.vwBg, SurfaceStyles.dialog(context))
         binding.root.setOnClickListener { dismiss() }
         binding.vwBg.setOnClickListener(null)
         binding.editMethod.setFilterValues("POST", "GET")
