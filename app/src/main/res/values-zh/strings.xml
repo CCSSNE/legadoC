@@ -757,6 +757,8 @@
     <string name="ui_corner_scale_invalid">请输入 0 到 3 之间的数字</string>
     <string name="ui_layout_alpha">全局界面透明度</string>
     <string name="ui_layout_alpha_value">%d%%</string>
+    <string name="bookshelf_cover_alpha">书架封面透明度</string>
+    <string name="bookshelf_cover_alpha_value">%d%%</string>
     <string name="dialog_alpha">弹窗透明度</string>
     <string name="dialog_alpha_value">%d%%</string>
     <string name="dialog_blur">弹窗模糊度</string>

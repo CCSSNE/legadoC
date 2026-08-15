@@ -53,6 +53,12 @@
         android:title="@string/ui_layout_alpha"
         app:iconSpaceReserved="false" />
 
+    <io.legado.app.lib.prefs.Preference
+        android:defaultValue="30"
+        android:key="bookshelfCoverAlpha"
+        android:title="@string/bookshelf_cover_alpha"
+        app:iconSpaceReserved="false" />
+
     <io.legado.app.lib.prefs.SwitchPreference
         android:defaultValue="false"
         android:key="moveSearchToBookshelf"

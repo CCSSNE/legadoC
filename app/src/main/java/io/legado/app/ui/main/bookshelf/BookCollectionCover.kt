@@ -18,6 +18,11 @@ fun ViewBookCollectionMosaicBinding.loadCollectionCovers(
     collectionName: String? = null
 ) {
     val backgroundColor = ContextCompat.getColor(root.context, R.color.background_card)
+    val coverAlpha = if (dialogSurface) {
+        UiCorner.dialogSurfaceAlpha()
+    } else {
+        UiCorner.bookshelfCoverAlpha()
+    }
     root.background = GradientDrawable().apply {
         shape = GradientDrawable.RECTANGLE
         cornerRadius = root.resources.getDimension(R.dimen.book_collection_cover_corner_radius)
@@ -25,19 +30,15 @@ fun ViewBookCollectionMosaicBinding.loadCollectionCovers(
             if (dialogSurface) {
                 UiCorner.dialogSurfaceColor(backgroundColor)
             } else {
-                UiCorner.surfaceColor(backgroundColor)
+                UiCorner.bookshelfCoverSurfaceColor(backgroundColor)
             }
         )
     }
     root.clipToOutline = true
     vwShadow.visibility = if (dialogSurface) View.GONE else View.VISIBLE
+    vwShadow.alpha = coverAlpha
     tvCollectionName.text = collectionName
     tvCollectionName.visibility = if (collectionName.isNullOrBlank()) View.GONE else View.VISIBLE
-    val coverAlpha = if (dialogSurface) {
-        UiCorner.dialogSurfaceAlpha()
-    } else {
-        UiCorner.floatingGroupAlpha()
-    }
     val covers = listOf(ivCover1, ivCover2, ivCover3, ivCover4)
     covers.forEachIndexed { index, imageView ->
         imageView.alpha = coverAlpha

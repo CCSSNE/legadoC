@@ -13,6 +13,7 @@ import io.legado.app.databinding.ItemBookshelfListBinding
 import io.legado.app.databinding.ItemBookshelfListGroupBinding
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
+import io.legado.app.lib.theme.UiCorner
 import io.legado.app.ui.main.bookshelf.BookCollectionShelfItem
 import io.legado.app.ui.main.bookshelf.loadCollectionCovers
 import io.legado.app.utils.gone
@@ -111,6 +112,7 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
         }
 
         fun onBind(item: Book, position: Int, payloads: MutableList<Any>) = binding.run {
+            ivCover.alpha = UiCorner.bookshelfCoverAlpha()
             if (payloads.isEmpty()) {
                 onBind(item, position)
             } else {
@@ -179,6 +181,7 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
         }
 
         fun onBind(item: Book, position: Int, payloads: MutableList<Any>) = binding.run {
+            ivCover.alpha = UiCorner.bookshelfCoverAlpha()
             if (payloads.isEmpty()) {
                 onBind(item, position)
             } else {

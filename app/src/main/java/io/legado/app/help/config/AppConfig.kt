@@ -1161,6 +1161,12 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefInt(PreferKey.uiLayoutAlpha, value.coerceIn(0, 100))
         }
 
+    var bookshelfCoverAlpha: Int
+        get() = appCtx.getPrefInt(PreferKey.bookshelfCoverAlpha, 30).coerceIn(0, 100)
+        set(value) {
+            appCtx.putPrefInt(PreferKey.bookshelfCoverAlpha, value.coerceIn(0, 100))
+        }
+
     var dialogAlpha: Int
         get() = appCtx.getPrefInt(PreferKey.dialogAlpha, 50).coerceIn(0, 100)
         set(value) {

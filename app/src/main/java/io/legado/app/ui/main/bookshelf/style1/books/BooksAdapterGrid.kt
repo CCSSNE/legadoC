@@ -62,7 +62,7 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
         if (item !is Book) return
         when (binding) {
             is ItemBookshelfGridBinding -> binding.run {
-                ivCover.alpha = UiCorner.floatingGroupAlpha()
+                ivCover.alpha = UiCorner.bookshelfCoverAlpha()
                 renderSelectionMark(selectionOuter, selectionDot, item, callBack)
                 if (payloads.isEmpty()) {
                     if (showBookname == 0) {
@@ -93,7 +93,7 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
                 }
             }
             is ItemBookshelfGrid2Binding -> binding.run {
-                ivCover.alpha = UiCorner.floatingGroupAlpha()
+                ivCover.alpha = UiCorner.bookshelfCoverAlpha()
                 renderSelectionMark(selectionOuter, selectionDot, item, callBack)
                 if (payloads.isEmpty()) {
                     tvName.text = item.name

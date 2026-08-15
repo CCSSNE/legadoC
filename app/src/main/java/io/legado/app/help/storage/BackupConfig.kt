@@ -94,6 +94,7 @@ object BackupConfig {
         PreferKey.bookInfoBgImageBlurring,
         PreferKey.uiCornerScale,
         PreferKey.uiLayoutAlpha,
+        PreferKey.bookshelfCoverAlpha,
         PreferKey.readPageBackgroundTransparent,
         PreferKey.uiCornerSearchFollow,
         PreferKey.uiCornerReplyFollow,

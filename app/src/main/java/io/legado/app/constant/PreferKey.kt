@@ -172,6 +172,7 @@ object PreferKey {
     const val uiCornerEffectMode = "uiCornerEffectMode"
     const val uiCornerEffectLevel = "uiCornerEffectLevel"
     const val uiLayoutAlpha = "uiLayoutAlpha"
+    const val bookshelfCoverAlpha = "bookshelfCoverAlpha"
     const val dialogAlpha = "dialogAlpha"
     const val dialogBlur = "dialogBlur"
     const val readPageBackgroundTransparent = "readPageBackgroundTransparent"

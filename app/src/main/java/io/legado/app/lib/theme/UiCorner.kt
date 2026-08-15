@@ -100,6 +100,20 @@ object UiCorner {
     }
 
     /**
+     * 书架书籍与合集封面的独立不透明度。
+     * 设置值 0% 表示不透明，100% 表示全透明；它不读取全局 UI 或 Dialog 透明度。
+     */
+    fun bookshelfCoverAlpha(): Float {
+        val transparency = AppConfig.bookshelfCoverAlpha.coerceIn(0, 100) / 100f
+        return (1f - transparency).coerceIn(0f, 1f)
+    }
+
+    fun bookshelfCoverSurfaceColor(color: Int): Int {
+        val alpha = (Color.alpha(color) * bookshelfCoverAlpha()).roundToInt()
+        return ColorUtils.setAlphaComponent(color, alpha)
+    }
+
+    /**
      * 读书界面表面组：读取菜单自己的不透明度，同时沿用全局悬浮块的玻璃规律。
      * 读书页正文背景图不经过这里，避免 UI 透明度污染图片透明度。
      */

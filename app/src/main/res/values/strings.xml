@@ -933,6 +933,8 @@
     <string name="ui_corner_scale_invalid">Please enter a number from 0 to 3</string>
     <string name="ui_layout_alpha">Global interface opacity</string>
     <string name="ui_layout_alpha_value">%d%%</string>
+    <string name="bookshelf_cover_alpha">Bookshelf cover opacity</string>
+    <string name="bookshelf_cover_alpha_value">%d%%</string>
     <string name="dialog_alpha">Dialog opacity</string>
     <string name="dialog_alpha_value">%d%%</string>
     <string name="dialog_blur">Dialog blur</string>

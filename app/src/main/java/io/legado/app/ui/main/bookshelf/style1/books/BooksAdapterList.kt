@@ -67,7 +67,7 @@ class BooksAdapterList(
         }
         if (item !is Book || binding !is ItemBookshelfListBinding) return
         binding.run {
-            ivCover.alpha = UiCorner.floatingGroupAlpha()
+            ivCover.alpha = UiCorner.bookshelfCoverAlpha()
             renderSelectionMark(selectionOuter, selectionDot, item, callBack)
             if (payloads.isEmpty()) {
                 tvName.text = item.name
