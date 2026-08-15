@@ -1,7 +1,6 @@
 package io.legado.app.help.rhino
 
 import com.script.rhino.JavaObjectWrapFactory
-import org.mozilla.javascript.EvaluatorException
 import org.mozilla.javascript.NativeJavaObject
 import org.mozilla.javascript.Scriptable
 
@@ -22,16 +21,8 @@ class BookScriptObject(scope: Scriptable?, javaObject: Any, staticType: Class<*>
         return super.get(name, start)
     }
 
-    override fun put(name: String, start: Scriptable, value: Any?) {
-        if (name == USE_REPLACE_RULE) {
-            throw EvaluatorException("book.useReplaceRule is controlled by the reader")
-        }
-        super.put(name, start, value)
-    }
-
     companion object {
         private const val SET_USE_REPLACE_RULE = "setUseReplaceRule"
-        private const val USE_REPLACE_RULE = "useReplaceRule"
 
         val factory = JavaObjectWrapFactory { scope, javaObject, staticType ->
             BookScriptObject(scope, javaObject, staticType)
