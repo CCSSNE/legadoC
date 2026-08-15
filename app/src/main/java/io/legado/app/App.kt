@@ -234,6 +234,7 @@ class App : Application() {
         RhinoWrapFactory.register(SearchRule::class.java, ReadOnlyJavaObject.factory)
         RhinoWrapFactory.register(BookInfoRule::class.java, ReadOnlyJavaObject.factory)
         RhinoWrapFactory.register(ContentRule::class.java, ReadOnlyJavaObject.factory)
+        RhinoWrapFactory.register(Book::class.java, ReadOnlyJavaObject.factory)
         RhinoWrapFactory.register(BookChapter::class.java, ReadOnlyJavaObject.factory)
         RhinoWrapFactory.register(Book.ReadConfig::class.java, ReadOnlyJavaObject.factory)
     }

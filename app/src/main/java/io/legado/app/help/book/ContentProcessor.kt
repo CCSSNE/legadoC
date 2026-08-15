@@ -19,7 +19,6 @@ import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.CancellationException
 import splitties.init.appCtx
 import java.lang.ref.WeakReference
-import java.util.concurrent.CopyOnWriteArrayList
 import java.util.regex.Pattern
 
 class ContentProcessor private constructor(
@@ -51,8 +50,13 @@ class ContentProcessor private constructor(
 
     }
 
-    private val titleReplaceRules = CopyOnWriteArrayList<ReplaceRule>()
-    private val contentReplaceRules = CopyOnWriteArrayList<ReplaceRule>()
+    private data class ReplaceRuleSnapshot(
+        val title: List<ReplaceRule> = emptyList(),
+        val content: List<ReplaceRule> = emptyList()
+    )
+
+    @Volatile
+    private var replaceRuleSnapshot = ReplaceRuleSnapshot()
     val removeSameTitleCache = hashSetOf<String>()
 
     init {
@@ -61,14 +65,10 @@ class ContentProcessor private constructor(
     }
 
     fun upReplaceRules() {
-        titleReplaceRules.run {
-            clear()
-            addAll(appDb.replaceRuleDao.findEnabledByTitleScope(bookName, bookOrigin))
-        }
-        contentReplaceRules.run {
-            clear()
-            addAll(appDb.replaceRuleDao.findEnabledByContentScope(bookName, bookOrigin))
-        }
+        replaceRuleSnapshot = ReplaceRuleSnapshot(
+            title = appDb.replaceRuleDao.findEnabledByTitleScope(bookName, bookOrigin).toList(),
+            content = appDb.replaceRuleDao.findEnabledByContentScope(bookName, bookOrigin).toList()
+        )
     }
 
     private fun upRemoveSameTitle() {
@@ -81,12 +81,12 @@ class ContentProcessor private constructor(
     }
 
     fun getTitleReplaceRules(): List<ReplaceRule> {
-        return titleReplaceRules
+        return replaceRuleSnapshot.title
     }
 
     @Suppress("MemberVisibilityCanBePrivate")
     fun getContentReplaceRules(): List<ReplaceRule> {
-        return contentReplaceRules
+        return replaceRuleSnapshot.content
     }
 
     fun getContent(
@@ -102,6 +102,7 @@ class ContentProcessor private constructor(
         var sameTitleRemoved = false
         var effectiveReplaceRules: ArrayList<ReplaceRule>? = null
         val replaceBook by lazy { book.toReplaceBook() }
+        val ruleSnapshot = replaceRuleSnapshot
         if (content != "null") {
             //去除重复标题
             val removeSameTitleMarked = BookHelp.getChapterCacheFileNames(book, chapter, "nr")
@@ -117,7 +118,7 @@ class ContentProcessor private constructor(
                 } else if (useReplace && book.getUseReplaceRule()) {
                     title = Pattern.quote(
                         chapter.getDisplayTitle(
-                            titleReplaceRules,
+                            ruleSnapshot.title,
                             chineseConvert = false,
                             replaceBook = replaceBook
                         )
@@ -159,7 +160,7 @@ class ContentProcessor private constructor(
                 //替换
                 effectiveReplaceRules = arrayListOf()
                 mContent = mContent.lines().joinToString("\n") { it.trim() }
-                getContentReplaceRules().forEach { item ->
+                ruleSnapshot.content.forEach { item ->
                     if (item.pattern.isEmpty()) {
                         return@forEach
                     }
