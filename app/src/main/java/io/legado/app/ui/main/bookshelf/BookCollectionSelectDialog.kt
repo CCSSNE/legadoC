@@ -1,12 +1,12 @@
 package io.legado.app.ui.main.bookshelf
 
+import android.graphics.Color
 import android.os.Bundle
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
-import androidx.core.content.ContextCompat
 import android.widget.EditText
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.ItemTouchHelper
@@ -22,7 +22,6 @@ import io.legado.app.data.entities.BookCollectionWithItems
 import io.legado.app.databinding.DialogBookCollectionSelectBinding
 import io.legado.app.databinding.ItemBookCollectionSelectBinding
 import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.theme.UiCorner
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.toastOnUi
@@ -234,11 +233,7 @@ class BookCollectionSelectDialog() : BaseBottomSheetDialogFragment(R.layout.dial
                 R.string.book_collection_count,
                 source.books.size + source.childCollections.size
             )
-            coverCard.setCardBackgroundColor(
-                UiCorner.dialogSurfaceColor(
-                    ContextCompat.getColor(context, R.color.background_card)
-                )
-            )
+            coverCard.setCardBackgroundColor(Color.TRANSPARENT)
             coverMosaic.loadCollectionCovers(
                 item.previewBooks,
                 this@BookCollectionSelectDialog,

@@ -23,12 +23,15 @@ fun ViewBookCollectionMosaicBinding.loadCollectionCovers(
     } else {
         UiCorner.bookshelfCoverAlpha()
     }
+    // A dialog mosaic is composited once as a whole. Its children must remain
+    // opaque so the same dialog alpha is not multiplied by nested layers.
+    root.alpha = if (dialogSurface) coverAlpha else 1f
     root.background = GradientDrawable().apply {
         shape = GradientDrawable.RECTANGLE
         cornerRadius = root.resources.getDimension(R.dimen.book_collection_cover_corner_radius)
         setColor(
             if (dialogSurface) {
-                UiCorner.dialogSurfaceColor(backgroundColor)
+                backgroundColor
             } else {
                 UiCorner.bookshelfCoverSurfaceColor(backgroundColor)
             }
@@ -36,12 +39,12 @@ fun ViewBookCollectionMosaicBinding.loadCollectionCovers(
     }
     root.clipToOutline = true
     vwShadow.visibility = if (dialogSurface) View.GONE else View.VISIBLE
-    vwShadow.alpha = coverAlpha
+    vwShadow.alpha = if (dialogSurface) 1f else coverAlpha
     tvCollectionName.text = collectionName
     tvCollectionName.visibility = if (collectionName.isNullOrBlank()) View.GONE else View.VISIBLE
     val covers = listOf(ivCover1, ivCover2, ivCover3, ivCover4)
     covers.forEachIndexed { index, imageView ->
-        imageView.alpha = coverAlpha
+        imageView.alpha = if (dialogSurface) 1f else coverAlpha
         val book = books.getOrNull(index)
         if (book == null) {
             // 缺书的空位保持占位，不显示封面也不放大已有封面
@@ -49,7 +52,7 @@ fun ViewBookCollectionMosaicBinding.loadCollectionCovers(
         } else {
             imageView.visibility = View.VISIBLE
             imageView.loadThumb(book, false, fragment, lifecycle)
-            imageView.alpha = coverAlpha
+            imageView.alpha = if (dialogSurface) 1f else coverAlpha
         }
     }
     // 行始终占位，避免剩余封面被放大填充空位
