@@ -83,12 +83,20 @@ object UiCorner {
     }
 
     /**
+     * 全局界面透明度转换得到的物理表面不透明度。
+     * 设置值 0% 表示不透明，100% 表示全透明；所有 UI 表面都必须经此入口换算。
+     */
+    fun uiLayoutSurfaceAlpha(): Float {
+        val transparency = AppConfig.uiLayoutAlpha.coerceIn(0, 100) / 100f
+        return (1f - transparency).coerceIn(0f, 1f)
+    }
+
+    /**
      * 悬浮块组的统一表面不透明度。
      * 搜索条、卡片、分组条、底部导航等浮层表面都从这里取全局系数。
      */
     fun floatingGroupAlpha(): Float {
-        val configuredAlpha = AppConfig.uiLayoutAlpha.coerceIn(0, 100) / 100f
-        return (configuredAlpha * standardBarAlpha()).coerceIn(0f, 1f)
+        return (uiLayoutSurfaceAlpha() * standardBarAlpha()).coerceIn(0f, 1f)
     }
 
     /**
