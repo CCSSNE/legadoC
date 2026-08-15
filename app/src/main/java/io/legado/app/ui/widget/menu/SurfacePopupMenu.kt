@@ -1,6 +1,9 @@
 package io.legado.app.ui.widget.menu
 
 import android.annotation.SuppressLint
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.ObjectAnimator
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
@@ -69,12 +72,25 @@ class SurfacePopupMenu(
             )
         )
     }
-    private val popupWindow = PopupWindow(
+    private var surfaceGeneration = 0
+    private var dismissGeneration = 0
+    private var dismissAnimator: ObjectAnimator? = null
+    private var dismissAction: (() -> Unit)? = null
+    private var immediateDismiss = false
+    private val popupWindow: PopupWindow = object : PopupWindow(
         surface,
         ViewGroup.LayoutParams.WRAP_CONTENT,
         ViewGroup.LayoutParams.WRAP_CONTENT,
         true
-    ).apply {
+    ) {
+        override fun dismiss() {
+            if (immediateDismiss) {
+                super.dismiss()
+            } else {
+                dismissWithFade()
+            }
+        }
+    }.apply {
         setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         isOutsideTouchable = true
         isClippingEnabled = true
@@ -83,6 +99,7 @@ class SurfacePopupMenu(
         elevation = 12.dpToPx().toFloat()
         setOnDismissListener {
             surfaceGeneration += 1
+            cancelDismissFade()
             SurfaceBackdrop.clear(surface)
             surface.alpha = 1f
         }
@@ -95,7 +112,6 @@ class SurfacePopupMenu(
 
     private val levels = ArrayDeque<Level>()
     private var itemClickListener: ((MenuItem) -> Boolean)? = null
-    private var surfaceGeneration = 0
 
     fun inflate(@MenuRes menuRes: Int) {
         SupportMenuInflater(context).inflate(menuRes, menu)
@@ -106,6 +122,7 @@ class SurfacePopupMenu(
     }
 
     fun show() {
+        cancelDismissFade()
         val generation = ++surfaceGeneration
         menu.applyUiMenuStyle(context)
         levels.clear()
@@ -118,7 +135,7 @@ class SurfacePopupMenu(
         prepareBackdrop(generation)
     }
 
-    fun dismiss() = popupWindow.dismiss()
+    fun dismiss() = dismissWithFade()
 
     private fun renderCurrentLevel() {
         rows.removeAllViews()
@@ -162,8 +179,9 @@ class SurfacePopupMenu(
                     measurePopup(update = true)
                     prepareBackdrop(++surfaceGeneration)
                 } else {
-                    itemClickListener?.invoke(item) ?: menu.performIdentifierAction(item.itemId, 0)
-                    popupWindow.dismiss()
+                    dismissWithFade {
+                        itemClickListener?.invoke(item) ?: menu.performIdentifierAction(item.itemId, 0)
+                    }
                 }
             }
         }
@@ -240,6 +258,50 @@ class SurfacePopupMenu(
         }
     }
 
+    private fun dismissWithFade(afterDismiss: (() -> Unit)? = null) {
+        if (!popupWindow.isShowing) {
+            afterDismiss?.invoke()
+            return
+        }
+        if (dismissAnimator != null) return
+
+        dismissAction = afterDismiss
+        val generation = ++dismissGeneration
+        val animator = ObjectAnimator.ofFloat(surface, View.ALPHA, surface.alpha, 0f).apply {
+            duration = DISMISS_FADE_DURATION_MS
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    if (dismissAnimator !== animation || generation != dismissGeneration) return
+                    dismissAnimator = null
+                    completeDismiss()
+                }
+            })
+        }
+        dismissAnimator = animator
+        animator.start()
+    }
+
+    private fun completeDismiss() {
+        val afterDismiss = dismissAction
+        dismissAction = null
+        immediateDismiss = true
+        try {
+            popupWindow.dismiss()
+        } finally {
+            immediateDismiss = false
+        }
+        afterDismiss?.invoke()
+    }
+
+    private fun cancelDismissFade() {
+        dismissGeneration += 1
+        dismissAction = null
+        dismissAnimator?.let { animator ->
+            dismissAnimator = null
+            animator.cancel()
+        }
+    }
+
     private fun resolveSelectableBackground(): Int? {
         val value = TypedValue()
         return if (context.theme.resolveAttribute(android.R.attr.selectableItemBackground, value, true)) {
@@ -255,5 +317,9 @@ class SurfacePopupMenu(
                 getItem(index).takeIf { it.isVisible }?.let(::add)
             }
         }
+    }
+
+    private companion object {
+        const val DISMISS_FADE_DURATION_MS = 100L
     }
 }
