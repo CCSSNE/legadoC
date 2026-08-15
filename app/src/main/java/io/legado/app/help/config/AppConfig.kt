@@ -1155,7 +1155,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var uiLayoutAlpha: Int
         get() = appCtx.getPrefInt(
             PreferKey.uiLayoutAlpha,
-            appCtx.getPrefInt(PreferKey.uiCornerEffectLevel, 100)
+            appCtx.getPrefInt(PreferKey.uiCornerEffectLevel, 0)
         ).coerceIn(0, 100)
         set(value) {
             appCtx.putPrefInt(PreferKey.uiLayoutAlpha, value.coerceIn(0, 100))

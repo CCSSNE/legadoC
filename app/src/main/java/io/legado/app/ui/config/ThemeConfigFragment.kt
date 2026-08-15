@@ -271,7 +271,7 @@ class ThemeConfigFragment : PreferenceFragment(),
             .setMinValue(0)
             .setValue(AppConfig.uiLayoutAlpha)
             .setCustomButton(R.string.btn_default_s) {
-                putPrefInt(PreferKey.uiLayoutAlpha, 100)
+                putPrefInt(PreferKey.uiLayoutAlpha, 0)
             }
             .show {
                 putPrefInt(PreferKey.uiLayoutAlpha, it.coerceIn(0, 100))

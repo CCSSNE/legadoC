@@ -48,7 +48,7 @@
         app:iconSpaceReserved="false" />
 
     <io.legado.app.lib.prefs.Preference
-        android:defaultValue="100"
+        android:defaultValue="0"
         android:key="uiLayoutAlpha"
         android:title="@string/ui_layout_alpha"
         app:iconSpaceReserved="false" />
