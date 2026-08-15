@@ -26,6 +26,8 @@
 
 阅读C Bug排期 https://docs.qq.com/doc/DVmtiSHZza1VPZWdG
 
+继承于 [阅读R](https://github.com/refgd/legado)
+
 ## 更新记录
 
 ### 2026-08-15

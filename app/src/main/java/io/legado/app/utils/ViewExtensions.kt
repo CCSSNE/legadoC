@@ -14,6 +14,7 @@ import android.text.Spanned
 import android.text.style.ImageSpan
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.View.GONE
 import android.view.View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
 import android.view.View.INVISIBLE
@@ -50,7 +51,6 @@ import androidx.core.graphics.createBitmap
 import androidx.core.text.HtmlCompat
 import androidx.core.view.isVisible
 import androidx.core.text.parseAsHtml
-import androidx.core.view.postDelayed
 import io.legado.app.R
 import io.legado.app.help.TextViewTagHandler
 import io.legado.app.model.analyzeRule.AnalyzeUrl.Companion.paramPattern
@@ -240,7 +240,7 @@ fun TextView.setHtml(html: String, imageGetter: GlideImageGetter? = null, textVi
 fun TextView.setHtml(html: String, imageGetter: GlideImageGetter? = null, textViewTagHandler: TextViewTagHandler? = null, imgOnLongClickListener: (source: String) -> Unit, imgOnClickListener: (click: String) -> Unit) {
     val spanned = html.parseAsHtml(HtmlCompat.FROM_HTML_MODE_COMPACT, imageGetter, textViewTagHandler)
     val imageSpans = spanned.getSpans(0, spanned.length, ImageSpan::class.java)
-    val clickSpans = mutableListOf<Triple<Pair<Int, Int>, String, String?>>()
+    val imageTargets = mutableListOf<InlineImageTouchTarget>()
     for (imageSpan in imageSpans) {
         val start = spanned.getSpanStart(imageSpan)
         val end = spanned.getSpanEnd(imageSpan)
@@ -254,165 +254,139 @@ fun TextView.setHtml(html: String, imageGetter: GlideImageGetter? = null, textVi
                     click = it["click"]
                 }
             }
-            clickSpans.add(Triple((start to end),source, click))
+            imageTargets += InlineImageTouchTarget(start, end, source, click)
         }
     }
     text = spanned
-    if (clickSpans.isNotEmpty()) {
-        movementMethod = object : android.text.method.LinkMovementMethod() {
-            private var lastClickTime = 0L
-            private var longClickRunnable: Runnable?= null
-            private var isLongClick = false
-            override fun onTouchEvent(
-                widget: TextView,
-                buffer: android.text.Spannable,
-                event: MotionEvent
-            ): Boolean {
-                var x = event.x.toInt()
-                var y = event.y.toInt()
-                x -= widget.totalPaddingLeft
-                y -= widget.totalPaddingTop
-                val line = widget.layout.getLineForVertical(y)
-                val off = widget.layout.getOffsetForHorizontal(line, x.toFloat())
-                var durClick: String? = null
-                var durSource: String? = null
-                for ((position, source, click) in clickSpans) {
-                    if (off in position.first..position.second) {
-                        durClick = click
-                        durSource = source
-                        break
-                    }
-                }
-                when(event.action) {
-                    MotionEvent.ACTION_DOWN -> {
-                        cancelLongClick()
-                        if (durSource != null) {
-                            isLongClickable = false
-                            longClickRunnable = postDelayed(600) {
-                                isLongClick = true
-                                imgOnLongClickListener(durSource)
-                            }
-                            return true
-                        }
-                    }
-                    MotionEvent.ACTION_UP -> {
-                        isLongClickable = true
-                        if (!isLongClick) {
-                            cancelLongClick()
-                            if (durClick != null) {
-                                val upTime = System.currentTimeMillis()
-                                if (upTime - lastClickTime > 200) {
-                                    lastClickTime = upTime
-                                    imgOnClickListener(durClick)
-                                }
-                                return true
-                            }
-                        }
-                    }
-                    MotionEvent.ACTION_MOVE -> {
-                        if (durSource != null) {
-                            isLongClickable = false
-                            return true
-                        }
-                    }
-                    MotionEvent.ACTION_CANCEL -> {
-                        isLongClickable = true
-                        cancelLongClick()
-                        return true
-                    }
-                }
-                return super.onTouchEvent(widget, buffer, event)
-            }
-
-            private fun cancelLongClick() {
-                longClickRunnable?.let {
-                    removeCallbacks(it)
-                    longClickRunnable = null
-                }
-                isLongClick = false
-            }
-
-        }
+    if (imageTargets.isNotEmpty()) {
+        movementMethod = InlineImageMovementMethod(
+            imageTargets = imageTargets,
+            onImageLongClick = imgOnLongClickListener,
+            onImageClick = imgOnClickListener
+        )
     }
 }
 
 fun TextView.setMarkdown(markwon: Markwon, spanned: Spanned, imgOnLongClickListener: (source: String) -> Unit) {
     val imageSpans = spanned.getSpans(0, spanned.length, AsyncDrawableSpan::class.java)
-    val clickSpans = mutableListOf<Pair<Pair<Int, Int>, String>>()
+    val imageTargets = mutableListOf<InlineImageTouchTarget>()
     for (imageSpan in imageSpans) {
         val start = spanned.getSpanStart(imageSpan)
         val end = spanned.getSpanEnd(imageSpan)
         if (start >= 0 && end >= 0) {
             val source = imageSpan.drawable.destination
-            clickSpans.add((start to end) to source)
+            imageTargets += InlineImageTouchTarget(start, end, source)
         }
     }
-    if (clickSpans.isNotEmpty()) {
-        movementMethod = object : android.text.method.LinkMovementMethod() {
-            private var longClickRunnable: Runnable?= null
-            private var isLongClick = false
-            override fun onTouchEvent(
-                widget: TextView,
-                buffer: android.text.Spannable,
-                event: MotionEvent
-            ): Boolean {
-                isLongClickable = false
-                var x = event.x.toInt()
-                var y = event.y.toInt()
-                x -= widget.totalPaddingLeft
-                y -= widget.totalPaddingTop
-                val line = widget.layout.getLineForVertical(y)
-                val off = widget.layout.getOffsetForHorizontal(line, x.toFloat())
-                var durSource: String? = null
-                for ((position, source) in clickSpans) {
-                    if (off in position.first..position.second) {
-                        durSource = source
-                        break
+    if (imageTargets.isNotEmpty()) {
+        movementMethod = InlineImageMovementMethod(
+            imageTargets = imageTargets,
+            onImageLongClick = imgOnLongClickListener
+        )
+    }
+    markwon.setParsedMarkdown(this, spanned)
+}
+
+private data class InlineImageTouchTarget(
+    val start: Int,
+    val end: Int,
+    val source: String,
+    val click: String? = null
+)
+
+private class InlineImageMovementMethod(
+    private val imageTargets: List<InlineImageTouchTarget>,
+    private val onImageLongClick: (String) -> Unit,
+    private val onImageClick: ((String) -> Unit)? = null
+) : android.text.method.LinkMovementMethod() {
+
+    private var activeTarget: InlineImageTouchTarget? = null
+    private var longClickRunnable: Runnable? = null
+    private var longClicked = false
+    private var downX = 0f
+    private var downY = 0f
+    private var lastClickTime = 0L
+
+    override fun onTouchEvent(
+        widget: TextView,
+        buffer: android.text.Spannable,
+        event: MotionEvent
+    ): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                cancelImageGesture(widget)
+                val target = imageTargetAt(widget, event) ?: return super.onTouchEvent(widget, buffer, event)
+                activeTarget = target
+                downX = event.x
+                downY = event.y
+                widget.isLongClickable = false
+                longClickRunnable = Runnable {
+                    if (activeTarget == target) {
+                        longClicked = true
+                        onImageLongClick(target.source)
                     }
+                }.also { widget.postDelayed(it, 600) }
+                return true
+            }
+
+            MotionEvent.ACTION_MOVE -> {
+                if (activeTarget == null) return super.onTouchEvent(widget, buffer, event)
+                val touchSlop = ViewConfiguration.get(widget.context).scaledTouchSlop
+                val deltaX = event.x - downX
+                val deltaY = event.y - downY
+                if (deltaX * deltaX + deltaY * deltaY > touchSlop * touchSlop) {
+                    cancelImageGesture(widget)
+                    return super.onTouchEvent(widget, buffer, event)
                 }
-                when(event.action) {
-                    MotionEvent.ACTION_DOWN -> {
-                        cancelLongClick()
-                        if (durSource != null) {
-                            isLongClickable = false
-                            longClickRunnable = postDelayed(600) {
-                                isLongClick = true
-                                imgOnLongClickListener(durSource)
-                            }
-                            return true
+                return true
+            }
+
+            MotionEvent.ACTION_UP -> {
+                val target = activeTarget ?: return super.onTouchEvent(widget, buffer, event)
+                val releaseTarget = imageTargetAt(widget, event)
+                val wasLongClicked = longClicked
+                cancelImageGesture(widget)
+                if (!wasLongClicked && releaseTarget == target) {
+                    target.click?.let { click ->
+                        val now = System.currentTimeMillis()
+                        if (now - lastClickTime > 200) {
+                            lastClickTime = now
+                            onImageClick?.invoke(click)
                         }
-                    }
-                    MotionEvent.ACTION_UP -> {
-                        isLongClickable = true
-                        if (!isLongClick) {
-                            cancelLongClick()
-                        }
-                    }
-                    MotionEvent.ACTION_MOVE -> {
-                        if (durSource != null) {
-                            isLongClickable = false
-                            return true
-                        }
-                    }
-                    MotionEvent.ACTION_CANCEL -> {
-                        isLongClickable = true
-                        cancelLongClick()
                         return true
                     }
                 }
-                return super.onTouchEvent(widget, buffer, event)
+                return wasLongClicked || super.onTouchEvent(widget, buffer, event)
             }
 
-            private fun cancelLongClick() {
-                longClickRunnable?.let {
-                    removeCallbacks(it)
-                    longClickRunnable = null
+            MotionEvent.ACTION_CANCEL -> {
+                if (activeTarget != null) {
+                    cancelImageGesture(widget)
+                    return true
                 }
-                isLongClick = false
             }
         }
+        return super.onTouchEvent(widget, buffer, event)
     }
-    markwon.setParsedMarkdown(this, spanned)
+
+    private fun imageTargetAt(widget: TextView, event: MotionEvent): InlineImageTouchTarget? {
+        val layout = widget.layout ?: return null
+        val x = event.x - widget.totalPaddingLeft + widget.scrollX
+        val y = event.y - widget.totalPaddingTop + widget.scrollY
+        if (x < 0 || y < 0 || y >= layout.height) return null
+        val line = layout.getLineForVertical(y.toInt())
+        if (x < layout.getLineLeft(line) || x > layout.getLineRight(line)) return null
+        val offset = layout.getOffsetForHorizontal(line, x)
+        return imageTargets.firstOrNull { target -> offset >= target.start && offset < target.end }
+    }
+
+    private fun cancelImageGesture(widget: TextView) {
+        longClickRunnable?.let(widget::removeCallbacks)
+        longClickRunnable = null
+        activeTarget = null
+        longClicked = false
+        widget.isLongClickable = true
+    }
 }
 
 fun TextView.setTextIfNotEqual(charSequence: CharSequence?) {
