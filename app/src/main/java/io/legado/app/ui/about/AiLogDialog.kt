@@ -22,15 +22,13 @@ import io.legado.app.utils.setLayout
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import splitties.views.onClick
-import java.util.*
+import java.util.Date
 
-class AppLogDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
+class AiLogDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
     Toolbar.OnMenuItemClickListener {
 
     private val binding by viewBinding(DialogRecyclerViewBinding::bind)
-    private val adapter by lazy {
-        LogAdapter(requireContext())
-    }
+    private val adapter by lazy { LogAdapter(requireContext()) }
 
     override fun onStart() {
         super.onStart()
@@ -40,23 +38,23 @@ class AppLogDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.run {
             toolBar.setBackgroundColor(primaryColor)
-            toolBar.setTitle(R.string.log)
+            toolBar.setTitle(R.string.ai_log)
             toolBar.inflateMenu(R.menu.app_log)
-            toolBar.setOnMenuItemClickListener(this@AppLogDialog)
+            toolBar.setOnMenuItemClickListener(this@AiLogDialog)
             recyclerView.layoutManager = LinearLayoutManager(requireContext())
             recyclerView.adapter = adapter
         }
-        adapter.setItems(AppLog.logs)
+        adapter.setItems(AppLog.aiLogs)
     }
 
     override fun onMenuItemClick(item: MenuItem?): Boolean {
         when (item?.itemId) {
             R.id.menu_clear -> {
-                AppLog.clear()
+                AppLog.clearAi()
                 adapter.clearItems()
             }
             R.id.menu_copy_all -> {
-                requireContext().sendToClip(AppLog.formatLogs(AppLog.logs))
+                requireContext().sendToClip(AppLog.formatLogs(AppLog.aiLogs))
             }
         }
         return true
@@ -81,14 +79,10 @@ class AppLogDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
 
         override fun registerListener(holder: ItemViewHolder, binding: ItemAppLogBinding) {
             binding.root.onClick {
-                getItem(holder.layoutPosition)?.let { item ->
-                    item.third?.let {
-                        showDialogFragment(TextDialog("Log", it.stackTraceToString()))
-                    }
+                getItem(holder.layoutPosition)?.third?.let {
+                    showDialogFragment(TextDialog("AI log", it.stackTraceToString()))
                 }
             }
         }
-
     }
-
 }

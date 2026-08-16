@@ -29,8 +29,10 @@ import io.legado.app.ui.main.ai.AiModelConfig
 import io.legado.app.ui.main.ai.AiMcpServerConfig
 import io.legado.app.ui.main.ai.AiProviderConfig
 import io.legado.app.ui.main.ai.AiSkillConfig
+import io.legado.app.ui.about.AiLogDialog
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.setEdgeEffectColor
+import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
@@ -71,6 +73,7 @@ class AiConfigFragment : PreferenceFragment(),
             "aiFetchModels" -> fetchModelsFromCurrentProvider(showSelector = true)
             "aiManageModels" -> showManageModelsDialog()
             "aiEditRequest" -> showEditRequestDialog()
+            "aiLogs" -> showDialogFragment<AiLogDialog>()
             "aiAddMcpServer" -> showEditMcpServerDialog()
             "aiManageMcpServers" -> showManageMcpServersDialog()
             "aiManageNativeTools" -> showManageNativeToolsDialog()
@@ -1122,6 +1125,8 @@ class AiConfigFragment : PreferenceFragment(),
             }
         findPreference<Preference>("aiEditRequest")?.summary =
             getString(R.string.ai_edit_request_summary)
+        findPreference<Preference>("aiLogs")?.summary =
+            getString(R.string.ai_log_summary, AppLog.aiLogs.size)
         val currentModelId = AppConfig.aiCurrentModelConfig?.modelId?.trim().orEmpty()
         findPreference<Preference>("aiTestCurrentConnection")?.summary = when {
             currentProvider == null -> getString(R.string.ai_connection_test_summary_missing_provider)

@@ -1,6 +1,7 @@
 package io.legado.app.help.ai
 
 import io.legado.app.R
+import io.legado.app.constant.AppLog
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.addHeaders
 import io.legado.app.help.http.newCallResponse
@@ -10,14 +11,17 @@ import io.legado.app.ui.main.ai.AiChatException
 import io.legado.app.ui.main.ai.AiChatMessage
 import io.legado.app.ui.main.ai.AiProviderConfig
 import kotlinx.coroutines.CancellationException
+import okhttp3.Headers
 import org.json.JSONArray
 import org.json.JSONObject
 import splitties.init.appCtx
+import java.util.concurrent.atomic.AtomicLong
 
 object AiChatService {
 
     private const val MAX_TOOL_ROUNDS = 12
     private const val MAX_SEARCH_RESULT_CARDS = 8
+    private val requestSequence = AtomicLong(0)
 
     private data class ToolCall(
         val id: String,
@@ -139,7 +143,7 @@ object AiChatService {
                     thinkingType = "disabled",
                     requestTemplate = AiChapterPurifyConfig.requestTemplate
                 ),
-                logRequestBody = false
+                logRequestBody = true
             )
             turn.content.takeIf { it.isNotBlank() } ?: throw AiChatException(
                 message = "Empty response",
@@ -446,41 +450,97 @@ object AiChatService {
         options: CompletionRequestOptions = CompletionRequestOptions(),
         logRequestBody: Boolean = true
     ): AssistantTurn {
-        val requestBody = options.requestTemplate?.let { template ->
-            AiStructuredRequestTemplate.render(
-                template = template,
-                model = model,
-                systemPrompt = messages.firstOrNull { it.optString("role") == "system" }
-                    ?.optString("content")
-                    .orEmpty(),
-                userContent = messages.firstOrNull { it.optString("role") == "user" }
-                    ?.optString("content")
-                    .orEmpty()
+        val requestId = requestSequence.incrementAndGet()
+        val requestUrl = resolveChatUrl(baseUrl)
+        val requestHeaders = formatRequestHeaders(providerApiKey, providerHeaders)
+        val requestBody = try {
+            options.requestTemplate?.let { template ->
+                AiStructuredRequestTemplate.render(
+                    template = template,
+                    model = model,
+                    systemPrompt = messages.firstOrNull { it.optString("role") == "system" }
+                        ?.optString("content")
+                        .orEmpty(),
+                    userContent = messages.firstOrNull { it.optString("role") == "user" }
+                        ?.optString("content")
+                        .orEmpty()
+                )
+            } ?: buildRequestBody(messages, model, tools, stream = true, options = options)
+        } catch (throwable: Throwable) {
+            AppLog.putAi(
+                "HTTP REQUEST BUILD FAILED\n" +
+                    "requestId=$requestId\n" +
+                    "url=$requestUrl\n" +
+                    "model=$model\n" +
+                    "headers=$requestHeaders\n" +
+                    "requestLog=$requestLog",
+                throwable
             )
-        } ?: buildRequestBody(messages, model, tools, stream = true, options = options)
+            throw throwable
+        }
         requestLog.append("round=").append(round).append('\n')
         if (logRequestBody) {
             requestLog.append("request=").append(requestBody).append('\n')
         }
-        val response = okHttpClient.newCallResponse {
-            url(resolveChatUrl(baseUrl))
-            addHeader("Accept", "text/event-stream, application/json")
-            addHeader("Content-Type", "application/json")
-            providerApiKey.trim().takeIf { it.isNotBlank() }?.let {
-                addHeader("Authorization", "Bearer $it")
+        AppLog.putAi(
+            "HTTP REQUEST\n" +
+                "requestId=$requestId\n" +
+                "url=$requestUrl\n" +
+                "model=$model\n" +
+                "headers=$requestHeaders\n" +
+                "requestBody=$requestBody\n" +
+                "requestLog=$requestLog"
+        )
+        val response = try {
+            okHttpClient.newCallResponse {
+                url(requestUrl)
+                addHeader("Accept", "text/event-stream, application/json")
+                addHeader("Content-Type", "application/json")
+                providerApiKey.trim().takeIf { it.isNotBlank() }?.let {
+                    addHeader("Authorization", "Bearer $it")
+                }
+                addHeaders(parseCustomHeaders(providerHeaders))
+                postJson(requestBody)
             }
-            addHeaders(parseCustomHeaders(providerHeaders))
-            postJson(requestBody)
+        } catch (throwable: Throwable) {
+            AppLog.putAi(
+                "HTTP REQUEST FAILED\n" +
+                    "requestId=$requestId\n" +
+                    "url=$requestUrl\n" +
+                    "headers=$requestHeaders\n" +
+                    "requestBody=$requestBody\n" +
+                    "requestLog=$requestLog",
+                throwable
+            )
+            throw throwable
         }
-        response.use { rawResponse ->
+        return try {
+            response.use { rawResponse ->
             requestLog.append("status=${rawResponse.code} ${rawResponse.message}").append('\n')
-            requestLog.append("contentType=${rawResponse.header("Content-Type").orEmpty()}").append('\n')
+            val responseContentType = rawResponse.header("Content-Type").orEmpty()
+            val responseHeaders = formatResponseHeaders(rawResponse.headers)
+            requestLog.append("contentType=$responseContentType").append('\n')
+            AppLog.putAi(
+                "HTTP RESPONSE HEADERS\n" +
+                    "requestId=$requestId\n" +
+                    "url=$requestUrl\n" +
+                    "status=${rawResponse.code} ${rawResponse.message}\n" +
+                    "contentType=$responseContentType\n" +
+                    "headers=$responseHeaders"
+            )
             val body = rawResponse.body ?: throw AiChatException(
                 message = "Empty response body",
                 debugLog = requestLog.append("response=<empty body>\n").toString()
             )
             if (!rawResponse.isSuccessful) {
                 val payload = body.string()
+                AppLog.putAi(
+                        "HTTP RESPONSE BODY (ERROR)\n" +
+                        "requestId=$requestId\n" +
+                        "status=${rawResponse.code} ${rawResponse.message}\n" +
+                        "headers=$responseHeaders\n" +
+                        "body=$payload"
+                )
                 throw AiChatException(
                     message = extractError(payload).ifBlank {
                         "${rawResponse.code} ${rawResponse.message}"
@@ -513,6 +573,15 @@ object AiChatService {
                 }
             }
             requestLog.append("response=").append(rawPayload).append('\n')
+            AppLog.putAi(
+                "HTTP RESPONSE STREAM\n" +
+                    "requestId=$requestId\n" +
+                    "status=${rawResponse.code} ${rawResponse.message}\n" +
+                    "rawSse=$rawPayload\n" +
+                    "rendered=${rendered}\n" +
+                    "reasoning=${reasoningRendered}\n" +
+                    "toolCalls=${toolCallBuilders.size}"
+            )
             val toolCalls = toolCallBuilders.map { (index, builder) ->
                 ToolCall(
                     id = builder.id.ifBlank { "call_$index" },
@@ -539,7 +608,50 @@ object AiChatService {
                 rawMessage = buildAssistantRawMessage(rendered.toString(), toolCalls, reasoningRendered.toString()),
                 reasoningContent = reasoningRendered.toString()
             )
+            }
+        } catch (throwable: Throwable) {
+            AppLog.putAi(
+                "HTTP RESPONSE PROCESSING FAILED\n" +
+                    "requestId=$requestId\n" +
+                    "url=$requestUrl\n" +
+                    "requestLog=$requestLog",
+                throwable
+            )
+            throw throwable
         }
+    }
+
+    private fun formatRequestHeaders(providerApiKey: String, rawHeaders: String): String {
+        val headers = buildList {
+            add("Accept=text/event-stream, application/json")
+            add("Content-Type=application/json")
+            add(
+                "Authorization=" +
+                    if (providerApiKey.isBlank()) "<absent>" else "Bearer <redacted>"
+            )
+            parseCustomHeaders(rawHeaders).forEach { (name, value) ->
+                add("$name=${redactHeaderValue(name, value)}")
+            }
+        }
+        return headers.joinToString(", ")
+    }
+
+    private fun formatResponseHeaders(headers: Headers): String {
+        return headers.names().joinToString(", ") { name ->
+            "$name=${redactHeaderValue(name, headers.values(name).joinToString(","))}"
+        }
+    }
+
+    private fun redactHeaderValue(name: String, value: String): String {
+        val normalized = name.lowercase()
+        val redacted = normalized.contains("authorization") ||
+            normalized.contains("api-key") ||
+            normalized.contains("apikey") ||
+            normalized.contains("token") ||
+            normalized.contains("secret") ||
+            normalized.contains("password") ||
+            normalized == "set-cookie"
+        return if (redacted) "<redacted>" else value
     }
 
     private fun buildRequestBody(

@@ -1,5 +1,6 @@
 package io.legado.app.help.ai
 
+import io.legado.app.constant.AppLog
 import io.legado.app.ui.main.ai.AiChatException
 import io.legado.app.utils.GSON
 import kotlinx.coroutines.CancellationException
@@ -85,7 +86,27 @@ object AiChapterPurifyHelper {
         ) { "Enable at least one AI chapter purification type" }
 
         val chunks = splitIntoChunks(paragraphs, AiChapterPurifyConfig.segmentLimit)
-        val target = AiChapterPurifyConfig.requireModelTarget()
+        val target = try {
+            AiChapterPurifyConfig.requireModelTarget()
+        } catch (throwable: Throwable) {
+            AppLog.putAi(
+                "CHAPTER_PURIFY MODEL_TARGET_FAILED chapter=${chapterIndex + 1}\n" +
+                    "chunks=${chunks.size}",
+                throwable
+            )
+            throw throwable
+        }
+        AppLog.putAi(
+            "CHAPTER_PURIFY BATCHES_PREPARED\n" +
+                "chapter=${chapterIndex + 1}\n" +
+                "paragraphs=${paragraphs.size}\n" +
+                "chunks=${chunks.size}\n" +
+                "segmentLimit=${AiChapterPurifyConfig.segmentLimit}\n" +
+                "concurrency=${AiChapterPurifyConfig.concurrency}\n" +
+                "retryCount=${AiChapterPurifyConfig.retryCount}\n" +
+                "provider=${target.provider.name}\n" +
+                "model=${target.modelId}"
+        )
         val semaphore = Semaphore(AiChapterPurifyConfig.concurrency)
         return coroutineScope {
             chunks.mapIndexed { chunkIndex, chunk ->
@@ -116,6 +137,13 @@ object AiChapterPurifyHelper {
         var lastFailure: Throwable? = null
         repeat(AiChapterPurifyConfig.retryCount + 1) { attempt ->
             try {
+                AppLog.putAi(
+                    "CHAPTER_PURIFY BATCH_REQUEST chapter=${chapterIndex + 1}\n" +
+                        "batch=$chunkIndex/$totalChunks\n" +
+                        "attempt=${attempt + 1}\n" +
+                        "paragraphIds=${paragraphs.joinToString { it.id.toString() }}\n" +
+                        "chars=${paragraphs.sumOf { it.content.length }}"
+                )
                 val response = AiChatService.generateStructuredText(
                     provider = target.provider,
                     model = target.modelId,
@@ -140,15 +168,37 @@ object AiChapterPurifyHelper {
                         totalChunks = totalChunks
                     )
                 )
-                return parseAndValidate(response, paragraphs)
+                val rules = parseAndValidate(response, paragraphs)
+                AppLog.putAi(
+                    "CHAPTER_PURIFY BATCH_PARSED chapter=${chapterIndex + 1}\n" +
+                        "batch=$chunkIndex/$totalChunks\n" +
+                        "attempt=${attempt + 1}\n" +
+                        "rules=${rules.size}\n" +
+                        "ruleDetails=${rules.joinToString(" || ") { rule ->
+                            "id=${rule.id},type=${rule.type},old=${rule.old},new=${rule.new}"
+                        }.ifBlank { "<none>" }}"
+                )
+                return rules
             } catch (throwable: Throwable) {
                 if (throwable is CancellationException) throw throwable
                 lastFailure = throwable
+                AppLog.putAi(
+                    "CHAPTER_PURIFY BATCH_FAILED chapter=${chapterIndex + 1}\n" +
+                        "batch=$chunkIndex/$totalChunks\n" +
+                        "attempt=${attempt + 1}",
+                    throwable
+                )
                 if (attempt < AiChapterPurifyConfig.retryCount) {
                     delay(300L * (attempt + 1))
                 }
             }
         }
+        AppLog.putAi(
+            "CHAPTER_PURIFY BATCH_EXHAUSTED chapter=${chapterIndex + 1}\n" +
+                "batch=$chunkIndex/$totalChunks\n" +
+                "attempts=${AiChapterPurifyConfig.retryCount + 1}",
+            lastFailure
+        )
         throw AiChapterPurifyException(
             message = "AI chapter purification batch $chunkIndex failed after " +
                 "${AiChapterPurifyConfig.retryCount + 1} attempt(s)",

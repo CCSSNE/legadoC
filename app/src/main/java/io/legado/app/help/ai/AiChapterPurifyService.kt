@@ -1,5 +1,6 @@
 package io.legado.app.help.ai
 
+import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.AiChapterPurifyRecord
 import io.legado.app.data.entities.Book
@@ -33,11 +34,25 @@ object AiChapterPurifyService {
         require(chapterCount >= AiChapterPurifyConfig.MIN_CHAPTER_COUNT) {
             "AI chapter purification chapter count must be positive"
         }
+        AppLog.putAi(
+            "CHAPTER_PURIFY TRIGGER\n" +
+                "book=${book.name}\n" +
+                "origin=${book.origin}\n" +
+                "bookUrl=${book.bookUrl}\n" +
+                "startChapter=${startChapterIndex + 1}\n" +
+                "requestedChapters=$chapterCount\n" +
+                "force=$force\n" +
+                "replaceEnabled=${book.getUseReplaceRule()}\n" +
+                "types=typo:${AiChapterPurifyConfig.typoEnabled}," +
+                "noise:${AiChapterPurifyConfig.noiseEnabled}," +
+                "ad:${AiChapterPurifyConfig.adEnabled}"
+        )
         val chapters = appDb.bookChapterDao.getChapterList(
             book.bookUrl,
             startChapterIndex,
             startChapterIndex + chapterCount - 1
         )
+        AppLog.putAi("CHAPTER_PURIFY CHAPTERS_FOUND count=${chapters.size}")
         var inspected = 0
         var skippedCompleted = 0
         var skippedUncached = 0
@@ -47,6 +62,9 @@ object AiChapterPurifyService {
             val cachedContent = BookHelp.getContent(book, chapter)
             if (cachedContent == null) {
                 skippedUncached++
+                AppLog.putAi(
+                    "CHAPTER_PURIFY SKIP_UNCACHED chapter=${chapter.index + 1}"
+                )
                 return@forEach
             }
             inspected++
@@ -57,6 +75,11 @@ object AiChapterPurifyService {
                 existingRecord.state == AiChapterPurifyRecord.STATE_COMPLETED
             ) {
                 skippedCompleted++
+                AppLog.putAi(
+                    "CHAPTER_PURIFY SKIP_COMPLETED chapter=${chapter.index + 1}\n" +
+                        "fingerprint=$fingerprint\n" +
+                        "recordRuleCount=${existingRecord.ruleCount}"
+                )
                 return@forEach
             }
             try {
@@ -77,6 +100,12 @@ object AiChapterPurifyService {
                         "AI chapter purification chapter ${chapter.index + 1} has no usable cached paragraphs"
                     )
                 }
+                AppLog.putAi(
+                    "CHAPTER_PURIFY CHAPTER_PREPARED chapter=${chapter.index + 1}\n" +
+                        "fingerprint=$fingerprint\n" +
+                        "paragraphCount=${paragraphs.size}\n" +
+                        "paragraphChars=${paragraphs.sumOf { it.content.length }}"
+                )
                 val rules = AiChapterPurifyHelper.generateRules(
                     paragraphs = paragraphs,
                     chapterIndex = chapter.index,
@@ -85,6 +114,12 @@ object AiChapterPurifyService {
                 currentCoroutineContext().ensureActive()
                 val chapterAddedRules = insertNewRules(book, rules)
                 addedRules += chapterAddedRules
+                AppLog.putAi(
+                    "CHAPTER_PURIFY RULES_READY chapter=${chapter.index + 1}\n" +
+                        "candidateRules=${rules.size}\n" +
+                        "addedRules=$chapterAddedRules\n" +
+                        "rules=${formatRules(rules)}"
+                )
                 appDb.aiChapterPurifyRecordDao.insert(
                     AiChapterPurifyRecord(
                         bookUrl = book.bookUrl,
@@ -108,6 +143,11 @@ object AiChapterPurifyService {
                         (throwable.message ?: throwable.javaClass.simpleName),
                     throwable
                 )
+                AppLog.putAi(
+                    "CHAPTER_PURIFY CHAPTER_FAILED chapter=${chapter.index + 1}\n" +
+                        "fingerprint=$fingerprint",
+                    failure
+                )
                 try {
                     appDb.aiChapterPurifyRecordDao.insert(
                         AiChapterPurifyRecord(
@@ -126,9 +166,30 @@ object AiChapterPurifyService {
             }
         }
         if (addedRules > 0) {
-            ContentProcessor.upReplaceRules()
+            try {
+                ContentProcessor.upReplaceRules()
+                AppLog.putAi(
+                    "CHAPTER_PURIFY REPLACEMENT_CACHE_REFRESHED addedRules=$addedRules"
+                )
+            } catch (throwable: Throwable) {
+                AppLog.putAi(
+                    "CHAPTER_PURIFY REPLACEMENT_CACHE_REFRESH_FAILED addedRules=$addedRules",
+                    throwable
+                )
+                throw throwable
+            }
+        } else {
+            AppLog.putAi("CHAPTER_PURIFY NO_NEW_RULES")
         }
         onProgress(AiChapterPurifyProgress.ReplacementApplied(addedRules))
+        AppLog.putAi(
+            "CHAPTER_PURIFY COMPLETE\n" +
+                "requestedChapters=$chapterCount\n" +
+                "inspectedChapters=$inspected\n" +
+                "skippedCompleted=$skippedCompleted\n" +
+                "skippedUncached=$skippedUncached\n" +
+                "addedRules=$addedRules"
+        )
         return AiChapterPurifyRunResult(
             requestedChapters = chapterCount,
             inspectedChapters = inspected,
@@ -168,6 +229,12 @@ object AiChapterPurifyService {
             appDb.replaceRuleDao.insert(*newRules.toTypedArray())
         }
         return newRules.size
+    }
+
+    private fun formatRules(rules: List<AiChapterPurifyRule>): String {
+        return rules.joinToString(" || ") { rule ->
+            "id=${rule.id},type=${rule.type},old=${rule.old},new=${rule.new}"
+        }.ifBlank { "<none>" }
     }
 
     private fun String.sha256(): String {

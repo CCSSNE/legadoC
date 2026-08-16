@@ -23,6 +23,12 @@
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
+            android:key="aiLogs"
+            android:summary="@string/ai_log_summary_empty"
+            android:title="@string/ai_log"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
             android:key="aiImportDefaultSkill"
             android:summary="@string/ai_import_default_skill_summary"
             android:title="@string/ai_import_default_skill"

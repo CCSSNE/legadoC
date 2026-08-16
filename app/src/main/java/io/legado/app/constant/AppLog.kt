@@ -9,9 +9,14 @@ import splitties.init.appCtx
 
 object AppLog {
 
+    private const val AI_LOG_PREFIX = "[AI]"
     private val mLogs = arrayListOf<Triple<Long, String, Throwable?>>()
 
-    val logs get() = mLogs.toList()
+    val logs
+        get() = synchronized(this) { mLogs.toList() }
+
+    val aiLogs
+        get() = logs.filter { it.second.startsWith("$AI_LOG_PREFIX ") }
 
     @Synchronized
     fun put(message: String?, throwable: Throwable? = null, toast: Boolean = false) {
@@ -34,6 +39,11 @@ object AppLog {
         }
     }
 
+    fun putAi(message: String?, throwable: Throwable? = null) {
+        message ?: return
+        put("$AI_LOG_PREFIX $message", throwable)
+    }
+
     @Synchronized
     fun putNotSave(message: String?, throwable: Throwable? = null, toast: Boolean = false) {
         message ?: return
@@ -53,6 +63,19 @@ object AppLog {
     @Synchronized
     fun clear() {
         mLogs.clear()
+    }
+
+    @Synchronized
+    fun clearAi() {
+        mLogs.removeAll { it.second.startsWith("$AI_LOG_PREFIX ") }
+    }
+
+    fun formatLogs(logs: List<Triple<Long, String, Throwable?>>): String {
+        return logs.joinToString("\n\n") { log ->
+            val time = LogUtils.logTimeFormat.format(java.util.Date(log.first))
+            val stack = log.third?.let { "\n${it.stackTraceToString()}" }.orEmpty()
+            "$time\n${log.second}$stack"
+        }
     }
 
     fun putDebug(message: String?, throwable: Throwable? = null) {
