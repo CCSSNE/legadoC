@@ -6,6 +6,7 @@ import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.widget.Toolbar
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
@@ -21,6 +22,10 @@ import io.legado.app.utils.sendToClip
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import splitties.views.onClick
 import java.util.Date
 
@@ -29,6 +34,7 @@ class AiLogDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
 
     private val binding by viewBinding(DialogRecyclerViewBinding::bind)
     private val adapter by lazy { LogAdapter(requireContext()) }
+    private var clearJob: Job? = null
 
     override fun onStart() {
         super.onStart()
@@ -50,8 +56,20 @@ class AiLogDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
     override fun onMenuItemClick(item: MenuItem?): Boolean {
         when (item?.itemId) {
             R.id.menu_clear -> {
-                AppLog.clearAi()
+                val menuItem = item ?: return true
+                if (clearJob?.isActive == true) return true
                 adapter.clearItems()
+                menuItem.isEnabled = false
+                clearJob = viewLifecycleOwner.lifecycleScope.launch(Dispatchers.Default) {
+                    try {
+                        AppLog.clearAi()
+                    } finally {
+                        withContext(Dispatchers.Main.immediate) {
+                            menuItem.isEnabled = true
+                            clearJob = null
+                        }
+                    }
+                }
             }
             R.id.menu_copy_all -> {
                 requireContext().sendToClip(AppLog.formatLogs(AppLog.aiLogs))

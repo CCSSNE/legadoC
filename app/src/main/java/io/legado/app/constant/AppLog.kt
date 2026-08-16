@@ -4,6 +4,7 @@ import android.util.Log
 import io.legado.app.BuildConfig
 import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.LogUtils
+import io.legado.app.utils.postEvent
 import io.legado.app.utils.toastOnUi
 import splitties.init.appCtx
 
@@ -42,6 +43,7 @@ object AppLog {
     fun putAi(message: String?, throwable: Throwable? = null) {
         message ?: return
         put("$AI_LOG_PREFIX $message", throwable)
+        postEvent(EventBus.AI_LOGS_CHANGED, aiLogs.size)
     }
 
     @Synchronized
@@ -65,9 +67,11 @@ object AppLog {
         mLogs.clear()
     }
 
-    @Synchronized
     fun clearAi() {
-        mLogs.removeAll { it.second.startsWith("$AI_LOG_PREFIX ") }
+        synchronized(this) {
+            mLogs.removeAll { it.second.startsWith("$AI_LOG_PREFIX ") }
+        }
+        postEvent(EventBus.AI_LOGS_CHANGED, 0)
     }
 
     fun formatLogs(logs: List<Triple<Long, String, Throwable?>>): String {

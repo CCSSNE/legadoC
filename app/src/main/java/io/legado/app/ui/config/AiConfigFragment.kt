@@ -34,6 +34,7 @@ import io.legado.app.ui.main.ai.AiProviderConfig
 import io.legado.app.ui.main.ai.AiSkillConfig
 import io.legado.app.ui.about.AiLogDialog
 import io.legado.app.utils.postEvent
+import io.legado.app.utils.observeEvent
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
@@ -59,6 +60,14 @@ class AiConfigFragment : PreferenceFragment(),
         "https://raw.githubusercontent.com/DandanLLab/legadoSkill/main/skills/SKILLV0.7.md",
         "https://raw.githubusercontent.com/DandanLLab/legadoSkill/main/SKILL.md"
     )
+
+    override fun observeLiveBus() {
+        super.observeLiveBus()
+        observeEvent<Int>(EventBus.AI_LOGS_CHANGED) { count ->
+            findPreference<Preference>("aiLogs")?.summary =
+                getString(R.string.ai_log_summary, count)
+        }
+    }
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         addPreferencesFromResource(R.xml.pref_config_ai)
