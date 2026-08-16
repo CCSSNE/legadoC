@@ -19,6 +19,7 @@ object AiRequestTimeoutConfig {
     const val MAX_GENERATION_TIMEOUT_SECONDS = 900
     const val MIN_THINKING_INTERRUPT_SECONDS = 5
     const val MAX_THINKING_INTERRUPT_SECONDS = 600
+    const val DEFAULT_THINKING_INTERRUPT_SECONDS = 5
     const val DEFAULT_THINKING_INTERRUPT_MAX_COUNT = 3
     const val MIN_THINKING_INTERRUPT_MAX_COUNT = 1
     const val MAX_THINKING_INTERRUPT_MAX_COUNT = 20
@@ -46,9 +47,9 @@ object AiRequestTimeoutConfig {
     /** Null keeps the existing generation-timeout path. */
     var thinkingInterruptSeconds: Int?
         get() {
-            val raw = appCtx.getPrefString(PreferKey.aiThinkingInterruptSeconds)
-                ?.trim()
-                .orEmpty()
+            val stored = appCtx.getPrefString(PreferKey.aiThinkingInterruptSeconds)
+            if (stored == null) return DEFAULT_THINKING_INTERRUPT_SECONDS
+            val raw = stored.trim()
             if (raw.isEmpty()) return null
             val value = raw.toIntOrNull()
                 ?: error("AI thinking interrupt seconds is not an integer: $raw")
