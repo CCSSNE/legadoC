@@ -82,19 +82,38 @@ object AiChapterPurifyService {
                     includeTitle = false,
                     useReplace = true
                 )
+                val preprocessRules = AiChapterPurifyConfig.preprocessRules
+                AppLog.putAi(
+                    "CHAPTER_PURIFY PREPROCESS_CONFIG chapter=${chapter.index + 1}\n" +
+                        "ruleCount=${preprocessRules.size}\n" +
+                        "enabledRuleCount=${preprocessRules.count { it.enabled }}\n" +
+                        "rules=${preprocessRules.joinToString(" || ") { rule ->
+                            "name=${rule.name},enabled=${rule.enabled},order=${rule.order}," +
+                                "pattern=${rule.pattern},replacement=${rule.replacement}"
+                        }.ifBlank { "<none>" }}"
+                )
                 val paragraphs = processedContent.textList.mapIndexedNotNull { index, content ->
                     val normalized = content.trim()
                     normalized.takeIf { it.isNotEmpty() }?.let {
-                        val modelContent = AiChapterPurifyHelper.sanitizeParagraphForModel(it)
-                        if (modelContent.isBlank()) {
+                        val preprocessed = AiChapterPurifyHelper.prepareParagraphForModel(
+                            content = it,
+                            rules = preprocessRules
+                        )
+                        if (preprocessed.text.isBlank()) {
                             AppLog.putAi(
-                                "CHAPTER_PURIFY SKIP_PRESENTATION_ONLY chapter=${chapter.index + 1}\n" +
+                                "CHAPTER_PURIFY SKIP_PREPROCESSED_EMPTY chapter=${chapter.index + 1}\n" +
                                     "paragraph=${index + 1}\n" +
-                                    "sourceChars=${it.length}"
+                                    "sourceChars=${it.length}\n" +
+                                    "appliedPreprocessRules=${preprocessed.appliedRuleNames.joinToString(",")}"
                             )
                             null
                         } else {
-                            AiChapterPurifyParagraph(index + 1, it, modelContent)
+                            AiChapterPurifyParagraph(
+                                id = index + 1,
+                                content = it,
+                                modelContent = preprocessed.text,
+                                preprocessed = preprocessed
+                            )
                         }
                     }
                 }
@@ -131,7 +150,10 @@ object AiChapterPurifyService {
                         "paragraphCount=${paragraphs.size}\n" +
                         "paragraphChars=${paragraphs.sumOf { it.content.length }}\n" +
                         "modelParagraphChars=${paragraphs.sumOf { it.modelContent.length }}\n" +
-                        "presentationCharsRemoved=${paragraphs.sumOf { it.content.length - it.modelContent.length }}\n" +
+                        "preprocessedCharsRemoved=${paragraphs.sumOf { it.content.length - it.modelContent.length }}\n" +
+                        "preprocessRuleCount=${preprocessRules.size}\n" +
+                        "preprocessEnabledRuleCount=${preprocessRules.count { it.enabled }}\n" +
+                        "appliedPreprocessRules=${paragraphs.flatMap { it.preprocessed?.appliedRuleNames.orEmpty() }.distinct().joinToString(",")}\n" +
                         "existingRuleCount=${contentProcessor.getContentReplaceRules().size}\n" +
                         "effectiveRuleCount=${processedContent.effectiveReplaceRules?.size ?: 0}\n" +
                         "rulesAppliedBeforeAi=true"

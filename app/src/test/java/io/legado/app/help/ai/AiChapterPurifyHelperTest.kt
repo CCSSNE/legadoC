@@ -12,4 +12,21 @@ class AiChapterPurifyHelperTest {
 
         assertEquals("广告正文", AiChapterPurifyHelper.sanitizeParagraphForModel(source))
     }
+
+    @Test
+    fun preprocessor_keepsParagraphLocalTextAndMapsBackToB() {
+        val source = "📣 广告！加 群：123"
+        val rules = listOf(
+            AiChapterPurifyPreprocessRule(
+                name = "删除所有空格和符号",
+                pattern = "[\\s\\p{P}\\p{S}]+",
+                replacement = ""
+            )
+        )
+
+        val prepared = AiChapterPurifyPreprocessor.apply(source, rules)
+
+        assertEquals("广告加群123", prepared.text)
+        assertEquals("广告！加 群", prepared.sourceTextForModelText("广告加群", source))
+    }
 }

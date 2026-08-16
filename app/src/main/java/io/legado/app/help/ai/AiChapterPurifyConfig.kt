@@ -4,6 +4,7 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.main.ai.AiProviderConfig
 import io.legado.app.utils.GSON
+import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.getPrefString
@@ -33,6 +34,27 @@ object AiChapterPurifyConfig {
     const val MIN_CONCURRENCY = 1
     const val MAX_CONCURRENCY = 8
 
+    private val defaultPreprocessRules = listOf(
+        AiChapterPurifyPreprocessRule(
+            name = "移除图片和展示标签",
+            pattern = "<img\\b[^>]*>|<svg\\b[^>]*>[\\s\\S]*?</svg>",
+            replacement = "",
+            enabled = true,
+            order = 10
+        ),
+        AiChapterPurifyPreprocessRule(
+            name = "删除所有空格和符号",
+            pattern = "[\\s\\p{Z}\\p{P}\\p{S}\\p{Cf}]+",
+            replacement = "",
+            enabled = true,
+            order = 20
+        )
+    )
+
+    val defaultPreprocessJson: String by lazy {
+        GSON.toJson(defaultPreprocessRules)
+    }
+
     val defaultPrompt = """
         你是中文网文净化规则生成器。
 
@@ -41,7 +63,9 @@ object AiChapterPurifyConfig {
         - noise：正文中夹杂的异常字符、数字编号、乱码或站名污染；不得补写正文。
         - ad：完整且明确与作品正文无关的广告、引流、群号、网址推广或盗版说明；new 必须为空字符串。
 
-        old 必须逐字、连续地存在于对应输入段落，保留原有标点、引号、空格和异常字符。
+        段落编号由客户端在输入预处理完成后追加，必须使用编号定位原始段落。
+        对 ad 只返回 id 和 type，不返回 old 或 new；程序会根据 id 删除 B 中的完整广告段落。
+        对 typo 和 noise 返回 normalized 输入中的精确 old 片段以及 new 替换内容。
         不确定时不要返回规则。不得润色、扩写、缩写、改写正常正文，也不得把图片标签、作品资料、作者后记或设定说明当广告删除。
     """.trimIndent()
 
@@ -85,6 +109,33 @@ object AiChapterPurifyConfig {
             ?.takeIf { it.isNotBlank() }
             ?: AiStructuredRequestTemplate.default
         set(value) = appCtx.putPrefString(PreferKey.aiRequestTemplate, value.trim())
+
+    var preprocessJson: String
+        get() = appCtx.getPrefString(PreferKey.aiChapterPurifyPreprocess)
+            ?.takeIf { it.isNotBlank() }
+            ?: defaultPreprocessJson
+        set(value) {
+            val normalized = value.trim()
+            parsePreprocessJson(normalized)
+            appCtx.putPrefString(
+                PreferKey.aiChapterPurifyPreprocess,
+                if (normalized == defaultPreprocessJson) "" else normalized
+            )
+        }
+
+    val preprocessRules: List<AiChapterPurifyPreprocessRule>
+        get() = parsePreprocessJson(preprocessJson)
+
+    private fun parsePreprocessJson(json: String): List<AiChapterPurifyPreprocessRule> {
+        val rules = GSON.fromJsonArray<AiChapterPurifyPreprocessRule>(json).getOrElse {
+            throw AiChapterPurifyException(
+                "AI input preprocessing JSON is invalid: ${it.message ?: it.javaClass.simpleName}",
+                it
+            )
+        }
+        AiChapterPurifyPreprocessor.validateRules(rules)
+        return rules
+    }
 
     var summaryEnabled: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.aiChapterPurifySummaryEnabled, true)

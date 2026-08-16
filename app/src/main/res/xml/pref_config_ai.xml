@@ -28,6 +28,13 @@
             android:title="@string/ai_log"
             app:iconSpaceReserved="false" />
 
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:key="aiApiRedactionEnabled"
+            android:defaultValue="true"
+            android:summary="@string/ai_api_redaction_summary"
+            android:title="@string/ai_api_redaction"
+            app:iconSpaceReserved="false" />
+
         <io.legado.app.lib.prefs.Preference
             android:key="aiExportLogs"
             android:summary="@string/ai_log_export_summary"
@@ -172,6 +179,18 @@
             android:key="aiChapterPurifyPrompt"
             android:summary="@string/ai_chapter_purify_prompt_summary"
             android:title="@string/ai_chapter_purify_prompt"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiChapterPurifyFlowInfo"
+            android:summary="@string/ai_chapter_purify_flow_info_summary"
+            android:title="@string/ai_chapter_purify_flow_info"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiChapterPurifyPreprocess"
+            android:summary="@string/ai_chapter_purify_preprocess_summary"
+            android:title="@string/ai_chapter_purify_preprocess"
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.SwitchPreference

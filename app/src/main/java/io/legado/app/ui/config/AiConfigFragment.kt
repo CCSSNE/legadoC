@@ -4,7 +4,9 @@ import android.content.SharedPreferences
 import android.net.Uri
 import android.os.Bundle
 import android.text.InputType
+import android.text.method.PasswordTransformationMethod
 import android.view.View
+import android.widget.EditText
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
 import androidx.preference.Preference
@@ -18,6 +20,7 @@ import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.ai.AiChapterPurifyConfig
 import io.legado.app.help.ai.AiChatService
 import io.legado.app.help.ai.AiLogExporter
+import io.legado.app.help.ai.AiLogConfig
 import io.legado.app.help.ai.AiRequestTimeoutConfig
 import io.legado.app.help.ai.AiStructuredRequestTemplate
 import io.legado.app.help.ai.AiToolRegistry
@@ -64,6 +67,7 @@ class AiConfigFragment : PreferenceFragment(),
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         addPreferencesFromResource(R.xml.pref_config_ai)
+        configureApiRedactionPreference()
         refreshUi()
     }
 
@@ -121,6 +125,8 @@ class AiConfigFragment : PreferenceFragment(),
             PreferKey.aiChapterPurifyModel -> showEditChapterPurifyModelDialog()
             "aiChapterPurifyTestConnection" -> testChapterPurifyConnection()
             PreferKey.aiChapterPurifyPrompt -> showChapterPurifyPromptDialog()
+            "aiChapterPurifyFlowInfo" -> showChapterPurifyFlowInfo()
+            PreferKey.aiChapterPurifyPreprocess -> showChapterPurifyPreprocessDialog()
             PreferKey.aiChapterPurifyChapterCount -> showChapterPurifyIntDialog(
                 R.string.ai_chapter_purify_chapter_count,
                 AiChapterPurifyConfig.chapterCount,
@@ -168,6 +174,51 @@ class AiConfigFragment : PreferenceFragment(),
         exportAiLogLauncher.launch(AiLogExporter.fileName())
     }
 
+    private fun configureApiRedactionPreference() {
+        val preference = findPreference<SwitchPreference>(PreferKey.aiApiRedactionEnabled)
+            ?: error("Missing API redaction preference")
+        preference.setOnPreferenceChangeListener { _, newValue ->
+            val enabled = newValue as? Boolean
+                ?: error("API redaction preference must be Boolean")
+            if (!enabled && AiLogConfig.apiRedactionEnabled) {
+                showApiRedactionWarning(preference)
+                false
+            } else {
+                AiLogConfig.apiRedactionEnabled = enabled
+                true
+            }
+        }
+    }
+
+    private fun showApiRedactionWarning(preference: SwitchPreference) {
+        alert(
+            getString(R.string.ai_api_redaction_warning_title),
+            getString(R.string.ai_api_redaction_warning_message)
+        ) {
+            okButton {
+                AiLogConfig.apiRedactionEnabled = false
+                preference.isChecked = false
+            }
+            cancelButton()
+        }
+    }
+
+    private fun applyApiKeyInputPolicy(editText: EditText) {
+        val masked = AiLogConfig.apiRedactionEnabled
+        editText.inputType = InputType.TYPE_CLASS_TEXT or
+            if (masked) {
+                InputType.TYPE_TEXT_VARIATION_PASSWORD
+            } else {
+                InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+            }
+        editText.transformationMethod = if (masked) {
+            PasswordTransformationMethod.getInstance()
+        } else {
+            null
+        }
+        editText.setSelection(editText.text?.length ?: 0)
+    }
+
     private fun writeAiLogs(uri: Uri, logs: List<Triple<Long, String, Throwable?>>) {
         lifecycleScope.launch {
             val result = withContext(IO) {
@@ -192,6 +243,7 @@ class AiConfigFragment : PreferenceFragment(),
             editProviderApiKey.setText(provider?.apiKey.orEmpty())
             editProviderHeaders.setText(provider?.headers.orEmpty())
         }
+        applyApiKeyInputPolicy(binding.editProviderApiKey)
         alert(titleResource = R.string.ai_chapter_purify_provider) {
             customView { binding.root }
             okButton {
@@ -268,6 +320,51 @@ class AiConfigFragment : PreferenceFragment(),
         }
     }
 
+    private fun showChapterPurifyFlowInfo() {
+        alert(
+            getString(R.string.ai_chapter_purify_flow_info),
+            getString(R.string.ai_chapter_purify_flow_info_message)
+        ) {
+            okButton()
+        }
+    }
+
+    private fun showChapterPurifyPreprocessDialog() {
+        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
+            editView.hint = getString(R.string.ai_chapter_purify_preprocess_hint)
+            editView.inputType = InputType.TYPE_CLASS_TEXT or
+                InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+                InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            editView.minLines = 18
+            editView.setText(AiChapterPurifyConfig.preprocessJson)
+            editView.setSelection(editView.text?.length ?: 0)
+        }
+        alert(titleResource = R.string.ai_chapter_purify_preprocess) {
+            customView { binding.root }
+            okButton {
+                val json = binding.editView.text?.toString()?.trim().orEmpty()
+                val error = runCatching {
+                    AiChapterPurifyConfig.preprocessJson = json
+                }.exceptionOrNull()
+                if (error != null) {
+                    toastOnUi(
+                        getString(
+                            R.string.ai_chapter_purify_preprocess_invalid,
+                            error.message.orEmpty()
+                        )
+                    )
+                    return@okButton
+                }
+                refreshUi()
+            }
+            neutralButton(R.string.restore_default) {
+                AiChapterPurifyConfig.preprocessJson = AiChapterPurifyConfig.defaultPreprocessJson
+                refreshUi()
+            }
+            cancelButton()
+        }
+    }
+
     private fun showEditRequestDialog() {
         val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
             editView.hint = getString(R.string.ai_edit_request_hint)
@@ -335,6 +432,7 @@ class AiConfigFragment : PreferenceFragment(),
             editProviderApiKey.setText(provider?.apiKey.orEmpty())
             editProviderHeaders.setText(provider?.headers.orEmpty())
         }
+        applyApiKeyInputPolicy(binding.editProviderApiKey)
         alert(
             title = getString(
                 if (provider == null) R.string.ai_add_provider else R.string.ai_edit_provider
@@ -689,6 +787,7 @@ class AiConfigFragment : PreferenceFragment(),
             editMcpServerApiKey.setText(server?.apiKey.orEmpty())
             checkMcpServerEnabled.isChecked = server?.enabled ?: true
         }
+        applyApiKeyInputPolicy(binding.editMcpServerApiKey)
         alert(
             title = getString(
                 if (server == null) R.string.ai_add_mcp_server else R.string.ai_edit_mcp_server
@@ -900,10 +999,9 @@ class AiConfigFragment : PreferenceFragment(),
     private fun showTavilyApiKeyDialog() {
         val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
             editView.hint = getString(R.string.ai_tavily_api_key_hint)
-            editView.inputType = InputType.TYPE_CLASS_TEXT
             editView.setText(AppConfig.aiTavilyApiKey)
-            editView.setSelection(editView.text?.length ?: 0)
         }
+        applyApiKeyInputPolicy(binding.editView)
         alert(titleResource = R.string.ai_tavily_api_key) {
             customView { binding.root }
             okButton {
@@ -1274,6 +1372,8 @@ class AiConfigFragment : PreferenceFragment(),
             !chapterPurifyReuseCurrentModel
         findPreference<Preference>(PreferKey.aiChapterPurifyPrompt)?.summary =
             getString(R.string.ai_chapter_purify_prompt_summary)
+        findPreference<Preference>(PreferKey.aiChapterPurifyPreprocess)?.summary =
+            getString(R.string.ai_chapter_purify_preprocess_summary)
         findPreference<Preference>(PreferKey.aiChapterPurifyChapterCount)?.summary =
             getString(R.string.ai_chapter_purify_chapter_count_summary, AiChapterPurifyConfig.chapterCount)
         findPreference<Preference>(PreferKey.aiChapterPurifySegmentLimit)?.summary =

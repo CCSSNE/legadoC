@@ -33,7 +33,8 @@ object AiStructuredRequestTemplate {
           },
           "thinking": {
             "type": "disabled"
-          }
+          },
+          "reasoning_effort": "low"
         }
     """.trimIndent()
 

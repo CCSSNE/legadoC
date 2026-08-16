@@ -88,6 +88,7 @@ object AiChatService {
         val temperature: Double? = null,
         val responseFormat: String? = null,
         val thinkingType: String? = null,
+        val reasoningEffort: String? = null,
         val requestTemplate: String? = null
     )
 
@@ -178,6 +179,7 @@ object AiChatService {
                     temperature = temperature,
                     responseFormat = "json_object",
                     thinkingType = "disabled",
+                    reasoningEffort = "low",
                     requestTemplate = AiChapterPurifyConfig.requestTemplate
                 ),
                 logRequestBody = true
@@ -789,7 +791,11 @@ object AiChatService {
             add("Content-Type=application/json")
             add(
                 "Authorization=" +
-                    if (providerApiKey.isBlank()) "<absent>" else "Bearer <redacted>"
+                    when {
+                        providerApiKey.isBlank() -> "<absent>"
+                        AiLogConfig.apiRedactionEnabled -> "Bearer <redacted>"
+                        else -> "Bearer $providerApiKey"
+                    }
             )
             parseCustomHeaders(rawHeaders).forEach { (name, value) ->
                 add("$name=${redactHeaderValue(name, value)}")
@@ -805,6 +811,9 @@ object AiChatService {
     }
 
     private fun redactHeaderValue(name: String, value: String): String {
+        if (!AiLogConfig.apiRedactionEnabled) {
+            return value
+        }
         val normalized = name.lowercase()
         val redacted = normalized.contains("authorization") ||
             normalized.contains("api-key") ||
@@ -835,6 +844,9 @@ object AiChatService {
             }
             options.thinkingType?.let {
                 put("thinking", JSONObject().put("type", it))
+            }
+            options.reasoningEffort?.let {
+                put("reasoning_effort", it)
             }
             if (tools.isNotEmpty()) {
                 put("tools", JSONArray().apply {

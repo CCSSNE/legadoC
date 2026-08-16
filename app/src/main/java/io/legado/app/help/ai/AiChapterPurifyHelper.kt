@@ -14,7 +14,8 @@ import kotlinx.coroutines.sync.withPermit
 data class AiChapterPurifyParagraph(
     val id: Int,
     val content: String,
-    val modelContent: String = content
+    val modelContent: String = content,
+    val preprocessed: AiChapterPurifyPreprocessedParagraph? = null
 )
 
 data class AiChapterPurifyRule(
@@ -88,6 +89,13 @@ object AiChapterPurifyHelper {
 
     fun sanitizeParagraphForModel(content: String): String {
         return presentationMarkupRegex.replace(content, "")
+    }
+
+    fun prepareParagraphForModel(
+        content: String,
+        rules: List<AiChapterPurifyPreprocessRule> = AiChapterPurifyConfig.preprocessRules
+    ): AiChapterPurifyPreprocessedParagraph {
+        return AiChapterPurifyPreprocessor.apply(content, rules)
     }
 
     suspend fun generateRules(
@@ -247,11 +255,13 @@ object AiChapterPurifyHelper {
         return """
             You are a strict structured-rule generator. Do not use tools. Do not return analysis or reasoning.
             Return exactly one JSON object and no Markdown fence:
-            {"rules":[{"id":1,"type":"ad|noise|typo","old":"exact source text","new":"replacement text"}]}
-            The id must be the input paragraph number. The old field must be an exact contiguous substring
-            of that one input paragraph. Only these types are enabled: $enabledTypes.
-            For ad, old must be the entire input paragraph and new must be an empty string.
-            For typo, old and new must both contain at least two characters.
+            {"rules":[{"id":76,"type":"ad"},{"id":12,"type":"typo","old":"normalized source text","new":"replacement text"}]}
+            The id must be the input paragraph number added by the client after preprocessing.
+            Paragraph boundaries and ids are authoritative; never merge paragraphs or invent ids.
+            Only these types are enabled: $enabledTypes.
+            For ad, return only id and type. Do not return old or new. The client will remove the complete B paragraph.
+            For typo and noise, old must be an exact contiguous substring of that paragraph's normalized input,
+            and new must contain the intended replacement. The client maps old back to B before storing the rule.
             For noise, do not rewrite normal prose. Return an empty rules array when uncertain.
             Never return HTML tags, image data, base64 data, SVG markup, or click metadata as a rule.
             Those are presentation artifacts removed from the model input, not chapter text.
@@ -297,6 +307,15 @@ object AiChapterPurifyHelper {
                     "AI chapter purification rule ${index + 1} has disabled or unsupported type '$type'"
                 )
             }
+            if (type == "ad") {
+                if (rule.old != null || rule.new != null) {
+                    throw AiChapterPurifyException(
+                        "AI chapter purification ad rule ${index + 1} must return only id and type"
+                    )
+                }
+                validateRule(index + 1, type, source, "", source)
+                return@mapIndexedNotNull AiChapterPurifyRule(id, type, source, "")
+            }
             val old = rule.old ?: throw AiChapterPurifyException(
                 "AI chapter purification rule ${index + 1} has no old text"
             )
@@ -318,21 +337,19 @@ object AiChapterPurifyHelper {
                 )
                 return@mapIndexedNotNull null
             }
-            val effectiveOld = if (
-                type == "ad" &&
-                paragraph.modelContent != source &&
-                old == paragraph.modelContent
-            ) {
+            val preprocessed = paragraph.preprocessed
+                ?: throw AiChapterPurifyException(
+                    "AI chapter purification rule ${index + 1} has no C-to-B mapping"
+                )
+            val effectiveOld = preprocessed.sourceTextForModelText(old, source)
+            if (effectiveOld != old) {
                 AppLog.putAi(
                     "CHAPTER_PURIFY RULE_REHYDRATED\n" +
-                        "type=ad\n" +
+                        "type=$type\n" +
                         "id=$id\n" +
-                        "modelChars=${paragraph.modelContent.length}\n" +
-                        "sourceChars=${source.length}"
+                        "modelOldChars=${old.length}\n" +
+                        "sourceOldChars=${effectiveOld.length}"
                 )
-                source
-            } else {
-                old
             }
             validateRule(index + 1, type, effectiveOld, new, source)
             AiChapterPurifyRule(id, type, effectiveOld, new)
