@@ -151,7 +151,7 @@
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.SwitchPreference
-            android:defaultValue="true"
+            android:defaultValue="false"
             android:key="aiChapterPurifySummaryEnabled"
             android:summary="@string/ai_chapter_purify_summary_enabled_summary"
             android:title="@string/ai_chapter_purify_summary_enabled"
@@ -180,6 +180,23 @@
     </io.legado.app.lib.prefs.PreferenceCategory>
 
     <io.legado.app.lib.prefs.PreferenceCategory
+        android:title="@string/ai_advanced_settings_category"
+        app:allowDividerAbove="false"
+        app:allowDividerBelow="false"
+        app:iconSpaceReserved="false"
+        app:layout="@layout/view_preference_category">
+
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:key="aiAdvancedSettingsEnabled"
+            android:defaultValue="false"
+            android:summary="@string/ai_advanced_settings_summary"
+            android:title="@string/ai_advanced_settings"
+            app:iconSpaceReserved="false" />
+
+    </io.legado.app.lib.prefs.PreferenceCategory>
+
+    <io.legado.app.lib.prefs.PreferenceCategory
+        android:key="aiAssistantCategory"
         android:title="@string/ai_assistant"
         app:allowDividerAbove="false"
         app:allowDividerBelow="false"
@@ -234,6 +251,7 @@
     </io.legado.app.lib.prefs.PreferenceCategory>
 
     <io.legado.app.lib.prefs.PreferenceCategory
+        android:key="aiMcpCategory"
         android:title="@string/ai_mcp"
         app:allowDividerAbove="false"
         app:allowDividerBelow="false"
@@ -255,6 +273,7 @@
     </io.legado.app.lib.prefs.PreferenceCategory>
 
     <io.legado.app.lib.prefs.PreferenceCategory
+        android:key="aiWebToolsCategory"
         android:title="@string/ai_web_tools"
         app:allowDividerAbove="false"
         app:allowDividerBelow="false"
@@ -301,6 +320,7 @@
     </io.legado.app.lib.prefs.PreferenceCategory>
 
     <io.legado.app.lib.prefs.PreferenceCategory
+        android:key="aiTimeoutCategory"
         android:title="@string/ai_timeout"
         app:allowDividerAbove="false"
         app:allowDividerBelow="false"

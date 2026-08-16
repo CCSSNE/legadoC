@@ -1525,6 +1525,9 @@
     <string name="side_nav_stats">统计</string>
     <string name="ai_setting">AI 设置</string>
     <string name="ai_setting_summary">分开配置提供商和模型</string>
+    <string name="ai_advanced_settings_category">高级设置</string>
+    <string name="ai_advanced_settings">高级设置</string>
+    <string name="ai_advanced_settings_summary">显示 AI 高级选项。</string>
     <string name="ai_enable">AI 助手启用</string>
     <string name="ai_enable_summary">启用后长按搜索键进入 AI 页面</string>
     <string name="ai_enable_summary_disabled">当前提供商下有模型时才能开启</string>

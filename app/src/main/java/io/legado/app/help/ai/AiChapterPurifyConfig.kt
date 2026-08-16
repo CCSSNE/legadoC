@@ -203,7 +203,7 @@ object AiChapterPurifyConfig {
     }
 
     var summaryEnabled: Boolean
-        get() = appCtx.getPrefBoolean(PreferKey.aiChapterPurifySummaryEnabled, true)
+        get() = appCtx.getPrefBoolean(PreferKey.aiChapterPurifySummaryEnabled, false)
         set(value) = appCtx.putPrefBoolean(PreferKey.aiChapterPurifySummaryEnabled, value)
 
     var chapterCount: Int
