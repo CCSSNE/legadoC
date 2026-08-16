@@ -155,7 +155,7 @@ object AiChatService {
         return generateStructuredText(
             provider = provider,
             model = model,
-            systemPrompt = "You are a connection test endpoint. Reply with a short confirmation.",
+            systemPrompt = "You are a connection test endpoint. Reply with a short JSON confirmation, such as {\"ok\":true}.",
             userContent = "ping"
         )
     }
