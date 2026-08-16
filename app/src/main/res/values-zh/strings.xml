@@ -1567,7 +1567,7 @@
     <string name="ai_api_key">API Key</string>
     <string name="ai_api_key_summary">用于 Authorization 鉴权</string>
     <string name="ai_custom_headers">自定义请求头</string>
-    <string name="ai_web_tools">联网工具</string>
+    <string name="ai_web_tools">AI 联网工具</string>
     <string name="ai_tavily_enable">启用 Tavily 搜索</string>
     <string name="ai_tavily_enable_summary">将 Tavily 暴露给 AI 作为实时联网搜索工具</string>
     <string name="ai_tavily_enable_summary_missing">请先填写 Tavily API Key，再启用工具</string>
@@ -1614,7 +1614,7 @@
     <string name="ai_edit_request_hint">结构化请求 JSON</string>
     <string name="ai_edit_request_invalid">请求模板无效：%s</string>
     <string name="ai_model_saved">已保存模型</string>
-    <string name="ai_chapter_purify">AI章节净化</string>
+    <string name="ai_chapter_purify">AI 章节净化</string>
     <string name="ai_connection_test">测试当前模型连接</string>
     <string name="ai_connection_test_summary">使用当前提供商和模型发送一次最小请求。</string>
     <string name="ai_connection_test_summary_missing_provider">请先选择当前 AI 提供商。</string>
@@ -1666,7 +1666,7 @@
     <string name="ai_chapter_purify_response_received">AI已返回：第%1$d章，第%2$d/%3$d批，正在校验规则…</string>
     <string name="ai_chapter_purify_rules_ready">第%1$d章返回 %2$d 条候选规则，正在应用…</string>
     <string name="ai_chapter_purify_replacement_applied">AI替换完成：新增 %1$d 条规则。</string>
-    <string name="ai_mcp">MCP 服务器</string>
+    <string name="ai_mcp">AI MCP 服务器</string>
     <string name="ai_add_mcp_server">添加 MCP 服务器</string>
     <string name="ai_add_mcp_server_summary">添加 Streamable HTTP MCP 接口</string>
     <string name="ai_manage_mcp_servers">管理 MCP 服务器</string>
