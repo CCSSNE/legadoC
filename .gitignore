@@ -30,3 +30,4 @@ __pycache__/
 tools/android-dev/bin/
 test-records/android-dev/
 .dsh-vision-toolkit/
+.dsh/
