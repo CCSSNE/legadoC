@@ -70,6 +70,8 @@ object PreferKey {
     const val aiSkillList = "aiSkillList"
     const val aiShowToolSummary = "aiShowToolSummary"
     const val aiRequestTemplate = "aiRequestTemplate"
+    const val aiSseIdleTimeoutSeconds = "aiSseIdleTimeoutSeconds"
+    const val aiGenerationTimeoutSeconds = "aiGenerationTimeoutSeconds"
     const val aiChapterPurifyReuseCurrentModel = "aiChapterPurifyReuseCurrentModel"
     const val aiChapterPurifyProvider = "aiChapterPurifyProvider"
     const val aiChapterPurifyModel = "aiChapterPurifyModel"

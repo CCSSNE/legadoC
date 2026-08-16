@@ -18,6 +18,7 @@ import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.ai.AiChapterPurifyConfig
 import io.legado.app.help.ai.AiChatService
 import io.legado.app.help.ai.AiLogExporter
+import io.legado.app.help.ai.AiRequestTimeoutConfig
 import io.legado.app.help.ai.AiStructuredRequestTemplate
 import io.legado.app.help.ai.AiToolRegistry
 import io.legado.app.help.config.AppConfig
@@ -61,14 +62,6 @@ class AiConfigFragment : PreferenceFragment(),
         "https://raw.githubusercontent.com/DandanLLab/legadoSkill/main/SKILL.md"
     )
 
-    override fun observeLiveBus() {
-        super.observeLiveBus()
-        observeEvent<Int>(EventBus.AI_LOGS_CHANGED) { count ->
-            findPreference<Preference>("aiLogs")?.summary =
-                getString(R.string.ai_log_summary, count)
-        }
-    }
-
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         addPreferencesFromResource(R.xml.pref_config_ai)
         refreshUi()
@@ -79,6 +72,10 @@ class AiConfigFragment : PreferenceFragment(),
         activity?.setTitle(R.string.ai_setting)
         preferenceManager.sharedPreferences?.registerOnSharedPreferenceChangeListener(this)
         listView.setEdgeEffectColor(primaryColor)
+        observeEvent<Int>(EventBus.AI_LOGS_CHANGED) { count ->
+            findPreference<Preference>("aiLogs")?.summary =
+                getString(R.string.ai_log_summary, count)
+        }
     }
 
     override fun onDestroy() {
@@ -95,6 +92,18 @@ class AiConfigFragment : PreferenceFragment(),
             "aiFetchModels" -> fetchModelsFromCurrentProvider(showSelector = true)
             "aiManageModels" -> showManageModelsDialog()
             "aiEditRequest" -> showEditRequestDialog()
+            "aiSseIdleTimeoutSeconds" -> showChapterPurifyIntDialog(
+                R.string.ai_sse_idle_timeout,
+                AiRequestTimeoutConfig.sseIdleTimeoutSeconds,
+                AiRequestTimeoutConfig.MIN_SSE_IDLE_TIMEOUT_SECONDS,
+                AiRequestTimeoutConfig.MAX_SSE_IDLE_TIMEOUT_SECONDS
+            ) { AiRequestTimeoutConfig.sseIdleTimeoutSeconds = it }
+            "aiGenerationTimeoutSeconds" -> showChapterPurifyIntDialog(
+                R.string.ai_generation_timeout,
+                AiRequestTimeoutConfig.generationTimeoutSeconds,
+                AiRequestTimeoutConfig.MIN_GENERATION_TIMEOUT_SECONDS,
+                AiRequestTimeoutConfig.MAX_GENERATION_TIMEOUT_SECONDS
+            ) { AiRequestTimeoutConfig.generationTimeoutSeconds = it }
             "aiLogs" -> showDialogFragment<AiLogDialog>()
             "aiExportLogs" -> exportAiLogs()
             "aiAddMcpServer" -> showEditMcpServerDialog()
@@ -141,7 +150,11 @@ class AiConfigFragment : PreferenceFragment(),
     }
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
-        if (key == PreferKey.aiAssistantEnabled || key == PreferKey.aiChapterPurifyReuseCurrentModel) {
+        if (key == PreferKey.aiAssistantEnabled ||
+            key == PreferKey.aiChapterPurifyReuseCurrentModel ||
+            key == PreferKey.aiSseIdleTimeoutSeconds ||
+            key == PreferKey.aiGenerationTimeoutSeconds
+        ) {
             refreshUi(notifyMain = true)
         }
     }
@@ -1173,6 +1186,16 @@ class AiConfigFragment : PreferenceFragment(),
             }
         findPreference<Preference>("aiEditRequest")?.summary =
             getString(R.string.ai_edit_request_summary)
+        findPreference<Preference>("aiSseIdleTimeoutSeconds")?.summary =
+            getString(
+                R.string.ai_sse_idle_timeout_summary,
+                AiRequestTimeoutConfig.sseIdleTimeoutSeconds
+            )
+        findPreference<Preference>("aiGenerationTimeoutSeconds")?.summary =
+            getString(
+                R.string.ai_generation_timeout_summary,
+                AiRequestTimeoutConfig.generationTimeoutSeconds
+            )
         findPreference<Preference>("aiLogs")?.summary =
             getString(R.string.ai_log_summary, AppLog.aiLogs.size)
         val currentModelId = AppConfig.aiCurrentModelConfig?.modelId?.trim().orEmpty()

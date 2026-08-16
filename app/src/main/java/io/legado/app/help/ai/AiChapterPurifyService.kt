@@ -34,6 +34,9 @@ object AiChapterPurifyService {
         require(chapterCount >= AiChapterPurifyConfig.MIN_CHAPTER_COUNT) {
             "AI chapter purification chapter count must be positive"
         }
+        check(book.getUseReplaceRule()) {
+            "AI chapter purification requires ordinary purification replacement to be enabled"
+        }
         AppLog.putAi(
             "CHAPTER_PURIFY TRIGGER\n" +
                 "book=${book.name}\n" +
@@ -68,28 +71,18 @@ object AiChapterPurifyService {
                 return@forEach
             }
             inspected++
-            val fingerprint = cachedContent.sha256()
-            val existingRecord = appDb.aiChapterPurifyRecordDao.get(book.bookUrl, chapter.index)
-            if (!force &&
-                existingRecord?.contentFingerprint == fingerprint &&
-                existingRecord.state == AiChapterPurifyRecord.STATE_COMPLETED
-            ) {
-                skippedCompleted++
-                AppLog.putAi(
-                    "CHAPTER_PURIFY SKIP_COMPLETED chapter=${chapter.index + 1}\n" +
-                        "fingerprint=$fingerprint\n" +
-                        "recordRuleCount=${existingRecord.ruleCount}"
-                )
-                return@forEach
-            }
+            val rawFingerprint = cachedContent.sha256()
+            var fingerprint = rawFingerprint
             try {
-                val paragraphs = ContentProcessor.get(book).getContent(
+                val contentProcessor = ContentProcessor.get(book)
+                val processedContent = contentProcessor.getContent(
                     book = book,
                     chapter = chapter,
                     content = cachedContent,
                     includeTitle = false,
-                    useReplace = false
-                ).textList.mapIndexedNotNull { index, content ->
+                    useReplace = true
+                )
+                val paragraphs = processedContent.textList.mapIndexedNotNull { index, content ->
                     val normalized = content.trim()
                     normalized.takeIf { it.isNotEmpty() }?.let {
                         val modelContent = AiChapterPurifyHelper.sanitizeParagraphForModel(it)
@@ -110,13 +103,38 @@ object AiChapterPurifyService {
                         "AI chapter purification chapter ${chapter.index + 1} has no usable cached paragraphs"
                     )
                 }
+                fingerprint = paragraphs
+                    .joinToString("\n") { "${it.id}\u0000${it.modelContent}" }
+                    .sha256()
+                val existingRecord = appDb.aiChapterPurifyRecordDao.get(book.bookUrl, chapter.index)
+                if (!force &&
+                    existingRecord?.contentFingerprint == fingerprint &&
+                    existingRecord.state == AiChapterPurifyRecord.STATE_COMPLETED
+                ) {
+                    skippedCompleted++
+                    AppLog.putAi(
+                        "CHAPTER_PURIFY SKIP_COMPLETED chapter=${chapter.index + 1}\n" +
+                            "rawFingerprint=$rawFingerprint\n" +
+                            "inputFingerprint=$fingerprint\n" +
+                            "existingRuleCount=${contentProcessor.getContentReplaceRules().size}\n" +
+                            "effectiveRuleCount=${processedContent.effectiveReplaceRules?.size ?: 0}\n" +
+                            "recordRuleCount=${existingRecord.ruleCount}"
+                    )
+                    return@forEach
+                }
                 AppLog.putAi(
                     "CHAPTER_PURIFY CHAPTER_PREPARED chapter=${chapter.index + 1}\n" +
-                        "fingerprint=$fingerprint\n" +
+                        "rawFingerprint=$rawFingerprint\n" +
+                        "inputFingerprint=$fingerprint\n" +
+                        "rawChars=${cachedContent.length}\n" +
+                        "processedChars=${processedContent.toString().length}\n" +
                         "paragraphCount=${paragraphs.size}\n" +
                         "paragraphChars=${paragraphs.sumOf { it.content.length }}\n" +
                         "modelParagraphChars=${paragraphs.sumOf { it.modelContent.length }}\n" +
-                        "presentationCharsRemoved=${paragraphs.sumOf { it.content.length - it.modelContent.length }}"
+                        "presentationCharsRemoved=${paragraphs.sumOf { it.content.length - it.modelContent.length }}\n" +
+                        "existingRuleCount=${contentProcessor.getContentReplaceRules().size}\n" +
+                        "effectiveRuleCount=${processedContent.effectiveReplaceRules?.size ?: 0}\n" +
+                        "rulesAppliedBeforeAi=true"
                 )
                 val rules = AiChapterPurifyHelper.generateRules(
                     paragraphs = paragraphs,
@@ -173,7 +191,8 @@ object AiChapterPurifyService {
                 )
                 AppLog.putAi(
                     "CHAPTER_PURIFY CHAPTER_FAILED chapter=${chapter.index + 1}\n" +
-                        "fingerprint=$fingerprint",
+                        "rawFingerprint=$rawFingerprint\n" +
+                        "inputFingerprint=$fingerprint",
                     failure
                 )
                 try {

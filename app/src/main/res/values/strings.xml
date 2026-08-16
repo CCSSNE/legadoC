@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="ai_sse_idle_timeout">SSE idle timeout</string>
+    <string name="ai_sse_idle_timeout_summary">Fail when no SSE data arrives for %1$d seconds. Active streams continue.</string>
+    <string name="ai_generation_timeout">AI generation timeout</string>
+    <string name="ai_generation_timeout_summary">Maximum time for one AI response after headers: %1$d seconds.</string>
+    <string name="ai_chapter_purify_stream_phase_thinking">thinking</string>
+    <string name="ai_chapter_purify_stream_phase_output">output</string>
+    <string name="ai_chapter_purify_stream_phase_activity">working</string>
+    <string name="ai_chapter_purify_stream_progress">Chapter %1$d batch %2$d/%3$d: %4$s, %5$s tokens, %6$.1f tok/s, elapsed %7$ds</string>
     <!--App-->
     <string name="app_name">阅读 C</string>
     <string name="app_name_a">阅读R·A</string>

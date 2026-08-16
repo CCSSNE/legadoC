@@ -1,5 +1,6 @@
 package io.legado.app.help.ai
 
+import android.os.SystemClock
 import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.help.config.AppConfig
@@ -11,11 +12,33 @@ import io.legado.app.ui.main.ai.AiChatException
 import io.legado.app.ui.main.ai.AiChatMessage
 import io.legado.app.ui.main.ai.AiProviderConfig
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 import okhttp3.Headers
 import org.json.JSONArray
 import org.json.JSONObject
 import splitties.init.appCtx
+import java.io.InterruptedIOException
+import java.net.SocketTimeoutException
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.TimeUnit
+
+data class AiStreamProgress(
+    val phase: Phase,
+    val elapsedMs: Long,
+    val outputTokens: Int,
+    val outputTokensEstimated: Boolean,
+    val tokensPerSecond: Double,
+    val reasoningChars: Int,
+    val contentChars: Int,
+    val sseGapMs: Long = 0L
+) {
+    enum class Phase {
+        THINKING,
+        OUTPUT,
+        ACTIVITY
+    }
+}
 
 object AiChatService {
 
@@ -114,7 +137,8 @@ object AiChatService {
         systemPrompt: String,
         userContent: String,
         temperature: Double = 0.0,
-        onRequestAccepted: suspend () -> Unit = {}
+        onRequestAccepted: suspend () -> Unit = {},
+        onStreamProgress: suspend (AiStreamProgress) -> Unit = {}
     ): String {
         val baseUrl = provider.baseUrl.trim()
         require(baseUrl.isNotBlank()) { "Base URL is empty" }
@@ -149,6 +173,7 @@ object AiChatService {
                 onPartial = {},
                 onThinking = {},
                 onRequestAccepted = onRequestAccepted,
+                onStreamProgress = onStreamProgress,
                 options = CompletionRequestOptions(
                     temperature = temperature,
                     responseFormat = "json_object",
@@ -268,7 +293,8 @@ object AiChatService {
         onPartial: (String) -> Unit,
         onThinking: (String) -> Unit,
         onStatus: (JSONObject) -> Unit,
-        includeStructuredBlocks: Boolean
+        includeStructuredBlocks: Boolean,
+        onStreamProgress: suspend (AiStreamProgress) -> Unit = {}
     ): String {
         val toolMap = tools.associateBy { it.name }
         val searchResultCards = JSONArray()
@@ -284,7 +310,8 @@ object AiChatService {
                 requestLog = requestLog,
                 round = round + 1,
                 onPartial = onPartial,
-                onThinking = onThinking
+                onThinking = onThinking,
+                onStreamProgress = onStreamProgress
             )
             conversation += assistantTurn.rawMessage
             if (assistantTurn.toolCalls.isEmpty()) {
@@ -372,7 +399,8 @@ object AiChatService {
             requestLog = requestLog,
             round = MAX_TOOL_ROUNDS + 1,
             onPartial = onPartial,
-            onThinking = onThinking
+            onThinking = onThinking,
+            onStreamProgress = onStreamProgress
         )
         if (finalTurn.content.isBlank()) {
             throw AiChatException(
@@ -485,6 +513,7 @@ object AiChatService {
         onPartial: (String) -> Unit,
         onThinking: (String) -> Unit,
         onRequestAccepted: suspend () -> Unit = {},
+        onStreamProgress: suspend (AiStreamProgress) -> Unit = {},
         options: CompletionRequestOptions = CompletionRequestOptions(),
         logRequestBody: Boolean = true
     ): AssistantTurn {
@@ -516,7 +545,12 @@ object AiChatService {
             )
             throw throwable
         }
+        val idleTimeoutSeconds = AiRequestTimeoutConfig.sseIdleTimeoutSeconds
+        val generationTimeoutSeconds = AiRequestTimeoutConfig.generationTimeoutSeconds
+        val generationTimeoutMs = generationTimeoutSeconds * 1_000L
         requestLog.append("round=").append(round).append('\n')
+        requestLog.append("sseIdleTimeoutSeconds=").append(idleTimeoutSeconds).append('\n')
+        requestLog.append("generationTimeoutSeconds=").append(generationTimeoutSeconds).append('\n')
         if (logRequestBody) {
             requestLog.append("request=").append(requestBody).append('\n')
         }
@@ -529,18 +563,33 @@ object AiChatService {
                 "requestBody=$requestBody\n" +
                 "requestLog=$requestLog"
         )
+        val requestClient = okHttpClient.newBuilder()
+            .readTimeout(idleTimeoutSeconds.toLong(), TimeUnit.SECONDS)
+            .callTimeout(0, TimeUnit.MILLISECONDS)
+            .build()
         val response = try {
-            okHttpClient.newCallResponse {
-                url(requestUrl)
-                addHeader("Accept", "text/event-stream, application/json")
-                addHeader("Content-Type", "application/json")
-                providerApiKey.trim().takeIf { it.isNotBlank() }?.let {
-                    addHeader("Authorization", "Bearer $it")
+            withTimeout(generationTimeoutMs) {
+                requestClient.newCallResponse {
+                    url(requestUrl)
+                    addHeader("Accept", "text/event-stream, application/json")
+                    addHeader("Content-Type", "application/json")
+                    providerApiKey.trim().takeIf { it.isNotBlank() }?.let {
+                        addHeader("Authorization", "Bearer $it")
+                    }
+                    addHeaders(parseCustomHeaders(providerHeaders))
+                    postJson(requestBody)
                 }
-                addHeaders(parseCustomHeaders(providerHeaders))
-                postJson(requestBody)
             }
         } catch (throwable: Throwable) {
+            val failure = if (throwable is TimeoutCancellationException) {
+                AiChatException(
+                    message = "AI response timeout before headers after ${generationTimeoutSeconds}s",
+                    debugLog = requestLog.toString(),
+                    cause = throwable
+                )
+            } else {
+                throwable
+            }
             AppLog.putAi(
                 "HTTP REQUEST FAILED\n" +
                     "requestId=$requestId\n" +
@@ -548,9 +597,9 @@ object AiChatService {
                     "headers=$requestHeaders\n" +
                     "requestBody=$requestBody\n" +
                     "requestLog=$requestLog",
-                throwable
+                failure
             )
-            throw throwable
+            throw failure
         }
         return try {
             response.use { rawResponse ->
@@ -564,6 +613,8 @@ object AiChatService {
                     "url=$requestUrl\n" +
                     "status=${rawResponse.code} ${rawResponse.message}\n" +
                     "contentType=$responseContentType\n" +
+                    "sseIdleTimeoutSeconds=$idleTimeoutSeconds\n" +
+                    "generationTimeoutSeconds=$generationTimeoutSeconds\n" +
                     "headers=$responseHeaders"
             )
             val body = rawResponse.body ?: throw AiChatException(
@@ -591,24 +642,95 @@ object AiChatService {
                 )
             }
             onRequestAccepted()
+            val streamStartedAt = SystemClock.elapsedRealtime()
             val rendered = StringBuilder()
             val rawRendered = StringBuilder()
             val reasoningRendered = StringBuilder()
             val rawPayload = StringBuilder()
             val toolCallBuilders = linkedMapOf<Int, ToolCallBuilder>()
-            body.byteStream().bufferedReader().use { reader ->
-                while (true) {
-                    val rawLine = reader.readLine()?.trim() ?: break
-                    if (rawLine.isEmpty()) continue
-                    rawPayload.append(rawLine).append('\n')
-                    if (rawLine.startsWith("data:")) {
-                        val payload = rawLine.removePrefix("data:").trim()
-                        if (payload == "[DONE]") break
-                        consumeStreamPayload(payload, rawRendered, rendered, reasoningRendered, toolCallBuilders, onPartial, onThinking)
-                    } else if (rawLine.startsWith("{")) {
-                        consumeStreamPayload(rawLine, rawRendered, rendered, reasoningRendered, toolCallBuilders, onPartial, onThinking)
+            var latestProgress: AiStreamProgress? = null
+            var lastProgressLogAt = Long.MIN_VALUE
+            var lastStreamEventAt = streamStartedAt
+            try {
+                withTimeout(generationTimeoutMs) {
+                    body.byteStream().bufferedReader().use { reader ->
+                        while (true) {
+                            val rawLine = reader.readLine()?.trim() ?: break
+                            if (rawLine.isEmpty()) continue
+                            rawPayload.append(rawLine).append('\n')
+                            val payload = when {
+                                rawLine.startsWith("data:") -> rawLine.removePrefix("data:").trim()
+                                rawLine.startsWith("{") -> rawLine
+                                else -> continue
+                            }
+                            if (payload == "[DONE]") break
+                            consumeStreamPayload(
+                                payload = payload,
+                                rawRendered = rawRendered,
+                                rendered = rendered,
+                                reasoningRendered = reasoningRendered,
+                                toolCallBuilders = toolCallBuilders,
+                                onPartial = onPartial,
+                                onThinking = onThinking,
+                                streamStartedAt = streamStartedAt,
+                                onStreamProgress = { progress ->
+                                    val now = SystemClock.elapsedRealtime()
+                                    val enrichedProgress = progress.copy(
+                                        sseGapMs = (now - lastStreamEventAt).coerceAtLeast(0L)
+                                    )
+                                    lastStreamEventAt = now
+                                    latestProgress = enrichedProgress
+                                    if (lastProgressLogAt == Long.MIN_VALUE || now - lastProgressLogAt >= 1_000L) {
+                                        lastProgressLogAt = now
+                                        AppLog.putAi(
+                                            "HTTP RESPONSE PROGRESS\n" +
+                                                "requestId=$requestId\n" +
+                                                "phase=${enrichedProgress.phase}\n" +
+                                                "elapsedMs=${enrichedProgress.elapsedMs}\n" +
+                                                "outputTokens=${enrichedProgress.outputTokens}\n" +
+                                                "outputTokensEstimated=${enrichedProgress.outputTokensEstimated}\n" +
+                                                "tokensPerSecond=${enrichedProgress.tokensPerSecond}\n" +
+                                                "reasoningChars=${enrichedProgress.reasoningChars}\n" +
+                                                "contentChars=${enrichedProgress.contentChars}\n" +
+                                                "sseGapMs=${enrichedProgress.sseGapMs}"
+                                        )
+                                    }
+                                    onStreamProgress(enrichedProgress)
+                                }
+                            )
+                        }
                     }
                 }
+            } catch (throwable: Throwable) {
+                val failure = when {
+                    throwable is TimeoutCancellationException -> AiChatException(
+                        message = "AI generation timeout after ${generationTimeoutSeconds}s",
+                        debugLog = requestLog.append(
+                            "streamTimeout=GENERATION\n" +
+                                "generationTimeoutSeconds=$generationTimeoutSeconds\n" +
+                                "sseIdleTimeoutSeconds=$idleTimeoutSeconds\n" +
+                                "lastEventElapsedMs=${latestProgress?.elapsedMs ?: 0L}\n" +
+                                "idleForMs=${(SystemClock.elapsedRealtime() - streamStartedAt) - (latestProgress?.elapsedMs ?: 0L)}\n" +
+                                "lastProgress=$latestProgress\n"
+                        ).toString(),
+                        cause = throwable
+                    )
+                    throwable is SocketTimeoutException || throwable is InterruptedIOException ->
+                        AiChatException(
+                            message = "SSE idle timeout after ${idleTimeoutSeconds}s without data",
+                            debugLog = requestLog.append(
+                                "streamTimeout=SSE_IDLE\n" +
+                                    "generationTimeoutSeconds=$generationTimeoutSeconds\n" +
+                                    "sseIdleTimeoutSeconds=$idleTimeoutSeconds\n" +
+                                    "lastEventElapsedMs=${latestProgress?.elapsedMs ?: 0L}\n" +
+                                    "idleForMs=${(SystemClock.elapsedRealtime() - streamStartedAt) - (latestProgress?.elapsedMs ?: 0L)}\n" +
+                                    "lastProgress=$latestProgress\n"
+                            ).toString(),
+                            cause = throwable
+                        )
+                    else -> throwable
+                }
+                throw failure
             }
             requestLog.append("response=").append(rawPayload).append('\n')
             AppLog.putAi(
@@ -723,21 +845,23 @@ object AiChatService {
         }.toString()
     }
 
-    private fun consumeStreamPayload(
+    private suspend fun consumeStreamPayload(
         payload: String,
         rawRendered: StringBuilder,
         rendered: StringBuilder,
         reasoningRendered: StringBuilder,
         toolCallBuilders: MutableMap<Int, ToolCallBuilder>,
         onPartial: (String) -> Unit,
-        onThinking: (String) -> Unit
+        onThinking: (String) -> Unit,
+        streamStartedAt: Long,
+        onStreamProgress: suspend (AiStreamProgress) -> Unit
     ) {
         extractError(payload).takeIf { it.isNotBlank() }?.let {
             throw IllegalStateException(it)
         }
         val root = JSONObject(payload)
-        val choice = root.optJSONArray("choices")?.optJSONObject(0) ?: return
-        val delta = choice.optJSONObject("delta") ?: choice.optJSONObject("message") ?: return
+        val choice = root.optJSONArray("choices")?.optJSONObject(0)
+        val delta = choice?.optJSONObject("delta") ?: choice?.optJSONObject("message") ?: JSONObject()
         val reasoningText = extractContentText(delta.opt("reasoning_content"))
             .ifBlank { extractContentText(delta.opt("reasoning")) }
             .ifBlank { extractContentText(delta.opt("thinking")) }
@@ -755,20 +879,48 @@ object AiChatService {
                 onPartial(visibleText)
             }
         }
-        val toolCalls = delta.optJSONArray("tool_calls") ?: return
-        for (i in 0 until toolCalls.length()) {
-            val toolCall = toolCalls.optJSONObject(i) ?: continue
-            val index = toolCall.optInt("index", i)
-            val builder = toolCallBuilders.getOrPut(index) { ToolCallBuilder() }
-            toolCall.optString("id").takeIf { it.isNotBlank() }?.let { builder.id = it }
-            val function = toolCall.optJSONObject("function") ?: continue
-            function.optString("name").takeIf { it.isNotBlank() }?.let { builder.name = it }
-            val args = function.opt("arguments")
-            when (args) {
-                is String -> builder.arguments.append(args)
-                is JSONObject, is JSONArray -> builder.arguments.append(args.toString())
+        val toolCalls = delta.optJSONArray("tool_calls")
+        if (toolCalls != null) {
+            for (i in 0 until toolCalls.length()) {
+                val toolCall = toolCalls.optJSONObject(i) ?: continue
+                val index = toolCall.optInt("index", i)
+                val builder = toolCallBuilders.getOrPut(index) { ToolCallBuilder() }
+                toolCall.optString("id").takeIf { it.isNotBlank() }?.let { builder.id = it }
+                val function = toolCall.optJSONObject("function") ?: continue
+                function.optString("name").takeIf { it.isNotBlank() }?.let { builder.name = it }
+                val args = function.opt("arguments")
+                when (args) {
+                    is String -> builder.arguments.append(args)
+                    is JSONObject, is JSONArray -> builder.arguments.append(args.toString())
+                }
             }
         }
+        val reportedTokens = root.optJSONObject("usage")
+            ?.optInt("completion_tokens", -1)
+            ?.takeIf { it >= 0 }
+        val outputChars = reasoningRendered.length + rendered.length
+        val outputTokens = reportedTokens ?: estimateOutputTokens(outputChars)
+        val elapsedMs = (SystemClock.elapsedRealtime() - streamStartedAt).coerceAtLeast(1L)
+        val phase = when {
+            reasoningText.isNotBlank() -> AiStreamProgress.Phase.THINKING
+            deltaText.isNotBlank() -> AiStreamProgress.Phase.OUTPUT
+            else -> AiStreamProgress.Phase.ACTIVITY
+        }
+        onStreamProgress(
+            AiStreamProgress(
+                phase = phase,
+                elapsedMs = elapsedMs,
+                outputTokens = outputTokens,
+                outputTokensEstimated = reportedTokens == null,
+                tokensPerSecond = outputTokens * 1_000.0 / elapsedMs,
+                reasoningChars = reasoningRendered.length,
+                contentChars = rendered.length
+            )
+        )
+    }
+
+    private fun estimateOutputTokens(outputChars: Int): Int {
+        return ((outputChars + 3) / 4).coerceAtLeast(0)
     }
 
     private fun buildAssistantRawMessage(

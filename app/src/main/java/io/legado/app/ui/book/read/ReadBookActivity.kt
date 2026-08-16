@@ -7,6 +7,7 @@ import android.graphics.Rect
 import android.os.Build
 import android.os.Bundle
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
 import android.view.Gravity
 import android.view.InputDevice
@@ -251,6 +252,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     private var backupJob: Job? = null
     private var aiChapterPurifyJob: Job? = null
     private var aiChapterPurifySummarySnackbar: Snackbar? = null
+    private var aiChapterPurifyLastStreamSnackbarAt = 0L
     private var aiChapterPurifyPendingChapterIndex: Int? = null
     private var aiChapterPurifyPendingForce = false
     private var aiChapterPurifyRefreshChapterIndex: Int? = null
@@ -2488,6 +2490,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         aiChapterPurifyJob = null
         aiChapterPurifySummarySnackbar?.dismiss()
         aiChapterPurifySummarySnackbar = null
+        aiChapterPurifyLastStreamSnackbarAt = 0L
         aiChapterPurifyPendingChapterIndex = null
         aiChapterPurifyPendingForce = false
         aiChapterPurifyRefreshChapterIndex = null
@@ -2495,6 +2498,11 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     private fun showAiChapterPurifyProgress(progress: AiChapterPurifyProgress) {
         if (!AiChapterPurifyConfig.summaryEnabled) return
+        if (progress is AiChapterPurifyProgress.StreamProgress) {
+            val now = SystemClock.elapsedRealtime()
+            if (now - aiChapterPurifyLastStreamSnackbarAt < 500L) return
+            aiChapterPurifyLastStreamSnackbarAt = now
+        }
         val message = when (progress) {
             is AiChapterPurifyProgress.RequestAccepted -> getString(
                 R.string.ai_chapter_purify_request_accepted,
@@ -2510,6 +2518,34 @@ class ReadBookActivity : BaseReadBookActivity(),
                 progress.chunkIndex,
                 progress.totalChunks
             )
+
+            is AiChapterPurifyProgress.StreamProgress -> {
+                val phase = getString(
+                    when (progress.progress.phase) {
+                        io.legado.app.help.ai.AiStreamProgress.Phase.THINKING ->
+                            R.string.ai_chapter_purify_stream_phase_thinking
+                        io.legado.app.help.ai.AiStreamProgress.Phase.OUTPUT ->
+                            R.string.ai_chapter_purify_stream_phase_output
+                        io.legado.app.help.ai.AiStreamProgress.Phase.ACTIVITY ->
+                            R.string.ai_chapter_purify_stream_phase_activity
+                    }
+                )
+                val tokenText = if (progress.progress.outputTokensEstimated) {
+                    "~${progress.progress.outputTokens}"
+                } else {
+                    progress.progress.outputTokens.toString()
+                }
+                getString(
+                    R.string.ai_chapter_purify_stream_progress,
+                    progress.chapterIndex + 1,
+                    progress.chunkIndex,
+                    progress.totalChunks,
+                    phase,
+                    tokenText,
+                    progress.progress.tokensPerSecond,
+                    progress.progress.elapsedMs / 1_000
+                )
+            }
 
             is AiChapterPurifyProgress.ChapterRulesStored -> getString(
                 R.string.ai_chapter_purify_rules_ready,

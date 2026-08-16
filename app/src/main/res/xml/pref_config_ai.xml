@@ -126,6 +126,16 @@
             android:title="@string/ai_edit_request"
             app:iconSpaceReserved="false" />
 
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiSseIdleTimeoutSeconds"
+            android:title="@string/ai_sse_idle_timeout"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiGenerationTimeoutSeconds"
+            android:title="@string/ai_generation_timeout"
+            app:iconSpaceReserved="false" />
+
     </io.legado.app.lib.prefs.PreferenceCategory>
 
     <io.legado.app.lib.prefs.PreferenceCategory

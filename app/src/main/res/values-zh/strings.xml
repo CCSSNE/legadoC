@@ -1,4 +1,12 @@
 <resources>
+    <string name="ai_sse_idle_timeout">SSE 空闲超时</string>
+    <string name="ai_sse_idle_timeout_summary">连续 %1$d 秒没有收到 SSE 数据才失败；持续输出不会超时。</string>
+    <string name="ai_generation_timeout">AI 生成超时</string>
+    <string name="ai_generation_timeout_summary">收到响应头后，单次 AI 生成最多持续 %1$d 秒。</string>
+    <string name="ai_chapter_purify_stream_phase_thinking">思考中</string>
+    <string name="ai_chapter_purify_stream_phase_output">输出中</string>
+    <string name="ai_chapter_purify_stream_phase_activity">处理中</string>
+    <string name="ai_chapter_purify_stream_progress">第 %1$d 章 批次 %2$d/%3$d：%4$s，%5$s tokens，%6$.1f tok/s，已用 %7$d 秒</string>
     <!--App-->
     <string name="app_name">阅读 C</string>
     <string name="app_name_a">阅读R·A</string>

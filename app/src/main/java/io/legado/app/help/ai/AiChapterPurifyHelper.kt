@@ -48,6 +48,14 @@ sealed interface AiChapterPurifyProgress {
         val totalChunks: Int
     ) : AiChapterPurifyProgress
 
+    data class StreamProgress(
+        val chapterIndex: Int,
+        val chunkIndex: Int,
+        val totalChunks: Int,
+        val attempt: Int,
+        val progress: AiStreamProgress
+    ) : AiChapterPurifyProgress
+
     data class ChapterRulesStored(
         val chapterIndex: Int,
         val candidateRules: Int,
@@ -168,6 +176,17 @@ object AiChapterPurifyHelper {
                                 attempt = attempt + 1
                             )
                         )
+                    },
+                    onStreamProgress = { progress ->
+                        onProgress(
+                            AiChapterPurifyProgress.StreamProgress(
+                                chapterIndex = chapterIndex,
+                                chunkIndex = chunkIndex,
+                                totalChunks = totalChunks,
+                                attempt = attempt + 1,
+                                progress = progress
+                            )
+                        )
                     }
                 )
                 onProgress(
@@ -208,9 +227,13 @@ object AiChapterPurifyHelper {
                 "attempts=${AiChapterPurifyConfig.retryCount + 1}",
             lastFailure
         )
+        val causeMessage = lastFailure?.message
+            ?.takeIf { it.isNotBlank() }
+            ?: lastFailure?.javaClass?.simpleName
+            ?: "unknown failure"
         throw AiChapterPurifyException(
             message = "AI chapter purification batch $chunkIndex failed after " +
-                "${AiChapterPurifyConfig.retryCount + 1} attempt(s)",
+                "${AiChapterPurifyConfig.retryCount + 1} attempt(s): $causeMessage",
             cause = lastFailure
         )
     }
