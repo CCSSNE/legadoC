@@ -230,7 +230,7 @@ object AiChatService {
             val response = generateStructuredText(
                 provider = provider,
                 model = model,
-                systemPrompt = "You are a connection test endpoint. Reply with a short JSON confirmation, such as {\"ok\":true}.",
+                systemPrompt = "ping",
                 userContent = "ping",
                 requestTemplate = requestTemplate
             )
@@ -289,7 +289,8 @@ object AiChatService {
                 onPartial = onPartial,
                 onThinking = onThinking,
                 onStatus = onStatus,
-                includeStructuredBlocks = includeStructuredBlocks
+                includeStructuredBlocks = includeStructuredBlocks,
+                requestTemplate = AiChapterPurifyConfig.requestTemplate
             )
         }.getOrElse { throwable ->
             if (throwable is AiChatException) {
@@ -315,6 +316,7 @@ object AiChatService {
         onThinking: (String) -> Unit,
         onStatus: (JSONObject) -> Unit,
         includeStructuredBlocks: Boolean,
+        requestTemplate: String,
         onStreamProgress: suspend (AiStreamProgress) -> Unit = {}
     ): String {
         val toolMap = tools.associateBy { it.name }
@@ -332,7 +334,8 @@ object AiChatService {
                 round = round + 1,
                 onPartial = onPartial,
                 onThinking = onThinking,
-                onStreamProgress = onStreamProgress
+                onStreamProgress = onStreamProgress,
+                options = CompletionRequestOptions(requestTemplate = requestTemplate)
             )
             conversation += assistantTurn.rawMessage
             if (assistantTurn.toolCalls.isEmpty()) {
@@ -421,7 +424,8 @@ object AiChatService {
             round = MAX_TOOL_ROUNDS + 1,
             onPartial = onPartial,
             onThinking = onThinking,
-            onStreamProgress = onStreamProgress
+            onStreamProgress = onStreamProgress,
+            options = CompletionRequestOptions(requestTemplate = requestTemplate)
         )
         if (finalTurn.content.isBlank()) {
             throw AiChatException(
@@ -606,10 +610,10 @@ object AiChatService {
                 AiStructuredRequestTemplate.render(
                     template = template,
                     model = model,
-                    systemPrompt = messages.firstOrNull { it.optString("role") == "system" }
-                        ?.optString("content")
-                        .orEmpty(),
-                    userContent = messages.firstOrNull { it.optString("role") == "user" }
+                    systemPrompt = messages
+                        .filter { it.optString("role") == "system" }
+                        .joinToString("\n\n") { it.optString("content") },
+                    userContent = messages.lastOrNull { it.optString("role") == "user" }
                         ?.optString("content")
                         .orEmpty()
                 )

@@ -48,6 +48,34 @@
     </io.legado.app.lib.prefs.PreferenceCategory>
 
     <io.legado.app.lib.prefs.PreferenceCategory
+        android:title="@string/ai_logs_category"
+        app:allowDividerAbove="false"
+        app:allowDividerBelow="false"
+        app:iconSpaceReserved="false"
+        app:layout="@layout/view_preference_category">
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiLogs"
+            android:summary="@string/ai_log_summary_empty"
+            android:title="@string/ai_log"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiExportLogs"
+            android:summary="@string/ai_log_export_summary"
+            android:title="@string/ai_log_export"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:key="aiApiRedactionEnabled"
+            android:defaultValue="true"
+            android:summary="@string/ai_api_redaction_summary"
+            android:title="@string/ai_api_redaction"
+            app:iconSpaceReserved="false" />
+
+    </io.legado.app.lib.prefs.PreferenceCategory>
+
+    <io.legado.app.lib.prefs.PreferenceCategory
         android:title="@string/ai_chapter_purify"
         app:allowDividerAbove="false"
         app:allowDividerBelow="false"
@@ -62,9 +90,9 @@
 
         <io.legado.app.lib.prefs.SwitchPreference
             android:defaultValue="true"
-            android:key="aiChapterPurifyTypoEnabled"
-            android:summary="@string/ai_chapter_purify_typo_summary"
-            android:title="@string/ai_chapter_purify_typo"
+            android:key="aiChapterPurifyAdEnabled"
+            android:summary="@string/ai_chapter_purify_ad_summary"
+            android:title="@string/ai_chapter_purify_ad"
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.SwitchPreference
@@ -76,9 +104,9 @@
 
         <io.legado.app.lib.prefs.SwitchPreference
             android:defaultValue="true"
-            android:key="aiChapterPurifyAdEnabled"
-            android:summary="@string/ai_chapter_purify_ad_summary"
-            android:title="@string/ai_chapter_purify_ad"
+            android:key="aiChapterPurifyTypoEnabled"
+            android:summary="@string/ai_chapter_purify_typo_summary"
+            android:title="@string/ai_chapter_purify_typo"
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.SwitchPreference
@@ -147,34 +175,6 @@
         <io.legado.app.lib.prefs.Preference
             android:key="aiChapterPurifyConcurrency"
             android:title="@string/ai_chapter_purify_concurrency"
-            app:iconSpaceReserved="false" />
-
-    </io.legado.app.lib.prefs.PreferenceCategory>
-
-    <io.legado.app.lib.prefs.PreferenceCategory
-        android:title="@string/ai_logs_category"
-        app:allowDividerAbove="false"
-        app:allowDividerBelow="false"
-        app:iconSpaceReserved="false"
-        app:layout="@layout/view_preference_category">
-
-        <io.legado.app.lib.prefs.Preference
-            android:key="aiLogs"
-            android:summary="@string/ai_log_summary_empty"
-            android:title="@string/ai_log"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.Preference
-            android:key="aiExportLogs"
-            android:summary="@string/ai_log_export_summary"
-            android:title="@string/ai_log_export"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.SwitchPreference
-            android:key="aiApiRedactionEnabled"
-            android:defaultValue="true"
-            android:summary="@string/ai_api_redaction_summary"
-            android:title="@string/ai_api_redaction"
             app:iconSpaceReserved="false" />
 
     </io.legado.app.lib.prefs.PreferenceCategory>
