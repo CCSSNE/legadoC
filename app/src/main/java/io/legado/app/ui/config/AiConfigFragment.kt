@@ -1430,6 +1430,8 @@ class AiConfigFragment : PreferenceFragment(),
         findPreference<SwitchPreference>(PreferKey.aiAdvancedSettingsEnabled)?.isChecked =
             advancedSettingsEnabled
         findPreference<Preference>("aiEditRequest")?.isVisible = advancedSettingsEnabled
+        findPreference<Preference>(PreferKey.aiApiRedactionEnabled)?.isVisible =
+            advancedSettingsEnabled
         findPreference<PreferenceGroup>("aiAssistantCategory")?.isVisible = advancedSettingsEnabled
         findPreference<PreferenceGroup>("aiMcpCategory")?.isVisible = advancedSettingsEnabled
         findPreference<PreferenceGroup>("aiWebToolsCategory")?.isVisible = advancedSettingsEnabled
