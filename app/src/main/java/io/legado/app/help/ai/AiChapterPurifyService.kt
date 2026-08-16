@@ -33,10 +33,10 @@ object AiChapterPurifyService {
         onProgress: suspend (AiChapterPurifyProgress) -> Unit = {}
     ): AiChapterPurifyRunResult {
         require(chapterCount >= AiChapterPurifyConfig.MIN_CHAPTER_COUNT) {
-            "AI chapter purification chapter count must be positive"
+            "章节处理数量必须为正数"
         }
         check(book.getUseReplaceRule()) {
-            "AI chapter purification requires ordinary purification replacement to be enabled"
+            "AI 章节净化需要先开启净化替换"
         }
         AppLog.putAi(
             "CHAPTER_PURIFY TRIGGER\n" +
@@ -99,7 +99,7 @@ object AiChapterPurifyService {
             try {
                 if (enabledTypes.isEmpty()) {
                     throw AiChapterPurifyException(
-                        "Enable at least one AI chapter purification type"
+                        "请至少启用一种净化类型"
                     )
                 }
                 val contentProcessor = ContentProcessor.get(book)
@@ -154,7 +154,7 @@ object AiChapterPurifyService {
                 }
                 if (paragraphs.isEmpty()) {
                     throw AiChapterPurifyException(
-                        "AI chapter purification chapter ${chapter.index + 1} has no usable cached paragraphs"
+                        "章节没有可处理的内容：第 ${chapter.index + 1} 章没有可用缓存段落"
                     )
                 }
                 AppLog.putAi(
@@ -232,7 +232,7 @@ object AiChapterPurifyService {
                 throw exception
             } catch (throwable: Throwable) {
                 val failure = AiChapterPurifyException(
-                    "AI chapter purification failed for chapter ${chapter.index + 1}: " +
+                    "第 ${chapter.index + 1} 章处理失败：" +
                         (throwable.message ?: throwable.javaClass.simpleName),
                     throwable
                 )
@@ -331,7 +331,7 @@ object AiChapterPurifyService {
         val scope = listOf(book.name, book.origin)
             .filter { it.isNotBlank() }
             .joinToString(";")
-        check(scope.isNotBlank()) { "AI chapter purification cannot create a rule without book scope" }
+        check(scope.isNotBlank()) { "AI 返回的净化规则无效：无法创建规则（缺少书籍作用域）" }
         var nextOrder = appDb.replaceRuleDao.maxOrder + 1
         val newRules = rules.mapNotNull { rule ->
             if (appDb.replaceRuleDao.findLiteralByScopePatternReplacement(scope, rule.old, rule.new) != null) {

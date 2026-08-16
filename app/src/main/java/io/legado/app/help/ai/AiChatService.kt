@@ -111,7 +111,7 @@ object AiChatService {
 
     suspend fun fetchModels(provider: AiProviderConfig): List<String> {
         val baseUrl = provider.baseUrl.trim()
-        require(baseUrl.isNotBlank()) { "Base URL is empty" }
+        require(baseUrl.isNotBlank()) { "供应商 API 地址为空" }
         val response = okHttpClient.newCallResponse {
             url(resolveModelsUrl(baseUrl))
             addHeader("Accept", "application/json")
@@ -124,7 +124,7 @@ object AiChatService {
             val payload = rawResponse.body?.string().orEmpty()
             if (!rawResponse.isSuccessful) {
                 throw AiChatException(
-                    message = extractError(payload).ifBlank {
+                    message = "模型服务请求失败：" + extractError(payload).ifBlank {
                         "${rawResponse.code} ${rawResponse.message}"
                     },
                     debugLog = "url=${resolveModelsUrl(baseUrl)}\nresponse=$payload\n"
@@ -156,8 +156,8 @@ object AiChatService {
         onStreamProgress: suspend (AiStreamProgress) -> Unit = {}
     ): String {
         val baseUrl = provider.baseUrl.trim()
-        require(baseUrl.isNotBlank()) { "Base URL is empty" }
-        require(model.isNotBlank()) { "Model is empty" }
+        require(baseUrl.isNotBlank()) { "供应商 API 地址为空" }
+        require(model.isNotBlank()) { "模型未配置" }
         val messages = listOf(
             JSONObject().apply {
                 put("role", "system")
@@ -199,7 +199,7 @@ object AiChatService {
                 logRequestBody = true
             )
             turn.content.takeIf { it.isNotBlank() } ?: throw AiChatException(
-                message = "Empty response",
+                message = "模型没有返回内容",
                 debugLog = requestLog.toString()
             )
         } catch (throwable: Throwable) {
@@ -265,8 +265,8 @@ object AiChatService {
         val modelConfig = AppConfig.aiCurrentModelConfig
         val baseUrl = provider?.baseUrl?.trim().orEmpty()
         val model = modelConfig?.modelId?.trim().orEmpty()
-        require(baseUrl.isNotBlank()) { "Base URL is empty" }
-        require(model.isNotBlank()) { "Model is empty" }
+        require(baseUrl.isNotBlank()) { "供应商 API 地址为空" }
+        require(model.isNotBlank()) { "模型未配置" }
 
         val tools = runCatching { AiToolRegistry.resolveAvailableTools() }.getOrDefault(emptyList())
         val conversation = buildConversation(messages)
@@ -342,7 +342,7 @@ object AiChatService {
                 val content = assistantTurn.content
                 if (content.isBlank()) {
                     throw AiChatException(
-                        message = "Empty response",
+                        message = "模型没有返回内容",
                         debugLog = requestLog.toString()
                     )
                 }
@@ -576,7 +576,7 @@ object AiChatService {
                     .append('\n')
                 if (interruptCount >= maxInterruptCount) {
                     throw AiThinkingInterruptLimitException(
-                        message = "AI thinking was interrupted $interruptCount time(s); maximum reached",
+                        message = "模型生成超时或响应中断：思考被中断 $interruptCount 次已达上限",
                         debugLog = requestLog.toString(),
                         cause = interrupt
                     )
@@ -675,7 +675,7 @@ object AiChatService {
         } catch (throwable: Throwable) {
             val failure = if (throwable is TimeoutCancellationException) {
                 AiChatException(
-                    message = "AI response timeout before headers after ${generationTimeoutSeconds}s",
+                    message = "模型请求超时：${generationTimeoutSeconds} 秒无响应",
                     debugLog = requestLog.toString(),
                     cause = throwable
                 )
@@ -710,7 +710,7 @@ object AiChatService {
                     "headers=$responseHeaders"
             )
             val body = rawResponse.body ?: throw AiChatException(
-                message = "Empty response body",
+                message = "模型没有返回内容",
                 debugLog = requestLog.append("response=<empty body>\n").toString()
             )
             if (!rawResponse.isSuccessful) {
@@ -723,7 +723,7 @@ object AiChatService {
                         "body=$payload"
                 )
                 throw AiChatException(
-                    message = extractError(payload).ifBlank {
+                    message = "模型服务请求失败：" + extractError(payload).ifBlank {
                         "${rawResponse.code} ${rawResponse.message}"
                     },
                     debugLog = buildString {
@@ -809,7 +809,7 @@ object AiChatService {
             } catch (throwable: Throwable) {
                 val failure = when {
                     throwable is TimeoutCancellationException -> AiChatException(
-                        message = "AI generation timeout after ${generationTimeoutSeconds}s",
+                        message = "模型生成超时或响应中断：${generationTimeoutSeconds} 秒未完成",
                         debugLog = requestLog.append(
                             "streamTimeout=GENERATION\n" +
                                 "generationTimeoutSeconds=$generationTimeoutSeconds\n" +
@@ -822,7 +822,7 @@ object AiChatService {
                     )
                     throwable is SocketTimeoutException || throwable is InterruptedIOException ->
                         AiChatException(
-                            message = "SSE idle timeout after ${idleTimeoutSeconds}s without data",
+                            message = "模型生成超时或响应中断：${idleTimeoutSeconds} 秒无数据",
                             debugLog = requestLog.append(
                                 "streamTimeout=SSE_IDLE\n" +
                                     "generationTimeoutSeconds=$generationTimeoutSeconds\n" +
@@ -972,7 +972,7 @@ object AiChatService {
         onStreamProgress: suspend (AiStreamProgress) -> Unit
     ) {
         extractError(payload).takeIf { it.isNotBlank() }?.let {
-            throw IllegalStateException(it)
+            throw IllegalStateException("模型服务请求失败：$it")
         }
         val root = JSONObject(payload)
         val choice = root.optJSONArray("choices")?.optJSONObject(0)
@@ -1037,7 +1037,7 @@ object AiChatService {
     private class AiThinkingInterruptException(
         elapsedSeconds: Int
     ) : IllegalStateException(
-        "AI thinking exceeded configured interrupt threshold of ${elapsedSeconds}s"
+        "模型生成超时或响应中断：思考超过 ${elapsedSeconds} 秒"
     )
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -1052,7 +1052,7 @@ object AiChatService {
         val remainingMs = thinkingDeadlineAt - SystemClock.elapsedRealtime()
         if (remainingMs <= 0L) {
             throw AiThinkingInterruptException(
-                thinkingInterruptSeconds ?: error("Missing thinking interrupt threshold")
+                thinkingInterruptSeconds ?: error("思考中断阈值未设置")
             )
         }
         return coroutineScope {
@@ -1067,7 +1067,7 @@ object AiChatService {
                         reader.close()
                         throw AiThinkingInterruptException(
                             thinkingInterruptSeconds
-                                ?: error("Missing thinking interrupt threshold")
+                                ?: error("思考中断阈值未设置")
                         )
                     }
                 }

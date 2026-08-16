@@ -247,7 +247,7 @@ class AiConfigFragment : PreferenceFragment(),
                 toastOnUi(R.string.ai_log_export_success)
             }.onFailure {
                 AppLog.put("AI 日志导出失败\n${it.localizedMessage}", it)
-                toastOnUi(getString(R.string.ai_log_export_failed, it.localizedMessage ?: "Error"))
+                toastOnUi(getString(R.string.ai_log_export_failed, it.localizedMessage ?: "未知错误"))
             }
         }
     }
@@ -724,7 +724,7 @@ class AiConfigFragment : PreferenceFragment(),
                     appendFetchedModels(provider.id, modelIds)
                 }
             }.onFailure {
-                toastOnUi(getString(R.string.ai_fetch_models_failed, it.localizedMessage ?: "Error"))
+                toastOnUi(getString(R.string.ai_fetch_models_failed, it.localizedMessage ?: "未知错误"))
             }
         }
     }

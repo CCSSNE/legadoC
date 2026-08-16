@@ -52,10 +52,9 @@ object AiRequestTimeoutConfig {
             val raw = stored.trim()
             if (raw.isEmpty()) return null
             val value = raw.toIntOrNull()
-                ?: error("AI thinking interrupt seconds is not an integer: $raw")
+                ?: error("思考中断秒数不是整数：$raw")
             require(value in MIN_THINKING_INTERRUPT_SECONDS..MAX_THINKING_INTERRUPT_SECONDS) {
-                "AI thinking interrupt seconds must be between " +
-                    "$MIN_THINKING_INTERRUPT_SECONDS and $MAX_THINKING_INTERRUPT_SECONDS"
+                "思考中断秒数必须在 $MIN_THINKING_INTERRUPT_SECONDS 到 $MAX_THINKING_INTERRUPT_SECONDS 之间"
             }
             return value
         }

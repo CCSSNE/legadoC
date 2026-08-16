@@ -110,12 +110,12 @@ object AiChapterPurifyHelper {
         chapterIndex: Int,
         onProgress: suspend (AiChapterPurifyProgress) -> Unit = {}
     ): List<AiChapterPurifyRule> {
-        require(paragraphs.isNotEmpty()) { "No chapter paragraphs available for AI purification" }
+        require(paragraphs.isNotEmpty()) { "章节没有可处理的内容" }
         require(
             AiChapterPurifyConfig.typoEnabled ||
                 AiChapterPurifyConfig.noiseEnabled ||
                 AiChapterPurifyConfig.adEnabled
-        ) { "Enable at least one AI chapter purification type" }
+        ) { "请至少启用一种净化类型" }
 
         val enabledTypes = AiChapterPurifyConfig.enabledTypes()
         val chunks = splitIntoChunks(
@@ -255,10 +255,10 @@ object AiChapterPurifyHelper {
         val causeMessage = lastFailure?.message
             ?.takeIf { it.isNotBlank() }
             ?: lastFailure?.javaClass?.simpleName
-            ?: "unknown failure"
+            ?: "未知错误"
         throw AiChapterPurifyException(
-            message = "AI chapter purification batch $chunkIndex failed after " +
-                "${AiChapterPurifyConfig.retryCount + 1} attempt(s): $causeMessage",
+            message = "$causeMessage（批次 $chunkIndex 重试 " +
+                "${AiChapterPurifyConfig.retryCount + 1} 次后仍失败）",
             cause = lastFailure
         )
     }
@@ -313,38 +313,38 @@ object AiChapterPurifyHelper {
         val parsed = try {
             GSON.fromJson(response.trim(), Response::class.java)
         } catch (throwable: Throwable) {
-            throw AiChapterPurifyException("AI chapter purification returned invalid JSON", throwable)
-        } ?: throw AiChapterPurifyException("AI chapter purification returned an empty JSON value")
+            throw AiChapterPurifyException("模型返回内容无法解析：模型返回的不是合法 JSON", throwable)
+        } ?: throw AiChapterPurifyException("模型没有返回内容")
         val responseRules = parsed.rules
-            ?: throw AiChapterPurifyException("AI chapter purification JSON has no rules array")
+            ?: throw AiChapterPurifyException("模型返回内容无法解析：缺少 rules 数组")
         val sourceById = paragraphs.associateBy { it.id }
         return responseRules.mapIndexedNotNull { index, rule ->
             val id = rule.id
             val paragraph = sourceById[id]
                 ?: throw AiChapterPurifyException(
-                    "AI chapter purification rule ${index + 1} references unknown paragraph id $id"
+                    "AI 返回的净化规则无效：第 ${index + 1} 条规则引用了不存在的段落号 $id"
                 )
             val source = paragraph.content
             val type = rule.type?.lowercase()?.trim().orEmpty()
             if (type !in supportedTypes || !AiChapterPurifyConfig.isTypeEnabled(type)) {
                 throw AiChapterPurifyException(
-                    "AI chapter purification rule ${index + 1} has disabled or unsupported type '$type'"
+                    "AI 返回的净化规则无效：第 ${index + 1} 条规则类型 '$type' 无效或未启用"
                 )
             }
             if (type == "ad") {
                 if (rule.old != null || rule.new != null) {
                     throw AiChapterPurifyException(
-                        "AI chapter purification ad rule ${index + 1} must return only id and type"
+                        "AI 返回的净化规则无效：第 ${index + 1} 条广告规则只能包含段落号和类型"
                     )
                 }
                 validateRule(index + 1, type, source, "", source)
                 return@mapIndexedNotNull AiChapterPurifyRule(id, type, source, "")
             }
             val old = rule.old ?: throw AiChapterPurifyException(
-                "AI chapter purification rule ${index + 1} has no old text"
+                "AI 返回的净化规则无效：第 ${index + 1} 条规则缺少原文"
             )
             val new = rule.new ?: throw AiChapterPurifyException(
-                "AI chapter purification rule ${index + 1} has no new text"
+                "AI 返回的净化规则无效：第 ${index + 1} 条规则缺少替换文本"
             )
             val markupMarker = findPresentationMarkupMarker(old)
                 ?: findPresentationMarkupMarker(new)
@@ -363,7 +363,7 @@ object AiChapterPurifyHelper {
             }
             val preprocessed = paragraph.preprocessedByType[type]
                 ?: throw AiChapterPurifyException(
-                    "AI chapter purification rule ${index + 1} has no C-to-B mapping for type '$type'"
+                    "AI 返回的净化规则无效：第 ${index + 1} 条规则缺少类型 '$type' 的预处理映射"
                 )
             val effectiveOld = preprocessed.sourceTextForModelText(old, source)
             if (effectiveOld != old) {
@@ -399,21 +399,21 @@ object AiChapterPurifyHelper {
         source: String
     ) {
         if (old.isBlank()) {
-            throw AiChapterPurifyException("AI chapter purification rule $position has blank old text")
+            throw AiChapterPurifyException("AI 返回的净化规则无效：第 $position 条规则原文为空")
         }
         if (old !in source) {
             throw AiChapterPurifyException(
-                "AI chapter purification rule $position old text is not an exact substring of its paragraph"
+                "AI 返回的净化规则无效：第 $position 条规则原文不是段落的精确子串"
             )
         }
         if (old == new) {
-            throw AiChapterPurifyException("AI chapter purification rule $position makes no change")
+            throw AiChapterPurifyException("AI 返回的净化规则无效：第 $position 条规则未产生任何修改")
         }
         when (type) {
             "ad" -> {
                 if (old != source || new.isNotEmpty()) {
                     throw AiChapterPurifyException(
-                        "AI chapter purification ad rule $position must remove one whole paragraph"
+                        "AI 返回的净化规则无效：第 $position 条广告规则必须整段删除"
                     )
                 }
             }
@@ -421,7 +421,7 @@ object AiChapterPurifyHelper {
             "typo" -> {
                 if (old.length < 2 || new.length < 2) {
                     throw AiChapterPurifyException(
-                        "AI chapter purification typo rule $position must contain at least two characters"
+                        "AI 返回的净化规则无效：第 $position 条错别字规则至少需要两个字符"
                     )
                 }
             }
@@ -429,7 +429,7 @@ object AiChapterPurifyHelper {
             "noise" -> {
                 if (new.isBlank() && old.length < 4) {
                     throw AiChapterPurifyException(
-                        "AI chapter purification noise rule $position is too short to remove"
+                        "AI 返回的净化规则无效：第 $position 条噪声规则内容过短"
                     )
                 }
             }
@@ -448,7 +448,7 @@ object AiChapterPurifyHelper {
             val estimatedLength = modelInputLength(paragraph, enabledTypes) +
                 paragraph.id.toString().length + enabledTypes.size * 8
             require(estimatedLength <= characterLimit) {
-                "Chapter paragraph ${paragraph.id} exceeds the AI chapter purification segment limit"
+                "章节没有可处理的内容：段落 ${paragraph.id} 超过分批字符上限"
             }
             if (current.isNotEmpty() && currentLength + estimatedLength > characterLimit) {
                 chunks.add(current)
@@ -470,7 +470,7 @@ object AiChapterPurifyHelper {
     ): AiChapterPurifyPreprocessedParagraph {
         return paragraph.preprocessedByType[type]
             ?: throw AiChapterPurifyException(
-                "AI chapter purification paragraph ${paragraph.id} has no '$type' C input"
+                "AI 返回的净化规则无效：段落 ${paragraph.id} 缺少 '$type' 类型的预处理输入"
             )
     }
 
