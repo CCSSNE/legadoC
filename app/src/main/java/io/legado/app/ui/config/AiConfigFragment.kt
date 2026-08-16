@@ -17,6 +17,7 @@ import io.legado.app.databinding.DialogAiProviderEditBinding
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.ai.AiChapterPurifyConfig
 import io.legado.app.help.ai.AiChatService
+import io.legado.app.help.ai.AiLogExporter
 import io.legado.app.help.ai.AiStructuredRequestTemplate
 import io.legado.app.help.ai.AiToolRegistry
 import io.legado.app.help.config.AppConfig
@@ -39,9 +40,6 @@ import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 class AiConfigFragment : PreferenceFragment(),
     SharedPreferences.OnSharedPreferenceChangeListener {
@@ -145,22 +143,14 @@ class AiConfigFragment : PreferenceFragment(),
             return
         }
         pendingAiLogs = AppLog.aiLogs
-        val fileName = "ai-log-${SimpleDateFormat(
-            "yyyyMMdd-HHmmss",
-            Locale.getDefault()
-        ).format(Date())}.txt"
-        exportAiLogLauncher.launch(fileName)
+        exportAiLogLauncher.launch(AiLogExporter.fileName())
     }
 
     private fun writeAiLogs(uri: Uri, logs: List<Triple<Long, String, Throwable?>>) {
         lifecycleScope.launch {
             val result = withContext(IO) {
                 runCatching {
-                    val output = requireContext().contentResolver.openOutputStream(uri, "wt")
-                        ?: error("无法打开导出文件")
-                    output.use {
-                        it.write(AppLog.formatLogs(logs).toByteArray(Charsets.UTF_8))
-                    }
+                    AiLogExporter.write(requireContext(), uri, logs)
                 }
             }
             result.onSuccess {
