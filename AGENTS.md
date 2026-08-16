@@ -228,6 +228,6 @@ uiautomator2 / ADB
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- `3.26.081707c` / `10651`，2026-08-17（GMT+8），已正式后台构建并完成 `aapt` / `apksigner` 校验，包名为 `io.legado.app.c`、架构为 `arm64-v8a`；已覆盖安装到雷电模拟器 `emulator-5554` 并完成实际回归。AI 设置已按需求整理为「供应商与模型」「AI 章节净化」「日志」「AI 助手」「MCP 服务器」「联网工具」「超时」七组并按表格顺序排列，`aiAssistantEnabled`、`aiChapterPurifyTestConnection`、`aiSseIdleTimeoutSeconds` 的显示名称分别改为「AI 助手启用」「测试独立模型连接」「首字延迟超时」。章节净化在关闭「复用当前 AI 模型」时显示选择供应商、选择模型、独立编辑请求和测试独立模型连接；开启时四项全部隐藏。新增独立请求模板只在用户保存时写入，未配置时继承全局请求模板；全局请求模板后续变化不会覆盖用户已经保存的独立配置，编辑器支持恢复全局请求。AI 请求执行和独立模型连接测试均使用对应的有效模板。真实回归覆盖：七组和条目顺序、四项联动隐藏/恢复、新独立请求编辑器及「恢复全局请求」按钮、应用启动和设置页面无崩溃。定向单元测试 `AiChapterPurifyHelperTest` 通过；全量单元测试仍有既存的 `ReadBookConfigTest.sanitize_clampsUnsafeLineSpacing` 失败，与本次修改无关。
+- `3.26.081708c` / `10652`，2026-08-17（GMT+8），已正式后台构建并完成 `aapt` / `apksigner` 校验，包名为 `io.legado.app.c`、架构为 `arm64-v8a`；已覆盖安装到雷电模拟器 `emulator-5554` 并完成实际回归。AI 设置已按需求整理为「供应商与模型」「AI 章节净化」「日志」「AI 助手」「AI MCP 服务器」「AI 联网工具」「超时」七组并按表格顺序排列，`aiAssistantEnabled`、`aiChapterPurifyTestConnection`、`aiSseIdleTimeoutSeconds` 的显示名称分别改为「AI 助手启用」「测试独立模型连接」「首字延迟超时」。章节净化在关闭「复用当前 AI 模型」时显示选择供应商、选择模型、独立编辑请求和测试独立模型连接；开启时四项全部隐藏。新增独立请求模板只在用户保存时写入，未配置时继承全局请求模板；全局请求模板后续变化不会覆盖用户已经保存的独立配置，编辑器支持恢复全局请求。AI 请求执行和独立模型连接测试均使用对应的有效模板。真实回归覆盖：七组和条目顺序、四项联动隐藏/恢复、新独立请求编辑器及「恢复全局请求」按钮、应用启动和设置页面无崩溃。定向单元测试 `AiChapterPurifyHelperTest` 通过；全量单元测试仍有既存的 `ReadBookConfigTest.sanitize_clampsUnsafeLineSpacing` 失败，与本次修改无关。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
