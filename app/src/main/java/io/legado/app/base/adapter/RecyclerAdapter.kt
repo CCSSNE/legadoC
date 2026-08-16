@@ -325,14 +325,12 @@ abstract class RecyclerAdapter<ITEM, VB : ViewBinding>(protected val context: Co
         }
     }
 
+    @SuppressLint("NotifyDataSetChanged")
     @Synchronized
     fun clearItems() {
         kotlin.runCatching {
-            val oldSize = this.items.size
             this.items.clear()
-            if (oldSize > 0) {
-                notifyItemRangeRemoved(getHeaderCount(), oldSize)
-            }
+            notifyDataSetChanged()
             onCurrentListChanged()
         }
     }
@@ -509,6 +507,5 @@ abstract class RecyclerAdapter<ITEM, VB : ViewBinding>(protected val context: Co
     }
 
 }
-
 
 
