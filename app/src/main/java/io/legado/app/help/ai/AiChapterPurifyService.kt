@@ -62,6 +62,8 @@ object AiChapterPurifyService {
         var skippedCompleted = 0
         var skippedUncached = 0
         var addedRules = 0
+        // 该章指纹 = 本书缓存原文的 SHA-256（不含任何替换规则、预处理配置或显示层设置）
+        val enabledTypes = AiChapterPurifyConfig.enabledTypes()
         chapters.forEach { chapter ->
             currentCoroutineContext().ensureActive()
             val cachedContent = BookHelp.getContent(book, chapter)
@@ -73,9 +75,33 @@ object AiChapterPurifyService {
                 return@forEach
             }
             inspected++
-            val rawFingerprint = cachedContent.sha256()
-            var fingerprint = rawFingerprint
+            val fingerprint = cachedContent.sha256()
+            // force 只作用于本次批次的起始章（用户实际刷新/换源的那一章），
+            // 窗口内其它已完成章节仍按「指纹 + 已处理功能覆盖」判定跳过，
+            // 避免刷新一章连坐重处理后续章节。
+            val chapterForce = force && chapter.index == startChapterIndex
+            val existingRecord = appDb.aiChapterPurifyRecordDao.get(book.bookUrl, chapter.index)
+            if (!chapterForce &&
+                existingRecord?.contentFingerprint == fingerprint &&
+                existingRecord.state == AiChapterPurifyRecord.STATE_COMPLETED &&
+                purifyTypesCovered(existingRecord, enabledTypes)
+            ) {
+                skippedCompleted++
+                AppLog.putAi(
+                    "CHAPTER_PURIFY SKIP_COMPLETED chapter=${chapter.index + 1}\n" +
+                        "fingerprint=$fingerprint\n" +
+                        "enabledTypes=${enabledTypes.joinToString(",")}\n" +
+                        "recordProcessedTypes=${existingRecord.processedTypes}\n" +
+                        "recordRuleCount=${existingRecord.ruleCount}"
+                )
+                return@forEach
+            }
             try {
+                if (enabledTypes.isEmpty()) {
+                    throw AiChapterPurifyException(
+                        "Enable at least one AI chapter purification type"
+                    )
+                }
                 val contentProcessor = ContentProcessor.get(book)
                 val processedContent = contentProcessor.getContent(
                     book = book,
@@ -85,12 +111,6 @@ object AiChapterPurifyService {
                     useReplace = true
                 )
                 val preprocessRules = AiChapterPurifyConfig.preprocessRules
-                val enabledTypes = AiChapterPurifyConfig.enabledTypes()
-                if (enabledTypes.isEmpty()) {
-                    throw AiChapterPurifyException(
-                        "Enable at least one AI chapter purification type"
-                    )
-                }
                 AppLog.putAi(
                     "CHAPTER_PURIFY PREPROCESS_CONFIG chapter=${chapter.index + 1}\n" +
                         "ruleCount=${preprocessRules.size}\n" +
@@ -137,38 +157,9 @@ object AiChapterPurifyService {
                         "AI chapter purification chapter ${chapter.index + 1} has no usable cached paragraphs"
                     )
                 }
-                fingerprint = buildString {
-                    append(AiChapterPurifyConfig.preprocessJson).append('\u0000')
-                    append(enabledTypes.joinToString(",")).append('\n')
-                    paragraphs.forEach { paragraph ->
-                        append(paragraph.id)
-                        enabledTypes.forEach { type ->
-                            append('\u0000').append(type).append('\u0000')
-                            append(paragraph.preprocessedByType.getValue(type).text)
-                        }
-                        append('\n')
-                    }
-                }.sha256()
-                val existingRecord = appDb.aiChapterPurifyRecordDao.get(book.bookUrl, chapter.index)
-                if (!force &&
-                    existingRecord?.contentFingerprint == fingerprint &&
-                    existingRecord.state == AiChapterPurifyRecord.STATE_COMPLETED
-                ) {
-                    skippedCompleted++
-                    AppLog.putAi(
-                        "CHAPTER_PURIFY SKIP_COMPLETED chapter=${chapter.index + 1}\n" +
-                            "rawFingerprint=$rawFingerprint\n" +
-                            "inputFingerprint=$fingerprint\n" +
-                            "existingRuleCount=${contentProcessor.getContentReplaceRules().size}\n" +
-                            "effectiveRuleCount=${processedContent.effectiveReplaceRules?.size ?: 0}\n" +
-                            "recordRuleCount=${existingRecord.ruleCount}"
-                    )
-                    return@forEach
-                }
                 AppLog.putAi(
                     "CHAPTER_PURIFY CHAPTER_PREPARED chapter=${chapter.index + 1}\n" +
-                        "rawFingerprint=$rawFingerprint\n" +
-                        "inputFingerprint=$fingerprint\n" +
+                        "fingerprint=$fingerprint\n" +
                         "rawChars=${cachedContent.length}\n" +
                         "processedChars=${processedContent.toString().length}\n" +
                         "paragraphCount=${paragraphs.size}\n" +
@@ -226,7 +217,8 @@ object AiChapterPurifyService {
                         bookUrl = book.bookUrl,
                         chapterIndex = chapter.index,
                         contentFingerprint = fingerprint,
-                        ruleCount = rules.size
+                        ruleCount = rules.size,
+                        processedTypes = enabledTypes.joinToString(",")
                     )
                 )
                 onProgress(
@@ -246,8 +238,7 @@ object AiChapterPurifyService {
                 )
                 AppLog.putAi(
                     "CHAPTER_PURIFY CHAPTER_FAILED chapter=${chapter.index + 1}\n" +
-                        "rawFingerprint=$rawFingerprint\n" +
-                        "inputFingerprint=$fingerprint",
+                        "fingerprint=$fingerprint",
                     failure
                 )
                 try {
@@ -257,6 +248,7 @@ object AiChapterPurifyService {
                             chapterIndex = chapter.index,
                             contentFingerprint = fingerprint,
                             ruleCount = 0,
+                            processedTypes = enabledTypes.joinToString(","),
                             state = AiChapterPurifyRecord.STATE_FAILED,
                             failureMessage = failure.message
                         )
@@ -290,6 +282,48 @@ object AiChapterPurifyService {
             skippedUncached = skippedUncached,
             addedRules = addedRules
         )
+    }
+
+    /**
+     * 用户主动编辑/反转章节内容后，内容已由用户认定为最终形态：
+     * 只把该章记录的内容指纹更新为新的缓存原文指纹（仍视为已处理），不触发 AI 重跑。
+     * 仅当该章已有 COMPLETED 记录时生效；从未处理过的章节不做标记，按常规判定流程处理。
+     */
+    suspend fun markChapterEdited(book: Book, chapterIndex: Int) {
+        if (!book.getUseReplaceRule() || !book.getAiChapterPurifyEnabled()) return
+        val existing = appDb.aiChapterPurifyRecordDao.get(book.bookUrl, chapterIndex) ?: return
+        if (existing.state != AiChapterPurifyRecord.STATE_COMPLETED) return
+        val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, chapterIndex) ?: return
+        val content = BookHelp.getContent(book, chapter) ?: return
+        val fingerprint = content.sha256()
+        if (existing.contentFingerprint == fingerprint) return
+        appDb.aiChapterPurifyRecordDao.insert(existing.copy(contentFingerprint = fingerprint))
+        AppLog.putAi(
+            "CHAPTER_PURIFY MARK_EDITED chapter=${chapterIndex + 1}\n" +
+                "fingerprint=$fingerprint\n" +
+                "processedTypes=${existing.processedTypes}"
+        )
+    }
+
+    /**
+     * 清除缓存 / 目录更新（全书内容缓存失效）后清空该书的净化记录，
+     * 使任何重新出现的章节缓存都按常规判定（无记录 → 处理）重跑。
+     */
+    fun dropBookRecords(book: Book) {
+        appDb.aiChapterPurifyRecordDao.deleteByBookUrl(book.bookUrl)
+        AppLog.putAi(
+            "CHAPTER_PURIFY DROP_RECORDS book=${book.name}\n" +
+                "bookUrl=${book.bookUrl}"
+        )
+    }
+
+    private fun purifyTypesCovered(record: AiChapterPurifyRecord, enabledTypes: List<String>): Boolean {
+        if (enabledTypes.isEmpty()) return true
+        val processed = record.processedTypes.split(',')
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .toSet()
+        return enabledTypes.all { it in processed }
     }
 
     private fun insertNewRules(book: Book, rules: List<AiChapterPurifyRule>): Int {

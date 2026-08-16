@@ -9,6 +9,7 @@ import io.legado.app.constant.BookType
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
+import io.legado.app.help.ai.AiChapterPurifyService
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.removeType
@@ -130,6 +131,8 @@ class BookshelfManageViewModel(application: Application) : BaseViewModel(applica
         execute {
             books.forEach {
                 BookHelp.clearCache(it)
+                // 清除全书缓存：净化记录一并清空，重新出现的章节缓存按常规判定重跑
+                AiChapterPurifyService.dropBookRecords(it)
             }
         }.onSuccess {
             context.toastOnUi(R.string.clear_cache_success)

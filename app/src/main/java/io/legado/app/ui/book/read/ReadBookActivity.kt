@@ -624,6 +624,8 @@ class ReadBookActivity : BaseReadBookActivity(),
                 if (it.isMobi) {
                     MobiFile.clear()
                 }
+                // 目录更新 = 全书缓存失效：清空该书的净化记录，重新出现的章节按常规判定重跑
+                AiChapterPurifyService.dropBookRecords(it)
                 loadChapterList(it)
             }
 
@@ -1472,6 +1474,8 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun changeTo(source: BookSource, book: Book, toc: List<BookChapter>) {
         if (!book.isAudio) {
+            // 换源属于强制重算：内容重新加载完成后强制净化当前章
+            requestAiChapterPurifyAfterRefresh()
             viewModel.changeTo(book, toc)
         } else {
             ReadAloud.stop(this)

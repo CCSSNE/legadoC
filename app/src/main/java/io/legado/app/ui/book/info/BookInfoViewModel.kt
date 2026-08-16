@@ -19,6 +19,7 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoBooksDirException
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.ai.AiChapterPurifyService
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.BookHelp
@@ -603,6 +604,8 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
         }
         ExoPlayerHelper.releaseBookCaches(book)
         BookHelp.clearCache(book)
+        // 清除全书缓存：全书净化记录一并清空，重新出现的章节缓存按常规判定重跑
+        AiChapterPurifyService.dropBookRecords(book)
         if (ReadBook.book?.bookUrl == book.bookUrl) {
             ReadBook.clearTextChapter()
         }

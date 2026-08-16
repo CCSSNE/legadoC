@@ -15,6 +15,7 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.help.ai.AiChapterPurifyService
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.CacheBookManifest
@@ -191,6 +192,7 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
             deleteMediaCache(book)
             ExoPlayerHelper.releaseBookCaches(book)
             BookHelp.clearCache(book)
+            AiChapterPurifyService.dropBookRecords(book)
             CacheManifestHelper.delete(book)
             withContext(Dispatchers.Main) {
                 onDone()
@@ -205,6 +207,7 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
                 deleteMediaCache(it)
                 ExoPlayerHelper.releaseBookCaches(it)
                 BookHelp.clearCache(it)
+                AiChapterPurifyService.dropBookRecords(it)
                 CacheManifestHelper.delete(it)
             }
             withContext(Dispatchers.Main) {

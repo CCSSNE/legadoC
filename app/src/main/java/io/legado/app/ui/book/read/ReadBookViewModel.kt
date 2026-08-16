@@ -17,6 +17,7 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookProgressComparison
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.ai.AiChapterPurifyService
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.CacheManifestHelper
@@ -390,6 +391,8 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
         Coroutine.async {
             book?.let {
                 BookHelp.clearCache(it)
+                // 移出书架：一并清空该书的净化记录
+                AiChapterPurifyService.dropBookRecords(it)
                 it.delete()
             }
         }.onSuccess {
@@ -463,6 +466,8 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
                 stringBuilder.insert(0, it)
             }
             BookHelp.saveText(book, chapter, stringBuilder.toString())
+            // 反转内容 = 用户主动改写缓存原文：更新章节净化指纹，不触发 AI 重跑
+            AiChapterPurifyService.markChapterEdited(book, chapter.index)
             ReadBook.loadContent(ReadBook.durChapterIndex, resetPageOffset = false)
         }
     }
