@@ -217,6 +217,14 @@ data class Book(
         return AppConfig.replaceEnableDefault
     }
 
+    fun setAiChapterPurifyEnabled(enabled: Boolean) {
+        config.aiChapterPurifyEnabled = enabled
+    }
+
+    fun getAiChapterPurifyEnabled(): Boolean {
+        return config.aiChapterPurifyEnabled
+    }
+
     fun setReSegment(reSegment: Boolean) {
         config.reSegment = reSegment
     }
@@ -461,6 +469,7 @@ data class Book(
         var reSegment: Boolean = false,
         var imageStyle: String? = null,
         var useReplaceRule: Boolean? = null,// 正文使用净化替换规则
+        var aiChapterPurifyEnabled: Boolean = false,
         var delTag: Long = 0L,//去除标签
         var ttsEngine: String? = null,
         var splitLongChapter: Boolean = true,

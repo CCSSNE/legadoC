@@ -22,8 +22,29 @@ object DatabaseMigrations {
             migration_39_40, migration_40_41, migration_41_42, migration_42_43,
             migration_90_91, migration_91_92, migration_92_93, migration_93_94,
             migration_94_95, migration_95_96, migration_96_97, migration_97_98,
-            migration_98_99, migration_99_100,
+            migration_98_99, migration_99_100, migration_100_101,
         )
+    }
+
+    private val migration_100_101 = object : Migration(100, 101) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `ai_chapter_purify_records` (
+                    `bookUrl` TEXT NOT NULL,
+                    `chapterIndex` INTEGER NOT NULL,
+                    `contentFingerprint` TEXT NOT NULL,
+                    `completedAt` INTEGER NOT NULL,
+                    `ruleCount` INTEGER NOT NULL,
+                    PRIMARY KEY(`bookUrl`, `chapterIndex`)
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_ai_chapter_purify_records_bookUrl` " +
+                    "ON `ai_chapter_purify_records` (`bookUrl`)"
+            )
+        }
     }
 
     private val migration_99_100 = object : Migration(99, 100) {

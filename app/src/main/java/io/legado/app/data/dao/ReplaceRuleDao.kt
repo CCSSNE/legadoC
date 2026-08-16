@@ -62,6 +62,16 @@ interface ReplaceRuleDao {
     fun findByIds(vararg ids: Long): List<ReplaceRule>
 
     @Query(
+        """SELECT * FROM replace_rules WHERE scope = :scope AND pattern = :pattern
+        AND replacement = :replacement AND isRegex = 0 LIMIT 1"""
+    )
+    fun findLiteralByScopePatternReplacement(
+        scope: String,
+        pattern: String,
+        replacement: String
+    ): ReplaceRule?
+
+    @Query(
         """SELECT * FROM replace_rules WHERE isEnabled = 1 and scopeContent = 1
         AND (scope LIKE '%' || :name || '%' or scope LIKE '%' || :origin || '%' or scope is null or scope = '')
         and (excludeScope is null or (excludeScope not LIKE '%' || :name || '%' and excludeScope not LIKE '%' || :origin || '%'))

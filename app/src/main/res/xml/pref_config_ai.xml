@@ -105,6 +105,79 @@
     </io.legado.app.lib.prefs.PreferenceCategory>
 
     <io.legado.app.lib.prefs.PreferenceCategory
+        android:title="@string/ai_chapter_purify"
+        app:allowDividerAbove="false"
+        app:allowDividerBelow="false"
+        app:iconSpaceReserved="false"
+        app:layout="@layout/view_preference_category">
+
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="true"
+            android:key="aiChapterPurifyReuseCurrentModel"
+            android:summary="@string/ai_chapter_purify_reuse_current_model_summary"
+            android:title="@string/ai_chapter_purify_reuse_current_model"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiChapterPurifyProvider"
+            android:title="@string/ai_chapter_purify_provider"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiChapterPurifyModel"
+            android:title="@string/ai_chapter_purify_model"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiChapterPurifyPrompt"
+            android:summary="@string/ai_chapter_purify_prompt_summary"
+            android:title="@string/ai_chapter_purify_prompt"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiChapterPurifyChapterCount"
+            android:title="@string/ai_chapter_purify_chapter_count"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiChapterPurifySegmentLimit"
+            android:title="@string/ai_chapter_purify_segment_limit"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiChapterPurifyRetryCount"
+            android:title="@string/ai_chapter_purify_retry_count"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiChapterPurifyConcurrency"
+            android:title="@string/ai_chapter_purify_concurrency"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="true"
+            android:key="aiChapterPurifyTypoEnabled"
+            android:summary="@string/ai_chapter_purify_typo_summary"
+            android:title="@string/ai_chapter_purify_typo"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="true"
+            android:key="aiChapterPurifyNoiseEnabled"
+            android:summary="@string/ai_chapter_purify_noise_summary"
+            android:title="@string/ai_chapter_purify_noise"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="true"
+            android:key="aiChapterPurifyAdEnabled"
+            android:summary="@string/ai_chapter_purify_ad_summary"
+            android:title="@string/ai_chapter_purify_ad"
+            app:iconSpaceReserved="false" />
+
+    </io.legado.app.lib.prefs.PreferenceCategory>
+
+    <io.legado.app.lib.prefs.PreferenceCategory
         android:title="@string/ai_mcp"
         app:allowDividerAbove="false"
         app:allowDividerBelow="false"

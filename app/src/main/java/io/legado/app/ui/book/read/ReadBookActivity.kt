@@ -43,6 +43,8 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.IntentData
+import io.legado.app.help.ai.AiChapterPurifyException
+import io.legado.app.help.ai.AiChapterPurifyService
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.isAudio
@@ -151,6 +153,7 @@ import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.visible
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Dispatchers.Main
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -243,6 +246,10 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
     private var menu: Menu? = null
     private var backupJob: Job? = null
+    private var aiChapterPurifyJob: Job? = null
+    private var aiChapterPurifyPendingChapterIndex: Int? = null
+    private var aiChapterPurifyPendingForce = false
+    private var aiChapterPurifyRefreshChapterIndex: Int? = null
     private var illustrationAnchor: IllustrationAnchor? = null
     val textActionMenu: TextActionMenu by lazy {
         TextActionMenu(this, this)
@@ -510,6 +517,8 @@ class ReadBookActivity : BaseReadBookActivity(),
                 R.id.menu_group_epub -> item.isVisible = book.isEpub
                 else -> when (item.itemId) {
                     R.id.menu_enable_replace -> item.isChecked = book.getUseReplaceRule()
+                    R.id.menu_enable_ai_chapter_purify ->
+                        item.isChecked = book.getAiChapterPurifyEnabled()
                     R.id.menu_re_segment -> item.isChecked = book.getReSegment()
 //                    R.id.menu_enable_review -> {
 //                        item.isVisible = BuildConfig.DEBUG
@@ -557,8 +566,10 @@ class ReadBookActivity : BaseReadBookActivity(),
 
             R.id.menu_refresh,
             R.id.menu_refresh_dur -> {
+                requestAiChapterPurifyAfterRefresh()
                 if (ReadBook.bookSource == null) {
                     upContent()
+                    scheduleAiChapterPurify(force = true)
                 } else {
                     ReadBook.book?.let {
                         ReadBook.curTextChapter = null
@@ -569,8 +580,10 @@ class ReadBookActivity : BaseReadBookActivity(),
             }
 
             R.id.menu_refresh_after -> {
+                requestAiChapterPurifyAfterRefresh()
                 if (ReadBook.bookSource == null) {
                     upContent()
+                    scheduleAiChapterPurify(force = true)
                 } else {
                     ReadBook.book?.let {
                         ReadBook.clearTextChapter()
@@ -581,8 +594,10 @@ class ReadBookActivity : BaseReadBookActivity(),
             }
 
             R.id.menu_refresh_all -> {
+                requestAiChapterPurifyAfterRefresh()
                 if (ReadBook.bookSource == null) {
                     upContent()
+                    scheduleAiChapterPurify(force = true)
                 } else {
                     ReadBook.book?.let {
                         refreshContentAll(it)
@@ -606,6 +621,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             }
 
             R.id.menu_enable_replace -> changeReplaceRuleState()
+            R.id.menu_enable_ai_chapter_purify -> changeAiChapterPurifyState()
             R.id.menu_re_segment -> ReadBook.book?.let {
                 it.setReSegment(!it.getReSegment())
                 item.isChecked = it.getReSegment()
@@ -1326,6 +1342,12 @@ class ReadBookActivity : BaseReadBookActivity(),
             ReadBook.readAloud()
         }
         loadStates = true
+        val currentChapterIndex = ReadBook.durChapterIndex
+        val force = aiChapterPurifyRefreshChapterIndex == currentChapterIndex
+        if (force) {
+            aiChapterPurifyRefreshChapterIndex = null
+        }
+        scheduleAiChapterPurify(force)
     }
 
     /**
@@ -2359,10 +2381,105 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun changeReplaceRuleState() {
         ReadBook.book?.let {
             it.setUseReplaceRule(!it.getUseReplaceRule())
+            if (!it.getUseReplaceRule() && it.getAiChapterPurifyEnabled()) {
+                it.setAiChapterPurifyEnabled(false)
+                cancelAiChapterPurify()
+            }
             ReadBook.saveRead()
             menu?.findItem(R.id.menu_enable_replace)?.isChecked = it.getUseReplaceRule()
+            menu?.findItem(R.id.menu_enable_ai_chapter_purify)?.isChecked =
+                it.getAiChapterPurifyEnabled()
             viewModel.replaceRuleChanged()
         }
+    }
+
+    private fun changeAiChapterPurifyState() {
+        val book = ReadBook.book ?: return
+        val enabled = !book.getAiChapterPurifyEnabled()
+        book.setAiChapterPurifyEnabled(enabled)
+        if (enabled) {
+            book.setUseReplaceRule(true)
+        } else {
+            cancelAiChapterPurify()
+        }
+        ReadBook.saveRead()
+        menu?.findItem(R.id.menu_enable_replace)?.isChecked = book.getUseReplaceRule()
+        menu?.findItem(R.id.menu_enable_ai_chapter_purify)?.isChecked = enabled
+        viewModel.replaceRuleChanged()
+        if (enabled) {
+            scheduleAiChapterPurify()
+        }
+    }
+
+    private fun requestAiChapterPurifyAfterRefresh() {
+        aiChapterPurifyRefreshChapterIndex = ReadBook.durChapterIndex
+    }
+
+    private fun scheduleAiChapterPurify(force: Boolean = false) {
+        val book = ReadBook.book ?: return
+        if (!book.getUseReplaceRule() || !book.getAiChapterPurifyEnabled()) return
+        val chapterIndex = ReadBook.durChapterIndex
+        if (aiChapterPurifyJob?.isActive == true) {
+            aiChapterPurifyPendingChapterIndex = chapterIndex
+            aiChapterPurifyPendingForce = aiChapterPurifyPendingForce || force
+            return
+        }
+        startAiChapterPurify(book, chapterIndex, force)
+    }
+
+    private fun startAiChapterPurify(book: Book, chapterIndex: Int, force: Boolean) {
+        aiChapterPurifyJob = lifecycleScope.launch {
+            try {
+                val result = withContext(IO) {
+                    AiChapterPurifyService.processCachedRange(
+                        book = book,
+                        startChapterIndex = chapterIndex,
+                        force = force
+                    )
+                }
+                if (result.addedRules > 0 &&
+                    ReadBook.book?.bookUrl == book.bookUrl &&
+                    ReadBook.durChapterIndex == chapterIndex &&
+                    book.getUseReplaceRule() &&
+                    book.getAiChapterPurifyEnabled()
+                ) {
+                    viewModel.replaceRuleChanged()
+                }
+            } catch (exception: CancellationException) {
+                throw exception
+            } catch (throwable: Throwable) {
+                val message = throwable.message ?: throwable.javaClass.simpleName
+                val debugLog = (throwable as? AiChapterPurifyException)?.debugLog
+                AppLog.put(
+                    buildString {
+                        append("AI章节净化失败，书籍《${book.name}》，第 ${chapterIndex + 1} 章\n")
+                        append(message)
+                        if (!debugLog.isNullOrBlank()) {
+                            append("\n").append(debugLog)
+                        }
+                    },
+                    throwable
+                )
+                toastOnUi(getString(R.string.ai_chapter_purify_failed, message))
+            } finally {
+                aiChapterPurifyJob = null
+                val pendingChapterIndex = aiChapterPurifyPendingChapterIndex
+                val pendingForce = aiChapterPurifyPendingForce
+                aiChapterPurifyPendingChapterIndex = null
+                aiChapterPurifyPendingForce = false
+                if (pendingChapterIndex != null) {
+                    scheduleAiChapterPurify(pendingForce)
+                }
+            }
+        }
+    }
+
+    private fun cancelAiChapterPurify() {
+        aiChapterPurifyJob?.cancel()
+        aiChapterPurifyJob = null
+        aiChapterPurifyPendingChapterIndex = null
+        aiChapterPurifyPendingForce = false
+        aiChapterPurifyRefreshChapterIndex = null
     }
 
     private fun startBackupJob() {
@@ -2431,6 +2548,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     override fun onDestroy() {
+        cancelAiChapterPurify()
         super.onDestroy()
         if (activeActivityRef?.get() === this) {
             activeActivityRef = null

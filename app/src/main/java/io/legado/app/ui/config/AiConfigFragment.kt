@@ -12,6 +12,7 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.DialogAiMcpServerEditBinding
 import io.legado.app.databinding.DialogAiProviderEditBinding
 import io.legado.app.databinding.DialogEditTextBinding
+import io.legado.app.help.ai.AiChapterPurifyConfig
 import io.legado.app.help.ai.AiChatService
 import io.legado.app.help.ai.AiToolRegistry
 import io.legado.app.help.config.AppConfig
@@ -77,13 +78,152 @@ class AiConfigFragment : PreferenceFragment(),
             PreferKey.aiSystemPrompt -> showSystemPromptDialog()
             "aiImportDefaultSkill" -> importDefaultSkill()
             PreferKey.aiSkillPrompt -> showManageSkillsDialog()
+            PreferKey.aiChapterPurifyProvider -> showEditChapterPurifyProviderDialog()
+            PreferKey.aiChapterPurifyModel -> showEditChapterPurifyModelDialog()
+            PreferKey.aiChapterPurifyPrompt -> showChapterPurifyPromptDialog()
+            PreferKey.aiChapterPurifyChapterCount -> showChapterPurifyIntDialog(
+                R.string.ai_chapter_purify_chapter_count,
+                AiChapterPurifyConfig.chapterCount,
+                AiChapterPurifyConfig.MIN_CHAPTER_COUNT,
+                AiChapterPurifyConfig.MAX_CHAPTER_COUNT
+            ) { AiChapterPurifyConfig.chapterCount = it }
+            PreferKey.aiChapterPurifySegmentLimit -> showChapterPurifyIntDialog(
+                R.string.ai_chapter_purify_segment_limit,
+                AiChapterPurifyConfig.segmentLimit,
+                AiChapterPurifyConfig.MIN_SEGMENT_LIMIT,
+                AiChapterPurifyConfig.MAX_SEGMENT_LIMIT
+            ) { AiChapterPurifyConfig.segmentLimit = it }
+            PreferKey.aiChapterPurifyRetryCount -> showChapterPurifyIntDialog(
+                R.string.ai_chapter_purify_retry_count,
+                AiChapterPurifyConfig.retryCount,
+                AiChapterPurifyConfig.MIN_RETRY_COUNT,
+                AiChapterPurifyConfig.MAX_RETRY_COUNT
+            ) { AiChapterPurifyConfig.retryCount = it }
+            PreferKey.aiChapterPurifyConcurrency -> showChapterPurifyIntDialog(
+                R.string.ai_chapter_purify_concurrency,
+                AiChapterPurifyConfig.concurrency,
+                AiChapterPurifyConfig.MIN_CONCURRENCY,
+                AiChapterPurifyConfig.MAX_CONCURRENCY
+            ) { AiChapterPurifyConfig.concurrency = it }
         }
         return super.onPreferenceTreeClick(preference)
     }
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
-        if (key == PreferKey.aiAssistantEnabled) {
+        if (key == PreferKey.aiAssistantEnabled || key == PreferKey.aiChapterPurifyReuseCurrentModel) {
             refreshUi(notifyMain = true)
+        }
+    }
+
+    private fun showEditChapterPurifyProviderDialog() {
+        val provider = AiChapterPurifyConfig.independentProvider
+        val binding = DialogAiProviderEditBinding.inflate(layoutInflater).apply {
+            editProviderName.setText(provider?.name.orEmpty())
+            editProviderBaseUrl.setText(provider?.baseUrl.orEmpty())
+            editProviderApiKey.setText(provider?.apiKey.orEmpty())
+            editProviderHeaders.setText(provider?.headers.orEmpty())
+        }
+        alert(titleResource = R.string.ai_chapter_purify_provider) {
+            customView { binding.root }
+            okButton {
+                val name = binding.editProviderName.text?.toString()?.trim().orEmpty()
+                val baseUrl = binding.editProviderBaseUrl.text?.toString()?.trim().orEmpty()
+                if (name.isEmpty()) {
+                    toastOnUi(R.string.ai_provider_name_required)
+                    return@okButton
+                }
+                if (baseUrl.isEmpty()) {
+                    toastOnUi(R.string.ai_provider_url_required)
+                    return@okButton
+                }
+                AiChapterPurifyConfig.independentProvider = provider?.copy(
+                    name = name,
+                    baseUrl = baseUrl,
+                    apiKey = binding.editProviderApiKey.text?.toString()?.trim().orEmpty(),
+                    headers = binding.editProviderHeaders.text?.toString()?.trim().orEmpty()
+                ) ?: AiProviderConfig(
+                    name = name,
+                    baseUrl = baseUrl,
+                    apiKey = binding.editProviderApiKey.text?.toString()?.trim().orEmpty(),
+                    headers = binding.editProviderHeaders.text?.toString()?.trim().orEmpty()
+                )
+                refreshUi()
+            }
+            cancelButton()
+        }
+    }
+
+    private fun showEditChapterPurifyModelDialog() {
+        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
+            editView.hint = getString(R.string.ai_model_input_hint)
+            editView.inputType = InputType.TYPE_CLASS_TEXT
+            editView.setText(AiChapterPurifyConfig.independentModelId)
+            editView.setSelection(editView.text?.length ?: 0)
+        }
+        alert(titleResource = R.string.ai_chapter_purify_model) {
+            customView { binding.root }
+            okButton {
+                val modelId = binding.editView.text?.toString()?.trim().orEmpty()
+                if (modelId.isEmpty()) {
+                    toastOnUi(R.string.cannot_empty)
+                    return@okButton
+                }
+                AiChapterPurifyConfig.independentModelId = modelId
+                refreshUi()
+            }
+            cancelButton()
+        }
+    }
+
+    private fun showChapterPurifyPromptDialog() {
+        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
+            editView.hint = getString(R.string.ai_chapter_purify_prompt_hint)
+            editView.inputType = InputType.TYPE_CLASS_TEXT or
+                InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+                InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            editView.minLines = 8
+            editView.setText(AiChapterPurifyConfig.prompt)
+            editView.setSelection(editView.text?.length ?: 0)
+        }
+        alert(titleResource = R.string.ai_chapter_purify_prompt) {
+            customView { binding.root }
+            okButton {
+                AiChapterPurifyConfig.prompt = binding.editView.text?.toString().orEmpty()
+                refreshUi()
+            }
+            neutralButton(R.string.restore_default) {
+                AiChapterPurifyConfig.prompt = AiChapterPurifyConfig.defaultPrompt
+                refreshUi()
+            }
+            cancelButton()
+        }
+    }
+
+    private fun showChapterPurifyIntDialog(
+        title: Int,
+        current: Int,
+        min: Int,
+        max: Int,
+        save: (Int) -> Unit
+    ) {
+        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
+            editView.hint = "$min-$max"
+            editView.inputType = InputType.TYPE_CLASS_NUMBER
+            editView.setText(current.toString())
+            editView.setSelection(editView.text?.length ?: 0)
+        }
+        alert(titleResource = title) {
+            customView { binding.root }
+            okButton {
+                val value = binding.editView.text?.toString()?.trim()?.toIntOrNull()
+                if (value == null || value !in min..max) {
+                    toastOnUi(getString(R.string.ai_chapter_purify_number_invalid, min, max))
+                    return@okButton
+                }
+                save(value)
+                refreshUi()
+            }
+            cancelButton()
         }
     }
 
@@ -952,6 +1092,30 @@ class AiConfigFragment : PreferenceFragment(),
             AppConfig.aiTavilyMaxResults.toString()
         findPreference<Preference>(PreferKey.aiSystemPrompt)?.summary =
             getString(R.string.ai_system_prompt_summary)
+        val chapterPurifyReuseCurrentModel = AiChapterPurifyConfig.reuseCurrentModel
+        findPreference<SwitchPreference>(PreferKey.aiChapterPurifyReuseCurrentModel)?.isChecked =
+            chapterPurifyReuseCurrentModel
+        findPreference<Preference>(PreferKey.aiChapterPurifyProvider)?.apply {
+            isEnabled = !chapterPurifyReuseCurrentModel
+            summary = AiChapterPurifyConfig.independentProvider?.name
+                ?: getString(R.string.ai_chapter_purify_provider_summary_empty)
+        }
+        findPreference<Preference>(PreferKey.aiChapterPurifyModel)?.apply {
+            isEnabled = !chapterPurifyReuseCurrentModel
+            summary = AiChapterPurifyConfig.independentModelId.ifBlank {
+                getString(R.string.ai_chapter_purify_model_summary_empty)
+            }
+        }
+        findPreference<Preference>(PreferKey.aiChapterPurifyPrompt)?.summary =
+            getString(R.string.ai_chapter_purify_prompt_summary)
+        findPreference<Preference>(PreferKey.aiChapterPurifyChapterCount)?.summary =
+            getString(R.string.ai_chapter_purify_chapter_count_summary, AiChapterPurifyConfig.chapterCount)
+        findPreference<Preference>(PreferKey.aiChapterPurifySegmentLimit)?.summary =
+            getString(R.string.ai_chapter_purify_segment_limit_summary, AiChapterPurifyConfig.segmentLimit)
+        findPreference<Preference>(PreferKey.aiChapterPurifyRetryCount)?.summary =
+            getString(R.string.ai_chapter_purify_retry_count_summary, AiChapterPurifyConfig.retryCount)
+        findPreference<Preference>(PreferKey.aiChapterPurifyConcurrency)?.summary =
+            getString(R.string.ai_chapter_purify_concurrency_summary, AiChapterPurifyConfig.concurrency)
         val skills = AppConfig.aiSkillList
         val enabledSkillCount = skills.count { it.enabled }
         findPreference<Preference>(PreferKey.aiSkillPrompt)?.summary =

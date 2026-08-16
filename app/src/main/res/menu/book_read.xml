@@ -89,6 +89,13 @@
         app:showAsAction="never" />
 
     <item
+        android:id="@+id/menu_enable_ai_chapter_purify"
+        android:checkable="true"
+        android:checked="false"
+        android:title="@string/ai_chapter_purify"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/menu_same_title_removed"
         android:checkable="true"
         android:title="@string/same_title_removed"

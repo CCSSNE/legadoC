@@ -44,6 +44,10 @@ object AiChatService {
         val reasoningContent: String = ""
     )
 
+    private data class CompletionRequestOptions(
+        val temperature: Double? = null
+    )
+
     suspend fun chat(messages: List<AiChatMessage>): String {
         return chatStream(messages, onPartial = {})
     }
@@ -77,6 +81,66 @@ object AiChatService {
                     item.optString("id").trim().takeIf { it.isNotBlank() }?.let(::add)
                 }
             }.distinct()
+        }
+    }
+
+    /**
+     * Sends an isolated completion request. It deliberately does not inherit chat history,
+     * the global AI system prompt, skills, MCP tools, or any tool loop state.
+     */
+    suspend fun generateStructuredText(
+        provider: AiProviderConfig,
+        model: String,
+        systemPrompt: String,
+        userContent: String,
+        temperature: Double = 0.0
+    ): String {
+        val baseUrl = provider.baseUrl.trim()
+        require(baseUrl.isNotBlank()) { "Base URL is empty" }
+        require(model.isNotBlank()) { "Model is empty" }
+        val messages = listOf(
+            JSONObject().apply {
+                put("role", "system")
+                put("content", systemPrompt)
+            },
+            JSONObject().apply {
+                put("role", "user")
+                put("content", userContent)
+            }
+        )
+        val requestLog = StringBuilder().apply {
+            append("purpose=structured_completion").append('\n')
+            append("url=${resolveChatUrl(baseUrl)}").append('\n')
+            append("model=$model").append('\n')
+            append("provider=${provider.name}").append('\n')
+            append("messageChars=${systemPrompt.length + userContent.length}").append('\n')
+        }
+        return try {
+            val turn = requestCompletionStream(
+                baseUrl = baseUrl,
+                model = model,
+                providerApiKey = provider.apiKey,
+                providerHeaders = provider.headers.orEmpty(),
+                messages = messages,
+                tools = emptyList(),
+                requestLog = requestLog,
+                round = 1,
+                onPartial = {},
+                onThinking = {},
+                options = CompletionRequestOptions(temperature = temperature),
+                logRequestBody = false
+            )
+            turn.content.takeIf { it.isNotBlank() } ?: throw AiChatException(
+                message = "Empty response",
+                debugLog = requestLog.toString()
+            )
+        } catch (throwable: Throwable) {
+            if (throwable is AiChatException) throw throwable
+            throw AiChatException(
+                message = throwable.message ?: throwable.javaClass.simpleName,
+                debugLog = requestLog.toString(),
+                cause = throwable
+            )
         }
     }
 
@@ -355,11 +419,15 @@ object AiChatService {
         requestLog: StringBuilder,
         round: Int,
         onPartial: (String) -> Unit,
-        onThinking: (String) -> Unit
+        onThinking: (String) -> Unit,
+        options: CompletionRequestOptions = CompletionRequestOptions(),
+        logRequestBody: Boolean = true
     ): AssistantTurn {
-        val requestBody = buildRequestBody(messages, model, tools, stream = true)
+        val requestBody = buildRequestBody(messages, model, tools, stream = true, options = options)
         requestLog.append("round=").append(round).append('\n')
-            .append("request=").append(requestBody).append('\n')
+        if (logRequestBody) {
+            requestLog.append("request=").append(requestBody).append('\n')
+        }
         val response = okHttpClient.newCallResponse {
             url(resolveChatUrl(baseUrl))
             addHeader("Accept", "text/event-stream, application/json")
@@ -441,7 +509,8 @@ object AiChatService {
         messages: List<JSONObject>,
         model: String,
         tools: List<AiResolvedTool>,
-        stream: Boolean
+        stream: Boolean,
+        options: CompletionRequestOptions = CompletionRequestOptions()
     ): String {
         return JSONObject().apply {
             put("model", model)
@@ -449,6 +518,7 @@ object AiChatService {
             put("messages", JSONArray().apply {
                 messages.forEach { put(it) }
             })
+            options.temperature?.let { put("temperature", it) }
             if (tools.isNotEmpty()) {
                 put("tools", JSONArray().apply {
                     tools.forEach { put(it.definition) }
