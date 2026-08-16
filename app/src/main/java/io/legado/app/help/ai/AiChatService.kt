@@ -45,7 +45,9 @@ object AiChatService {
     )
 
     private data class CompletionRequestOptions(
-        val temperature: Double? = null
+        val temperature: Double? = null,
+        val responseFormat: String? = null,
+        val thinkingType: String? = null
     )
 
     suspend fun chat(messages: List<AiChatMessage>): String {
@@ -127,7 +129,11 @@ object AiChatService {
                 round = 1,
                 onPartial = {},
                 onThinking = {},
-                options = CompletionRequestOptions(temperature = temperature),
+                options = CompletionRequestOptions(
+                    temperature = temperature,
+                    responseFormat = "json_object",
+                    thinkingType = "disabled"
+                ),
                 logRequestBody = false
             )
             turn.content.takeIf { it.isNotBlank() } ?: throw AiChatException(
@@ -449,6 +455,8 @@ object AiChatService {
             postJson(requestBody)
         }
         response.use { rawResponse ->
+            requestLog.append("status=${rawResponse.code} ${rawResponse.message}").append('\n')
+            requestLog.append("contentType=${rawResponse.header("Content-Type").orEmpty()}").append('\n')
             val body = rawResponse.body ?: throw AiChatException(
                 message = "Empty response body",
                 debugLog = requestLog.append("response=<empty body>\n").toString()
@@ -529,6 +537,12 @@ object AiChatService {
                 messages.forEach { put(it) }
             })
             options.temperature?.let { put("temperature", it) }
+            options.responseFormat?.let {
+                put("response_format", JSONObject().put("type", it))
+            }
+            options.thinkingType?.let {
+                put("thinking", JSONObject().put("type", it))
+            }
             if (tools.isNotEmpty()) {
                 put("tools", JSONArray().apply {
                     tools.forEach { put(it.definition) }
