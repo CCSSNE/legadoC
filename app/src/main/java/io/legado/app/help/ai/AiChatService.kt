@@ -151,6 +151,7 @@ object AiChatService {
         systemPrompt: String,
         userContent: String,
         temperature: Double = 0.0,
+        requestTemplate: String,
         onRequestAccepted: suspend () -> Unit = {},
         onStreamProgress: suspend (AiStreamProgress) -> Unit = {}
     ): String {
@@ -193,7 +194,7 @@ object AiChatService {
                     responseFormat = "json_object",
                     thinkingType = "disabled",
                     reasoningEffort = "low",
-                    requestTemplate = AiChapterPurifyConfig.requestTemplate
+                    requestTemplate = requestTemplate
                 ),
                 logRequestBody = true
             )
@@ -213,7 +214,11 @@ object AiChatService {
     }
 
     /** Sends a minimal completion through the same endpoint used by real AI features. */
-    suspend fun testConnection(provider: AiProviderConfig, model: String): String {
+    suspend fun testConnection(
+        provider: AiProviderConfig,
+        model: String,
+        requestTemplate: String
+    ): String {
         val requestUrl = resolveChatUrl(provider.baseUrl.trim())
         AppLog.putAi(
             "CONNECTION_TEST START\n" +
@@ -226,7 +231,8 @@ object AiChatService {
                 provider = provider,
                 model = model,
                 systemPrompt = "You are a connection test endpoint. Reply with a short JSON confirmation, such as {\"ok\":true}.",
-                userContent = "ping"
+                userContent = "ping",
+                requestTemplate = requestTemplate
             )
             AppLog.putAi(
                 "CONNECTION_TEST SUCCESS\n" +

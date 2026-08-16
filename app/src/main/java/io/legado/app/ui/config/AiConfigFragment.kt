@@ -135,6 +135,7 @@ class AiConfigFragment : PreferenceFragment(),
             PreferKey.aiChapterPurifyProvider -> showSelectChapterPurifyProviderDialog()
             PreferKey.aiChapterPurifyModel -> showSelectChapterPurifyModelDialog()
             "aiChapterPurifyTestConnection" -> testChapterPurifyConnection()
+            PreferKey.aiChapterPurifyRequestTemplate -> showChapterPurifyRequestDialog()
             PreferKey.aiChapterPurifyPrompt -> showChapterPurifyPromptDialog()
             "aiChapterPurifyFlowInfo" -> showChapterPurifyFlowInfo()
             PreferKey.aiChapterPurifyPreprocess -> showChapterPurifyPreprocessDialog()
@@ -169,6 +170,7 @@ class AiConfigFragment : PreferenceFragment(),
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
         if (key == PreferKey.aiAssistantEnabled ||
             key == PreferKey.aiChapterPurifyReuseCurrentModel ||
+            key == PreferKey.aiChapterPurifyRequestTemplate ||
             key == PreferKey.aiSseIdleTimeoutSeconds ||
             key == PreferKey.aiGenerationTimeoutSeconds ||
             key == PreferKey.aiThinkingInterruptSeconds ||
@@ -355,17 +357,43 @@ class AiConfigFragment : PreferenceFragment(),
     }
 
     private fun showEditRequestDialog() {
+        showRequestTemplateDialog(
+            titleResource = R.string.ai_edit_request,
+            currentTemplate = { AiChapterPurifyConfig.requestTemplate },
+            save = { AiChapterPurifyConfig.requestTemplate = it },
+            restore = { AiChapterPurifyConfig.requestTemplate = AiStructuredRequestTemplate.default },
+            restoreLabelResource = R.string.restore_default
+        )
+    }
+
+    private fun showChapterPurifyRequestDialog() {
+        showRequestTemplateDialog(
+            titleResource = R.string.ai_chapter_purify_request_template,
+            currentTemplate = { AiChapterPurifyConfig.effectiveRequestTemplate },
+            save = { AiChapterPurifyConfig.independentRequestTemplate = it },
+            restore = { AiChapterPurifyConfig.clearIndependentRequestTemplate() },
+            restoreLabelResource = R.string.ai_restore_global_request
+        )
+    }
+
+    private fun showRequestTemplateDialog(
+        titleResource: Int,
+        currentTemplate: () -> String,
+        save: (String) -> Unit,
+        restore: () -> Unit,
+        restoreLabelResource: Int
+    ) {
         val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
             editView.hint = getString(R.string.ai_edit_request_hint)
             editView.inputType = InputType.TYPE_CLASS_TEXT or
                 InputType.TYPE_TEXT_FLAG_MULTI_LINE or
                 InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             editView.minLines = 16
-            editView.setText(AiChapterPurifyConfig.requestTemplate)
+            editView.setText(currentTemplate())
             editView.setSelection(editView.text?.length ?: 0)
         }
         alert(
-            titleResource = R.string.ai_edit_request
+            titleResource = titleResource
         ) {
             customView { binding.root }
             okButton {
@@ -375,11 +403,11 @@ class AiConfigFragment : PreferenceFragment(),
                     toastOnUi(getString(R.string.ai_edit_request_invalid, it.message.orEmpty()))
                     return@okButton
                 }
-                AiChapterPurifyConfig.requestTemplate = template
+                save(template)
                 refreshUi()
             }
-            neutralButton(R.string.restore_default) {
-                AiChapterPurifyConfig.requestTemplate = AiStructuredRequestTemplate.default
+            neutralButton(restoreLabelResource) {
+                restore()
                 refreshUi()
             }
             cancelButton()
@@ -715,7 +743,7 @@ class AiConfigFragment : PreferenceFragment(),
             toastOnUi(R.string.ai_connection_test_summary_missing_model)
             return
         }
-        testAiConnection(provider, model)
+        testAiConnection(provider, model, AiChapterPurifyConfig.requestTemplate)
     }
 
     private fun testChapterPurifyConnection() {
@@ -723,14 +751,22 @@ class AiConfigFragment : PreferenceFragment(),
             toastOnUi(it.message ?: it.javaClass.simpleName)
             return
         }
-        testAiConnection(target.provider, target.modelId)
+        testAiConnection(
+            target.provider,
+            target.modelId,
+            AiChapterPurifyConfig.effectiveRequestTemplate
+        )
     }
 
-    private fun testAiConnection(provider: AiProviderConfig, model: String) {
+    private fun testAiConnection(
+        provider: AiProviderConfig,
+        model: String,
+        requestTemplate: String
+    ) {
         toastOnUi(R.string.ai_connection_test_running)
         lifecycleScope.launch {
             val result = withContext(IO) {
-                runCatching { AiChatService.testConnection(provider, model) }
+                runCatching { AiChatService.testConnection(provider, model, requestTemplate) }
             }
             result.onSuccess {
                 toastOnUi(getString(R.string.ai_connection_test_success, provider.name, model))
@@ -1314,7 +1350,7 @@ class AiConfigFragment : PreferenceFragment(),
                 }
             }
         findPreference<Preference>("aiEditRequest")?.summary =
-            getString(R.string.ai_edit_request_summary)
+            getString(R.string.ai_edit_request_summary_global)
         findPreference<Preference>("aiSseIdleTimeoutSeconds")?.summary =
             getString(
                 R.string.ai_sse_idle_timeout_summary,
@@ -1414,6 +1450,16 @@ class AiConfigFragment : PreferenceFragment(),
                     getString(R.string.ai_chapter_purify_reference_missing)
                 else -> getString(R.string.ai_chapter_purify_model_summary_empty)
             }
+        }
+        findPreference<Preference>(PreferKey.aiChapterPurifyRequestTemplate)?.apply {
+            isVisible = !chapterPurifyReuseCurrentModel
+            summary = getString(
+                if (AiChapterPurifyConfig.hasIndependentRequestTemplate) {
+                    R.string.ai_chapter_purify_request_template_summary_custom
+                } else {
+                    R.string.ai_chapter_purify_request_template_summary_inherited
+                }
+            )
         }
         findPreference<Preference>("aiChapterPurifyTestConnection")?.isVisible =
             !chapterPurifyReuseCurrentModel
