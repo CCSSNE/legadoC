@@ -55,6 +55,7 @@ object PreferKey {
     const val modernDiscoverySourceUrl = "modernDiscoverySourceUrl"
     const val modernDiscoveryLayout = "modernDiscoveryLayout"
     const val modernRssSourceUrl = "modernRssSourceUrl"
+    const val aiAdvancedSettingsEnabled = "aiAdvancedSettingsEnabled"
     const val aiAssistantEnabled = "aiAssistantEnabled"
     const val aiProviderList = "aiProviderList"
     const val aiCurrentProviderId = "aiCurrentProviderId"

@@ -10,6 +10,7 @@ import android.widget.EditText
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
 import androidx.preference.Preference
+import androidx.preference.PreferenceGroup
 import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
@@ -169,6 +170,7 @@ class AiConfigFragment : PreferenceFragment(),
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
         if (key == PreferKey.aiAssistantEnabled ||
+            key == PreferKey.aiAdvancedSettingsEnabled ||
             key == PreferKey.aiChapterPurifyReuseCurrentModel ||
             key == PreferKey.aiChapterPurifyRequestTemplate ||
             key == PreferKey.aiSseIdleTimeoutSeconds ||
@@ -1423,11 +1425,33 @@ class AiConfigFragment : PreferenceFragment(),
             AppConfig.aiTavilyMaxResults.toString()
         findPreference<Preference>(PreferKey.aiSystemPrompt)?.summary =
             getString(R.string.ai_system_prompt_summary)
+        val advancedSettingsEnabled = preferenceManager.sharedPreferences
+            ?.getBoolean(PreferKey.aiAdvancedSettingsEnabled, false) == true
+        findPreference<SwitchPreference>(PreferKey.aiAdvancedSettingsEnabled)?.isChecked =
+            advancedSettingsEnabled
+        findPreference<Preference>("aiEditRequest")?.isVisible = advancedSettingsEnabled
+        findPreference<PreferenceGroup>("aiAssistantCategory")?.isVisible = advancedSettingsEnabled
+        findPreference<PreferenceGroup>("aiMcpCategory")?.isVisible = advancedSettingsEnabled
+        findPreference<PreferenceGroup>("aiWebToolsCategory")?.isVisible = advancedSettingsEnabled
+        findPreference<PreferenceGroup>("aiTimeoutCategory")?.isVisible = advancedSettingsEnabled
+        listOf(
+            "aiChapterPurifyFlowInfo",
+            PreferKey.aiChapterPurifyReuseCurrentModel,
+            PreferKey.aiChapterPurifyPrompt,
+            PreferKey.aiChapterPurifyPreprocess,
+            PreferKey.aiChapterPurifySummaryEnabled,
+            PreferKey.aiChapterPurifyChapterCount,
+            PreferKey.aiChapterPurifySegmentLimit,
+            PreferKey.aiChapterPurifyRetryCount,
+            PreferKey.aiChapterPurifyConcurrency
+        ).forEach { key ->
+            findPreference<Preference>(key)?.isVisible = advancedSettingsEnabled
+        }
         val chapterPurifyReuseCurrentModel = AiChapterPurifyConfig.reuseCurrentModel
         findPreference<SwitchPreference>(PreferKey.aiChapterPurifyReuseCurrentModel)?.isChecked =
             chapterPurifyReuseCurrentModel
         findPreference<Preference>(PreferKey.aiChapterPurifyProvider)?.apply {
-            isVisible = !chapterPurifyReuseCurrentModel
+            isVisible = advancedSettingsEnabled && !chapterPurifyReuseCurrentModel
             val provider = AiChapterPurifyConfig.independentProvider
             summary = when {
                 provider != null -> provider.name
@@ -1437,7 +1461,7 @@ class AiConfigFragment : PreferenceFragment(),
             }
         }
         findPreference<Preference>(PreferKey.aiChapterPurifyModel)?.apply {
-            isVisible = !chapterPurifyReuseCurrentModel
+            isVisible = advancedSettingsEnabled && !chapterPurifyReuseCurrentModel
             val model = AiChapterPurifyConfig.independentModel
             summary = when {
                 model != null -> model.modelId
@@ -1447,7 +1471,7 @@ class AiConfigFragment : PreferenceFragment(),
             }
         }
         findPreference<Preference>(PreferKey.aiChapterPurifyRequestTemplate)?.apply {
-            isVisible = !chapterPurifyReuseCurrentModel
+            isVisible = advancedSettingsEnabled && !chapterPurifyReuseCurrentModel
             summary = getString(
                 if (AiChapterPurifyConfig.hasIndependentRequestTemplate) {
                     R.string.ai_chapter_purify_request_template_summary_custom
@@ -1457,7 +1481,7 @@ class AiConfigFragment : PreferenceFragment(),
             )
         }
         findPreference<Preference>("aiChapterPurifyTestConnection")?.isVisible =
-            !chapterPurifyReuseCurrentModel
+            advancedSettingsEnabled && !chapterPurifyReuseCurrentModel
         findPreference<Preference>(PreferKey.aiChapterPurifyPrompt)?.summary =
             getString(R.string.ai_chapter_purify_prompt_summary)
         findPreference<Preference>(PreferKey.aiChapterPurifyPreprocess)?.summary =

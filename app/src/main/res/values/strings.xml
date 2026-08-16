@@ -646,6 +646,9 @@
     <string name="side_nav_stats">Stats</string>
     <string name="ai_setting">AI 设置</string>
     <string name="ai_setting_summary">分开配置提供商和模型</string>
+    <string name="ai_advanced_settings_category">AI advanced settings</string>
+    <string name="ai_advanced_settings">Advanced settings</string>
+    <string name="ai_advanced_settings_summary">Show advanced AI options.</string>
     <string name="ai_enable">AI assistant enabled</string>
     <string name="ai_enable_summary">Enabled: long press Search to open AI</string>
     <string name="ai_enable_summary_disabled">当前提供商下有模型时才能开启</string>
