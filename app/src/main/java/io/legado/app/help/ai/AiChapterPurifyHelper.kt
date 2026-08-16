@@ -232,6 +232,7 @@ object AiChapterPurifyHelper {
                 return rules
             } catch (throwable: Throwable) {
                 if (throwable is CancellationException) throw throwable
+                if (throwable is AiThinkingInterruptLimitException) throw throwable
                 lastFailure = throwable
                 AppLog.putAi(
                     "CHAPTER_PURIFY BATCH_FAILED chapter=${chapterIndex + 1}\n" +

@@ -4,6 +4,13 @@
     <string name="ai_sse_idle_timeout_summary">Fail when no SSE data arrives for %1$d seconds. Active streams continue.</string>
     <string name="ai_generation_timeout">AI generation timeout</string>
     <string name="ai_generation_timeout_summary">Maximum time for one AI response after headers: %1$d seconds.</string>
+    <string name="ai_thinking_interrupt_seconds">Thinking interrupt seconds</string>
+    <string name="ai_thinking_interrupt_seconds_summary_unset">Unset: use the AI generation timeout. When set, interrupt and resend only before visible output starts.</string>
+    <string name="ai_thinking_interrupt_seconds_summary_set">Interrupt and resend after %1$d seconds of thinking; each request still has its generation timeout.</string>
+    <string name="ai_thinking_interrupt_max_count">Maximum thinking interrupts</string>
+    <string name="ai_thinking_interrupt_max_count_summary">Effective only when thinking interrupt seconds is set; fail after %1$d interrupts.</string>
+    <string name="ai_thinking_interrupt_clear">Clear thinking interrupt setting</string>
+    <string name="ai_thinking_interrupt_number_invalid">Enter blank or an integer from %1$d to %2$d.</string>
     <string name="ai_chapter_purify_stream_phase_thinking">thinking</string>
     <string name="ai_chapter_purify_stream_phase_output">output</string>
     <string name="ai_chapter_purify_stream_phase_activity">working</string>

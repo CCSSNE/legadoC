@@ -108,6 +108,18 @@ class AiConfigFragment : PreferenceFragment(),
                 AiRequestTimeoutConfig.MIN_GENERATION_TIMEOUT_SECONDS,
                 AiRequestTimeoutConfig.MAX_GENERATION_TIMEOUT_SECONDS
             ) { AiRequestTimeoutConfig.generationTimeoutSeconds = it }
+            "aiThinkingInterruptSeconds" -> showOptionalAiIntDialog(
+                R.string.ai_thinking_interrupt_seconds,
+                AiRequestTimeoutConfig.thinkingInterruptSeconds,
+                AiRequestTimeoutConfig.MIN_THINKING_INTERRUPT_SECONDS,
+                AiRequestTimeoutConfig.MAX_THINKING_INTERRUPT_SECONDS
+            ) { AiRequestTimeoutConfig.thinkingInterruptSeconds = it }
+            "aiThinkingInterruptMaxCount" -> showChapterPurifyIntDialog(
+                R.string.ai_thinking_interrupt_max_count,
+                AiRequestTimeoutConfig.thinkingInterruptMaxCount,
+                AiRequestTimeoutConfig.MIN_THINKING_INTERRUPT_MAX_COUNT,
+                AiRequestTimeoutConfig.MAX_THINKING_INTERRUPT_MAX_COUNT
+            ) { AiRequestTimeoutConfig.thinkingInterruptMaxCount = it }
             "aiLogs" -> showDialogFragment<AiLogDialog>()
             "aiExportLogs" -> exportAiLogs()
             "aiAddMcpServer" -> showEditMcpServerDialog()
@@ -159,7 +171,9 @@ class AiConfigFragment : PreferenceFragment(),
         if (key == PreferKey.aiAssistantEnabled ||
             key == PreferKey.aiChapterPurifyReuseCurrentModel ||
             key == PreferKey.aiSseIdleTimeoutSeconds ||
-            key == PreferKey.aiGenerationTimeoutSeconds
+            key == PreferKey.aiGenerationTimeoutSeconds ||
+            key == PreferKey.aiThinkingInterruptSeconds ||
+            key == PreferKey.aiThinkingInterruptMaxCount
         ) {
             refreshUi(notifyMain = true)
         }
@@ -419,6 +433,48 @@ class AiConfigFragment : PreferenceFragment(),
                     return@okButton
                 }
                 save(value)
+                refreshUi()
+            }
+            cancelButton()
+        }
+    }
+
+    private fun showOptionalAiIntDialog(
+        title: Int,
+        current: Int?,
+        min: Int,
+        max: Int,
+        save: (Int?) -> Unit
+    ) {
+        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
+            editView.hint = getString(
+                R.string.ai_thinking_interrupt_number_invalid,
+                min,
+                max
+            )
+            editView.inputType = InputType.TYPE_CLASS_NUMBER
+            editView.setText(current?.toString().orEmpty())
+            editView.setSelection(editView.text?.length ?: 0)
+        }
+        alert(titleResource = title) {
+            customView { binding.root }
+            okButton {
+                val raw = binding.editView.text?.toString()?.trim().orEmpty()
+                if (raw.isEmpty()) {
+                    save(null)
+                    refreshUi()
+                    return@okButton
+                }
+                val value = raw.toIntOrNull()
+                if (value == null || value !in min..max) {
+                    toastOnUi(getString(R.string.ai_thinking_interrupt_number_invalid, min, max))
+                    return@okButton
+                }
+                save(value)
+                refreshUi()
+            }
+            neutralButton(R.string.ai_thinking_interrupt_clear) {
+                save(null)
                 refreshUi()
             }
             cancelButton()
@@ -1293,6 +1349,15 @@ class AiConfigFragment : PreferenceFragment(),
             getString(
                 R.string.ai_generation_timeout_summary,
                 AiRequestTimeoutConfig.generationTimeoutSeconds
+            )
+        findPreference<Preference>("aiThinkingInterruptSeconds")?.summary =
+            AiRequestTimeoutConfig.thinkingInterruptSeconds?.let {
+                getString(R.string.ai_thinking_interrupt_seconds_summary_set, it)
+            } ?: getString(R.string.ai_thinking_interrupt_seconds_summary_unset)
+        findPreference<Preference>("aiThinkingInterruptMaxCount")?.summary =
+            getString(
+                R.string.ai_thinking_interrupt_max_count_summary,
+                AiRequestTimeoutConfig.thinkingInterruptMaxCount
             )
         findPreference<Preference>("aiLogs")?.summary =
             getString(R.string.ai_log_summary, AppLog.aiLogs.size)

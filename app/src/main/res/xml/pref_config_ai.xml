@@ -143,6 +143,16 @@
             android:title="@string/ai_generation_timeout"
             app:iconSpaceReserved="false" />
 
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiThinkingInterruptSeconds"
+            android:title="@string/ai_thinking_interrupt_seconds"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiThinkingInterruptMaxCount"
+            android:title="@string/ai_thinking_interrupt_max_count"
+            app:iconSpaceReserved="false" />
+
     </io.legado.app.lib.prefs.PreferenceCategory>
 
     <io.legado.app.lib.prefs.PreferenceCategory

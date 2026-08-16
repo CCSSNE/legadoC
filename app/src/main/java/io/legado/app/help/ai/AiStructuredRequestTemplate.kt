@@ -34,7 +34,11 @@ object AiStructuredRequestTemplate {
           "thinking": {
             "type": "disabled"
           },
-          "reasoning_effort": "low"
+          "reasoning_effort": "low",
+          "enable_thinking": false,
+          "extra_body": {
+            "enable_thinking": false
+          }
         }
     """.trimIndent()
 

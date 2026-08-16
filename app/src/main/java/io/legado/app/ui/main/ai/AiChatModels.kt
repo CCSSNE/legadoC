@@ -37,7 +37,7 @@ data class AiChatSession(
 )
 
 @Keep
-class AiChatException(
+open class AiChatException(
     override val message: String,
     val debugLog: String,
     cause: Throwable? = null

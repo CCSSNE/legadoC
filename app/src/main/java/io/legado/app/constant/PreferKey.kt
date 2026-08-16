@@ -73,6 +73,8 @@ object PreferKey {
     const val aiRequestTemplate = "aiRequestTemplate"
     const val aiSseIdleTimeoutSeconds = "aiSseIdleTimeoutSeconds"
     const val aiGenerationTimeoutSeconds = "aiGenerationTimeoutSeconds"
+    const val aiThinkingInterruptSeconds = "aiThinkingInterruptSeconds"
+    const val aiThinkingInterruptMaxCount = "aiThinkingInterruptMaxCount"
     const val aiChapterPurifyReuseCurrentModel = "aiChapterPurifyReuseCurrentModel"
     const val aiChapterPurifyProvider = "aiChapterPurifyProvider"
     const val aiChapterPurifyModel = "aiChapterPurifyModel"

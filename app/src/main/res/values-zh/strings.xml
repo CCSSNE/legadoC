@@ -3,6 +3,13 @@
     <string name="ai_sse_idle_timeout_summary">连续 %1$d 秒没有收到 SSE 数据才失败；持续输出不会超时。</string>
     <string name="ai_generation_timeout">AI 生成超时</string>
     <string name="ai_generation_timeout_summary">收到响应头后，单次 AI 生成最多持续 %1$d 秒。</string>
+    <string name="ai_thinking_interrupt_seconds">思考打断秒数</string>
+    <string name="ai_thinking_interrupt_seconds_summary_unset">未设置，使用 AI 生成超时；设置后仅在正文输出开始前打断并重新发送请求。</string>
+    <string name="ai_thinking_interrupt_seconds_summary_set">思考超过 %1$d 秒后打断并重新发送请求；每次请求仍受生成超时限制。</string>
+    <string name="ai_thinking_interrupt_max_count">最大思考打断次数</string>
+    <string name="ai_thinking_interrupt_max_count_summary">仅在设置思考打断秒数时生效；达到 %1$d 次打断后判定失败。</string>
+    <string name="ai_thinking_interrupt_clear">清除思考打断设置</string>
+    <string name="ai_thinking_interrupt_number_invalid">请输入留空或 %1$d 到 %2$d 之间的整数。</string>
     <string name="ai_chapter_purify_stream_phase_thinking">思考中</string>
     <string name="ai_chapter_purify_stream_phase_output">输出中</string>
     <string name="ai_chapter_purify_stream_phase_activity">处理中</string>

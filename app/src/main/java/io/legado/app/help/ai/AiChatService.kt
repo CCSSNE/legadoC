@@ -12,8 +12,15 @@ import io.legado.app.ui.main.ai.AiChatException
 import io.legado.app.ui.main.ai.AiChatMessage
 import io.legado.app.ui.main.ai.AiProviderConfig
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.selects.onTimeout
+import kotlinx.coroutines.selects.select
 import okhttp3.Headers
 import org.json.JSONArray
 import org.json.JSONObject
@@ -39,6 +46,12 @@ data class AiStreamProgress(
         ACTIVITY
     }
 }
+
+class AiThinkingInterruptLimitException(
+    message: String,
+    debugLog: String,
+    cause: Throwable? = null
+) : AiChatException(message, debugLog, cause)
 
 object AiChatService {
 
@@ -519,6 +532,66 @@ object AiChatService {
         options: CompletionRequestOptions = CompletionRequestOptions(),
         logRequestBody: Boolean = true
     ): AssistantTurn {
+        var interruptCount = 0
+        while (true) {
+            try {
+                return requestCompletionStreamOnce(
+                    baseUrl = baseUrl,
+                    model = model,
+                    providerApiKey = providerApiKey,
+                    providerHeaders = providerHeaders,
+                    messages = messages,
+                    tools = tools,
+                    requestLog = requestLog,
+                    round = round,
+                    onPartial = onPartial,
+                    onThinking = onThinking,
+                    onRequestAccepted = onRequestAccepted,
+                    onStreamProgress = onStreamProgress,
+                    options = options,
+                    logRequestBody = logRequestBody
+                )
+            } catch (interrupt: AiThinkingInterruptException) {
+                interruptCount++
+                val maxInterruptCount = AiRequestTimeoutConfig.thinkingInterruptMaxCount
+                AppLog.putAi(
+                    "AI THINKING INTERRUPTED\n" +
+                        "interruptCount=$interruptCount\n" +
+                        "maxInterruptCount=$maxInterruptCount\n" +
+                        "thinkingInterruptSeconds=${AiRequestTimeoutConfig.thinkingInterruptSeconds}\n" +
+                        "reason=${interrupt.message}"
+                )
+                requestLog.append("thinkingInterruptCount=")
+                    .append(interruptCount)
+                    .append('\n')
+                if (interruptCount >= maxInterruptCount) {
+                    throw AiThinkingInterruptLimitException(
+                        message = "AI thinking was interrupted $interruptCount time(s); maximum reached",
+                        debugLog = requestLog.toString(),
+                        cause = interrupt
+                    )
+                }
+                requestLog.append("thinkingInterruptResend=true\n")
+            }
+        }
+    }
+
+    private suspend fun requestCompletionStreamOnce(
+        baseUrl: String,
+        model: String,
+        providerApiKey: String,
+        providerHeaders: String,
+        messages: List<JSONObject>,
+        tools: List<AiResolvedTool>,
+        requestLog: StringBuilder,
+        round: Int,
+        onPartial: (String) -> Unit,
+        onThinking: (String) -> Unit,
+        onRequestAccepted: suspend () -> Unit = {},
+        onStreamProgress: suspend (AiStreamProgress) -> Unit = {},
+        options: CompletionRequestOptions = CompletionRequestOptions(),
+        logRequestBody: Boolean = true
+    ): AssistantTurn {
         val requestId = requestSequence.incrementAndGet()
         val requestUrl = resolveChatUrl(baseUrl)
         val requestHeaders = formatRequestHeaders(providerApiKey, providerHeaders)
@@ -549,10 +622,17 @@ object AiChatService {
         }
         val idleTimeoutSeconds = AiRequestTimeoutConfig.sseIdleTimeoutSeconds
         val generationTimeoutSeconds = AiRequestTimeoutConfig.generationTimeoutSeconds
+        val thinkingInterruptSeconds = AiRequestTimeoutConfig.thinkingInterruptSeconds
         val generationTimeoutMs = generationTimeoutSeconds * 1_000L
         requestLog.append("round=").append(round).append('\n')
         requestLog.append("sseIdleTimeoutSeconds=").append(idleTimeoutSeconds).append('\n')
         requestLog.append("generationTimeoutSeconds=").append(generationTimeoutSeconds).append('\n')
+        requestLog.append("thinkingInterruptSeconds=")
+            .append(thinkingInterruptSeconds ?: "<unset>")
+            .append('\n')
+        requestLog.append("thinkingInterruptMaxCount=")
+            .append(AiRequestTimeoutConfig.thinkingInterruptMaxCount)
+            .append('\n')
         if (logRequestBody) {
             requestLog.append("request=").append(requestBody).append('\n')
         }
@@ -656,8 +736,16 @@ object AiChatService {
             try {
                 withTimeout(generationTimeoutMs) {
                     body.byteStream().bufferedReader().use { reader ->
+                        var visibleOutputStarted = false
+                        val thinkingDeadlineAt = thinkingInterruptSeconds?.let {
+                            streamStartedAt + it * 1_000L
+                        }
                         while (true) {
-                            val rawLine = reader.readLine()?.trim() ?: break
+                            val rawLine = readSseLine(
+                                reader = reader,
+                                thinkingDeadlineAt = if (visibleOutputStarted) null else thinkingDeadlineAt,
+                                thinkingInterruptSeconds = thinkingInterruptSeconds
+                            )?.trim() ?: break
                             if (rawLine.isEmpty()) continue
                             rawPayload.append(rawLine).append('\n')
                             val payload = when {
@@ -676,6 +764,11 @@ object AiChatService {
                                 onThinking = onThinking,
                                 streamStartedAt = streamStartedAt,
                                 onStreamProgress = { progress ->
+                                    if (progress.phase == AiStreamProgress.Phase.OUTPUT ||
+                                        progress.contentChars > 0
+                                    ) {
+                                        visibleOutputStarted = true
+                                    }
                                     val now = SystemClock.elapsedRealtime()
                                     val enrichedProgress = progress.copy(
                                         sseGapMs = (now - lastStreamEventAt).coerceAtLeast(0L)
@@ -929,6 +1022,49 @@ object AiChatService {
                 contentChars = rendered.length
             )
         )
+    }
+
+    private class AiThinkingInterruptException(
+        elapsedSeconds: Int
+    ) : IllegalStateException(
+        "AI thinking exceeded configured interrupt threshold of ${elapsedSeconds}s"
+    )
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private suspend fun readSseLine(
+        reader: java.io.BufferedReader,
+        thinkingDeadlineAt: Long?,
+        thinkingInterruptSeconds: Int?
+    ): String? {
+        if (thinkingDeadlineAt == null) {
+            return reader.readLine()
+        }
+        val remainingMs = thinkingDeadlineAt - SystemClock.elapsedRealtime()
+        if (remainingMs <= 0L) {
+            throw AiThinkingInterruptException(
+                thinkingInterruptSeconds ?: error("Missing thinking interrupt threshold")
+            )
+        }
+        return coroutineScope {
+            val readJob = async(Dispatchers.IO) {
+                runInterruptible { reader.readLine() }
+            }
+            try {
+                select {
+                    readJob.onAwait { it }
+                    onTimeout(remainingMs) {
+                        readJob.cancel()
+                        reader.close()
+                        throw AiThinkingInterruptException(
+                            thinkingInterruptSeconds
+                                ?: error("Missing thinking interrupt threshold")
+                        )
+                    }
+                }
+            } finally {
+                readJob.cancel()
+            }
+        }
     }
 
     private fun estimateOutputTokens(outputChars: Int): Int {
