@@ -29,6 +29,7 @@ object AiChapterPurifyService {
         startChapterIndex: Int,
         chapterCount: Int = AiChapterPurifyConfig.chapterCount,
         force: Boolean = false,
+        triggerSource: String? = null,
         onProgress: suspend (AiChapterPurifyProgress) -> Unit = {}
     ): AiChapterPurifyRunResult {
         require(chapterCount >= AiChapterPurifyConfig.MIN_CHAPTER_COUNT) {
@@ -45,6 +46,7 @@ object AiChapterPurifyService {
                 "startChapter=${startChapterIndex + 1}\n" +
                 "requestedChapters=$chapterCount\n" +
                 "force=$force\n" +
+                "triggerSource=${triggerSource ?: "<none>"}\n" +
                 "replaceEnabled=${book.getUseReplaceRule()}\n" +
                 "types=typo:${AiChapterPurifyConfig.typoEnabled}," +
                 "noise:${AiChapterPurifyConfig.noiseEnabled}," +

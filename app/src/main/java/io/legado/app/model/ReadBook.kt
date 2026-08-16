@@ -883,7 +883,7 @@ object ReadBook : CoroutineScope by MainScope() {
                     }
                     if (upContent) callBack?.upContent(offset, !available && resetPageOffset)
                     curPageChanged()
-                    callBack?.contentLoadFinish()
+                    callBack?.contentLoadFinish("loadChapter")
                 }
 
                 -1 -> prevChapterLoadingLock.withLock {
@@ -975,7 +975,7 @@ object ReadBook : CoroutineScope by MainScope() {
                     }
                     if (upContent) callBack?.upContent(offset, !available && resetPageOffset)
                     curPageChanged()
-                    callBack?.contentLoadFinish()
+                    callBack?.contentLoadFinish("contentLoadAwait")
                 }
 
                 -1 -> {
@@ -1222,7 +1222,7 @@ object ReadBook : CoroutineScope by MainScope() {
 
         fun pageChanged()
 
-        fun contentLoadFinish()
+        fun contentLoadFinish(trigger: String = "chapter_load")
 
         fun upPageAnim(upRecorder: Boolean = false)
 

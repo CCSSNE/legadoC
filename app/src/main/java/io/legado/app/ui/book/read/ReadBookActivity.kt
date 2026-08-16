@@ -255,6 +255,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     private var aiChapterPurifyLastStreamSnackbarAt = 0L
     private var aiChapterPurifyPendingChapterIndex: Int? = null
     private var aiChapterPurifyPendingForce = false
+    private var aiChapterPurifyPendingSource: String? = null
     private var aiChapterPurifyRefreshChapterIndex: Int? = null
     private var illustrationAnchor: IllustrationAnchor? = null
     val textActionMenu: TextActionMenu by lazy {
@@ -575,7 +576,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                 requestAiChapterPurifyAfterRefresh()
                 if (ReadBook.bookSource == null) {
                     upContent()
-                    scheduleAiChapterPurify(force = true)
+                    scheduleAiChapterPurify(force = true, source = "menu_refresh")
                 } else {
                     ReadBook.book?.let {
                         ReadBook.curTextChapter = null
@@ -589,7 +590,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                 requestAiChapterPurifyAfterRefresh()
                 if (ReadBook.bookSource == null) {
                     upContent()
-                    scheduleAiChapterPurify(force = true)
+                    scheduleAiChapterPurify(force = true, source = "menu_refresh_after")
                 } else {
                     ReadBook.book?.let {
                         ReadBook.clearTextChapter()
@@ -603,7 +604,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                 requestAiChapterPurifyAfterRefresh()
                 if (ReadBook.bookSource == null) {
                     upContent()
-                    scheduleAiChapterPurify(force = true)
+                    scheduleAiChapterPurify(force = true, source = "menu_refresh_all")
                 } else {
                     ReadBook.book?.let {
                         refreshContentAll(it)
@@ -1342,7 +1343,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     /**
      * 内容加载完成
      */
-    override fun contentLoadFinish() {
+    override fun contentLoadFinish(trigger: String) {
         if (intent.getBooleanExtra("readAloud", false)) {
             intent.removeExtra("readAloud")
             ReadBook.readAloud()
@@ -1353,7 +1354,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         if (force) {
             aiChapterPurifyRefreshChapterIndex = null
         }
-        scheduleAiChapterPurify(force)
+        scheduleAiChapterPurify(force, source = "contentLoadFinish:$trigger")
     }
 
     /**
@@ -2418,27 +2419,56 @@ class ReadBookActivity : BaseReadBookActivity(),
         aiChapterPurifyRefreshChapterIndex = ReadBook.durChapterIndex
     }
 
-    private fun scheduleAiChapterPurify(force: Boolean = false) {
+    private fun scheduleAiChapterPurify(force: Boolean = false, source: String = "unknown") {
         val book = ReadBook.book ?: return
-        if (!book.getUseReplaceRule() || !book.getAiChapterPurifyEnabled()) return
+        if (!book.getUseReplaceRule() || !book.getAiChapterPurifyEnabled()) {
+            AppLog.putAi(
+                "CHAPTER_PURIFY SCHEDULE_SKIPPED\n" +
+                    "source=$source\n" +
+                    "force=$force\n" +
+                    "chapter=${ReadBook.durChapterIndex + 1}\n" +
+                    "reason=aiChapterPurifyDisabled"
+            )
+            return
+        }
         val chapterIndex = ReadBook.durChapterIndex
         if (aiChapterPurifyJob?.isActive == true) {
             aiChapterPurifyPendingChapterIndex = chapterIndex
             aiChapterPurifyPendingForce = aiChapterPurifyPendingForce || force
+            aiChapterPurifyPendingSource = source
+            AppLog.putAi(
+                "CHAPTER_PURIFY SCHEDULE_QUEUED\n" +
+                    "source=$source\n" +
+                    "force=$force\n" +
+                    "chapter=${chapterIndex + 1}"
+            )
             return
         }
-        startAiChapterPurify(book, chapterIndex, force)
+        AppLog.putAi(
+            "CHAPTER_PURIFY SCHEDULED\n" +
+                "source=$source\n" +
+                "force=$force\n" +
+                "chapter=${chapterIndex + 1}"
+        )
+        startAiChapterPurify(book, chapterIndex, force, source)
     }
 
-    private fun startAiChapterPurify(book: Book, chapterIndex: Int, force: Boolean) {
+    private fun startAiChapterPurify(book: Book, chapterIndex: Int, force: Boolean, source: String) {
         aiChapterPurifyJob = lifecycleScope.launch {
             var completed = false
+            AppLog.putAi(
+                "CHAPTER_PURIFY START\n" +
+                    "source=$source\n" +
+                    "force=$force\n" +
+                    "chapter=${chapterIndex + 1}"
+            )
             try {
                 withContext(IO) {
                     AiChapterPurifyService.processCachedRange(
                         book = book,
                         startChapterIndex = chapterIndex,
                         force = force,
+                        triggerSource = source,
                         onProgress = { progress ->
                             withContext(Main) {
                                 showAiChapterPurifyProgress(progress)
@@ -2478,15 +2508,17 @@ class ReadBookActivity : BaseReadBookActivity(),
                 aiChapterPurifyJob = null
                 val pendingChapterIndex = aiChapterPurifyPendingChapterIndex
                 val pendingForce = aiChapterPurifyPendingForce
+                val pendingSource = aiChapterPurifyPendingSource
                 aiChapterPurifyPendingChapterIndex = null
                 aiChapterPurifyPendingForce = false
+                aiChapterPurifyPendingSource = null
                 if (!completed || pendingChapterIndex != null) {
                     aiChapterPurifySummarySnackbar?.dismiss()
                     aiChapterPurifySummarySnackbar = null
                     aiChapterPurifyLastStreamSnackbarAt = 0L
                 }
                 if (pendingChapterIndex != null) {
-                    scheduleAiChapterPurify(pendingForce)
+                    scheduleAiChapterPurify(pendingForce, pendingSource ?: "pending_reschedule")
                 }
             }
         }
@@ -2500,6 +2532,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         aiChapterPurifyLastStreamSnackbarAt = 0L
         aiChapterPurifyPendingChapterIndex = null
         aiChapterPurifyPendingForce = false
+        aiChapterPurifyPendingSource = null
         aiChapterPurifyRefreshChapterIndex = null
     }
 
