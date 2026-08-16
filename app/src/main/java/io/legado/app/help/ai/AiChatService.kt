@@ -22,6 +22,18 @@ object AiChatService {
     private const val MAX_TOOL_ROUNDS = 12
     private const val MAX_SEARCH_RESULT_CARDS = 8
     private val requestSequence = AtomicLong(0)
+    private val inlineThinkingBlockRegex = Regex(
+        "<(think|thinking|analysis|reasoning)>[\\s\\S]*?</\\1>",
+        RegexOption.IGNORE_CASE
+    )
+    private val inlineThinkingOpenTagRegex = Regex(
+        "<(think|thinking|analysis|reasoning)>",
+        RegexOption.IGNORE_CASE
+    )
+    private val inlineThinkingCloseTagRegex = Regex(
+        "</(think|thinking|analysis|reasoning)>",
+        RegexOption.IGNORE_CASE
+    )
 
     private data class ToolCall(
         val id: String,
@@ -162,12 +174,38 @@ object AiChatService {
 
     /** Sends a minimal completion through the same endpoint used by real AI features. */
     suspend fun testConnection(provider: AiProviderConfig, model: String): String {
-        return generateStructuredText(
-            provider = provider,
-            model = model,
-            systemPrompt = "You are a connection test endpoint. Reply with a short JSON confirmation, such as {\"ok\":true}.",
-            userContent = "ping"
+        val requestUrl = resolveChatUrl(provider.baseUrl.trim())
+        AppLog.putAi(
+            "CONNECTION_TEST START\n" +
+                "provider=${provider.name}\n" +
+                "model=$model\n" +
+                "url=$requestUrl"
         )
+        return try {
+            val response = generateStructuredText(
+                provider = provider,
+                model = model,
+                systemPrompt = "You are a connection test endpoint. Reply with a short JSON confirmation, such as {\"ok\":true}.",
+                userContent = "ping"
+            )
+            AppLog.putAi(
+                "CONNECTION_TEST SUCCESS\n" +
+                    "provider=${provider.name}\n" +
+                    "model=$model\n" +
+                    "response=$response"
+            )
+            response
+        } catch (throwable: Throwable) {
+            if (throwable is CancellationException) throw throwable
+            AppLog.putAi(
+                "CONNECTION_TEST FAILED\n" +
+                    "provider=${provider.name}\n" +
+                    "model=$model\n" +
+                    "url=$requestUrl",
+                throwable
+            )
+            throw throwable
+        }
     }
 
     suspend fun chatStream(
@@ -579,7 +617,9 @@ object AiChatService {
                     "status=${rawResponse.code} ${rawResponse.message}\n" +
                     "rawSse=$rawPayload\n" +
                     "rendered=${rendered}\n" +
+                    "renderedChars=${rendered.length}\n" +
                     "reasoning=${reasoningRendered}\n" +
+                    "reasoningChars=${reasoningRendered.length}\n" +
                     "toolCalls=${toolCallBuilders.size}"
             )
             val toolCalls = toolCallBuilders.map { (index, builder) ->
@@ -997,18 +1037,17 @@ object AiChatService {
     private fun splitInlineThinking(text: String): Pair<String, String> {
         var visible = text
         val reasoningParts = mutableListOf<String>()
-        val closedThinkRegex = Regex("<think>([\\s\\S]*?)</think>", RegexOption.IGNORE_CASE)
-        closedThinkRegex.findAll(text).forEach { match ->
-            match.groups[1]?.value
+        inlineThinkingBlockRegex.findAll(text).forEach { match ->
+            match.groups[2]?.value
                 ?.trim()
                 ?.takeIf { it.isNotBlank() }
                 ?.let(reasoningParts::add)
         }
-        visible = closedThinkRegex.replace(visible, "")
-        val openMatch = Regex("<think>", RegexOption.IGNORE_CASE).find(visible)
+        visible = inlineThinkingBlockRegex.replace(visible, "")
+        val openMatch = inlineThinkingOpenTagRegex.find(visible)
         if (openMatch != null) {
             val thinking = visible.substring(openMatch.range.last + 1)
-                .replace(Regex("</think>", RegexOption.IGNORE_CASE), "")
+                .replace(inlineThinkingCloseTagRegex, "")
                 .trim()
             if (thinking.isNotBlank()) {
                 reasoningParts += thinking
