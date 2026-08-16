@@ -194,7 +194,7 @@ object AiChapterPurifyConfig {
     private fun parsePreprocessJson(json: String): List<AiChapterPurifyPreprocessRule> {
         val rules = GSON.fromJsonArray<AiChapterPurifyPreprocessRule>(json).getOrElse {
             throw AiChapterPurifyException(
-                "AI input preprocessing JSON is invalid: ${it.message ?: it.javaClass.simpleName}",
+                "AI 输入预处理规则无效：规则数据解析失败：${it.message ?: it.javaClass.simpleName}",
                 it
             )
         }

@@ -30,24 +30,24 @@ data class AiChapterPurifyPreprocessedParagraph(
 
     fun sourceTextForModelText(modelText: String, source: String): String {
         if (modelText.isBlank()) {
-            throw AiChapterPurifyException("AI chapter purification returned blank old text")
+            throw AiChapterPurifyException("AI 返回的净化规则无效：规则原文为空")
         }
         var matchStart = text.indexOf(modelText)
         if (matchStart < 0) {
             throw AiChapterPurifyException(
-                "AI chapter purification old text is not an exact substring of the normalized paragraph"
+                "AI 返回的净化规则无效：规则原文与预处理后的段落不匹配"
             )
         }
         val secondMatchStart = text.indexOf(modelText, matchStart + 1)
         if (secondMatchStart >= 0) {
             throw AiChapterPurifyException(
-                "AI chapter purification old text occurs more than once in normalized paragraph"
+                "AI 返回的净化规则无效：规则原文在段落中出现多次"
             )
         }
         val matchEnd = matchStart + modelText.length
         if (matchEnd > sourceSpans.size) {
             throw AiChapterPurifyException(
-                "AI chapter purification normalized text mapping is incomplete"
+                "AI 返回的净化规则无效：规则原文映射不完整"
             )
         }
         val spans = sourceSpans.subList(matchStart, matchEnd)
@@ -55,7 +55,7 @@ data class AiChapterPurifyPreprocessedParagraph(
         val sourceEnd = spans.maxOf { it.endExclusive }
         if (sourceStart < 0 || sourceEnd > source.length || sourceStart >= sourceEnd) {
             throw AiChapterPurifyException(
-                "AI chapter purification normalized text mapping points outside source paragraph"
+                "AI 返回的净化规则无效：规则原文映射超出段落范围"
             )
         }
         matchStart = sourceStart
@@ -68,26 +68,26 @@ object AiChapterPurifyPreprocessor {
     fun validateRules(rules: List<AiChapterPurifyPreprocessRule>) {
         rules.forEachIndexed { index, rule ->
             require(rule.name.isNotBlank()) {
-                "AI input preprocessing rule ${index + 1} name is blank"
+                "AI 输入预处理规则无效：第 ${index + 1} 条规则缺少名称"
             }
             require(rule.pattern.isNotEmpty()) {
-                "AI input preprocessing rule ${index + 1} pattern is blank"
+                "AI 输入预处理规则无效：第 ${index + 1} 条规则缺少正则表达式"
             }
             val scopes = rule.effectiveScopes().map { it.lowercase() }
             require(scopes.isNotEmpty()) {
-                "AI input preprocessing rule ${index + 1} has no scopes"
+                "AI 输入预处理规则无效：第 ${index + 1} 条规则未设置作用域"
             }
             require(scopes.distinct().size == scopes.size) {
-                "AI input preprocessing rule ${index + 1} has duplicate scopes"
+                "AI 输入预处理规则无效：第 ${index + 1} 条规则作用域重复"
             }
             require(scopes.all { it in AiChapterPurifyConfig.supportedTypes }) {
-                "AI input preprocessing rule ${index + 1} has an unknown scope: $scopes"
+                "AI 输入预处理规则无效：第 ${index + 1} 条规则作用域无效：$scopes"
             }
             try {
                 Pattern.compile(rule.pattern)
             } catch (throwable: Throwable) {
                 throw AiChapterPurifyException(
-                    "AI input preprocessing rule ${index + 1} has invalid regex: ${rule.name}",
+                    "AI 输入预处理规则无效：第 ${index + 1} 条规则正则表达式编译失败（${rule.name}）",
                     throwable
                 )
             }
@@ -108,7 +108,7 @@ object AiChapterPurifyPreprocessor {
     ): AiChapterPurifyPreprocessedParagraph {
         scope?.let {
             require(it in AiChapterPurifyConfig.supportedTypes) {
-                "AI input preprocessing scope is unsupported: $it"
+                "AI 输入预处理规则无效：作用域不受支持：$it"
             }
         }
         var current = source
@@ -126,7 +126,7 @@ object AiChapterPurifyPreprocessor {
                     Pattern.compile(rule.pattern).matcher(current)
                 } catch (throwable: Throwable) {
                     throw AiChapterPurifyException(
-                        "AI input preprocessing rule ${indexedRule.index + 1} has invalid regex: ${rule.name}",
+                        "AI 输入预处理规则无效：第 ${indexedRule.index + 1} 条规则正则表达式编译失败（${rule.name}）",
                         throwable
                     )
                 }
@@ -137,7 +137,7 @@ object AiChapterPurifyPreprocessor {
                 while (matcher.find()) {
                     if (matcher.start() == matcher.end()) {
                         throw AiChapterPurifyException(
-                            "AI input preprocessing rule matches empty text: ${rule.name}"
+                            "AI 输入预处理规则无效：规则匹配了空文本（${rule.name}）"
                         )
                     }
                     matched = true
@@ -146,7 +146,7 @@ object AiChapterPurifyPreprocessor {
                         matcher.appendReplacement(output, rule.replacement)
                     } catch (throwable: Throwable) {
                         throw AiChapterPurifyException(
-                            "AI input preprocessing replacement is invalid: ${rule.name}",
+                            "AI 输入预处理规则无效：替换内容非法（${rule.name}）",
                             throwable
                         )
                     }
@@ -164,7 +164,7 @@ object AiChapterPurifyPreprocessor {
                 matcher.appendTail(output)
                 outputSpans.addAll(sourceSpans.subList(lastEnd, current.length))
                 check(output.length == outputSpans.size) {
-                    "AI input preprocessing mapping length mismatch: ${rule.name}"
+                    "AI 输入预处理规则无效：映射长度不一致（${rule.name}）"
                 }
                 current = output.toString()
                 sourceSpans = outputSpans

@@ -50,8 +50,15 @@ object AiStructuredRequestTemplate {
 
     fun validate(template: String) {
         val normalized = template.trim()
-        require(normalized.isNotEmpty()) { "Request template is empty" }
-        JSONObject(normalized)
+        require(normalized.isNotEmpty()) { "请求模板不能为空" }
+        try {
+            JSONObject(normalized)
+        } catch (throwable: Throwable) {
+            throw IllegalStateException(
+                "请求模板 JSON 格式错误：${throwable.message ?: throwable.javaClass.simpleName}",
+                throwable
+            )
+        }
     }
 
     fun render(
