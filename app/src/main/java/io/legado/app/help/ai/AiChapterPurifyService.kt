@@ -92,7 +92,17 @@ object AiChapterPurifyService {
                 ).textList.mapIndexedNotNull { index, content ->
                     val normalized = content.trim()
                     normalized.takeIf { it.isNotEmpty() }?.let {
-                        AiChapterPurifyParagraph(index + 1, it)
+                        val modelContent = AiChapterPurifyHelper.sanitizeParagraphForModel(it)
+                        if (modelContent.isBlank()) {
+                            AppLog.putAi(
+                                "CHAPTER_PURIFY SKIP_PRESENTATION_ONLY chapter=${chapter.index + 1}\n" +
+                                    "paragraph=${index + 1}\n" +
+                                    "sourceChars=${it.length}"
+                            )
+                            null
+                        } else {
+                            AiChapterPurifyParagraph(index + 1, it, modelContent)
+                        }
                     }
                 }
                 if (paragraphs.isEmpty()) {
@@ -104,7 +114,9 @@ object AiChapterPurifyService {
                     "CHAPTER_PURIFY CHAPTER_PREPARED chapter=${chapter.index + 1}\n" +
                         "fingerprint=$fingerprint\n" +
                         "paragraphCount=${paragraphs.size}\n" +
-                        "paragraphChars=${paragraphs.sumOf { it.content.length }}"
+                        "paragraphChars=${paragraphs.sumOf { it.content.length }}\n" +
+                        "modelParagraphChars=${paragraphs.sumOf { it.modelContent.length }}\n" +
+                        "presentationCharsRemoved=${paragraphs.sumOf { it.content.length - it.modelContent.length }}"
                 )
                 val rules = AiChapterPurifyHelper.generateRules(
                     paragraphs = paragraphs,
@@ -114,6 +126,22 @@ object AiChapterPurifyService {
                 currentCoroutineContext().ensureActive()
                 val chapterAddedRules = insertNewRules(book, rules)
                 addedRules += chapterAddedRules
+                if (chapterAddedRules > 0) {
+                    try {
+                        ContentProcessor.upReplaceRules()
+                        AppLog.putAi(
+                            "CHAPTER_PURIFY CHAPTER_REPLACEMENT_CACHE_REFRESHED chapter=${chapter.index + 1}\n" +
+                                "addedRules=$chapterAddedRules"
+                        )
+                    } catch (throwable: Throwable) {
+                        AppLog.putAi(
+                            "CHAPTER_PURIFY CHAPTER_REPLACEMENT_CACHE_REFRESH_FAILED chapter=${chapter.index + 1}\n" +
+                                "addedRules=$chapterAddedRules",
+                            throwable
+                        )
+                        throw throwable
+                    }
+                }
                 AppLog.putAi(
                     "CHAPTER_PURIFY RULES_READY chapter=${chapter.index + 1}\n" +
                         "candidateRules=${rules.size}\n" +
@@ -166,18 +194,9 @@ object AiChapterPurifyService {
             }
         }
         if (addedRules > 0) {
-            try {
-                ContentProcessor.upReplaceRules()
-                AppLog.putAi(
-                    "CHAPTER_PURIFY REPLACEMENT_CACHE_REFRESHED addedRules=$addedRules"
-                )
-            } catch (throwable: Throwable) {
-                AppLog.putAi(
-                    "CHAPTER_PURIFY REPLACEMENT_CACHE_REFRESH_FAILED addedRules=$addedRules",
-                    throwable
-                )
-                throw throwable
-            }
+            AppLog.putAi(
+                "CHAPTER_PURIFY REPLACEMENT_CACHE_REFRESHED totalAddedRules=$addedRules"
+            )
         } else {
             AppLog.putAi("CHAPTER_PURIFY NO_NEW_RULES")
         }

@@ -13,7 +13,8 @@ import kotlinx.coroutines.sync.withPermit
 
 data class AiChapterPurifyParagraph(
     val id: Int,
-    val content: String
+    val content: String,
+    val modelContent: String = content
 )
 
 data class AiChapterPurifyRule(
@@ -61,6 +62,10 @@ sealed interface AiChapterPurifyProgress {
 object AiChapterPurifyHelper {
 
     private val supportedTypes = setOf("typo", "noise", "ad")
+    private val presentationMarkupRegex = Regex(
+        "<img\\b[^>]*>",
+        RegexOption.IGNORE_CASE
+    )
 
     private data class Response(
         val rules: List<ResponseRule>?
@@ -72,6 +77,10 @@ object AiChapterPurifyHelper {
         val old: String?,
         val new: String?
     )
+
+    fun sanitizeParagraphForModel(content: String): String {
+        return presentationMarkupRegex.replace(content, "")
+    }
 
     suspend fun generateRules(
         paragraphs: List<AiChapterPurifyParagraph>,
@@ -142,7 +151,7 @@ object AiChapterPurifyHelper {
                         "batch=$chunkIndex/$totalChunks\n" +
                         "attempt=${attempt + 1}\n" +
                         "paragraphIds=${paragraphs.joinToString { it.id.toString() }}\n" +
-                        "chars=${paragraphs.sumOf { it.content.length }}"
+                        "chars=${paragraphs.sumOf { it.modelContent.length }}"
                 )
                 val response = AiChatService.generateStructuredText(
                     provider = target.provider,
@@ -221,6 +230,8 @@ object AiChapterPurifyHelper {
             For ad, old must be the entire input paragraph and new must be an empty string.
             For typo, old and new must both contain at least two characters.
             For noise, do not rewrite normal prose. Return an empty rules array when uncertain.
+            Never return HTML tags, image data, base64 data, SVG markup, or click metadata as a rule.
+            Those are presentation artifacts removed from the model input, not chapter text.
 
             Task prompt controlled by the user:
             ${AiChapterPurifyConfig.prompt}
@@ -232,7 +243,7 @@ object AiChapterPurifyHelper {
             append("Input paragraphs:\n")
             paragraphs.forEach { paragraph ->
                 append('[').append(paragraph.id).append("] ")
-                append(paragraph.content)
+                append(paragraph.modelContent)
                 append('\n')
             }
         }
@@ -250,12 +261,13 @@ object AiChapterPurifyHelper {
         val responseRules = parsed.rules
             ?: throw AiChapterPurifyException("AI chapter purification JSON has no rules array")
         val sourceById = paragraphs.associateBy { it.id }
-        return responseRules.mapIndexed { index, rule ->
+        return responseRules.mapIndexedNotNull { index, rule ->
             val id = rule.id
-            val source = sourceById[id]?.content
+            val paragraph = sourceById[id]
                 ?: throw AiChapterPurifyException(
                     "AI chapter purification rule ${index + 1} references unknown paragraph id $id"
                 )
+            val source = paragraph.content
             val type = rule.type?.lowercase()?.trim().orEmpty()
             if (type !in supportedTypes || !AiChapterPurifyConfig.isTypeEnabled(type)) {
                 throw AiChapterPurifyException(
@@ -268,8 +280,50 @@ object AiChapterPurifyHelper {
             val new = rule.new ?: throw AiChapterPurifyException(
                 "AI chapter purification rule ${index + 1} has no new text"
             )
-            validateRule(index + 1, type, old, new, source)
-            AiChapterPurifyRule(id, type, old, new)
+            val markupMarker = findPresentationMarkupMarker(old)
+                ?: findPresentationMarkupMarker(new)
+            if (markupMarker != null) {
+                AppLog.putAi(
+                    "CHAPTER_PURIFY RULE_REJECTED\n" +
+                        "reason=presentation_markup\n" +
+                        "rule=${index + 1}\n" +
+                        "id=$id\n" +
+                        "type=$type\n" +
+                        "marker=$markupMarker\n" +
+                        "oldChars=${old.length}\n" +
+                        "newChars=${new.length}"
+                )
+                return@mapIndexedNotNull null
+            }
+            val effectiveOld = if (
+                type == "ad" &&
+                paragraph.modelContent != source &&
+                old == paragraph.modelContent
+            ) {
+                AppLog.putAi(
+                    "CHAPTER_PURIFY RULE_REHYDRATED\n" +
+                        "type=ad\n" +
+                        "id=$id\n" +
+                        "modelChars=${paragraph.modelContent.length}\n" +
+                        "sourceChars=${source.length}"
+                )
+                source
+            } else {
+                old
+            }
+            validateRule(index + 1, type, effectiveOld, new, source)
+            AiChapterPurifyRule(id, type, effectiveOld, new)
+        }
+    }
+
+    private fun findPresentationMarkupMarker(value: String): String? {
+        return when {
+            value.contains("<img", ignoreCase = true) -> "img-tag"
+            value.contains("data:image/", ignoreCase = true) -> "data-image"
+            value.contains("base64,", ignoreCase = true) -> "base64"
+            value.contains("showCmt(", ignoreCase = true) -> "click-metadata"
+            value.contains("<svg", ignoreCase = true) -> "svg-tag"
+            else -> null
         }
     }
 
@@ -326,7 +380,7 @@ object AiChapterPurifyHelper {
         var current = mutableListOf<AiChapterPurifyParagraph>()
         var currentLength = 0
         paragraphs.forEach { paragraph ->
-            val estimatedLength = paragraph.content.length + paragraph.id.toString().length + 5
+            val estimatedLength = paragraph.modelContent.length + paragraph.id.toString().length + 5
             require(estimatedLength <= characterLimit) {
                 "Chapter paragraph ${paragraph.id} exceeds the AI chapter purification segment limit"
             }

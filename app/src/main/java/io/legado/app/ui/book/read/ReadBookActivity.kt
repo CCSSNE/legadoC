@@ -2431,7 +2431,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     private fun startAiChapterPurify(book: Book, chapterIndex: Int, force: Boolean) {
         aiChapterPurifyJob = lifecycleScope.launch {
             try {
-                val result = withContext(IO) {
+                withContext(IO) {
                     AiChapterPurifyService.processCachedRange(
                         book = book,
                         startChapterIndex = chapterIndex,
@@ -2439,17 +2439,20 @@ class ReadBookActivity : BaseReadBookActivity(),
                         onProgress = { progress ->
                             withContext(Main) {
                                 showAiChapterPurifyProgress(progress)
+                                if (
+                                    progress is AiChapterPurifyProgress.ChapterRulesStored &&
+                                    progress.chapterIndex == chapterIndex &&
+                                    progress.addedRules > 0 &&
+                                    ReadBook.book?.bookUrl == book.bookUrl &&
+                                    ReadBook.durChapterIndex == chapterIndex &&
+                                    book.getUseReplaceRule() &&
+                                    book.getAiChapterPurifyEnabled()
+                                ) {
+                                    viewModel.replaceRuleChanged()
+                                }
                             }
                         }
                     )
-                }
-                if (result.addedRules > 0 &&
-                    ReadBook.book?.bookUrl == book.bookUrl &&
-                    ReadBook.durChapterIndex == chapterIndex &&
-                    book.getUseReplaceRule() &&
-                    book.getAiChapterPurifyEnabled()
-                ) {
-                    viewModel.replaceRuleChanged()
                 }
             } catch (exception: CancellationException) {
                 throw exception
