@@ -1,9 +1,11 @@
 package io.legado.app.ui.config
 
 import android.content.SharedPreferences
+import android.net.Uri
 import android.os.Bundle
 import android.text.InputType
 import android.view.View
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
 import androidx.preference.Preference
 import io.legado.app.R
@@ -37,9 +39,22 @@ import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class AiConfigFragment : PreferenceFragment(),
     SharedPreferences.OnSharedPreferenceChangeListener {
+
+    private var pendingAiLogs = emptyList<Triple<Long, String, Throwable?>>()
+
+    private val exportAiLogLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri ->
+        val logs = pendingAiLogs
+        pendingAiLogs = emptyList()
+        uri?.let { writeAiLogs(it, logs) }
+    }
 
     private val defaultSkillUrls = listOf(
         "https://raw.githubusercontent.com/DandanLLab/legadoSkill/main/.trae/skills/legado-book-source-tamer/SKILL.md",
@@ -74,6 +89,7 @@ class AiConfigFragment : PreferenceFragment(),
             "aiManageModels" -> showManageModelsDialog()
             "aiEditRequest" -> showEditRequestDialog()
             "aiLogs" -> showDialogFragment<AiLogDialog>()
+            "aiExportLogs" -> exportAiLogs()
             "aiAddMcpServer" -> showEditMcpServerDialog()
             "aiManageMcpServers" -> showManageMcpServersDialog()
             "aiManageNativeTools" -> showManageNativeToolsDialog()
@@ -120,6 +136,39 @@ class AiConfigFragment : PreferenceFragment(),
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
         if (key == PreferKey.aiAssistantEnabled || key == PreferKey.aiChapterPurifyReuseCurrentModel) {
             refreshUi(notifyMain = true)
+        }
+    }
+
+    private fun exportAiLogs() {
+        if (AppLog.aiLogs.isEmpty()) {
+            toastOnUi(R.string.ai_log_empty)
+            return
+        }
+        pendingAiLogs = AppLog.aiLogs
+        val fileName = "ai-log-${SimpleDateFormat(
+            "yyyyMMdd-HHmmss",
+            Locale.getDefault()
+        ).format(Date())}.txt"
+        exportAiLogLauncher.launch(fileName)
+    }
+
+    private fun writeAiLogs(uri: Uri, logs: List<Triple<Long, String, Throwable?>>) {
+        lifecycleScope.launch {
+            val result = withContext(IO) {
+                runCatching {
+                    val output = requireContext().contentResolver.openOutputStream(uri, "wt")
+                        ?: error("无法打开导出文件")
+                    output.use {
+                        it.write(AppLog.formatLogs(logs).toByteArray(Charsets.UTF_8))
+                    }
+                }
+            }
+            result.onSuccess {
+                toastOnUi(R.string.ai_log_export_success)
+            }.onFailure {
+                AppLog.put("AI 日志导出失败\n${it.localizedMessage}", it)
+                toastOnUi(getString(R.string.ai_log_export_failed, it.localizedMessage ?: "Error"))
+            }
         }
     }
 

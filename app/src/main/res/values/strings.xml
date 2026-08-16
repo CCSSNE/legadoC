@@ -639,6 +639,11 @@
     <string name="ai_log">AI logs</string>
     <string name="ai_log_summary_empty">View detailed AI request and purification logs.</string>
     <string name="ai_log_summary">%1$d AI log entries</string>
+    <string name="ai_log_export">Export AI logs</string>
+    <string name="ai_log_export_summary">Save the complete AI logs as a UTF-8 text file.</string>
+    <string name="ai_log_empty">There are no AI logs to export.</string>
+    <string name="ai_log_export_success">AI logs exported.</string>
+    <string name="ai_log_export_failed">AI log export failed: %s</string>
     <string name="ai_provider">提供商</string>
     <string name="ai_current_provider">当前提供商</string>
     <string name="ai_current_provider_summary_empty">请先添加提供商</string>

@@ -13,7 +13,7 @@ import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.constant.AppLog
 import io.legado.app.databinding.DialogRecyclerViewBinding
-import io.legado.app.databinding.ItemAppLogBinding
+import io.legado.app.databinding.ItemAiLogBinding
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.LogUtils
@@ -61,26 +61,34 @@ class AiLogDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
     }
 
     inner class LogAdapter(context: Context) :
-        RecyclerAdapter<Triple<Long, String, Throwable?>, ItemAppLogBinding>(context) {
+        RecyclerAdapter<Triple<Long, String, Throwable?>, ItemAiLogBinding>(context) {
 
-        override fun getViewBinding(parent: ViewGroup): ItemAppLogBinding {
-            return ItemAppLogBinding.inflate(inflater, parent, false)
+        override fun getViewBinding(parent: ViewGroup): ItemAiLogBinding {
+            return ItemAiLogBinding.inflate(inflater, parent, false)
         }
 
         override fun convert(
             holder: ItemViewHolder,
-            binding: ItemAppLogBinding,
+            binding: ItemAiLogBinding,
             item: Triple<Long, String, Throwable?>,
             payloads: MutableList<Any>
         ) {
             binding.textTime.text = LogUtils.logTimeFormat.format(Date(item.first))
-            binding.textMessage.text = item.second
+            binding.textMessage.text = item.second.lineSequence()
+                .filter { it.isNotBlank() }
+                .take(2)
+                .joinToString(" · ")
         }
 
-        override fun registerListener(holder: ItemViewHolder, binding: ItemAppLogBinding) {
+        override fun registerListener(holder: ItemViewHolder, binding: ItemAiLogBinding) {
             binding.root.onClick {
-                getItem(holder.layoutPosition)?.third?.let {
-                    showDialogFragment(TextDialog("AI log", it.stackTraceToString()))
+                getItem(holder.layoutPosition)?.let { item ->
+                    showDialogFragment(
+                        TextDialog(
+                            getString(R.string.ai_log),
+                            AppLog.formatLogs(listOf(item))
+                        )
+                    )
                 }
             }
         }
