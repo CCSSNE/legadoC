@@ -44,14 +44,6 @@ object AiChapterPurifyConfig {
             enabled = true,
             order = 10,
             scopes = supportedTypes
-        ),
-        AiChapterPurifyPreprocessRule(
-            name = "删除所有空格和符号",
-            pattern = "[\\s\\p{Z}\\p{P}\\p{S}\\p{Cf}]+",
-            replacement = "",
-            enabled = true,
-            order = 20,
-            scopes = listOf("ad")
         )
     )
 

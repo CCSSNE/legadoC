@@ -1639,7 +1639,7 @@
     <string name="ai_chapter_purify_prompt_hint">输入章节净化任务说明</string>
     <string name="ai_chapter_purify_flow_info">AI章节净化流程说明</string>
     <string name="ai_chapter_purify_flow_info_summary">查看 A、B、C、D 四阶段文本处理流程和段号规则。</string>
-    <string name="ai_chapter_purify_flow_info_message">A 原始缓存文本\n↓ 已有净化替换规则\nB 用户当前看到的段落列表\n↓ 每个段落独立执行 B 到 C 预处理\nC 处理后的段落列表，段落 ID 保留\n↓ 预处理完成后由程序追加 [1]、[2]、[3] 编号\n发送给 AI\n↓ AI 生成新规则并追加到已有规则之后\nD 最终阅读文本\n\n预处理作用域：\nad：可只保留广告识别需要的内容，默认去除空格和符号。\ntypo：修正错别字，使用作用域包含 typo 的规则。\nnoise：清理噪声，使用作用域包含 noise 的规则。\n\nB 到 C 只影响 AI 分析输入，不修改 B。预处理规则永远不会处理段号、段落边界或编号。广告只返回段号，错别字和噪声返回具体替换内容。</string>
+    <string name="ai_chapter_purify_flow_info_message">A 原始缓存文本\n↓ 已有净化替换规则\nB 用户当前看到的段落列表\n↓ 每个段落独立执行 B 到 C 预处理\nC 处理后的段落列表，段落 ID 保留\n↓ 预处理完成后由程序追加 [1]、[2]、[3] 编号\n发送给 AI\n↓ AI 生成新规则并追加到已有规则之后\nD 最终阅读文本\n\n预处理作用域：\nad：可只保留广告识别需要的内容。\ntypo：修正错别字，使用作用域包含 typo 的规则。\nnoise：清理噪声，使用作用域包含 noise 的规则。\n\nB 到 C 只影响 AI 分析输入，不修改 B。预处理规则永远不会处理段号、段落边界或编号。广告只返回段号，错别字和噪声返回具体替换内容。</string>
     <string name="ai_chapter_purify_preprocess">编辑 AI 输入预处理</string>
     <string name="ai_chapter_purify_preprocess_summary">编辑 B 到 C 的段落级 JSON 正则和 scopes 作用域；不会处理段号或段落边界。</string>
     <string name="ai_chapter_purify_preprocess_hint">每条规则包含 scopes：ad、typo、noise，可填一个或多个。</string>
