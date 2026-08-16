@@ -6,6 +6,42 @@ import org.junit.Test
 class AiChapterPurifyHelperTest {
 
     @Test
+    fun requestTemplateResolution_keepsIndependentConfigAcrossGlobalChanges() {
+        assertEquals(
+            "independent-v1",
+            AiChapterPurifyConfig.resolveRequestTemplate(
+                reuseCurrentModel = false,
+                globalTemplate = "global-v2",
+                independentTemplate = "independent-v1"
+            )
+        )
+    }
+
+    @Test
+    fun requestTemplateResolution_inheritsGlobalWhenIndependentConfigIsMissing() {
+        assertEquals(
+            "global-v2",
+            AiChapterPurifyConfig.resolveRequestTemplate(
+                reuseCurrentModel = false,
+                globalTemplate = "global-v2",
+                independentTemplate = null
+            )
+        )
+    }
+
+    @Test
+    fun requestTemplateResolution_usesGlobalWhenCurrentModelIsReused() {
+        assertEquals(
+            "global-v2",
+            AiChapterPurifyConfig.resolveRequestTemplate(
+                reuseCurrentModel = true,
+                globalTemplate = "global-v2",
+                independentTemplate = "independent-v1"
+            )
+        )
+    }
+
+    @Test
     fun sanitizeParagraphForModel_removesEmbeddedImageMarkup() {
         val source =
             "广告正文<img src=\"data:image/svg+xml;base64,PHN2Zz4=,{\"click\":\"showCmt(1)\"}\">"

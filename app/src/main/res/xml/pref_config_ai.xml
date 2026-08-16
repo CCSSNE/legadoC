@@ -3,80 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <io.legado.app.lib.prefs.PreferenceCategory
-        android:title="@string/ai_assistant"
-        app:allowDividerAbove="false"
-        app:allowDividerBelow="false"
-        app:iconSpaceReserved="false"
-        app:layout="@layout/view_preference_category">
-
-        <io.legado.app.lib.prefs.SwitchPreference
-            android:defaultValue="false"
-            android:key="aiAssistantEnabled"
-            android:summary="@string/ai_enable_summary"
-            android:title="@string/ai_enable"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.Preference
-            android:key="aiSystemPrompt"
-            android:summary="@string/ai_system_prompt_summary"
-            android:title="@string/ai_system_prompt"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.Preference
-            android:key="aiLogs"
-            android:summary="@string/ai_log_summary_empty"
-            android:title="@string/ai_log"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.SwitchPreference
-            android:key="aiApiRedactionEnabled"
-            android:defaultValue="true"
-            android:summary="@string/ai_api_redaction_summary"
-            android:title="@string/ai_api_redaction"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.Preference
-            android:key="aiExportLogs"
-            android:summary="@string/ai_log_export_summary"
-            android:title="@string/ai_log_export"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.Preference
-            android:key="aiImportDefaultSkill"
-            android:summary="@string/ai_import_default_skill_summary"
-            android:title="@string/ai_import_default_skill"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.Preference
-            android:key="aiSkillPrompt"
-            android:summary="@string/ai_skill_prompt_summary_empty"
-            android:title="@string/ai_skill_prompt"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.SwitchPreference
-            android:key="aiShowToolSummary"
-            android:defaultValue="false"
-            android:summary="@string/ai_show_tool_summary_summary"
-            android:title="@string/ai_show_tool_summary"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.Preference
-            android:key="aiManageNativeTools"
-            android:summary="@string/ai_manage_native_tools_summary"
-            android:title="@string/ai_manage_native_tools"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.SwitchPreference
-            android:key="aiEnterToSend"
-            android:defaultValue="true"
-            android:summary="@string/ai_enter_to_send_summary"
-            android:title="@string/ai_enter_to_send"
-            app:iconSpaceReserved="false" />
-
-    </io.legado.app.lib.prefs.PreferenceCategory>
-
-    <io.legado.app.lib.prefs.PreferenceCategory
-        android:title="@string/ai_provider"
+        android:title="@string/ai_provider_and_model"
         app:allowDividerAbove="false"
         app:allowDividerBelow="false"
         app:iconSpaceReserved="false"
@@ -95,21 +22,6 @@
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
-            android:key="aiTestCurrentConnection"
-            android:summary="@string/ai_connection_test_summary"
-            android:title="@string/ai_connection_test"
-            app:iconSpaceReserved="false" />
-
-    </io.legado.app.lib.prefs.PreferenceCategory>
-
-    <io.legado.app.lib.prefs.PreferenceCategory
-        android:title="@string/ai_model"
-        app:allowDividerAbove="false"
-        app:allowDividerBelow="false"
-        app:iconSpaceReserved="false"
-        app:layout="@layout/view_preference_category">
-
-        <io.legado.app.lib.prefs.Preference
             android:key="aiAddModel"
             android:summary="@string/ai_add_model_summary"
             android:title="@string/ai_add_model"
@@ -123,28 +35,14 @@
 
         <io.legado.app.lib.prefs.Preference
             android:key="aiEditRequest"
-            android:summary="@string/ai_edit_request_summary"
+            android:summary="@string/ai_edit_request_summary_global"
             android:title="@string/ai_edit_request"
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
-            android:key="aiSseIdleTimeoutSeconds"
-            android:title="@string/ai_sse_idle_timeout"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.Preference
-            android:key="aiGenerationTimeoutSeconds"
-            android:title="@string/ai_generation_timeout"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.Preference
-            android:key="aiThinkingInterruptSeconds"
-            android:title="@string/ai_thinking_interrupt_seconds"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.Preference
-            android:key="aiThinkingInterruptMaxCount"
-            android:title="@string/ai_thinking_interrupt_max_count"
+            android:key="aiTestCurrentConnection"
+            android:summary="@string/ai_connection_test_summary"
+            android:title="@string/ai_connection_test"
             app:iconSpaceReserved="false" />
 
     </io.legado.app.lib.prefs.PreferenceCategory>
@@ -155,6 +53,33 @@
         app:allowDividerBelow="false"
         app:iconSpaceReserved="false"
         app:layout="@layout/view_preference_category">
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiChapterPurifyFlowInfo"
+            android:summary="@string/ai_chapter_purify_flow_info_summary"
+            android:title="@string/ai_chapter_purify_flow_info"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="true"
+            android:key="aiChapterPurifyTypoEnabled"
+            android:summary="@string/ai_chapter_purify_typo_summary"
+            android:title="@string/ai_chapter_purify_typo"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="true"
+            android:key="aiChapterPurifyNoiseEnabled"
+            android:summary="@string/ai_chapter_purify_noise_summary"
+            android:title="@string/ai_chapter_purify_noise"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="true"
+            android:key="aiChapterPurifyAdEnabled"
+            android:summary="@string/ai_chapter_purify_ad_summary"
+            android:title="@string/ai_chapter_purify_ad"
+            app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.SwitchPreference
             android:defaultValue="true"
@@ -174,6 +99,12 @@
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
+            android:key="aiChapterPurifyRequestTemplate"
+            android:summary="@string/ai_chapter_purify_request_template_summary_inherited"
+            android:title="@string/ai_chapter_purify_request_template"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
             android:key="aiChapterPurifyTestConnection"
             android:summary="@string/ai_chapter_purify_test_connection_summary"
             android:title="@string/ai_chapter_purify_test_connection"
@@ -183,12 +114,6 @@
             android:key="aiChapterPurifyPrompt"
             android:summary="@string/ai_chapter_purify_prompt_summary"
             android:title="@string/ai_chapter_purify_prompt"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.Preference
-            android:key="aiChapterPurifyFlowInfo"
-            android:summary="@string/ai_chapter_purify_flow_info_summary"
-            android:title="@string/ai_chapter_purify_flow_info"
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
@@ -224,25 +149,86 @@
             android:title="@string/ai_chapter_purify_concurrency"
             app:iconSpaceReserved="false" />
 
-        <io.legado.app.lib.prefs.SwitchPreference
-            android:defaultValue="true"
-            android:key="aiChapterPurifyTypoEnabled"
-            android:summary="@string/ai_chapter_purify_typo_summary"
-            android:title="@string/ai_chapter_purify_typo"
+    </io.legado.app.lib.prefs.PreferenceCategory>
+
+    <io.legado.app.lib.prefs.PreferenceCategory
+        android:title="@string/ai_logs_category"
+        app:allowDividerAbove="false"
+        app:allowDividerBelow="false"
+        app:iconSpaceReserved="false"
+        app:layout="@layout/view_preference_category">
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiLogs"
+            android:summary="@string/ai_log_summary_empty"
+            android:title="@string/ai_log"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiExportLogs"
+            android:summary="@string/ai_log_export_summary"
+            android:title="@string/ai_log_export"
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.SwitchPreference
+            android:key="aiApiRedactionEnabled"
             android:defaultValue="true"
-            android:key="aiChapterPurifyNoiseEnabled"
-            android:summary="@string/ai_chapter_purify_noise_summary"
-            android:title="@string/ai_chapter_purify_noise"
+            android:summary="@string/ai_api_redaction_summary"
+            android:title="@string/ai_api_redaction"
+            app:iconSpaceReserved="false" />
+
+    </io.legado.app.lib.prefs.PreferenceCategory>
+
+    <io.legado.app.lib.prefs.PreferenceCategory
+        android:title="@string/ai_assistant"
+        app:allowDividerAbove="false"
+        app:allowDividerBelow="false"
+        app:iconSpaceReserved="false"
+        app:layout="@layout/view_preference_category">
+
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="false"
+            android:key="aiAssistantEnabled"
+            android:summary="@string/ai_enable_summary"
+            android:title="@string/ai_enable"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiSystemPrompt"
+            android:summary="@string/ai_system_prompt_summary"
+            android:title="@string/ai_system_prompt"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiImportDefaultSkill"
+            android:summary="@string/ai_import_default_skill_summary"
+            android:title="@string/ai_import_default_skill"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiSkillPrompt"
+            android:summary="@string/ai_skill_prompt_summary_empty"
+            android:title="@string/ai_skill_prompt"
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.SwitchPreference
+            android:key="aiShowToolSummary"
+            android:defaultValue="false"
+            android:summary="@string/ai_show_tool_summary_summary"
+            android:title="@string/ai_show_tool_summary"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiManageNativeTools"
+            android:summary="@string/ai_manage_native_tools_summary"
+            android:title="@string/ai_manage_native_tools"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:key="aiEnterToSend"
             android:defaultValue="true"
-            android:key="aiChapterPurifyAdEnabled"
-            android:summary="@string/ai_chapter_purify_ad_summary"
-            android:title="@string/ai_chapter_purify_ad"
+            android:summary="@string/ai_enter_to_send_summary"
+            android:title="@string/ai_enter_to_send"
             app:iconSpaceReserved="false" />
 
     </io.legado.app.lib.prefs.PreferenceCategory>
@@ -283,15 +269,15 @@
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
-            android:key="aiTavilyApiKey"
-            android:title="@string/ai_tavily_api_key"
-            android:summary="@string/ai_tavily_api_key_summary"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.Preference
             android:key="aiTavilyBaseUrl"
             android:title="@string/ai_tavily_base_url"
             android:summary="https://api.tavily.com/search"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiTavilyApiKey"
+            android:title="@string/ai_tavily_api_key"
+            android:summary="@string/ai_tavily_api_key_summary"
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
@@ -310,6 +296,35 @@
             android:key="aiTavilyMaxResults"
             android:title="@string/ai_tavily_max_results"
             android:summary="5"
+            app:iconSpaceReserved="false" />
+
+    </io.legado.app.lib.prefs.PreferenceCategory>
+
+    <io.legado.app.lib.prefs.PreferenceCategory
+        android:title="@string/ai_timeout"
+        app:allowDividerAbove="false"
+        app:allowDividerBelow="false"
+        app:iconSpaceReserved="false"
+        app:layout="@layout/view_preference_category">
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiSseIdleTimeoutSeconds"
+            android:title="@string/ai_sse_idle_timeout"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiGenerationTimeoutSeconds"
+            android:title="@string/ai_generation_timeout"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiThinkingInterruptSeconds"
+            android:title="@string/ai_thinking_interrupt_seconds"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiThinkingInterruptMaxCount"
+            android:title="@string/ai_thinking_interrupt_max_count"
             app:iconSpaceReserved="false" />
 
     </io.legado.app.lib.prefs.PreferenceCategory>

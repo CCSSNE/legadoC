@@ -78,6 +78,7 @@ object PreferKey {
     const val aiChapterPurifyReuseCurrentModel = "aiChapterPurifyReuseCurrentModel"
     const val aiChapterPurifyProvider = "aiChapterPurifyProvider"
     const val aiChapterPurifyModel = "aiChapterPurifyModel"
+    const val aiChapterPurifyRequestTemplate = "aiChapterPurifyRequestTemplate"
     const val aiChapterPurifyPrompt = "aiChapterPurifyPrompt"
     const val aiChapterPurifyPreprocess = "aiChapterPurifyPreprocess"
     const val aiChapterPurifyChapterCount = "aiChapterPurifyChapterCount"
