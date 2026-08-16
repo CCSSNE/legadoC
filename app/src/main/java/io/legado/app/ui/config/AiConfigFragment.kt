@@ -398,11 +398,6 @@ class AiConfigFragment : PreferenceFragment(),
             customView { binding.root }
             okButton {
                 val template = binding.editView.text?.toString()?.trim().orEmpty()
-                val validation = runCatching { AiStructuredRequestTemplate.validate(template) }
-                validation.exceptionOrNull()?.let {
-                    toastOnUi(getString(R.string.ai_edit_request_invalid, it.message.orEmpty()))
-                    return@okButton
-                }
                 save(template)
                 refreshUi()
             }
