@@ -74,6 +74,7 @@ $versionName = '3.26.<MMddHH>' # appC automatically appends c
 
 - 任何可能超过 30 秒的命令必须实时监控。每 30 秒以内检查进程是否存活、CPU 是否增长、日志/产物是否更新；停滞时终止并报告，不能无限等待。
 - `assembleAppC` 及任何可能超过 30 秒的编译必须通过 `Start-Process` 或独立 `.bat` 在后台启动；禁止在当前工具会话前台直接运行长时间 Gradle 编译，也禁止用阻塞等待伪装成后台编译。
+- 后台启动的 `PowerShell`、`cmd`、Gradle 或包装脚本必须显式使用 `Start-Process -WindowStyle Hidden`；禁止弹出可见控制台窗口。构建 stdout、stderr、退出码和 APK 必须写入文件，禁止把二进制内容输出到文本终端。
 - 后台编译启动后必须立即返回 PID、日志路径和启动参数；后续通过独立的进程轮询检查存活、CPU、stdout、stderr 和 APK 产物，每 30 秒以内检查一次，不能让当前会话持续占用等待编译完成。
 - 后台编译须保存 stdout、stderr 和退出码。`cmd /c` 的内联重定向不可靠时，改用 `.bat` 文件启动，不得把空日志或启动器已退出误判为编译成功。
 - 用户中断或工具会话结束后，必须先检查并清理仍属于本次构建的 Gradle/Kotlin/Java PID，再报告构建结果；不得遗留后台编译进程。
