@@ -2432,6 +2432,7 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     private fun startAiChapterPurify(book: Book, chapterIndex: Int, force: Boolean) {
         aiChapterPurifyJob = lifecycleScope.launch {
+            var completed = false
             try {
                 withContext(IO) {
                     AiChapterPurifyService.processCachedRange(
@@ -2456,6 +2457,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                         }
                     )
                 }
+                completed = true
             } catch (exception: CancellationException) {
                 throw exception
             } catch (throwable: Throwable) {
@@ -2478,6 +2480,11 @@ class ReadBookActivity : BaseReadBookActivity(),
                 val pendingForce = aiChapterPurifyPendingForce
                 aiChapterPurifyPendingChapterIndex = null
                 aiChapterPurifyPendingForce = false
+                if (!completed || pendingChapterIndex != null) {
+                    aiChapterPurifySummarySnackbar?.dismiss()
+                    aiChapterPurifySummarySnackbar = null
+                    aiChapterPurifyLastStreamSnackbarAt = 0L
+                }
                 if (pendingChapterIndex != null) {
                     scheduleAiChapterPurify(pendingForce)
                 }
@@ -2558,12 +2565,17 @@ class ReadBookActivity : BaseReadBookActivity(),
                 progress.addedRules
             )
         }
+        val duration = if (progress is AiChapterPurifyProgress.ReplacementApplied) {
+            Snackbar.LENGTH_SHORT
+        } else {
+            Snackbar.LENGTH_INDEFINITE
+        }
         val snackbar = aiChapterPurifySummarySnackbar
-            ?: Snackbar.make(binding.root, message, Snackbar.LENGTH_SHORT).also {
+            ?: Snackbar.make(binding.root, message, duration).also {
                 aiChapterPurifySummarySnackbar = it
             }
         snackbar.setText(message)
-        snackbar.duration = Snackbar.LENGTH_SHORT
+        snackbar.duration = duration
         snackbar.show()
     }
 
