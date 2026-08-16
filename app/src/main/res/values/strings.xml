@@ -688,7 +688,7 @@
     <string name="ai_api_key">API Key</string>
     <string name="ai_api_key_summary">Used for Authorization authentication</string>
     <string name="ai_custom_headers">Custom headers</string>
-    <string name="ai_web_tools">Web tools</string>
+    <string name="ai_web_tools">AI web tools</string>
     <string name="ai_tavily_enable">Enable Tavily search</string>
     <string name="ai_tavily_enable_summary">Expose Tavily as a real-time web search tool for AI.</string>
     <string name="ai_tavily_enable_summary_missing">Set a Tavily API key first, then enable the tool.</string>
@@ -787,7 +787,7 @@
     <string name="ai_chapter_purify_response_received">AI response received for chapter %1$d, batch %2$d/%3$d. Validating rules...</string>
     <string name="ai_chapter_purify_rules_ready">Chapter %1$d returned %2$d candidate rule(s). Applying...</string>
     <string name="ai_chapter_purify_replacement_applied">AI replacement completed: %1$d new rule(s).</string>
-    <string name="ai_mcp">MCP 服务器</string>
+    <string name="ai_mcp">AI MCP 服务器</string>
     <string name="ai_add_mcp_server">添加 MCP 服务器</string>
     <string name="ai_add_mcp_server_summary">添加 Streamable HTTP MCP 接口</string>
     <string name="ai_manage_mcp_servers">管理 MCP 服务器</string>
