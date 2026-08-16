@@ -919,7 +919,6 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     private fun drawPage(canvas: Canvas) {
         //选区颜色：阅读设置可选，默认取按钮按压背景色；支持透明度
         val selectionColor = context.getPrefInt(PreferKey.selectionBgColor, 0)
-        AppLog.put("SELDBG drawPage selectionColor=$selectionColor selectedPaint=${selectedPaint.color}")
         selectedPaint.color = if (selectionColor != 0) {
             selectionColor
         } else {
@@ -1713,7 +1712,6 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         }
         val last = if (callBack.isScroll) 2 else 0
         val textPos = TextPos(0, 0, 0)
-        var selCount = 0
         for (relativePos in 0..last) {
             textPos.relativePagePos = relativePos
             val textPage = relativePage(relativePos)
@@ -1725,7 +1723,6 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
                         val compareStart = textPos.compare(selectStart)
                         val compareEnd = textPos.compare(selectEnd)
                         column.selected = compareStart >= 0 && compareEnd <= 0
-                        if (column.selected) selCount++
                         column.isSearchResult =
                             column.selected && callBack.isSelectingSearchResult
                         if (column.isSearchResult) {
@@ -1735,7 +1732,6 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
                 }
             }
         }
-        AppLog.put("SELDBG upSelectChars selCount=$selCount start=$selectStart end=$selectEnd")
         postInvalidate()
     }
 

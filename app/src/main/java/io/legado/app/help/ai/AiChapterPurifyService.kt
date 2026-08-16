@@ -6,6 +6,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import java.security.MessageDigest
@@ -50,46 +51,66 @@ object AiChapterPurifyService {
             inspected++
             val fingerprint = cachedContent.sha256()
             val existingRecord = appDb.aiChapterPurifyRecordDao.get(book.bookUrl, chapter.index)
-            if (!force && existingRecord?.contentFingerprint == fingerprint) {
+            if (!force &&
+                existingRecord?.contentFingerprint == fingerprint &&
+                existingRecord.state == AiChapterPurifyRecord.STATE_COMPLETED
+            ) {
                 skippedCompleted++
                 return@forEach
             }
-            val paragraphs = ContentProcessor.get(book).getContent(
-                book = book,
-                chapter = chapter,
-                content = cachedContent,
-                includeTitle = false,
-                useReplace = false
-            ).textList.mapIndexedNotNull { index, content ->
-                val normalized = content.trim()
-                normalized.takeIf { it.isNotEmpty() }?.let {
-                    AiChapterPurifyParagraph(index + 1, it)
+            try {
+                val paragraphs = ContentProcessor.get(book).getContent(
+                    book = book,
+                    chapter = chapter,
+                    content = cachedContent,
+                    includeTitle = false,
+                    useReplace = false
+                ).textList.mapIndexedNotNull { index, content ->
+                    val normalized = content.trim()
+                    normalized.takeIf { it.isNotEmpty() }?.let {
+                        AiChapterPurifyParagraph(index + 1, it)
+                    }
                 }
-            }
-            if (paragraphs.isEmpty()) {
-                throw AiChapterPurifyException(
-                    "AI chapter purification chapter ${chapter.index + 1} has no usable cached paragraphs"
+                if (paragraphs.isEmpty()) {
+                    throw AiChapterPurifyException(
+                        "AI chapter purification chapter ${chapter.index + 1} has no usable cached paragraphs"
+                    )
+                }
+                val rules = AiChapterPurifyHelper.generateRules(paragraphs)
+                currentCoroutineContext().ensureActive()
+                addedRules += insertNewRules(book, rules)
+                appDb.aiChapterPurifyRecordDao.insert(
+                    AiChapterPurifyRecord(
+                        bookUrl = book.bookUrl,
+                        chapterIndex = chapter.index,
+                        contentFingerprint = fingerprint,
+                        ruleCount = rules.size
+                    )
                 )
-            }
-            val rules = try {
-                AiChapterPurifyHelper.generateRules(paragraphs)
+            } catch (exception: CancellationException) {
+                throw exception
             } catch (throwable: Throwable) {
-                throw AiChapterPurifyException(
+                val failure = AiChapterPurifyException(
                     "AI chapter purification failed for chapter ${chapter.index + 1}: " +
                         (throwable.message ?: throwable.javaClass.simpleName),
                     throwable
                 )
+                try {
+                    appDb.aiChapterPurifyRecordDao.insert(
+                        AiChapterPurifyRecord(
+                            bookUrl = book.bookUrl,
+                            chapterIndex = chapter.index,
+                            contentFingerprint = fingerprint,
+                            ruleCount = 0,
+                            state = AiChapterPurifyRecord.STATE_FAILED,
+                            failureMessage = failure.message
+                        )
+                    )
+                } catch (recordFailure: Throwable) {
+                    failure.addSuppressed(recordFailure)
+                }
+                throw failure
             }
-            currentCoroutineContext().ensureActive()
-            addedRules += insertNewRules(book, rules)
-            appDb.aiChapterPurifyRecordDao.insert(
-                AiChapterPurifyRecord(
-                    bookUrl = book.bookUrl,
-                    chapterIndex = chapter.index,
-                    contentFingerprint = fingerprint,
-                    ruleCount = rules.size
-                )
-            )
         }
         if (addedRules > 0) {
             ContentProcessor.upReplaceRules()

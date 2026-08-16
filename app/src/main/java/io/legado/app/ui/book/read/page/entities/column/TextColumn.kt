@@ -6,7 +6,6 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.os.Build
 import androidx.annotation.Keep
-import io.legado.app.constant.AppLog
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.ThemeStore
@@ -115,7 +114,6 @@ data class TextColumn(
             drawBookmarkDecoration(canvas)
         }
         if (selected) {
-            AppLog.put("SELDBG drawRect selected=$selected x=$start..$end h=${textLine.height}")
             canvas.drawRect(start, 0f, end, textLine.height, view.selectedPaint)
         }
     }

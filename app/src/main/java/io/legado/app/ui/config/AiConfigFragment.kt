@@ -7,6 +7,7 @@ import android.view.View
 import androidx.lifecycle.lifecycleScope
 import androidx.preference.Preference
 import io.legado.app.R
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.DialogAiMcpServerEditBinding
@@ -64,6 +65,7 @@ class AiConfigFragment : PreferenceFragment(),
         when (preference.key) {
             "aiAddProvider" -> showEditProviderDialog()
             "aiManageProviders" -> showManageProvidersDialog()
+            "aiTestCurrentConnection" -> testCurrentAiConnection()
             "aiAddModel" -> showAddModelOptionsDialog()
             "aiFetchModels" -> fetchModelsFromCurrentProvider(showSelector = true)
             "aiManageModels" -> showManageModelsDialog()
@@ -80,6 +82,7 @@ class AiConfigFragment : PreferenceFragment(),
             PreferKey.aiSkillPrompt -> showManageSkillsDialog()
             PreferKey.aiChapterPurifyProvider -> showEditChapterPurifyProviderDialog()
             PreferKey.aiChapterPurifyModel -> showEditChapterPurifyModelDialog()
+            "aiChapterPurifyTestConnection" -> testChapterPurifyConnection()
             PreferKey.aiChapterPurifyPrompt -> showChapterPurifyPromptDialog()
             PreferKey.aiChapterPurifyChapterCount -> showChapterPurifyIntDialog(
                 R.string.ai_chapter_purify_chapter_count,
@@ -470,6 +473,44 @@ class AiConfigFragment : PreferenceFragment(),
                 }
             }.onFailure {
                 toastOnUi(getString(R.string.ai_fetch_models_failed, it.localizedMessage ?: "Error"))
+            }
+        }
+    }
+
+    private fun testCurrentAiConnection() {
+        val provider = AppConfig.aiCurrentProvider
+        if (provider == null) {
+            toastOnUi(R.string.ai_connection_test_summary_missing_provider)
+            return
+        }
+        val model = AppConfig.aiCurrentModelConfig?.modelId?.trim().orEmpty()
+        if (model.isEmpty()) {
+            toastOnUi(R.string.ai_connection_test_summary_missing_model)
+            return
+        }
+        testAiConnection(provider, model)
+    }
+
+    private fun testChapterPurifyConnection() {
+        val target = runCatching { AiChapterPurifyConfig.requireModelTarget() }.getOrElse {
+            toastOnUi(it.message ?: it.javaClass.simpleName)
+            return
+        }
+        testAiConnection(target.provider, target.modelId)
+    }
+
+    private fun testAiConnection(provider: AiProviderConfig, model: String) {
+        toastOnUi(R.string.ai_connection_test_running)
+        lifecycleScope.launch {
+            val result = withContext(IO) {
+                runCatching { AiChatService.testConnection(provider, model) }
+            }
+            result.onSuccess {
+                toastOnUi(getString(R.string.ai_connection_test_success, provider.name, model))
+            }.onFailure { throwable ->
+                val message = throwable.message ?: throwable.javaClass.simpleName
+                AppLog.put("AI 连接测试失败，提供商《${provider.name}》，模型《$model》\n$message", throwable)
+                toastOnUi(getString(R.string.ai_connection_test_failed, message))
             }
         }
     }
@@ -1045,6 +1086,17 @@ class AiConfigFragment : PreferenceFragment(),
                     append(getString(R.string.ai_manage_models_summary, providerModels.size))
                 }
             }
+        val currentModelId = AppConfig.aiCurrentModelConfig?.modelId?.trim().orEmpty()
+        findPreference<Preference>("aiTestCurrentConnection")?.summary = when {
+            currentProvider == null -> getString(R.string.ai_connection_test_summary_missing_provider)
+            currentModelId.isEmpty() ->
+                getString(R.string.ai_connection_test_summary_missing_model)
+            else -> getString(
+                R.string.ai_connection_test_summary_target,
+                currentProvider.name,
+                currentModelId
+            )
+        }
         findPreference<Preference>("aiAddModel")?.summary =
             getString(R.string.ai_add_model_summary_modern)
         findPreference<Preference>("aiFetchModels")?.summary =
@@ -1096,16 +1148,18 @@ class AiConfigFragment : PreferenceFragment(),
         findPreference<SwitchPreference>(PreferKey.aiChapterPurifyReuseCurrentModel)?.isChecked =
             chapterPurifyReuseCurrentModel
         findPreference<Preference>(PreferKey.aiChapterPurifyProvider)?.apply {
-            isEnabled = !chapterPurifyReuseCurrentModel
+            isVisible = !chapterPurifyReuseCurrentModel
             summary = AiChapterPurifyConfig.independentProvider?.name
                 ?: getString(R.string.ai_chapter_purify_provider_summary_empty)
         }
         findPreference<Preference>(PreferKey.aiChapterPurifyModel)?.apply {
-            isEnabled = !chapterPurifyReuseCurrentModel
+            isVisible = !chapterPurifyReuseCurrentModel
             summary = AiChapterPurifyConfig.independentModelId.ifBlank {
                 getString(R.string.ai_chapter_purify_model_summary_empty)
             }
         }
+        findPreference<Preference>("aiChapterPurifyTestConnection")?.isVisible =
+            !chapterPurifyReuseCurrentModel
         findPreference<Preference>(PreferKey.aiChapterPurifyPrompt)?.summary =
             getString(R.string.ai_chapter_purify_prompt_summary)
         findPreference<Preference>(PreferKey.aiChapterPurifyChapterCount)?.summary =

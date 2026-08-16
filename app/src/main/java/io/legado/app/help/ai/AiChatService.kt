@@ -144,6 +144,16 @@ object AiChatService {
         }
     }
 
+    /** Sends a minimal completion through the same endpoint used by real AI features. */
+    suspend fun testConnection(provider: AiProviderConfig, model: String): String {
+        return generateStructuredText(
+            provider = provider,
+            model = model,
+            systemPrompt = "You are a connection test endpoint. Reply with a short confirmation.",
+            userContent = "ping"
+        )
+    }
+
     suspend fun chatStream(
         messages: List<AiChatMessage>,
         onPartial: (String) -> Unit,

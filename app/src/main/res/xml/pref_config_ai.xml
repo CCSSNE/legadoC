@@ -75,6 +75,12 @@
             android:title="@string/ai_manage_providers"
             app:iconSpaceReserved="false" />
 
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiTestCurrentConnection"
+            android:summary="@string/ai_connection_test_summary"
+            android:title="@string/ai_connection_test"
+            app:iconSpaceReserved="false" />
+
     </io.legado.app.lib.prefs.PreferenceCategory>
 
     <io.legado.app.lib.prefs.PreferenceCategory
@@ -126,6 +132,12 @@
         <io.legado.app.lib.prefs.Preference
             android:key="aiChapterPurifyModel"
             android:title="@string/ai_chapter_purify_model"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiChapterPurifyTestConnection"
+            android:summary="@string/ai_chapter_purify_test_connection_summary"
+            android:title="@string/ai_chapter_purify_test_connection"
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference

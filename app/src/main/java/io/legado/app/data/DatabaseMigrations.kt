@@ -22,8 +22,18 @@ object DatabaseMigrations {
             migration_39_40, migration_40_41, migration_41_42, migration_42_43,
             migration_90_91, migration_91_92, migration_92_93, migration_93_94,
             migration_94_95, migration_95_96, migration_96_97, migration_97_98,
-            migration_98_99, migration_99_100, migration_100_101,
+            migration_98_99, migration_99_100, migration_100_101, migration_101_102,
         )
+    }
+
+    private val migration_101_102 = object : Migration(101, 102) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "ALTER TABLE ai_chapter_purify_records " +
+                    "ADD COLUMN state INTEGER NOT NULL DEFAULT 1"
+            )
+            db.execSQL("ALTER TABLE ai_chapter_purify_records ADD COLUMN failureMessage TEXT")
+        }
     }
 
     private val migration_100_101 = object : Migration(100, 101) {
