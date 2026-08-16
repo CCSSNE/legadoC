@@ -14,8 +14,7 @@ import kotlinx.coroutines.sync.withPermit
 data class AiChapterPurifyParagraph(
     val id: Int,
     val content: String,
-    val modelContent: String = content,
-    val preprocessed: AiChapterPurifyPreprocessedParagraph? = null
+    val preprocessedByType: Map<String, AiChapterPurifyPreprocessedParagraph> = emptyMap()
 )
 
 data class AiChapterPurifyRule(
@@ -98,6 +97,14 @@ object AiChapterPurifyHelper {
         return AiChapterPurifyPreprocessor.apply(content, rules)
     }
 
+    fun prepareParagraphForModel(
+        content: String,
+        scope: String,
+        rules: List<AiChapterPurifyPreprocessRule> = AiChapterPurifyConfig.preprocessRules
+    ): AiChapterPurifyPreprocessedParagraph {
+        return AiChapterPurifyPreprocessor.apply(content, rules, scope)
+    }
+
     suspend fun generateRules(
         paragraphs: List<AiChapterPurifyParagraph>,
         chapterIndex: Int,
@@ -110,7 +117,12 @@ object AiChapterPurifyHelper {
                 AiChapterPurifyConfig.adEnabled
         ) { "Enable at least one AI chapter purification type" }
 
-        val chunks = splitIntoChunks(paragraphs, AiChapterPurifyConfig.segmentLimit)
+        val enabledTypes = AiChapterPurifyConfig.enabledTypes()
+        val chunks = splitIntoChunks(
+            paragraphs,
+            AiChapterPurifyConfig.segmentLimit,
+            enabledTypes
+        )
         val target = try {
             AiChapterPurifyConfig.requireModelTarget()
         } catch (throwable: Throwable) {
@@ -129,6 +141,7 @@ object AiChapterPurifyHelper {
                 "segmentLimit=${AiChapterPurifyConfig.segmentLimit}\n" +
                 "concurrency=${AiChapterPurifyConfig.concurrency}\n" +
                 "retryCount=${AiChapterPurifyConfig.retryCount}\n" +
+                "enabledTypes=${enabledTypes.joinToString(",")}\n" +
                 "provider=${target.provider.name}\n" +
                 "model=${target.modelId}"
         )
@@ -143,6 +156,7 @@ object AiChapterPurifyHelper {
                             chunkIndex = chunkIndex + 1,
                             totalChunks = chunks.size,
                             paragraphs = chunk,
+                            enabledTypes = enabledTypes,
                             onProgress = onProgress
                         )
                     }
@@ -157,6 +171,7 @@ object AiChapterPurifyHelper {
         chunkIndex: Int,
         totalChunks: Int,
         paragraphs: List<AiChapterPurifyParagraph>,
+        enabledTypes: List<String>,
         onProgress: suspend (AiChapterPurifyProgress) -> Unit
     ): List<AiChapterPurifyRule> {
         var lastFailure: Throwable? = null
@@ -167,13 +182,13 @@ object AiChapterPurifyHelper {
                         "batch=$chunkIndex/$totalChunks\n" +
                         "attempt=${attempt + 1}\n" +
                         "paragraphIds=${paragraphs.joinToString { it.id.toString() }}\n" +
-                        "chars=${paragraphs.sumOf { it.modelContent.length }}"
+                        "chars=${paragraphs.sumOf { modelInputLength(it, enabledTypes) }}"
                 )
                 val response = AiChatService.generateStructuredText(
                     provider = target.provider,
                     model = target.modelId,
-                    systemPrompt = buildSystemPrompt(),
-                    userContent = buildUserContent(paragraphs),
+                    systemPrompt = buildSystemPrompt(enabledTypes),
+                    userContent = buildUserContent(paragraphs, enabledTypes),
                     temperature = 0.0,
                     onRequestAccepted = {
                         onProgress(
@@ -246,19 +261,17 @@ object AiChapterPurifyHelper {
         )
     }
 
-    private fun buildSystemPrompt(): String {
-        val enabledTypes = buildList {
-            if (AiChapterPurifyConfig.typoEnabled) add("typo")
-            if (AiChapterPurifyConfig.noiseEnabled) add("noise")
-            if (AiChapterPurifyConfig.adEnabled) add("ad")
-        }.joinToString(",")
+    private fun buildSystemPrompt(enabledTypes: List<String>): String {
+        val enabledTypeText = enabledTypes.joinToString(",")
         return """
             You are a strict structured-rule generator. Do not use tools. Do not return analysis or reasoning.
             Return exactly one JSON object and no Markdown fence:
             {"rules":[{"id":76,"type":"ad"},{"id":12,"type":"typo","old":"normalized source text","new":"replacement text"}]}
             The id must be the input paragraph number added by the client after preprocessing.
             Paragraph boundaries and ids are authoritative; never merge paragraphs or invent ids.
-            Only these types are enabled: $enabledTypes.
+            Only these types are enabled: $enabledTypeText.
+            Each paragraph can have one view per enabled type, written as [id][type].
+            Use the view matching the returned type; do not compare text across views.
             For ad, return only id and type. Do not return old or new. The client will remove the complete B paragraph.
             For typo and noise, old must be an exact contiguous substring of that paragraph's normalized input,
             and new must contain the intended replacement. The client maps old back to B before storing the rule.
@@ -271,13 +284,22 @@ object AiChapterPurifyHelper {
         """.trimIndent()
     }
 
-    private fun buildUserContent(paragraphs: List<AiChapterPurifyParagraph>): String {
+    private fun buildUserContent(
+        paragraphs: List<AiChapterPurifyParagraph>,
+        enabledTypes: List<String>
+    ): String {
         return buildString {
             append("Input paragraphs:\n")
             paragraphs.forEach { paragraph ->
-                append('[').append(paragraph.id).append("] ")
-                append(paragraph.modelContent)
-                append('\n')
+                enabledTypes.forEach { type ->
+                    val text = requiredPreprocessed(paragraph, type).text
+                    if (text.isNotBlank()) {
+                        append('[').append(paragraph.id).append("][")
+                            .append(type).append("] ")
+                        append(text)
+                        append('\n')
+                    }
+                }
             }
         }
     }
@@ -337,9 +359,9 @@ object AiChapterPurifyHelper {
                 )
                 return@mapIndexedNotNull null
             }
-            val preprocessed = paragraph.preprocessed
+            val preprocessed = paragraph.preprocessedByType[type]
                 ?: throw AiChapterPurifyException(
-                    "AI chapter purification rule ${index + 1} has no C-to-B mapping"
+                    "AI chapter purification rule ${index + 1} has no C-to-B mapping for type '$type'"
                 )
             val effectiveOld = preprocessed.sourceTextForModelText(old, source)
             if (effectiveOld != old) {
@@ -414,13 +436,15 @@ object AiChapterPurifyHelper {
 
     private fun splitIntoChunks(
         paragraphs: List<AiChapterPurifyParagraph>,
-        characterLimit: Int
+        characterLimit: Int,
+        enabledTypes: List<String>
     ): List<List<AiChapterPurifyParagraph>> {
         val chunks = mutableListOf<MutableList<AiChapterPurifyParagraph>>()
         var current = mutableListOf<AiChapterPurifyParagraph>()
         var currentLength = 0
         paragraphs.forEach { paragraph ->
-            val estimatedLength = paragraph.modelContent.length + paragraph.id.toString().length + 5
+            val estimatedLength = modelInputLength(paragraph, enabledTypes) +
+                paragraph.id.toString().length + enabledTypes.size * 8
             require(estimatedLength <= characterLimit) {
                 "Chapter paragraph ${paragraph.id} exceeds the AI chapter purification segment limit"
             }
@@ -436,5 +460,24 @@ object AiChapterPurifyHelper {
             chunks.add(current)
         }
         return chunks
+    }
+
+    private fun requiredPreprocessed(
+        paragraph: AiChapterPurifyParagraph,
+        type: String
+    ): AiChapterPurifyPreprocessedParagraph {
+        return paragraph.preprocessedByType[type]
+            ?: throw AiChapterPurifyException(
+                "AI chapter purification paragraph ${paragraph.id} has no '$type' C input"
+            )
+    }
+
+    private fun modelInputLength(
+        paragraph: AiChapterPurifyParagraph,
+        enabledTypes: List<String>
+    ): Int {
+        return enabledTypes.sumOf { type ->
+            requiredPreprocessed(paragraph, type).text.length
+        }
     }
 }

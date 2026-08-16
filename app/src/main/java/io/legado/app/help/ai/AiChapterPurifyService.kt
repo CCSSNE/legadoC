@@ -83,36 +83,49 @@ object AiChapterPurifyService {
                     useReplace = true
                 )
                 val preprocessRules = AiChapterPurifyConfig.preprocessRules
+                val enabledTypes = AiChapterPurifyConfig.enabledTypes()
+                if (enabledTypes.isEmpty()) {
+                    throw AiChapterPurifyException(
+                        "Enable at least one AI chapter purification type"
+                    )
+                }
                 AppLog.putAi(
                     "CHAPTER_PURIFY PREPROCESS_CONFIG chapter=${chapter.index + 1}\n" +
                         "ruleCount=${preprocessRules.size}\n" +
                         "enabledRuleCount=${preprocessRules.count { it.enabled }}\n" +
                         "rules=${preprocessRules.joinToString(" || ") { rule ->
                             "name=${rule.name},enabled=${rule.enabled},order=${rule.order}," +
+                                "scopes=${rule.effectiveScopes().joinToString(",")}," +
                                 "pattern=${rule.pattern},replacement=${rule.replacement}"
                         }.ifBlank { "<none>" }}"
                 )
                 val paragraphs = processedContent.textList.mapIndexedNotNull { index, content ->
                     val normalized = content.trim()
                     normalized.takeIf { it.isNotEmpty() }?.let {
-                        val preprocessed = AiChapterPurifyHelper.prepareParagraphForModel(
-                            content = it,
-                            rules = preprocessRules
-                        )
-                        if (preprocessed.text.isBlank()) {
+                        val preprocessedByType = AiChapterPurifyConfig.supportedTypes.associateWith { type ->
+                            AiChapterPurifyHelper.prepareParagraphForModel(
+                                content = it,
+                                scope = type,
+                                rules = preprocessRules
+                            )
+                        }
+                        val nonBlankTypes = enabledTypes.filter { type ->
+                            preprocessedByType.getValue(type).text.isNotBlank()
+                        }
+                        if (nonBlankTypes.isEmpty()) {
                             AppLog.putAi(
                                 "CHAPTER_PURIFY SKIP_PREPROCESSED_EMPTY chapter=${chapter.index + 1}\n" +
                                     "paragraph=${index + 1}\n" +
                                     "sourceChars=${it.length}\n" +
-                                    "appliedPreprocessRules=${preprocessed.appliedRuleNames.joinToString(",")}"
+                                    "enabledTypes=${enabledTypes.joinToString(",")}\n" +
+                                    "appliedPreprocessRules=${preprocessedByType.values.flatMap { value -> value.appliedRuleNames }.distinct().joinToString(",")}"
                             )
                             null
                         } else {
                             AiChapterPurifyParagraph(
                                 id = index + 1,
                                 content = it,
-                                modelContent = preprocessed.text,
-                                preprocessed = preprocessed
+                                preprocessedByType = preprocessedByType
                             )
                         }
                     }
@@ -122,9 +135,18 @@ object AiChapterPurifyService {
                         "AI chapter purification chapter ${chapter.index + 1} has no usable cached paragraphs"
                     )
                 }
-                fingerprint = paragraphs
-                    .joinToString("\n") { "${it.id}\u0000${it.modelContent}" }
-                    .sha256()
+                fingerprint = buildString {
+                    append(AiChapterPurifyConfig.preprocessJson).append('\u0000')
+                    append(enabledTypes.joinToString(",")).append('\n')
+                    paragraphs.forEach { paragraph ->
+                        append(paragraph.id)
+                        enabledTypes.forEach { type ->
+                            append('\u0000').append(type).append('\u0000')
+                            append(paragraph.preprocessedByType.getValue(type).text)
+                        }
+                        append('\n')
+                    }
+                }.sha256()
                 val existingRecord = appDb.aiChapterPurifyRecordDao.get(book.bookUrl, chapter.index)
                 if (!force &&
                     existingRecord?.contentFingerprint == fingerprint &&
@@ -149,11 +171,20 @@ object AiChapterPurifyService {
                         "processedChars=${processedContent.toString().length}\n" +
                         "paragraphCount=${paragraphs.size}\n" +
                         "paragraphChars=${paragraphs.sumOf { it.content.length }}\n" +
-                        "modelParagraphChars=${paragraphs.sumOf { it.modelContent.length }}\n" +
-                        "preprocessedCharsRemoved=${paragraphs.sumOf { it.content.length - it.modelContent.length }}\n" +
+                        "enabledTypes=${enabledTypes.joinToString(",")}\n" +
+                        "modelInputChars=${paragraphs.sumOf { paragraph ->
+                            enabledTypes.sumOf { type -> paragraph.preprocessedByType.getValue(type).text.length }
+                        }}\n" +
+                        "preprocessedCharsRemovedAcrossScopes=${paragraphs.sumOf { paragraph ->
+                            enabledTypes.sumOf { type ->
+                                paragraph.content.length - paragraph.preprocessedByType.getValue(type).text.length
+                            }
+                        }}\n" +
                         "preprocessRuleCount=${preprocessRules.size}\n" +
                         "preprocessEnabledRuleCount=${preprocessRules.count { it.enabled }}\n" +
-                        "appliedPreprocessRules=${paragraphs.flatMap { it.preprocessed?.appliedRuleNames.orEmpty() }.distinct().joinToString(",")}\n" +
+                        "appliedPreprocessRules=${paragraphs.flatMap { paragraph ->
+                            enabledTypes.flatMap { type -> paragraph.preprocessedByType.getValue(type).appliedRuleNames }
+                        }.distinct().joinToString(",")}\n" +
                         "existingRuleCount=${contentProcessor.getContentReplaceRules().size}\n" +
                         "effectiveRuleCount=${processedContent.effectiveReplaceRules?.size ?: 0}\n" +
                         "rulesAppliedBeforeAi=true"

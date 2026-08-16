@@ -20,6 +20,8 @@ data class AiChapterPurifyModelTarget(
 
 object AiChapterPurifyConfig {
 
+    val supportedTypes = listOf("ad", "typo", "noise")
+
     const val DEFAULT_CHAPTER_COUNT = 2
     const val DEFAULT_SEGMENT_LIMIT = 10_000
     const val DEFAULT_RETRY_COUNT = 3
@@ -40,14 +42,16 @@ object AiChapterPurifyConfig {
             pattern = "<img\\b[^>]*>|<svg\\b[^>]*>[\\s\\S]*?</svg>",
             replacement = "",
             enabled = true,
-            order = 10
+            order = 10,
+            scopes = supportedTypes
         ),
         AiChapterPurifyPreprocessRule(
             name = "删除所有空格和符号",
             pattern = "[\\s\\p{Z}\\p{P}\\p{S}\\p{Cf}]+",
             replacement = "",
             enabled = true,
-            order = 20
+            order = 20,
+            scopes = listOf("ad")
         )
     )
 
@@ -111,20 +115,29 @@ object AiChapterPurifyConfig {
         set(value) = appCtx.putPrefString(PreferKey.aiRequestTemplate, value.trim())
 
     var preprocessJson: String
-        get() = appCtx.getPrefString(PreferKey.aiChapterPurifyPreprocess)
-            ?.takeIf { it.isNotBlank() }
-            ?: defaultPreprocessJson
+        get() = GSON.toJson(preprocessRules)
         set(value) {
             val normalized = value.trim()
-            parsePreprocessJson(normalized)
+            val rules = parsePreprocessJson(normalized).map {
+                it.copy(scopes = it.effectiveScopes())
+            }
+            val normalizedJson = GSON.toJson(rules)
             appCtx.putPrefString(
                 PreferKey.aiChapterPurifyPreprocess,
-                if (normalized == defaultPreprocessJson) "" else normalized
+                if (normalizedJson == defaultPreprocessJson) "" else normalizedJson
             )
         }
 
     val preprocessRules: List<AiChapterPurifyPreprocessRule>
-        get() = parsePreprocessJson(preprocessJson)
+        get() = parsePreprocessJson(
+            appCtx.getPrefString(PreferKey.aiChapterPurifyPreprocess)
+                ?.takeIf { it.isNotBlank() }
+                ?: defaultPreprocessJson
+        ).map {
+            it.copy(scopes = it.effectiveScopes())
+        }
+
+    fun enabledTypes(): List<String> = supportedTypes.filter { isTypeEnabled(it) }
 
     private fun parsePreprocessJson(json: String): List<AiChapterPurifyPreprocessRule> {
         val rules = GSON.fromJsonArray<AiChapterPurifyPreprocessRule>(json).getOrElse {

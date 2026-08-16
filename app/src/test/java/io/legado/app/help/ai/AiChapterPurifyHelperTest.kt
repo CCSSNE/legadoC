@@ -29,4 +29,20 @@ class AiChapterPurifyHelperTest {
         assertEquals("广告加群123", prepared.text)
         assertEquals("广告！加 群", prepared.sourceTextForModelText("广告加群", source))
     }
+
+    @Test
+    fun preprocessor_appliesRulesOnlyToTheirScope() {
+        val source = "微 空 格"
+        val rules = listOf(
+            AiChapterPurifyPreprocessRule(
+                name = "广告去空格",
+                pattern = "\\s+",
+                replacement = "",
+                scopes = listOf("ad")
+            )
+        )
+
+        assertEquals("微空格", AiChapterPurifyPreprocessor.apply(source, rules, "ad").text)
+        assertEquals(source, AiChapterPurifyPreprocessor.apply(source, rules, "typo").text)
+    }
 }

@@ -7,8 +7,15 @@ data class AiChapterPurifyPreprocessRule(
     val pattern: String = "",
     val replacement: String = "",
     val enabled: Boolean = true,
-    val order: Int = 0
+    val order: Int = 0,
+    val scopes: List<String>? = null
 )
+
+fun AiChapterPurifyPreprocessRule.effectiveScopes(): List<String> =
+    scopes ?: AiChapterPurifyConfig.supportedTypes
+
+fun AiChapterPurifyPreprocessRule.appliesTo(scope: String): Boolean =
+    effectiveScopes().any { it.equals(scope, ignoreCase = true) }
 
 data class AiChapterPurifySourceSpan(
     val start: Int,
@@ -66,6 +73,16 @@ object AiChapterPurifyPreprocessor {
             require(rule.pattern.isNotEmpty()) {
                 "AI input preprocessing rule ${index + 1} pattern is blank"
             }
+            val scopes = rule.effectiveScopes().map { it.lowercase() }
+            require(scopes.isNotEmpty()) {
+                "AI input preprocessing rule ${index + 1} has no scopes"
+            }
+            require(scopes.distinct().size == scopes.size) {
+                "AI input preprocessing rule ${index + 1} has duplicate scopes"
+            }
+            require(scopes.all { it in AiChapterPurifyConfig.supportedTypes }) {
+                "AI input preprocessing rule ${index + 1} has an unknown scope: $scopes"
+            }
             try {
                 Pattern.compile(rule.pattern)
             } catch (throwable: Throwable) {
@@ -81,6 +98,19 @@ object AiChapterPurifyPreprocessor {
         source: String,
         rules: List<AiChapterPurifyPreprocessRule>
     ): AiChapterPurifyPreprocessedParagraph {
+        return apply(source, rules, scope = null)
+    }
+
+    fun apply(
+        source: String,
+        rules: List<AiChapterPurifyPreprocessRule>,
+        scope: String?
+    ): AiChapterPurifyPreprocessedParagraph {
+        scope?.let {
+            require(it in AiChapterPurifyConfig.supportedTypes) {
+                "AI input preprocessing scope is unsupported: $it"
+            }
+        }
         var current = source
         var sourceSpans = source.indices.map {
             AiChapterPurifySourceSpan(it, it + 1)
@@ -88,7 +118,7 @@ object AiChapterPurifyPreprocessor {
         val appliedRuleNames = mutableListOf<String>()
 
         rules.withIndex()
-            .filter { it.value.enabled }
+            .filter { it.value.enabled && (scope == null || it.value.appliesTo(scope)) }
             .sortedWith(compareBy({ it.value.order }, { it.index }))
             .forEach { indexedRule ->
                 val rule = indexedRule.value
