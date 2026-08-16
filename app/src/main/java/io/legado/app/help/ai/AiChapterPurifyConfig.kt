@@ -80,6 +80,16 @@ object AiChapterPurifyConfig {
             )
         }
 
+    var requestTemplate: String
+        get() = appCtx.getPrefString(PreferKey.aiRequestTemplate)
+            ?.takeIf { it.isNotBlank() }
+            ?: AiStructuredRequestTemplate.default
+        set(value) = appCtx.putPrefString(PreferKey.aiRequestTemplate, value.trim())
+
+    var summaryEnabled: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.aiChapterPurifySummaryEnabled, true)
+        set(value) = appCtx.putPrefBoolean(PreferKey.aiChapterPurifySummaryEnabled, value)
+
     var chapterCount: Int
         get() = appCtx.getPrefInt(
             PreferKey.aiChapterPurifyChapterCount,

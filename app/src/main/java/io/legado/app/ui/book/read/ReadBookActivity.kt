@@ -26,6 +26,7 @@ import androidx.core.view.setPadding
 import androidx.core.view.size
 import androidx.lifecycle.lifecycleScope
 import com.jaredrummler.android.colorpicker.ColorPickerDialogListener
+import com.google.android.material.snackbar.Snackbar
 import io.legado.app.BuildConfig
 import io.legado.app.R
 import io.legado.app.constant.AppConst
@@ -44,6 +45,8 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.IntentData
 import io.legado.app.help.ai.AiChapterPurifyException
+import io.legado.app.help.ai.AiChapterPurifyConfig
+import io.legado.app.help.ai.AiChapterPurifyProgress
 import io.legado.app.help.ai.AiChapterPurifyService
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
@@ -247,6 +250,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     private var menu: Menu? = null
     private var backupJob: Job? = null
     private var aiChapterPurifyJob: Job? = null
+    private var aiChapterPurifySummarySnackbar: Snackbar? = null
     private var aiChapterPurifyPendingChapterIndex: Int? = null
     private var aiChapterPurifyPendingForce = false
     private var aiChapterPurifyRefreshChapterIndex: Int? = null
@@ -2431,7 +2435,12 @@ class ReadBookActivity : BaseReadBookActivity(),
                     AiChapterPurifyService.processCachedRange(
                         book = book,
                         startChapterIndex = chapterIndex,
-                        force = force
+                        force = force,
+                        onProgress = { progress ->
+                            withContext(Main) {
+                                showAiChapterPurifyProgress(progress)
+                            }
+                        }
                     )
                 }
                 if (result.addedRules > 0 &&
@@ -2474,9 +2483,49 @@ class ReadBookActivity : BaseReadBookActivity(),
     private fun cancelAiChapterPurify() {
         aiChapterPurifyJob?.cancel()
         aiChapterPurifyJob = null
+        aiChapterPurifySummarySnackbar?.dismiss()
+        aiChapterPurifySummarySnackbar = null
         aiChapterPurifyPendingChapterIndex = null
         aiChapterPurifyPendingForce = false
         aiChapterPurifyRefreshChapterIndex = null
+    }
+
+    private fun showAiChapterPurifyProgress(progress: AiChapterPurifyProgress) {
+        if (!AiChapterPurifyConfig.summaryEnabled) return
+        val message = when (progress) {
+            is AiChapterPurifyProgress.RequestAccepted -> getString(
+                R.string.ai_chapter_purify_request_accepted,
+                progress.chapterIndex + 1,
+                progress.chunkIndex,
+                progress.totalChunks,
+                progress.attempt
+            )
+
+            is AiChapterPurifyProgress.ResponseReceived -> getString(
+                R.string.ai_chapter_purify_response_received,
+                progress.chapterIndex + 1,
+                progress.chunkIndex,
+                progress.totalChunks
+            )
+
+            is AiChapterPurifyProgress.ChapterRulesStored -> getString(
+                R.string.ai_chapter_purify_rules_ready,
+                progress.chapterIndex + 1,
+                progress.candidateRules
+            )
+
+            is AiChapterPurifyProgress.ReplacementApplied -> getString(
+                R.string.ai_chapter_purify_replacement_applied,
+                progress.addedRules
+            )
+        }
+        val snackbar = aiChapterPurifySummarySnackbar
+            ?: Snackbar.make(binding.root, message, Snackbar.LENGTH_SHORT).also {
+                aiChapterPurifySummarySnackbar = it
+            }
+        snackbar.setText(message)
+        snackbar.duration = Snackbar.LENGTH_SHORT
+        snackbar.show()
     }
 
     private fun startBackupJob() {

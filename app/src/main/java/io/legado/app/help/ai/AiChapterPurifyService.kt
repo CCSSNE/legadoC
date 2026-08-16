@@ -27,7 +27,8 @@ object AiChapterPurifyService {
         book: Book,
         startChapterIndex: Int,
         chapterCount: Int = AiChapterPurifyConfig.chapterCount,
-        force: Boolean = false
+        force: Boolean = false,
+        onProgress: suspend (AiChapterPurifyProgress) -> Unit = {}
     ): AiChapterPurifyRunResult {
         require(chapterCount >= AiChapterPurifyConfig.MIN_CHAPTER_COUNT) {
             "AI chapter purification chapter count must be positive"
@@ -76,15 +77,27 @@ object AiChapterPurifyService {
                         "AI chapter purification chapter ${chapter.index + 1} has no usable cached paragraphs"
                     )
                 }
-                val rules = AiChapterPurifyHelper.generateRules(paragraphs)
+                val rules = AiChapterPurifyHelper.generateRules(
+                    paragraphs = paragraphs,
+                    chapterIndex = chapter.index,
+                    onProgress = onProgress
+                )
                 currentCoroutineContext().ensureActive()
-                addedRules += insertNewRules(book, rules)
+                val chapterAddedRules = insertNewRules(book, rules)
+                addedRules += chapterAddedRules
                 appDb.aiChapterPurifyRecordDao.insert(
                     AiChapterPurifyRecord(
                         bookUrl = book.bookUrl,
                         chapterIndex = chapter.index,
                         contentFingerprint = fingerprint,
                         ruleCount = rules.size
+                    )
+                )
+                onProgress(
+                    AiChapterPurifyProgress.ChapterRulesStored(
+                        chapterIndex = chapter.index,
+                        candidateRules = rules.size,
+                        addedRules = chapterAddedRules
                     )
                 )
             } catch (exception: CancellationException) {
@@ -115,6 +128,7 @@ object AiChapterPurifyService {
         if (addedRules > 0) {
             ContentProcessor.upReplaceRules()
         }
+        onProgress(AiChapterPurifyProgress.ReplacementApplied(addedRules))
         return AiChapterPurifyRunResult(
             requestedChapters = chapterCount,
             inspectedChapters = inspected,

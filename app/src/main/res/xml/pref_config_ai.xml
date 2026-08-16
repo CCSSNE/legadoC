@@ -108,6 +108,12 @@
             android:title="@string/ai_manage_models"
             app:iconSpaceReserved="false" />
 
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiEditRequest"
+            android:summary="@string/ai_edit_request_summary"
+            android:title="@string/ai_edit_request"
+            app:iconSpaceReserved="false" />
+
     </io.legado.app.lib.prefs.PreferenceCategory>
 
     <io.legado.app.lib.prefs.PreferenceCategory
@@ -144,6 +150,13 @@
             android:key="aiChapterPurifyPrompt"
             android:summary="@string/ai_chapter_purify_prompt_summary"
             android:title="@string/ai_chapter_purify_prompt"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="true"
+            android:key="aiChapterPurifySummaryEnabled"
+            android:summary="@string/ai_chapter_purify_summary_enabled_summary"
+            android:title="@string/ai_chapter_purify_summary_enabled"
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference

@@ -2,6 +2,7 @@ package io.legado.app.help.ai
 
 import io.legado.app.ui.main.ai.AiChatException
 import io.legado.app.utils.GSON
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -31,6 +32,31 @@ class AiChapterPurifyException(
     }
 ) : IllegalStateException(message, cause)
 
+sealed interface AiChapterPurifyProgress {
+    data class RequestAccepted(
+        val chapterIndex: Int,
+        val chunkIndex: Int,
+        val totalChunks: Int,
+        val attempt: Int
+    ) : AiChapterPurifyProgress
+
+    data class ResponseReceived(
+        val chapterIndex: Int,
+        val chunkIndex: Int,
+        val totalChunks: Int
+    ) : AiChapterPurifyProgress
+
+    data class ChapterRulesStored(
+        val chapterIndex: Int,
+        val candidateRules: Int,
+        val addedRules: Int
+    ) : AiChapterPurifyProgress
+
+    data class ReplacementApplied(
+        val addedRules: Int
+    ) : AiChapterPurifyProgress
+}
+
 object AiChapterPurifyHelper {
 
     private val supportedTypes = setOf("typo", "noise", "ad")
@@ -46,7 +72,11 @@ object AiChapterPurifyHelper {
         val new: String?
     )
 
-    suspend fun generateRules(paragraphs: List<AiChapterPurifyParagraph>): List<AiChapterPurifyRule> {
+    suspend fun generateRules(
+        paragraphs: List<AiChapterPurifyParagraph>,
+        chapterIndex: Int,
+        onProgress: suspend (AiChapterPurifyProgress) -> Unit = {}
+    ): List<AiChapterPurifyRule> {
         require(paragraphs.isNotEmpty()) { "No chapter paragraphs available for AI purification" }
         require(
             AiChapterPurifyConfig.typoEnabled ||
@@ -61,7 +91,14 @@ object AiChapterPurifyHelper {
             chunks.mapIndexed { chunkIndex, chunk ->
                 async {
                     semaphore.withPermit {
-                        requestChunk(target, chunkIndex + 1, chunk)
+                        requestChunk(
+                            target = target,
+                            chapterIndex = chapterIndex,
+                            chunkIndex = chunkIndex + 1,
+                            totalChunks = chunks.size,
+                            paragraphs = chunk,
+                            onProgress = onProgress
+                        )
                     }
                 }
             }.awaitAll().flatten().distinctBy { it.old to it.new }
@@ -70,8 +107,11 @@ object AiChapterPurifyHelper {
 
     private suspend fun requestChunk(
         target: AiChapterPurifyModelTarget,
+        chapterIndex: Int,
         chunkIndex: Int,
-        paragraphs: List<AiChapterPurifyParagraph>
+        totalChunks: Int,
+        paragraphs: List<AiChapterPurifyParagraph>,
+        onProgress: suspend (AiChapterPurifyProgress) -> Unit
     ): List<AiChapterPurifyRule> {
         var lastFailure: Throwable? = null
         repeat(AiChapterPurifyConfig.retryCount + 1) { attempt ->
@@ -81,10 +121,28 @@ object AiChapterPurifyHelper {
                     model = target.modelId,
                     systemPrompt = buildSystemPrompt(),
                     userContent = buildUserContent(paragraphs),
-                    temperature = 0.0
+                    temperature = 0.0,
+                    onRequestAccepted = {
+                        onProgress(
+                            AiChapterPurifyProgress.RequestAccepted(
+                                chapterIndex = chapterIndex,
+                                chunkIndex = chunkIndex,
+                                totalChunks = totalChunks,
+                                attempt = attempt + 1
+                            )
+                        )
+                    }
+                )
+                onProgress(
+                    AiChapterPurifyProgress.ResponseReceived(
+                        chapterIndex = chapterIndex,
+                        chunkIndex = chunkIndex,
+                        totalChunks = totalChunks
+                    )
                 )
                 return parseAndValidate(response, paragraphs)
             } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
                 lastFailure = throwable
                 if (attempt < AiChapterPurifyConfig.retryCount) {
                     delay(300L * (attempt + 1))

@@ -15,6 +15,7 @@ import io.legado.app.databinding.DialogAiProviderEditBinding
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.ai.AiChapterPurifyConfig
 import io.legado.app.help.ai.AiChatService
+import io.legado.app.help.ai.AiStructuredRequestTemplate
 import io.legado.app.help.ai.AiToolRegistry
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.newCallResponse
@@ -69,6 +70,7 @@ class AiConfigFragment : PreferenceFragment(),
             "aiAddModel" -> showAddModelOptionsDialog()
             "aiFetchModels" -> fetchModelsFromCurrentProvider(showSelector = true)
             "aiManageModels" -> showManageModelsDialog()
+            "aiEditRequest" -> showEditRequestDialog()
             "aiAddMcpServer" -> showEditMcpServerDialog()
             "aiManageMcpServers" -> showManageMcpServersDialog()
             "aiManageNativeTools" -> showManageNativeToolsDialog()
@@ -196,6 +198,38 @@ class AiConfigFragment : PreferenceFragment(),
             }
             neutralButton(R.string.restore_default) {
                 AiChapterPurifyConfig.prompt = AiChapterPurifyConfig.defaultPrompt
+                refreshUi()
+            }
+            cancelButton()
+        }
+    }
+
+    private fun showEditRequestDialog() {
+        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
+            editView.hint = getString(R.string.ai_edit_request_hint)
+            editView.inputType = InputType.TYPE_CLASS_TEXT or
+                InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+                InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            editView.minLines = 16
+            editView.setText(AiChapterPurifyConfig.requestTemplate)
+            editView.setSelection(editView.text?.length ?: 0)
+        }
+        alert(
+            titleResource = R.string.ai_edit_request
+        ) {
+            customView { binding.root }
+            okButton {
+                val template = binding.editView.text?.toString()?.trim().orEmpty()
+                val validation = runCatching { AiStructuredRequestTemplate.validate(template) }
+                validation.exceptionOrNull()?.let {
+                    toastOnUi(getString(R.string.ai_edit_request_invalid, it.message.orEmpty()))
+                    return@okButton
+                }
+                AiChapterPurifyConfig.requestTemplate = template
+                refreshUi()
+            }
+            neutralButton(R.string.restore_default) {
+                AiChapterPurifyConfig.requestTemplate = AiStructuredRequestTemplate.default
                 refreshUi()
             }
             cancelButton()
@@ -1086,6 +1120,8 @@ class AiConfigFragment : PreferenceFragment(),
                     append(getString(R.string.ai_manage_models_summary, providerModels.size))
                 }
             }
+        findPreference<Preference>("aiEditRequest")?.summary =
+            getString(R.string.ai_edit_request_summary)
         val currentModelId = AppConfig.aiCurrentModelConfig?.modelId?.trim().orEmpty()
         findPreference<Preference>("aiTestCurrentConnection")?.summary = when {
             currentProvider == null -> getString(R.string.ai_connection_test_summary_missing_provider)

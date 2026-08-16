@@ -9,6 +9,7 @@ import io.legado.app.help.http.postJson
 import io.legado.app.ui.main.ai.AiChatException
 import io.legado.app.ui.main.ai.AiChatMessage
 import io.legado.app.ui.main.ai.AiProviderConfig
+import kotlinx.coroutines.CancellationException
 import org.json.JSONArray
 import org.json.JSONObject
 import splitties.init.appCtx
@@ -47,7 +48,8 @@ object AiChatService {
     private data class CompletionRequestOptions(
         val temperature: Double? = null,
         val responseFormat: String? = null,
-        val thinkingType: String? = null
+        val thinkingType: String? = null,
+        val requestTemplate: String? = null
     )
 
     suspend fun chat(messages: List<AiChatMessage>): String {
@@ -95,7 +97,8 @@ object AiChatService {
         model: String,
         systemPrompt: String,
         userContent: String,
-        temperature: Double = 0.0
+        temperature: Double = 0.0,
+        onRequestAccepted: suspend () -> Unit = {}
     ): String {
         val baseUrl = provider.baseUrl.trim()
         require(baseUrl.isNotBlank()) { "Base URL is empty" }
@@ -129,10 +132,12 @@ object AiChatService {
                 round = 1,
                 onPartial = {},
                 onThinking = {},
+                onRequestAccepted = onRequestAccepted,
                 options = CompletionRequestOptions(
                     temperature = temperature,
                     responseFormat = "json_object",
-                    thinkingType = "disabled"
+                    thinkingType = "disabled",
+                    requestTemplate = AiChapterPurifyConfig.requestTemplate
                 ),
                 logRequestBody = false
             )
@@ -141,6 +146,7 @@ object AiChatService {
                 debugLog = requestLog.toString()
             )
         } catch (throwable: Throwable) {
+            if (throwable is CancellationException) throw throwable
             if (throwable is AiChatException) throw throwable
             throw AiChatException(
                 message = throwable.message ?: throwable.javaClass.simpleName,
@@ -436,10 +442,22 @@ object AiChatService {
         round: Int,
         onPartial: (String) -> Unit,
         onThinking: (String) -> Unit,
+        onRequestAccepted: suspend () -> Unit = {},
         options: CompletionRequestOptions = CompletionRequestOptions(),
         logRequestBody: Boolean = true
     ): AssistantTurn {
-        val requestBody = buildRequestBody(messages, model, tools, stream = true, options = options)
+        val requestBody = options.requestTemplate?.let { template ->
+            AiStructuredRequestTemplate.render(
+                template = template,
+                model = model,
+                systemPrompt = messages.firstOrNull { it.optString("role") == "system" }
+                    ?.optString("content")
+                    .orEmpty(),
+                userContent = messages.firstOrNull { it.optString("role") == "user" }
+                    ?.optString("content")
+                    .orEmpty()
+            )
+        } ?: buildRequestBody(messages, model, tools, stream = true, options = options)
         requestLog.append("round=").append(round).append('\n')
         if (logRequestBody) {
             requestLog.append("request=").append(requestBody).append('\n')
@@ -474,6 +492,7 @@ object AiChatService {
                     }
                 )
             }
+            onRequestAccepted()
             val rendered = StringBuilder()
             val rawRendered = StringBuilder()
             val reasoningRendered = StringBuilder()

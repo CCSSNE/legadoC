@@ -705,6 +705,10 @@
     <string name="ai_manage_models">Manage models</string>
     <string name="ai_manage_models_summary">%1$d models added</string>
     <string name="ai_edit_model">Edit model</string>
+    <string name="ai_edit_request">Edit request</string>
+    <string name="ai_edit_request_summary">Edit the JSON body used by chapter purification and its connection test.</string>
+    <string name="ai_edit_request_hint">Structured request JSON</string>
+    <string name="ai_edit_request_invalid">Request template is invalid: %s</string>
     <string name="ai_model_saved">Model saved</string>
     <string name="ai_chapter_purify">AI chapter purification</string>
     <string name="ai_connection_test">Test current model connection</string>
@@ -726,6 +730,8 @@
     <string name="ai_chapter_purify_prompt">Chapter purification prompt</string>
     <string name="ai_chapter_purify_prompt_summary">Edit task instructions; the JSON protocol remains fixed.</string>
     <string name="ai_chapter_purify_prompt_hint">Enter chapter purification task instructions</string>
+    <string name="ai_chapter_purify_summary_enabled">AI evolution summary</string>
+    <string name="ai_chapter_purify_summary_enabled_summary">Show request, response, and replacement progress at the bottom of the reading page.</string>
     <string name="ai_chapter_purify_chapter_count">Chapters per trigger</string>
     <string name="ai_chapter_purify_chapter_count_summary">Current chapter included; process %1$d chapter(s).</string>
     <string name="ai_chapter_purify_segment_limit">Batch character limit</string>
@@ -742,6 +748,10 @@
     <string name="ai_chapter_purify_ad_summary">Remove only whole paragraphs that are clearly unrelated ads.</string>
     <string name="ai_chapter_purify_number_invalid">Enter a number between %1$d and %2$d.</string>
     <string name="ai_chapter_purify_failed">AI chapter purification failed: %s</string>
+    <string name="ai_chapter_purify_request_accepted">AI request accepted for chapter %1$d, batch %2$d/%3$d (attempt %4$d). Waiting for generation...</string>
+    <string name="ai_chapter_purify_response_received">AI response received for chapter %1$d, batch %2$d/%3$d. Validating rules...</string>
+    <string name="ai_chapter_purify_rules_ready">Chapter %1$d returned %2$d candidate rule(s). Applying...</string>
+    <string name="ai_chapter_purify_replacement_applied">AI replacement completed: %1$d new rule(s).</string>
     <string name="ai_mcp">MCP 服务器</string>
     <string name="ai_add_mcp_server">添加 MCP 服务器</string>
     <string name="ai_add_mcp_server_summary">添加 Streamable HTTP MCP 接口</string>
