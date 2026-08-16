@@ -2406,9 +2406,6 @@ class ReadBookActivity : BaseReadBookActivity(),
         menu?.findItem(R.id.menu_enable_replace)?.isChecked = book.getUseReplaceRule()
         menu?.findItem(R.id.menu_enable_ai_chapter_purify)?.isChecked = enabled
         viewModel.replaceRuleChanged()
-        if (enabled) {
-            scheduleAiChapterPurify()
-        }
     }
 
     private fun requestAiChapterPurifyAfterRefresh() {
