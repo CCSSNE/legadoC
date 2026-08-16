@@ -18,6 +18,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.databinding.DialogContentEditBinding
 import io.legado.app.databinding.DialogEditTextBinding
+import io.legado.app.help.ai.AiChapterPurifyService
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.isLocalTxt
@@ -152,6 +153,9 @@ class ContentEditDialog : BaseDialogFragment(R.layout.dialog_content_edit) {
             if (book.isLocalTxt) {
                 kotlin.runCatching {
                     saveFullText(book, content, readActivity)
+                }.onSuccess {
+                    // 内容已被用户认定为最终形态：更新章节净化指纹，不触发 AI 重跑
+                    AiChapterPurifyService.markChapterEdited(book, ReadBook.durChapterIndex)
                 }.onFailure {
                     withContext(Main) {
                         toastOnUi("保存失败\n${it.localizedMessage}")
@@ -162,6 +166,8 @@ class ContentEditDialog : BaseDialogFragment(R.layout.dialog_content_edit) {
                     .getChapter(book.bookUrl, ReadBook.durChapterIndex)
                     ?: return@async
                 BookHelp.saveText(book, chapter, content)
+                // 内容已被用户认定为最终形态：更新章节净化指纹，不触发 AI 重跑
+                AiChapterPurifyService.markChapterEdited(book, chapter.index)
                 ReadBook.loadContent(ReadBook.durChapterIndex, resetPageOffset = false)
             }
         }

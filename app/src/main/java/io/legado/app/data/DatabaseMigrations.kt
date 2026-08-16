@@ -23,7 +23,18 @@ object DatabaseMigrations {
             migration_90_91, migration_91_92, migration_92_93, migration_93_94,
             migration_94_95, migration_95_96, migration_96_97, migration_97_98,
             migration_98_99, migration_99_100, migration_100_101, migration_101_102,
+            migration_102_103,
         )
+    }
+
+    private val migration_102_103 = object : Migration(102, 103) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // AI 章节净化：记录该章被哪几个 AI 功能（ad/typo/noise）处理过
+            db.execSQL(
+                "ALTER TABLE ai_chapter_purify_records " +
+                    "ADD COLUMN processedTypes TEXT NOT NULL DEFAULT ''"
+            )
+        }
     }
 
     private val migration_101_102 = object : Migration(101, 102) {
