@@ -2,6 +2,7 @@ package io.legado.app.help.ai
 
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
+import io.legado.app.ui.main.ai.AiModelConfig
 import io.legado.app.ui.main.ai.AiProviderConfig
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
@@ -69,24 +70,42 @@ object AiChapterPurifyConfig {
         get() = appCtx.getPrefBoolean(PreferKey.aiChapterPurifyReuseCurrentModel, true)
         set(value) = appCtx.putPrefBoolean(PreferKey.aiChapterPurifyReuseCurrentModel, value)
 
-    var independentProvider: AiProviderConfig?
+    /** 章节净化所选供应商的全局配置 id（引用，不保存快照） */
+    var independentProviderId: String
         get() {
             val raw = appCtx.getPrefString(PreferKey.aiChapterPurifyProvider).orEmpty()
-            return raw.takeIf { it.isNotBlank() }?.let {
-                GSON.fromJson(it, AiProviderConfig::class.java)
-            }
+            if (raw.isBlank()) return ""
+            // 旧版本存的是 AiProviderConfig 完整 JSON 快照，取其 id 作为引用
+            return runCatching {
+                GSON.fromJson(raw, AiProviderConfig::class.java)?.id.orEmpty()
+            }.getOrElse { raw.trim() }
         }
-        set(value) {
-            if (value == null) {
-                appCtx.putPrefString(PreferKey.aiChapterPurifyProvider, "")
-            } else {
-                appCtx.putPrefString(PreferKey.aiChapterPurifyProvider, GSON.toJson(value))
-            }
-        }
+        set(value) = appCtx.putPrefString(PreferKey.aiChapterPurifyProvider, value.trim())
 
+    /** 解析章节净化所选供应商：从全局列表按 id 现查 */
+    val independentProvider: AiProviderConfig?
+        get() = AppConfig.aiProviderList.firstOrNull { it.id == independentProviderId }
+
+    /** 章节净化所选模型的全局配置 id（引用，不保存快照） */
     var independentModelId: String
         get() = appCtx.getPrefString(PreferKey.aiChapterPurifyModel).orEmpty()
         set(value) = appCtx.putPrefString(PreferKey.aiChapterPurifyModel, value.trim())
+
+    /** 解析章节净化所选模型：从全局列表按 id 现查；旧版本手填的模型 ID 字符串按同名匹配并一次性迁移 */
+    val independentModel: AiModelConfig?
+        get() {
+            val ref = independentModelId
+            if (ref.isBlank()) return null
+            AppConfig.aiModelConfigList.firstOrNull { it.id == ref }?.let { return it }
+            val legacy = AppConfig.aiModelConfigList.firstOrNull {
+                it.modelId == ref && it.providerId == independentProviderId
+            }
+            if (legacy != null) {
+                independentModelId = legacy.id
+                return legacy
+            }
+            return null
+        }
 
     var prompt: String
         get() = appCtx.getPrefString(PreferKey.aiChapterPurifyPrompt)
@@ -208,18 +227,19 @@ object AiChapterPurifyConfig {
     fun requireModelTarget(): AiChapterPurifyModelTarget {
         if (reuseCurrentModel) {
             val provider = AppConfig.aiCurrentProvider
-                ?: error("请先配置当前 AI 提供商，或关闭“复用当前 AI 模型”后配置章节净化模型")
+                ?: error("请先配置当前 AI 提供商，或关闭“复用当前 AI 模型”后选择章节净化模型")
             val model = AppConfig.aiCurrentModelConfig?.modelId.orEmpty()
             check(model.isNotBlank()) {
-                "请先配置当前 AI 模型，或关闭“复用当前 AI 模型”后配置章节净化模型"
+                "请先配置当前 AI 模型，或关闭“复用当前 AI 模型”后选择章节净化模型"
             }
             return AiChapterPurifyModelTarget(provider, model)
         }
         val provider = independentProvider
-            ?: error("请先配置章节净化独立提供商")
-        check(provider.baseUrl.isNotBlank()) { "章节净化独立提供商的 API 地址不能为空" }
-        val model = independentModelId
-        check(model.isNotBlank()) { "请先配置章节净化独立模型" }
-        return AiChapterPurifyModelTarget(provider, model)
+            ?: error("请先在 AI 设置中选择章节净化供应商（或开启“复用当前 AI 模型”）")
+        check(provider.baseUrl.isNotBlank()) { "章节净化所选供应商的 API 地址不能为空" }
+        val model = independentModel
+            ?.takeIf { it.providerId == provider.id }
+            ?: error("请先在 AI 设置中选择章节净化模型（或开启“复用当前 AI 模型”）")
+        return AiChapterPurifyModelTarget(provider, model.modelId)
     }
 }

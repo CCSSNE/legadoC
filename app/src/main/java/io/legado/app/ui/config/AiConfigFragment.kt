@@ -93,7 +93,6 @@ class AiConfigFragment : PreferenceFragment(),
             "aiManageProviders" -> showManageProvidersDialog()
             "aiTestCurrentConnection" -> testCurrentAiConnection()
             "aiAddModel" -> showAddModelOptionsDialog()
-            "aiFetchModels" -> fetchModelsFromCurrentProvider(showSelector = true)
             "aiManageModels" -> showManageModelsDialog()
             "aiEditRequest" -> showEditRequestDialog()
             "aiSseIdleTimeoutSeconds" -> showChapterPurifyIntDialog(
@@ -133,8 +132,8 @@ class AiConfigFragment : PreferenceFragment(),
             PreferKey.aiSystemPrompt -> showSystemPromptDialog()
             "aiImportDefaultSkill" -> importDefaultSkill()
             PreferKey.aiSkillPrompt -> showManageSkillsDialog()
-            PreferKey.aiChapterPurifyProvider -> showEditChapterPurifyProviderDialog()
-            PreferKey.aiChapterPurifyModel -> showEditChapterPurifyModelDialog()
+            PreferKey.aiChapterPurifyProvider -> showSelectChapterPurifyProviderDialog()
+            PreferKey.aiChapterPurifyModel -> showSelectChapterPurifyModelDialog()
             "aiChapterPurifyTestConnection" -> testChapterPurifyConnection()
             PreferKey.aiChapterPurifyPrompt -> showChapterPurifyPromptDialog()
             "aiChapterPurifyFlowInfo" -> showChapterPurifyFlowInfo()
@@ -249,64 +248,40 @@ class AiConfigFragment : PreferenceFragment(),
         }
     }
 
-    private fun showEditChapterPurifyProviderDialog() {
-        val provider = AiChapterPurifyConfig.independentProvider
-        val binding = DialogAiProviderEditBinding.inflate(layoutInflater).apply {
-            editProviderName.setText(provider?.name.orEmpty())
-            editProviderBaseUrl.setText(provider?.baseUrl.orEmpty())
-            editProviderApiKey.setText(provider?.apiKey.orEmpty())
-            editProviderHeaders.setText(provider?.headers.orEmpty())
+    private fun showSelectChapterPurifyProviderDialog() {
+        val providers = AppConfig.aiProviderList
+        if (providers.isEmpty()) {
+            toastOnUi(R.string.ai_no_providers)
+            return
         }
-        applyApiKeyInputPolicy(binding.editProviderApiKey)
-        alert(titleResource = R.string.ai_chapter_purify_provider) {
-            customView { binding.root }
-            okButton {
-                val name = binding.editProviderName.text?.toString()?.trim().orEmpty()
-                val baseUrl = binding.editProviderBaseUrl.text?.toString()?.trim().orEmpty()
-                if (name.isEmpty()) {
-                    toastOnUi(R.string.ai_provider_name_required)
-                    return@okButton
-                }
-                if (baseUrl.isEmpty()) {
-                    toastOnUi(R.string.ai_provider_url_required)
-                    return@okButton
-                }
-                AiChapterPurifyConfig.independentProvider = provider?.copy(
-                    name = name,
-                    baseUrl = baseUrl,
-                    apiKey = binding.editProviderApiKey.text?.toString()?.trim().orEmpty(),
-                    headers = binding.editProviderHeaders.text?.toString()?.trim().orEmpty()
-                ) ?: AiProviderConfig(
-                    name = name,
-                    baseUrl = baseUrl,
-                    apiKey = binding.editProviderApiKey.text?.toString()?.trim().orEmpty(),
-                    headers = binding.editProviderHeaders.text?.toString()?.trim().orEmpty()
-                )
-                refreshUi()
-            }
-            cancelButton()
+        context?.selector(
+            getString(R.string.ai_chapter_purify_provider),
+            providers.map { it.name }
+        ) { _, _, index ->
+            AiChapterPurifyConfig.independentProviderId = providers[index].id
+            // 切换供应商后，原模型引用不再属于新供应商，清空让用户重新选择
+            AiChapterPurifyConfig.independentModelId = ""
+            refreshUi()
         }
     }
 
-    private fun showEditChapterPurifyModelDialog() {
-        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
-            editView.hint = getString(R.string.ai_model_input_hint)
-            editView.inputType = InputType.TYPE_CLASS_TEXT
-            editView.setText(AiChapterPurifyConfig.independentModelId)
-            editView.setSelection(editView.text?.length ?: 0)
+    private fun showSelectChapterPurifyModelDialog() {
+        val provider = AiChapterPurifyConfig.independentProvider
+        if (provider == null) {
+            toastOnUi(R.string.ai_chapter_purify_select_provider_first)
+            return
         }
-        alert(titleResource = R.string.ai_chapter_purify_model) {
-            customView { binding.root }
-            okButton {
-                val modelId = binding.editView.text?.toString()?.trim().orEmpty()
-                if (modelId.isEmpty()) {
-                    toastOnUi(R.string.cannot_empty)
-                    return@okButton
-                }
-                AiChapterPurifyConfig.independentModelId = modelId
-                refreshUi()
-            }
-            cancelButton()
+        val models = AppConfig.aiModelConfigList.filter { it.providerId == provider.id }
+        if (models.isEmpty()) {
+            toastOnUi(R.string.ai_chapter_purify_provider_no_models)
+            return
+        }
+        context?.selector(
+            getString(R.string.ai_chapter_purify_model),
+            models.map { it.modelId }
+        ) { _, _, index ->
+            AiChapterPurifyConfig.independentModelId = models[index].id
+            refreshUi()
         }
     }
 
@@ -1374,8 +1349,6 @@ class AiConfigFragment : PreferenceFragment(),
         }
         findPreference<Preference>("aiAddModel")?.summary =
             getString(R.string.ai_add_model_summary_modern)
-        findPreference<Preference>("aiFetchModels")?.summary =
-            getString(R.string.ai_fetch_models_summary_modern)
         findPreference<Preference>("aiManageMcpServers")?.summary =
             if (mcpServers.isEmpty()) {
                 getString(R.string.ai_no_mcp_servers)
@@ -1424,13 +1397,22 @@ class AiConfigFragment : PreferenceFragment(),
             chapterPurifyReuseCurrentModel
         findPreference<Preference>(PreferKey.aiChapterPurifyProvider)?.apply {
             isVisible = !chapterPurifyReuseCurrentModel
-            summary = AiChapterPurifyConfig.independentProvider?.name
-                ?: getString(R.string.ai_chapter_purify_provider_summary_empty)
+            val provider = AiChapterPurifyConfig.independentProvider
+            summary = when {
+                provider != null -> provider.name
+                AiChapterPurifyConfig.independentProviderId.isNotBlank() ->
+                    getString(R.string.ai_chapter_purify_reference_missing)
+                else -> getString(R.string.ai_chapter_purify_provider_summary_empty)
+            }
         }
         findPreference<Preference>(PreferKey.aiChapterPurifyModel)?.apply {
             isVisible = !chapterPurifyReuseCurrentModel
-            summary = AiChapterPurifyConfig.independentModelId.ifBlank {
-                getString(R.string.ai_chapter_purify_model_summary_empty)
+            val model = AiChapterPurifyConfig.independentModel
+            summary = when {
+                model != null -> model.modelId
+                AiChapterPurifyConfig.independentModelId.isNotBlank() ->
+                    getString(R.string.ai_chapter_purify_reference_missing)
+                else -> getString(R.string.ai_chapter_purify_model_summary_empty)
             }
         }
         findPreference<Preference>("aiChapterPurifyTestConnection")?.isVisible =
