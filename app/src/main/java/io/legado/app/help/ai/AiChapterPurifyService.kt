@@ -285,23 +285,55 @@ object AiChapterPurifyService {
     }
 
     /**
-     * 用户主动编辑/反转章节内容后，内容已由用户认定为最终形态：
-     * 只把该章记录的内容指纹更新为新的缓存原文指纹（仍视为已处理），不触发 AI 重跑。
-     * 仅当该章已有 COMPLETED 记录时生效；从未处理过的章节不做标记，按常规判定流程处理。
+     * 用户主动编辑/反转章节内容后，内容已由用户认定为最终形态（受控改动）：
+     * 无条件把该章记录为「已处理」——指纹更新为当前缓存原文 SHA-256、状态置为
+     * COMPLETED、已处理类型并入编辑时启用的全部净化功能，此后任何自动 run 都跳过它，
+     * 绝不重跑 AI、绝不为它生成替换规则。
+     * 从未处理过或之前处理失败的章节同样生效：编辑即受控，不再被自动处理。
+     * 之后若用户再启用新的净化功能，则该章因类型未覆盖而按常规判定自动重处理。
      */
     suspend fun markChapterEdited(book: Book, chapterIndex: Int) {
         if (!book.getUseReplaceRule() || !book.getAiChapterPurifyEnabled()) return
-        val existing = appDb.aiChapterPurifyRecordDao.get(book.bookUrl, chapterIndex) ?: return
-        if (existing.state != AiChapterPurifyRecord.STATE_COMPLETED) return
         val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, chapterIndex) ?: return
         val content = BookHelp.getContent(book, chapter) ?: return
         val fingerprint = content.sha256()
-        if (existing.contentFingerprint == fingerprint) return
-        appDb.aiChapterPurifyRecordDao.insert(existing.copy(contentFingerprint = fingerprint))
+        val enabledTypes = AiChapterPurifyConfig.enabledTypes()
+        val existing = appDb.aiChapterPurifyRecordDao.get(book.bookUrl, chapterIndex)
+        if (existing != null) {
+            // 幂等：指纹未变、已 COMPLETED、且已覆盖当前全部启用类型时不重复标记
+            if (existing.contentFingerprint == fingerprint &&
+                existing.state == AiChapterPurifyRecord.STATE_COMPLETED &&
+                purifyTypesCovered(existing, enabledTypes)
+            ) {
+                return
+            }
+            val mergedTypes =
+                (existing.processedTypes.split(',').map { it.trim() }.filter { it.isNotBlank() } + enabledTypes)
+                    .distinct()
+                    .joinToString(",")
+            appDb.aiChapterPurifyRecordDao.insert(
+                existing.copy(
+                    contentFingerprint = fingerprint,
+                    processedTypes = mergedTypes,
+                    state = AiChapterPurifyRecord.STATE_COMPLETED,
+                    failureMessage = null
+                )
+            )
+        } else {
+            appDb.aiChapterPurifyRecordDao.insert(
+                AiChapterPurifyRecord(
+                    bookUrl = book.bookUrl,
+                    chapterIndex = chapterIndex,
+                    contentFingerprint = fingerprint,
+                    ruleCount = 0,
+                    processedTypes = enabledTypes.joinToString(",")
+                )
+            )
+        }
         AppLog.putAi(
             "CHAPTER_PURIFY MARK_EDITED chapter=${chapterIndex + 1}\n" +
                 "fingerprint=$fingerprint\n" +
-                "processedTypes=${existing.processedTypes}"
+                "processedTypes=${enabledTypes.joinToString(",")}"
         )
     }
 
