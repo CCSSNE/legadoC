@@ -43,11 +43,13 @@ object AiStructuredRequestTemplate {
         USER_CONTENT_TOKEN
     )
 
+    private val tokenPattern = Regex("""\{\{[^{}]+\}\}""")
+
     fun validate(template: String) {
         val normalized = template.trim()
         require(normalized.isNotEmpty()) { "Request template is empty" }
         JSONObject(normalized)
-        val tokens = Regex("""\{\{[^{}]+}}""")
+        val tokens = tokenPattern
             .findAll(normalized)
             .map { it.value }
             .toSet()
@@ -75,7 +77,7 @@ object AiStructuredRequestTemplate {
         )
         replaceObject(root, replacements)
         val rendered = root.toString()
-        require(!Regex("""\{\{[^{}]+}}""").containsMatchIn(rendered)) {
+        require(!tokenPattern.containsMatchIn(rendered)) {
             "Request template contains an unresolved token"
         }
         return rendered
