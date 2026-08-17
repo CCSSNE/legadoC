@@ -66,6 +66,7 @@ import io.legado.app.lib.permission.PermissionsCompat
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.receiver.MediaButtonReceiver
+import io.legado.app.ui.book.audio.AudioPlayActivity
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.read.page.entities.TextChapter
 import io.legado.app.utils.LogUtils
@@ -79,7 +80,6 @@ import io.legado.app.utils.observeEvent
 import io.legado.app.utils.observeSharedPreferences
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.putPrefInt
-import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Dispatchers.Main
@@ -148,7 +148,7 @@ abstract class BaseReadAloudService : BaseService(),
     }
     private val wifiLock by lazy {
         @Suppress("DEPRECATION")
-        wifiManager?.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "legado:AudioPlayService")
+        wifiManager?.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "legado:ReadAloudService")
             ?.apply {
                 setReferenceCounted(false)
             }
@@ -181,7 +181,6 @@ abstract class BaseReadAloudService : BaseService(),
     private var floatingPlayPauseView: ImageView? = null
     private var floatingLoadingAnimator: ObjectAnimator? = null
     private var appFloatingActivity: Activity? = null
-    private var readBookActivityActive = false
     private var currentAvoidanceSource: String? = null
     private var currentAvoidanceY: Int = 0
     private var rebuildFloatingJob: Job? = null
@@ -491,38 +490,24 @@ abstract class BaseReadAloudService : BaseService(),
     }
 
     private fun openReadAloudBook() {
-        if (readBookActivityActive) {
-            postEvent(EventBus.OPEN_READ_ALOUD_DIALOG, true)
-            return
-        }
         ReadBook.book?.let { book ->
-            val chapterPos = currentReadAloudChapterPos()
             ReadBook.saveRead()
-            startActivityForBook(book) {
-                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                putExtra("bookUrl", book.bookUrl)
-                putExtra("index", currentReadAloudChapterIndex())
-                putExtra("chapterPos", chapterPos)
-                putExtra("fromReadAloudFloating", true)
-                putExtra("inBookshelf", ReadBook.inBookshelf)
-            }
+            startActivity(
+                Intent(this, AudioPlayActivity::class.java).apply {
+                    addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK or
+                                Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                                Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    )
+                    putExtra("bookUrl", book.bookUrl)
+                    putExtra("readAloudSession", true)
+                }
+            )
         }
     }
 
     private fun isMainThread(): Boolean {
         return Looper.myLooper() == Looper.getMainLooper()
-    }
-
-    private fun currentReadAloudChapterPos(): Int {
-        return if (isRun) {
-            (readAloudNumber + 1).coerceAtLeast(0)
-        } else {
-            ReadBook.durChapterPos
-        }
-    }
-
-    private fun currentReadAloudChapterIndex(): Int {
-        return textChapter?.chapter?.index ?: ReadBook.durChapterIndex
     }
 
     private fun defaultReadAloudFloatingX() = 18.dpToPx()
@@ -718,7 +703,6 @@ abstract class BaseReadAloudService : BaseService(),
             onReadAloudFloatingAvoidance(source, y)
         }
         observeEvent<Boolean>(EventBus.READ_BOOK_ACTIVITY_ACTIVE) {
-            readBookActivityActive = it
             if (it) {
                 appFloatingActivity = ReadBookActivity.activeActivity() ?: appFloatingActivity
                 showReadAloudFloatingWindow()
@@ -859,10 +843,11 @@ abstract class BaseReadAloudService : BaseService(),
             IntentAction.upTtsSpeechRate -> upSpeechRate(true)
             IntentAction.prevParagraph -> prevP()
             IntentAction.nextParagraph -> nextP()
-            IntentAction.seekReadAloudParagraph -> seekToParagraph(
+            IntentAction.seekReadAloudProgress -> seekToReadAloudProgress(
                 intent.getIntExtra("chapterIndex", -1),
-                intent.getIntExtra("paragraphIndex", -1)
+                intent.getIntExtra("position", -1)
             )
+            IntentAction.setSpeed -> setPlaybackSpeed(intent.getFloatExtra("speed", Float.NaN))
             IntentAction.prev -> prevChapter()
             IntentAction.next -> nextChapter()
             IntentAction.addTimer -> addTimer()
@@ -999,7 +984,7 @@ abstract class BaseReadAloudService : BaseService(),
         }
     }
 
-    private fun stopReadAloudOnInvalidPosition(message: String) {
+    protected fun stopReadAloudOnInvalidPosition(message: String) {
         AppLog.putDebug(message)
         lifecycleScope.launch(Main) {
             stopSelf()
@@ -1028,8 +1013,17 @@ abstract class BaseReadAloudService : BaseService(),
 
     fun upTtsProgress(progress: Int) {
         publishParagraphProgress()
+        postReadAloudTextPosition(progress)
+    }
+
+    protected fun postReadAloudTextPosition(progress: Int) {
+        val chapterIndex = textChapter?.chapter?.index ?: ReadBook.durChapterIndex
+        if (chapterIndex == ReadBook.durChapterIndex) {
+            ReadBook.durChapterPos = progress
+            ReadBook.book?.durChapterPos = progress
+        }
         postEvent(EventBus.TTS_PROGRESS, Bundle().apply {
-            putInt("chapterIndex", textChapter?.chapter?.index ?: ReadBook.durChapterIndex)
+            putInt("chapterIndex", chapterIndex)
             putInt("chapterPos", progress)
         })
     }
@@ -1049,7 +1043,7 @@ abstract class BaseReadAloudService : BaseService(),
         )
     }
 
-    private fun seekToParagraph(chapterIndex: Int, paragraphIndex: Int) {
+    protected open fun seekToReadAloudProgress(chapterIndex: Int, position: Int) {
         val chapter = textChapter ?: run {
             stopReadAloudOnInvalidPosition("Read aloud seek failed: chapter is missing")
             return
@@ -1062,19 +1056,19 @@ abstract class BaseReadAloudService : BaseService(),
             publishParagraphProgress()
             return
         }
-        if (paragraphIndex !in contentList.indices) {
+        if (position !in contentList.indices) {
             stopReadAloudOnInvalidPosition(
                 "Read aloud seek paragraph is out of range: " +
-                        "paragraph=$paragraphIndex, total=${contentList.size}"
+                        "paragraph=$position, total=${contentList.size}"
             )
             return
         }
         val paragraphs = chapter.getParagraphs(readAloudByPage)
-        val paragraph = paragraphs.getOrNull(paragraphIndex) ?: run {
+        val paragraph = paragraphs.getOrNull(position) ?: run {
             stopReadAloudOnInvalidPosition(
                 "Read aloud paragraph mapping is inconsistent: " +
                         "content=${contentList.size}, layout=${paragraphs.size}, " +
-                        "paragraph=$paragraphIndex"
+                        "paragraph=$position"
             )
             return
         }
@@ -1082,25 +1076,31 @@ abstract class BaseReadAloudService : BaseService(),
         if (targetPageIndex !in 0 until chapter.pageSize) {
             stopReadAloudOnInvalidPosition(
                 "Read aloud seek page is invalid: page=$targetPageIndex, " +
-                        "paragraph=$paragraphIndex"
+                        "paragraph=$position"
             )
             return
         }
 
         val resumeAfterSeek = !pause
         playStop()
-        nowSpeak = paragraphIndex
+        nowSpeak = position
         readAloudNumber = paragraph.chapterPosition
         paragraphStartPos = 0
         pageIndex = targetPageIndex
         AppLog.putDebug(
-            "Read aloud seek: chapter=$chapterIndex, paragraph=$paragraphIndex, " +
+            "Read aloud seek: chapter=$chapterIndex, paragraph=$position, " +
                     "chapterPosition=$readAloudNumber, page=$pageIndex"
         )
         upTtsProgress(readAloudNumber + 1)
         if (resumeAfterSeek) {
             play()
         }
+    }
+
+    protected open fun setPlaybackSpeed(speed: Float) {
+        stopReadAloudOnInvalidPosition(
+            "Read aloud engine does not support direct playback speed: ${this::class.java.name}"
+        )
     }
 
     protected fun upReadAloudLoading(loading: Boolean) {
@@ -1427,7 +1427,10 @@ abstract class BaseReadAloudService : BaseService(),
             .setContentTitle(nTitle)
             .setContentText(nSubtitle)
             .setContentIntent(
-                activityPendingIntent<ReadBookActivity>("activity")
+                activityPendingIntent<AudioPlayActivity>("readAloudPlayer") {
+                    putExtra("bookUrl", ReadBook.book?.bookUrl)
+                    putExtra("readAloudSession", true)
+                }
             )
             .setVibrate(null)
             .setSound(null)

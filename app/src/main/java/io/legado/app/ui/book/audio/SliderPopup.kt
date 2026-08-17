@@ -2,7 +2,6 @@ package io.legado.app.ui.book.audio
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.os.Build
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -10,12 +9,18 @@ import android.widget.PopupWindow
 import android.widget.SeekBar
 import io.legado.app.R
 import io.legado.app.databinding.PopupSeekBarBinding
-import io.legado.app.model.AudioPlay
-import io.legado.app.service.AudioPlayService
+import io.legado.app.help.config.AppConfig
+import io.legado.app.model.ReadAloud
+import io.legado.app.model.ReadBook
+import io.legado.app.service.BaseReadAloudService
+import io.legado.app.service.ReadAloudEngineType
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
-import kotlin.math.roundToInt
 
-class SliderPopup(private val context: Context, private val name: Int) :
+class SliderPopup(
+    private val context: Context,
+    private val name: Int,
+    private val onValueChanged: (() -> Unit)? = null,
+) :
     PopupWindow(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT) {
     companion object {
         const val TIMER = 1
@@ -34,15 +39,21 @@ class SliderPopup(private val context: Context, private val name: Int) :
                 if (name == TIMER) {
                     setProcessTimerText(progress)
                     if (fromUser) {
-                        AudioPlay.setTimer(progress)
+                        ReadAloud.setTimer(context, progress)
+                        onValueChanged?.invoke()
                     }
                     return
                 }
-                val speed = (progress / 10f).roundToInt() / 10f
+                val speed = speedFromProgress(progress)
                 setProcessSpeedText(speed)
                 if (fromUser) {
-                    // 设置播放速度 (转换为0.5-3.0范围)
-                    AudioPlay.setSpeed(speed)
+                    if (ReadAloud.engineType == ReadAloudEngineType.SOURCE_AUDIO) {
+                        ReadAloud.setSpeed(context, speed)
+                    } else {
+                        AppConfig.ttsSpeechRate = progress
+                        ReadAloud.upTtsSpeechRate(context)
+                    }
+                    onValueChanged?.invoke()
                 }
             }
         })
@@ -51,18 +62,18 @@ class SliderPopup(private val context: Context, private val name: Int) :
     override fun showAsDropDown(anchor: View?, xoff: Int, yoff: Int, gravity: Int) {
         super.showAsDropDown(anchor, xoff, yoff, gravity)
         if (name == TIMER) {
-            binding.seekBar.progress = AudioPlayService.timeMinute
+            binding.seekBar.progress = BaseReadAloudService.timeMinute.coerceAtLeast(0)
         } else {
-            binding.seekBar.progress = (AudioPlayService.playSpeed * 100).toInt()
+            binding.seekBar.progress = currentSpeedProgress()
         }
     }
 
     override fun showAtLocation(parent: View?, gravity: Int, x: Int, y: Int) {
         super.showAtLocation(parent, gravity, x, y)
         if (name == TIMER) {
-            binding.seekBar.progress = AudioPlayService.timeMinute
+            binding.seekBar.progress = BaseReadAloudService.timeMinute.coerceAtLeast(0)
         } else {
-            binding.seekBar.progress = (AudioPlayService.playSpeed * 100).toInt()
+            binding.seekBar.progress = currentSpeedProgress()
         }
     }
 
@@ -81,11 +92,20 @@ class SliderPopup(private val context: Context, private val name: Int) :
             setProcessTimerText(0)
             return
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            binding.seekBar.min = 50
+        binding.seekBar.max = if (ReadAloud.engineType == ReadAloudEngineType.SOURCE_AUDIO) 25 else 45
+        binding.seekBar.progress = currentSpeedProgress()
+        setProcessSpeedText(speedFromProgress(binding.seekBar.progress))
+    }
+
+    private fun currentSpeedProgress(): Int {
+        return if (ReadAloud.engineType == ReadAloudEngineType.SOURCE_AUDIO) {
+            (((ReadBook.book?.getPlaySpeed() ?: 1f) - 0.5f) * 10).toInt().coerceIn(0, 25)
+        } else {
+            AppConfig.ttsSpeechRate.coerceIn(0, 45)
         }
-        binding.seekBar.max = 300
-        binding.seekBar.progress = (AudioPlayService.playSpeed * 100).toInt()
-        setProcessSpeedText(AudioPlayService.playSpeed)
+    }
+
+    private fun speedFromProgress(progress: Int): Float {
+        return (progress + 5) / 10f
     }
 }

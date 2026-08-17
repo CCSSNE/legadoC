@@ -13,7 +13,6 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.RssReadRecord
 import io.legado.app.data.entities.RssSource
 import io.legado.app.help.JsExtensions
-import io.legado.app.model.AudioPlay
 import io.legado.app.model.ReadBook
 import io.legado.app.model.VideoPlay
 import io.legado.app.model.analyzeRule.AnalyzeRule
@@ -249,18 +248,13 @@ open class RssJsExtensions(
         var book: Book? = null
         var chapter: BookChapter? = null
         when (bookType) {
-            BookType.text -> {
+            BookType.text, BookType.audio -> {
                 book = ReadBook.book?.also {
                     chapter = appDb.bookChapterDao.getChapter(
                         it.bookUrl,
                         ReadBook.durChapterIndex
                     )
                 }
-            }
-
-            BookType.audio -> {
-                book = AudioPlay.book
-                chapter = AudioPlay.durChapter
             }
 
             BookType.video -> {

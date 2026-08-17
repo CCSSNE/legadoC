@@ -1730,6 +1730,9 @@
     <string name="start_chapter">Start Chapter</string>
     <string name="official_version">正式版</string>
     <string name="stream_read_aloud_audio">流式播放音频</string>
+    <string name="source_audio_engine">书源音频</string>
+    <string name="http_tts_missing">HTTP TTS 配置缺失（%1$s）</string>
+    <string name="audio_chapter_no_transcript">本章节未提供字幕。书源音频可以播放，但无法进行正文与时间定位。</string>
     <string name="stream_read_aloud_audio_summary">即边下边播，网络不好时播放会断断续续，仅TTS源有效</string>
     <string name="pause_read_aloud_while_phone_calls_title">来电期间暂停朗读</string>
     <string name="pause_read_aloud_while_phone_calls_summary">在通话期间暂停朗读，需要读取手机状态权限</string>

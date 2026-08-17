@@ -29,6 +29,7 @@ import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
+import io.legado.app.help.book.isAudio
 import io.legado.app.ui.association.ImportHttpTtsDialog
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.login.SourceLoginActivity
@@ -112,6 +113,23 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
         recyclerView.setEdgeEffectColor(primaryColor)
         recyclerView.layoutManager = LinearLayoutManager(requireContext())
         recyclerView.adapter = adapter
+        if (ReadBook.book?.isAudio == true) {
+            adapter.addHeaderView {
+                ItemHttpTtsBinding.inflate(layoutInflater, recyclerView, false).apply {
+                    root.applyUiBodyTypefaceDeep(requireContext().uiTypeface())
+                    sysTtsViews.add(cbName)
+                    ivEdit.gone()
+                    ivMenuDelete.gone()
+                    labelSys.visible()
+                    cbName.setText(R.string.source_audio_engine)
+                    cbName.tag = ReadAloud.SOURCE_AUDIO_ENGINE_ID
+                    cbName.isChecked = ttsEngine == ReadAloud.SOURCE_AUDIO_ENGINE_ID
+                    cbName.setOnClickListener {
+                        upTts(ReadAloud.SOURCE_AUDIO_ENGINE_ID)
+                    }
+                }
+            }
+        }
         adapter.addHeaderView {
             ItemHttpTtsBinding.inflate(layoutInflater, recyclerView, false).apply {
                 root.applyUiBodyTypefaceDeep(requireContext().uiTypeface())
@@ -160,6 +178,10 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
         tvOk.typeface = requireContext().uiTypeface()
         tvOk.visible()
         tvOk.setOnClickListener {
+            if (ttsEngine == ReadAloud.SOURCE_AUDIO_ENGINE_ID) {
+                toastOnUi("书源音频只能应用到当前有声书")
+                return@setOnClickListener
+            }
             ReadBook.book?.setTtsEngine(null)
             AppConfig.ttsEngine = ttsEngine
             callBack?.upSpeakEngineSummary()
@@ -171,6 +193,7 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
         tvCancel.setOnClickListener {
             dismissAllowingStateLoss()
         }
+        updateGeneralActionState()
     }
 
     private fun initMenu() = binding.run {
@@ -278,6 +301,13 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
             it.isChecked = isChecked
         }
         adapter.notifyItemRangeChanged(adapter.getHeaderCount(), adapter.itemCount)
+        updateGeneralActionState()
+    }
+
+    private fun updateGeneralActionState() {
+        val enabled = ttsEngine != ReadAloud.SOURCE_AUDIO_ENGINE_ID
+        binding.tvOk.isEnabled = enabled
+        binding.tvOk.alpha = if (enabled) 1f else 0.45f
     }
 
     inner class Adapter(context: Context) :

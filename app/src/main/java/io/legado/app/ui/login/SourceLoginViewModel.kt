@@ -11,7 +11,6 @@ import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.exception.NoStackTraceException
-import io.legado.app.model.AudioPlay
 import io.legado.app.model.ReadBook
 import io.legado.app.model.VideoPlay
 import io.legado.app.utils.toastOnUi
@@ -29,17 +28,11 @@ class SourceLoginViewModel(application: Application) : BaseViewModel(application
         execute {
             bookType = intent.getIntExtra("bookType", 0)
             when (bookType) {
-                BookType.text -> {
+                BookType.text, BookType.audio -> {
                     source = ReadBook.bookSource
                     book = ReadBook.book?.also {
                         chapter = appDb.bookChapterDao.getChapter(it.bookUrl, ReadBook.durChapterIndex)
                     }
-                }
-
-                BookType.audio -> {
-                    source = AudioPlay.bookSource
-                    book = AudioPlay.book
-                    chapter = AudioPlay.durChapter
                 }
 
                 BookType.video -> {
