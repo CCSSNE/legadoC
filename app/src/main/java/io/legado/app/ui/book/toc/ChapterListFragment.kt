@@ -45,6 +45,7 @@ class ChapterListFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_chapt
     private val collapsedVolumeIndexes = linkedSetOf<Int>()
     private var durChapterIndex = 0
     private var chapterList: List<BookChapter> = emptyList()
+    private var displayChapterList: List<BookChapter> = emptyList()
     private var currentSearchKey: String? = null
     private var suppressNextListScroll = false
 
@@ -137,19 +138,23 @@ class ChapterListFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_chapt
                 val end = (book?.simulatedTotalChapterNum() ?: Int.MAX_VALUE) - 1
                 when {
                     searchKey.isNullOrBlank() ->
-                        appDb.bookChapterDao.getChapterList(viewModel.bookUrl, 0, end).also {
-                            chapterList = it
-                        }
+                        appDb.bookChapterDao.getChapterList(viewModel.bookUrl, 0, end)
 
                     else -> appDb.bookChapterDao.search(viewModel.bookUrl, searchKey, 0, end)
                 }
-            }.let {
+            }.let { chapters ->
+                val displayChapters = if (viewModel.isTocDisplayReversed) {
+                    chapters.asReversed()
+                } else {
+                    chapters
+                }
                 currentSearchKey = searchKey
                 if (searchKey.isNullOrBlank()) {
-                    chapterList = it
-                    resetCollapsedVolumes(it)
+                    chapterList = chapters
+                    resetCollapsedVolumes(chapters)
                 }
-                adapter.setItems(visibleChapters(it, searchKey))
+                displayChapterList = displayChapters
+                adapter.setItems(visibleChapters(displayChapters, searchKey))
             }
         }
     }
@@ -208,7 +213,7 @@ class ChapterListFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_chapt
         if (!collapsedVolumeIndexes.add(bookChapter.index)) {
             collapsedVolumeIndexes.remove(bookChapter.index)
         }
-        val visible = visibleChapters(chapterList, currentSearchKey)
+        val visible = visibleChapters(displayChapterList, currentSearchKey)
         suppressNextListScroll = true
         adapter.setItems(visible)
         binding.recyclerView.post {

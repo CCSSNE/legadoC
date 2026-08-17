@@ -11,10 +11,13 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
+import android.view.Window
 import androidx.activity.addCallback
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.ActionMenuView
 import androidx.core.view.ViewCompat
+import androidx.core.view.children
 import androidx.viewbinding.ViewBinding
 import io.legado.app.R
 import io.legado.app.constant.AppConst
@@ -27,6 +30,7 @@ import io.legado.app.lib.theme.applyUiBodyTypeface
 import io.legado.app.lib.theme.applyUiMenuTypefaceDeep
 import io.legado.app.service.ExportBookService
 import io.legado.app.ui.widget.TitleBar
+import io.legado.app.ui.widget.menu.SurfacePopupMenu
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.applyMenuScrollIndicators
 import io.legado.app.utils.applyOpenTint
@@ -37,6 +41,7 @@ import io.legado.app.utils.hideSoftInput
 import io.legado.app.utils.setLightStatusBar
 import io.legado.app.utils.setNavigationBarColorAuto
 import io.legado.app.utils.setStatusBarColorAuto
+import io.legado.app.utils.surfaceOverflowItems
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.windowSize
 
@@ -51,6 +56,7 @@ abstract class BaseActivity<VB : ViewBinding>(
 
     protected abstract val binding: VB
     private var lastThemeValuesChanged = 0L
+    private var surfaceOverflowPopup: SurfacePopupMenu? = null
 
     val isInMultiWindow: Boolean
         @SuppressLint("ObsoleteSdkInt")
@@ -144,18 +150,51 @@ abstract class BaseActivity<VB : ViewBinding>(
     final override fun onCreateOptionsMenu(menu: Menu): Boolean {
         val bool = onCompatCreateOptionsMenu(menu)
         menu.applyUiMenuStyle(this, toolBarTheme)
+        installSurfaceOverflow(menu)
         return bool
     }
 
     override fun onPrepareOptionsMenu(menu: Menu): Boolean {
         val bool = super.onPrepareOptionsMenu(menu)
         menu.applyUiMenuStyle(this, toolBarTheme)
+        installSurfaceOverflow(menu)
         return bool
     }
 
     override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
         menu.applyOpenTint(this, showOpenMenuIcon)
         return super.onMenuOpened(featureId, menu)
+    }
+
+    private fun installSurfaceOverflow(menu: Menu) {
+        val toolbar = findViewById<TitleBar>(R.id.title_bar)?.toolbar ?: return
+        toolbar.post {
+            val menuView = toolbar.children
+                .filterIsInstance<ActionMenuView>()
+                .firstOrNull()
+            val overflowButton = menuView?.children?.firstOrNull {
+                (it.layoutParams as? ActionMenuView.LayoutParams)?.isOverflowButton == true
+            }
+            if (overflowButton == null) {
+                if (menu.surfaceOverflowItems().isNotEmpty()) {
+                    AppLog.put("Surface menu takeover failed: toolbar overflow button not found")
+                }
+                return@post
+            }
+            overflowButton.setOnTouchListener(null)
+            overflowButton.setOnClickListener {
+                onMenuOpened(Window.FEATURE_ACTION_BAR, menu)
+                val overflowItems = menu.surfaceOverflowItems()
+                if (overflowItems.isEmpty()) return@setOnClickListener
+                surfaceOverflowPopup?.dismiss()
+                surfaceOverflowPopup = SurfacePopupMenu(this, toolbar).apply {
+                    setOnMenuItemClickListener { item ->
+                        onCompatOptionsItemSelected(item)
+                    }
+                    show(menu, overflowItems)
+                }
+            }
+        }
     }
 
     open fun onCompatCreateOptionsMenu(menu: Menu) = super.onCreateOptionsMenu(menu)

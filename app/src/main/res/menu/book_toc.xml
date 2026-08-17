@@ -37,6 +37,12 @@
             app:showAsAction="never" />
 
         <item
+            android:id="@+id/menu_reverse_toc_display"
+            android:checkable="true"
+            android:title="@string/reverse_toc_display"
+            app:showAsAction="never" />
+
+        <item
             android:id="@+id/menu_use_replace"
             android:checkable="true"
             android:title="@string/use_replace"

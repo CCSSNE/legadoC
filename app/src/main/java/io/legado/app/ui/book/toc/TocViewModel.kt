@@ -25,6 +25,7 @@ class TocViewModel(application: Application) : BaseViewModel(application) {
     var chapterListCallBack: ChapterListCallBack? = null
     var bookMarkCallBack: BookmarkCallBack? = null
     var searchKey: String? = null
+    var isTocDisplayReversed = false
 
     fun initBook(bookUrl: String) {
         this.bookUrl = bookUrl
@@ -66,6 +67,11 @@ class TocViewModel(application: Application) : BaseViewModel(application) {
         }.onSuccess {
             it?.let(success)
         }
+    }
+
+    fun toggleTocDisplayOrder(): Boolean {
+        isTocDisplayReversed = !isTocDisplayReversed
+        return isTocDisplayReversed
     }
 
     fun startChapterListSearch(newText: String?) {
