@@ -1,10 +1,14 @@
 package io.legado.app.ui.book.audio
 
 import android.annotation.SuppressLint
+import android.graphics.Color
 import android.os.Bundle
 import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
+import android.view.ViewGroup
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.SeekBar
 import androidx.activity.viewModels
 import androidx.lifecycle.lifecycleScope
@@ -12,6 +16,7 @@ import com.dirror.lyricviewx.OnPlayClickListener
 import io.legado.app.R
 import io.legado.app.base.BaseActivity
 import io.legado.app.constant.EventBus
+import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Status
 import io.legado.app.constant.Theme
 import io.legado.app.data.appDb
@@ -33,6 +38,7 @@ import io.legado.app.ui.book.audio.SliderPopup.Companion.SPEED
 import io.legado.app.ui.book.audio.SliderPopup.Companion.TIMER
 import io.legado.app.ui.book.audio.config.AudioSkipCredits
 import io.legado.app.ui.book.cache.CacheManageViewModel
+import io.legado.app.ui.book.cache.CacheManageActivity
 import io.legado.app.ui.book.toc.TocActivityResult
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
 import io.legado.app.utils.applyNavigationBarPadding
@@ -41,14 +47,15 @@ import io.legado.app.utils.gone
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.showDialogFragment
+import io.legado.app.utils.startActivity
 import io.legado.app.utils.toDurationTime
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
+import io.legado.app.utils.getPrefBoolean
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import splitties.views.onLongClick
 
 @SuppressLint("ObsoleteSdkInt")
 class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = Theme.Dark) {
@@ -64,6 +71,8 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     private var displayedProgress: ReadAloudProgress? = null
     private var trackingProgress = false
     private var loadedLyric: String? = null
+    private val ttsParagraphViews = arrayListOf<TextView>()
+    private var ttsTextChapterIndex = -1
 
     private val tocActivityResult = registerForActivityResult(TocActivityResult()) { result ->
         result ?: return@registerForActivityResult
@@ -98,7 +107,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         updateEngineUi()
         updatePlayState()
         updateSessionIndicators()
-        BaseReadAloudService.readAloudProgress?.let(::updateProgress)
+        updateProgressForSelectedEngine()
     }
 
     private fun initProgressControl() = binding.playerProgress.run {
@@ -134,9 +143,6 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
                 ReadAloud.pause(this@AudioPlayActivity)
             }
         }
-        fabPlayStop.onLongClick {
-            ReadAloud.stop(this@AudioPlayActivity)
-        }
         ivSkipPrevious.setOnClickListener {
             ReadAloud.prevChapter(this@AudioPlayActivity)
         }
@@ -167,21 +173,25 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     }
 
     private fun updateEngineUi() = binding.run {
-        val sourceAudio = ReadAloud.engineType == ReadAloudEngineType.SOURCE_AUDIO
+        val sourceAudio = ReadAloud.selectedEngineType == ReadAloudEngineType.SOURCE_AUDIO
         ivCache?.visible(sourceAudio)
         if (sourceAudio) {
+            ttsContentScroll.gone()
             loadLyric(ReadBook.curTextChapter?.chapter?.getVariable("lyric"))
         } else {
             loadedLyric = null
             lyricViewX.gone()
+            bindTtsText()
         }
         invalidateOptionsMenu()
     }
 
     private fun updateChapterUi() {
         binding.tvSubTitle.text = ReadBook.curTextChapter?.title.orEmpty()
-        if (ReadAloud.engineType == ReadAloudEngineType.SOURCE_AUDIO) {
+        if (ReadAloud.selectedEngineType == ReadAloudEngineType.SOURCE_AUDIO) {
             loadLyric(ReadBook.curTextChapter?.chapter?.getVariable("lyric"))
+        } else {
+            bindTtsText()
         }
     }
 
@@ -221,6 +231,87 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         }
     }
 
+    private fun bindTtsText() = binding.run {
+        val chapter = ReadBook.curTextChapter ?: run {
+            ttsContentScroll.gone()
+            return@run
+        }
+        val paragraphs = chapter.getParagraphs(false)
+        val canReuseViews = ttsTextChapterIndex == chapter.chapter.index &&
+                ttsParagraphViews.size == paragraphs.size &&
+                paragraphs.indices.all { index ->
+                    ttsParagraphViews[index].text.toString() == paragraphs[index].text
+                }
+        if (canReuseViews) {
+            ttsContentScroll.visible(paragraphs.isNotEmpty())
+            updateTtsParagraphHighlight(displayedProgress)
+            return@run
+        }
+        ttsTextChapterIndex = chapter.chapter.index
+        ttsContent.removeAllViews()
+        ttsParagraphViews.clear()
+        paragraphs.forEach { paragraph ->
+            val view = TextView(this@AudioPlayActivity).apply {
+                text = paragraph.text
+                textSize = if (paragraph.isTitle) 22f else 19f
+                setTextColor(Color.WHITE)
+                alpha = if (paragraph.isTitle) 1f else 0.9f
+                setLineSpacing(0f, 1.12f)
+                setPadding(0, 8.dpToPx(), 0, 8.dpToPx())
+                isClickable = true
+                setOnClickListener {
+                    ReadAloud.seekToTextPosition(
+                        this@AudioPlayActivity,
+                        chapter.chapter.index,
+                        paragraph.chapterPosition,
+                    )
+                }
+            }
+            ttsParagraphViews += view
+            ttsContent.addView(
+                view,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                )
+            )
+        }
+        ttsContentScroll.visible(paragraphs.isNotEmpty())
+        updateTtsParagraphHighlight(displayedProgress)
+    }
+
+    private fun updateTtsParagraphHighlight(progress: ReadAloudProgress?) {
+        if (progress?.kind != ReadAloudProgress.Kind.PARAGRAPH ||
+            progress.chapterIndex != ttsTextChapterIndex
+        ) {
+            ttsParagraphViews.forEach { it.setTextColor(Color.WHITE) }
+            return
+        }
+        val chapter = ReadBook.curTextChapter ?: return
+        val serviceParagraphs = chapter.getParagraphs(
+            getPrefBoolean(PreferKey.readAloudByPage, false)
+        )
+        val serviceParagraph = serviceParagraphs.getOrNull(progress.position) ?: return
+        val selectedIndex = chapter.getParagraphs(false).indexOfFirst {
+            serviceParagraph.chapterPosition in it.chapterIndices
+        }
+        if (selectedIndex !in ttsParagraphViews.indices) return
+        ttsParagraphViews.forEachIndexed { index, view ->
+            view.setTextColor(if (index == selectedIndex) accentColor else Color.WHITE)
+        }
+        val selected = ttsParagraphViews[selectedIndex]
+        binding.ttsContentScroll.post {
+            val top = binding.ttsContentScroll.scrollY
+            val bottom = top + binding.ttsContentScroll.height
+            if (selected.top < top || selected.bottom > bottom) {
+                binding.ttsContentScroll.smoothScrollTo(
+                    0,
+                    (selected.top - binding.ttsContentScroll.height / 3).coerceAtLeast(0),
+                )
+            }
+        }
+    }
+
     private fun updateProgress(progress: ReadAloudProgress) = binding.run {
         displayedProgress = progress
         when (progress.kind) {
@@ -238,6 +329,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
                 tvAllTime.text = getString(R.string.read_aloud_paragraph_progress, progress.total)
                 ivRewind15?.setImageResource(R.drawable.ic_skip_previous)
                 ivForward15?.setImageResource(R.drawable.ic_skip_next)
+                updateTtsParagraphHighlight(progress)
             }
         }
         playerProgress.isEnabled = playerProgress.max > 0
@@ -246,6 +338,26 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         }
         if (progress.chapterIndex != ReadBook.curTextChapter?.chapter?.index) {
             updateChapterUi()
+        }
+    }
+
+    private fun updateProgressForSelectedEngine() = binding.run {
+        val progress = ReadAloud.progressForSelectedEngine()
+        if (progress != null) {
+            updateProgress(progress)
+            return@run
+        }
+        displayedProgress = null
+        playerProgress.isEnabled = false
+        playerProgress.max = 1
+        playerProgress.progress = 0
+        if (ReadAloud.selectedEngineType == ReadAloudEngineType.SOURCE_AUDIO) {
+            tvDurTime.setText(R.string.read_aloud_time_pending)
+            tvAllTime.setText(R.string.read_aloud_time_pending)
+        } else {
+            tvDurTime.setText(R.string.read_aloud_paragraph_pending)
+            tvAllTime.setText(R.string.read_aloud_paragraph_pending)
+            updateTtsParagraphHighlight(null)
         }
     }
 
@@ -271,7 +383,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         val timer = BaseReadAloudService.timeMinute.coerceAtLeast(0)
         tvTimer.text = getString(R.string.timer_m, timer)
         tvTimer.visible(timer > 0)
-        val speed = if (ReadAloud.engineType == ReadAloudEngineType.SOURCE_AUDIO) {
+        val speed = if (ReadAloud.selectedEngineType == ReadAloudEngineType.SOURCE_AUDIO) {
             ReadBook.book?.getPlaySpeed() ?: 1f
         } else {
             (io.legado.app.help.config.AppConfig.ttsSpeechRate + 5) / 10f
@@ -320,7 +432,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.audio_play, menu)
-        val sourceAudio = ReadAloud.engineType == ReadAloudEngineType.SOURCE_AUDIO
+        val sourceAudio = ReadAloud.selectedEngineType == ReadAloudEngineType.SOURCE_AUDIO
         menu.findItem(R.id.menu_custom_btn).isVisible = false
         menu.findItem(R.id.menu_change_source).isVisible = false
         menu.findItem(R.id.menu_login).isVisible = false
@@ -329,6 +441,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         menu.findItem(R.id.menu_edit_source).isVisible = false
         menu.findItem(R.id.menu_wake_lock).isVisible = false
         menu.findItem(R.id.menu_skip_credits).isVisible = sourceAudio
+        menu.findItem(R.id.menu_audio_cache).isVisible = sourceAudio
         return super.onCompatCreateOptionsMenu(menu)
     }
 
@@ -345,6 +458,9 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             R.id.menu_skip_credits -> ReadBook.book?.let {
                 showDialogFragment(AudioSkipCredits.newInstance(it))
             }
+            R.id.menu_audio_cache -> startActivity<CacheManageActivity> {
+                putExtra(CacheManageActivity.EXTRA_MODE, CacheManageActivity.MODE_AUDIO)
+            }
             R.id.menu_log -> showDialogFragment<AppLogDialog>()
         }
         return super.onCompatOptionsItemSelected(item)
@@ -355,7 +471,13 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             updatePlayState()
             if (state == Status.STOP) finish()
         }
-        observeEvent<ReadAloudProgress>(EventBus.READ_ALOUD_PROGRESS) { updateProgress(it) }
+        observeEvent<ReadAloudProgress>(EventBus.READ_ALOUD_PROGRESS) {
+            if (ReadAloud.isProgressForSelectedEngine(it)) updateProgress(it)
+        }
+        observeEvent<ReadAloudEngineType>(EventBus.READ_ALOUD_ENGINE_CHANGED) {
+            updateEngineUi()
+            updateProgressForSelectedEngine()
+        }
         observeEvent<Int>(EventBus.READ_ALOUD_DS) { updateSessionIndicators() }
         observeEvent<Bundle>(EventBus.TTS_PROGRESS) { updateChapterUi() }
         observeEvent<Boolean>(EventBus.MEDIA_BUTTON) { updatePlayState() }

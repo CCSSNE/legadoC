@@ -373,6 +373,7 @@ data class Book(
 
     fun getPlaySpeed(): Float {
         return config.playSpeed
+            ?: if (mediaType == BookMediaType.audio) 1.6f else 1.0f
     }
 
     fun getDelTag(tag: Long): Boolean {
@@ -510,7 +511,7 @@ data class Book(
         var openCredits: Int = 0,       //音频片头
         var closeCredits: Int = 0,       //音频片尾
         var playMode: Int = 0,           //音频播放模式
-        var playSpeed: Float = 1.0f,     //音频播放速度
+        var playSpeed: Float? = null,     //音频播放速度，null 表示尚未由用户设置
         var sourceAudioChapterIndex: Int? = null,
         var sourceAudioPosition: Int = 0,
         var audioProgressVersion: Int = 0,

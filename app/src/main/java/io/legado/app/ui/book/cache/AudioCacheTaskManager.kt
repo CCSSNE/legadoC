@@ -132,6 +132,8 @@ object AudioCacheTaskManager {
                             currentChapterTitle = chapter.title,
                             currentChapterIndex = displayIndex,
                             completedChapters = completed,
+                            currentChapterBytes = 0L,
+                            currentChapterTotalBytes = null,
                             active = true,
                             message = appCtx.getString(
                                 R.string.cache_manage_resolving_chapter,
@@ -170,6 +172,9 @@ object AudioCacheTaskManager {
                                     currentChapterTitle = chapter.title,
                                     currentChapterIndex = displayIndex,
                                     completedChapters = completed,
+                                    currentChapterBytes = bytesCached.coerceAtLeast(0L),
+                                    currentChapterTotalBytes = chapterKnownLength
+                                        .takeIf { value -> value > 0L },
                                     downloadedBytes = downloadedBytes,
                                     totalBytes = knownTotalBytes.takeIf { value -> value > 0L },
                                     speedBytesPerSecond = speed,
@@ -193,6 +198,9 @@ object AudioCacheTaskManager {
                             completedChapters = completed,
                             currentChapterTitle = chapter.title,
                             currentChapterIndex = displayIndex,
+                            currentChapterBytes = chapterKnownLength.coerceAtLeast(0L),
+                            currentChapterTotalBytes = chapterKnownLength
+                                .takeIf { value -> value > 0L },
                             active = true,
                             message = buildProgressMessage(
                                 completed = completed,
@@ -409,16 +417,32 @@ object AudioCacheTaskManager {
         val last = lastNotifyTimes[state.bookUrl] ?: 0L
         if (!terminal && now - last < NOTIFICATION_INTERVAL_MS) return
         lastNotifyTimes[state.bookUrl] = now
-        val progressMax = state.totalChapters.coerceAtLeast(1)
-        val progress = state.completedChapters.coerceIn(0, progressMax)
+        val chapterPercent = state.currentChapterPercent()
+        val totalPosition = when {
+            state.status == CacheTaskStatus.COMPLETED -> state.totalChapters
+            state.currentChapterIndex > 0 -> state.currentChapterIndex
+            else -> state.completedChapters
+        }.coerceIn(0, state.totalChapters.coerceAtLeast(0))
         val builder = NotificationCompat.Builder(appCtx, AppConst.channelIdDownload)
             .setSmallIcon(R.drawable.ic_status_bar_r)
             .setContentTitle(appCtx.getString(R.string.offline_cache))
-            .setContentText("${state.bookName} · ${state.message}")
+            .setContentText(
+                appCtx.getString(
+                    R.string.audio_cache_notification_progress,
+                    state.bookName,
+                    chapterPercent?.toString() ?: "--",
+                    totalPosition,
+                    state.totalChapters,
+                )
+            )
             .setOngoing(state.active)
             .setOnlyAlertOnce(true)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setContentIntent(appCtx.activityPendingIntent<CacheManageActivity>("audioCacheManage"))
+            .setContentIntent(
+                appCtx.activityPendingIntent<CacheManageActivity>("audioCacheManage") {
+                    putExtra(CacheManageActivity.EXTRA_MODE, CacheManageActivity.MODE_AUDIO)
+                }
+            )
         if (state.active || state.status == CacheTaskStatus.PAUSED) {
             val paused = state.status == CacheTaskStatus.PAUSED
             builder.addAction(
@@ -431,8 +455,8 @@ object AudioCacheTaskManager {
                 }
             )
         }
-        if (state.active) {
-            builder.setProgress(progressMax, progress, state.status == CacheTaskStatus.RESOLVING)
+        if (state.active || state.status == CacheTaskStatus.PAUSED) {
+            builder.setProgress(100, chapterPercent ?: 0, chapterPercent == null)
         } else {
             builder.setProgress(0, 0, false)
         }
@@ -477,6 +501,8 @@ data class AudioCacheTaskState(
     val completedChapters: Int = 0,
     val currentChapterIndex: Int = 0,
     val currentChapterTitle: String? = null,
+    val currentChapterBytes: Long = 0L,
+    val currentChapterTotalBytes: Long? = null,
     val downloadedBytes: Long = 0L,
     val totalBytes: Long? = null,
     val speedBytesPerSecond: Long = 0L,
@@ -484,3 +510,10 @@ data class AudioCacheTaskState(
     val message: String = "",
     val active: Boolean = true
 )
+
+private fun AudioCacheTaskState.currentChapterPercent(): Int? {
+    val total = currentChapterTotalBytes?.takeIf { it > 0L } ?: return null
+    return ((currentChapterBytes.coerceIn(0L, total) * 100L) / total)
+        .toInt()
+        .coerceIn(0, 100)
+}

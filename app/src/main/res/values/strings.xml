@@ -1340,6 +1340,8 @@
     <string name="read_aloud_prev_paragraph">Read aloud the previous paragraph</string>
     <string name="read_aloud_next_paragraph">Read aloud the next paragraph</string>
     <string name="read_aloud_paragraph_progress">Paragraph %1$d</string>
+    <string name="read_aloud_paragraph_pending">Paragraph --</string>
+    <string name="read_aloud_time_pending">--:--</string>
     <string name="wait_download">wait download</string>
     <string name="download_success">download success</string>
     <string name="download_error">download failure</string>
@@ -2119,6 +2121,7 @@
     <string name="cache_manage_audio_url_empty">Audio URL is empty</string>
     <string name="cache_manage_resolving_chapter">Resolving %1$d/%2$d</string>
     <string name="cache_manage_task_progress">%1$d/%2$d · %3$s / %4$s · %5$s</string>
+    <string name="audio_cache_notification_progress">%1$s · %2$s%% · %3$d/%4$d chapters</string>
     <string name="cache_manage_task_done">Cached %1$d chapter(s)</string>
     <string name="cache_manage_task_cancelled">Caching stopped</string>
     <string name="cache_manage_task_paused">Caching paused</string>

@@ -389,9 +389,27 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
     }
 
     private fun upReadProgress() {
-        val progress = BaseReadAloudService.readAloudProgress
-        binding.panelProgress.visible(progress != null)
-        progress?.let(::updateReadProgress)
+        val progress = ReadAloud.progressForSelectedEngine()
+        if (progress != null) {
+            updateReadProgress(progress)
+        } else {
+            showPendingProgressForSelectedEngine()
+        }
+    }
+
+    private fun showPendingProgressForSelectedEngine() = binding.run {
+        displayedReadProgress = null
+        panelProgress.visible()
+        seekReadProgress.isEnabled = false
+        seekReadProgress.max = 1
+        seekReadProgress.progress = 0
+        if (isSourceAudioSelected) {
+            tvDurTime.setText(R.string.read_aloud_time_pending)
+            tvAllTime.setText(R.string.read_aloud_time_pending)
+        } else {
+            tvDurTime.setText(R.string.read_aloud_paragraph_pending)
+            tvAllTime.setText(R.string.read_aloud_paragraph_pending)
+        }
     }
 
     private fun formatTime(milliseconds: Int): String {
@@ -408,7 +426,13 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
             dismissAllowingStateLoss()
         }
         observeEvent<ReadAloudProgress>(EventBus.READ_ALOUD_PROGRESS) { progress ->
-            updateReadProgress(progress)
+            if (ReadAloud.isProgressForSelectedEngine(progress)) {
+                updateReadProgress(progress)
+            }
+        }
+        observeEvent<ReadAloudEngineType>(EventBus.READ_ALOUD_ENGINE_CHANGED) {
+            upSpeakEngineSummary()
+            upReadProgress()
         }
     }
 

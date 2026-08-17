@@ -6,6 +6,7 @@ import android.os.Bundle
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.IntentAction
+import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.help.book.isAudio
@@ -13,6 +14,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.service.HttpReadAloudService
 import io.legado.app.service.ReadAloudEngineType
+import io.legado.app.service.ReadAloudProgress
 import io.legado.app.service.SourceAudioReadAloudService
 import io.legado.app.service.TTSReadAloudService
 import io.legado.app.utils.LogUtils
@@ -20,6 +22,7 @@ import io.legado.app.utils.StringUtils
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.startForegroundServiceCompat
 import io.legado.app.utils.toastOnUi
+import io.legado.app.utils.getPrefBoolean
 import splitties.init.appCtx
 
 object ReadAloud {
@@ -84,7 +87,65 @@ object ReadAloud {
     }
 
     fun upReadAloudClass() {
+        postEvent(EventBus.READ_ALOUD_ENGINE_CHANGED, selectedEngineType)
         stop(appCtx)
+    }
+
+    /**
+     * Returns a progress snapshot that matches the engine selected in settings.
+     * A running service remains authoritative; when it has just been stopped for
+     * an engine switch, derive only from persisted chapter data and leave the
+     * progress unavailable if the source has not supplied a duration yet.
+     */
+    fun progressForSelectedEngine(): ReadAloudProgress? {
+        val current = BaseReadAloudService.readAloudProgress
+        val expectedKind = selectedProgressKind()
+        val chapter = ReadBook.curTextChapter ?: return null
+        val chapterIndex = chapter.chapter.index
+        if (current?.kind == expectedKind && current.chapterIndex == chapterIndex) return current
+
+        return if (expectedKind == ReadAloudProgress.Kind.TIME) {
+            val total = chapter.chapter.end
+                ?.takeIf { it > 0L && it <= Int.MAX_VALUE }
+                ?.toInt()
+                ?: return null
+            val position = ReadBook.book?.getSourceAudioPosition()
+                ?.coerceIn(0, total)
+                ?: 0
+            ReadAloudProgress(
+                chapterIndex = chapterIndex,
+                position = position,
+                total = total,
+                kind = expectedKind,
+            )
+        } else {
+            val paragraphs = chapter.getParagraphs(
+                appCtx.getPrefBoolean(PreferKey.readAloudByPage, false)
+            )
+            if (paragraphs.isEmpty()) return null
+            val chapterPosition = ReadBook.book?.durChapterPos ?: 0
+            val position = paragraphs.indexOfLast {
+                chapterPosition >= it.chapterPosition
+            }.coerceAtLeast(0)
+            ReadAloudProgress(
+                chapterIndex = chapterIndex,
+                position = position.coerceIn(0, paragraphs.lastIndex),
+                total = paragraphs.size,
+                kind = expectedKind,
+            )
+        }
+    }
+
+    fun isProgressForSelectedEngine(progress: ReadAloudProgress): Boolean {
+        return progress.kind == selectedProgressKind()
+    }
+
+    private fun selectedProgressKind(): ReadAloudProgress.Kind {
+        return if (selectedEngineType == ReadAloudEngineType.SOURCE_AUDIO) {
+            ReadAloudProgress.Kind.TIME
+        } else {
+            ReadAloudProgress.Kind.PARAGRAPH
+        }
     }
 
     private fun commandClass(): Class<out BaseReadAloudService>? {
@@ -179,6 +240,16 @@ object ReadAloud {
             intent.action = IntentAction.seekReadAloudProgress
             intent.putExtra("chapterIndex", chapterIndex)
             intent.putExtra("position", position)
+            context.startForegroundServiceCompat(intent)
+        }
+    }
+
+    fun seekToTextPosition(context: Context, chapterIndex: Int, chapterPosition: Int) {
+        if (BaseReadAloudService.isRun) {
+            val intent = Intent(context, commandClass() ?: return)
+            intent.action = IntentAction.seekReadAloudTextPosition
+            intent.putExtra("chapterIndex", chapterIndex)
+            intent.putExtra("chapterPosition", chapterPosition)
             context.startForegroundServiceCompat(intent)
         }
     }
