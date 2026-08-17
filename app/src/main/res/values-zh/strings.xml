@@ -200,6 +200,9 @@
     <string name="read_aloud_hide_floating_window_summary">不显示朗读控制悬浮窗，仅保留通知栏控制和前台服务通知用于保活。</string>
     <string name="read_aloud_original_progress">原进度</string>
     <string name="read_aloud_from_current_page">从本页听</string>
+    <string name="read_aloud_pause_playback">暂停播放</string>
+    <string name="read_aloud_resume_playback">继续播放</string>
+    <string name="open_read_aloud_player">进入听书页</string>
     <string name="playing_timer">正在播放（还剩 %d 分钟）</string>
     <string name="ps_hide_navigation_bar">阅读界面隐藏虚拟按键</string>
     <string name="pt_hide_navigation_bar">隐藏导航栏</string>
@@ -2099,4 +2102,5 @@
     <string name="disable_source_toast_summary">不显示书源脚本通过 toast 或 longToast 发出的底部弹窗</string>
     <string name="disable_all_toast">关闭所有底部弹窗</string>
     <string name="disable_all_toast_summary">不显示应用内通过 Toast 发出的所有底部弹窗，包括书源弹窗</string>
+    <string name="reverse_toc_display">&#x53CD;&#x5411;&#x663E;&#x793A;</string>
 </resources>

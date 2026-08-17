@@ -17,6 +17,8 @@ import io.legado.app.service.ReadAloudEngineType
 import io.legado.app.service.ReadAloudProgress
 import io.legado.app.service.SourceAudioReadAloudService
 import io.legado.app.service.TTSReadAloudService
+import io.legado.app.ui.book.audio.AudioPlayActivity
+import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.StringUtils
 import io.legado.app.utils.postEvent
@@ -216,6 +218,24 @@ object ReadAloud {
             intent.action = IntentAction.stop
             context.startForegroundServiceCompat(intent)
         }
+    }
+
+    fun openAudioPlayActivity(context: Context) {
+        val book = ReadBook.book ?: return
+        val returnToReader = ReadBookActivity.activeActivity() != null
+        ReadBook.saveRead()
+        context.startActivity(
+            Intent(context, AudioPlayActivity::class.java).apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP
+                )
+                putExtra("bookUrl", book.bookUrl)
+                putExtra("readAloudSession", true)
+                putExtra("returnToReader", returnToReader)
+            }
+        )
     }
 
     fun prevParagraph(context: Context) {

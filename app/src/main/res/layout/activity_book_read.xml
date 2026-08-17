@@ -99,6 +99,33 @@
 
     </LinearLayout>
 
+    <LinearLayout
+        android:id="@+id/read_aloud_playback_panel"
+        android:layout_width="wrap_content"
+        android:layout_height="36dp"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="28dp"
+        android:background="@drawable/bg_read_aloud_page_panel"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:paddingStart="10dp"
+        android:paddingEnd="10dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/btn_read_aloud_playback"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:minWidth="124dp"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:text="@string/read_aloud_pause_playback"
+            android:textColor="@android:color/white"
+            android:textSize="13sp" />
+
+    </LinearLayout>
+
     <View
         android:id="@+id/navigation_bar"
         android:layout_width="match_parent"

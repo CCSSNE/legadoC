@@ -77,6 +77,19 @@
             tools:ignore="UnusedAttribute" />
 
         <ImageView
+            android:id="@+id/iv_open_audio_play"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:layout_marginLeft="8dp"
+            android:layout_marginRight="8dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/open_read_aloud_player"
+            android:src="@drawable/ic_music_note"
+            android:tooltipText="@string/open_read_aloud_player"
+            app:tint="@color/primaryText"
+            tools:ignore="UnusedAttribute" />
+
+        <ImageView
             android:id="@+id/iv_stop"
             android:layout_width="30dp"
             android:layout_height="30dp"

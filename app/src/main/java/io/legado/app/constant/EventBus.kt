@@ -11,6 +11,7 @@ object EventBus {
     const val READ_ALOUD_DS = "readAloudDs"
     const val READ_ALOUD_PROGRESS = "readAloudProgress" // 融合第一阶段：朗读进度更新
     const val READ_ALOUD_ENGINE_CHANGED = "readAloudEngineChanged"
+    const val READ_ALOUD_DIALOG_VISIBILITY = "readAloudDialogVisibility"
     const val BATTERY_CHANGED = "batteryChanged"
     const val TIME_CHANGED = "timeChanged"
     const val UP_CONFIG = "upConfig"
@@ -45,6 +46,7 @@ object EventBus {
     const val FLOATING_AVOID_SOURCE_READ_STYLE_DIALOG = "read_style_dialog"
     const val FLOATING_AVOID_SOURCE_MORE_CONFIG_DIALOG = "more_config_dialog"
     const val FLOATING_AVOID_SOURCE_READ_ALOUD_PAGE_PANEL = "read_aloud_page_panel"
+    const val FLOATING_AVOID_SOURCE_READ_ALOUD_PLAYBACK_PANEL = "read_aloud_playback_panel"
     const val EXPORT_BOOK = "exportBook"
     const val UP_MANGA_CONFIG = "upMangaConfig"
     const val PLAY_MODE_CHANGED = "playModeChanged"

@@ -74,6 +74,7 @@ import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.prefs.ColorPreference.ColorPickerDialogCompat
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.model.ReadAloud
+import io.legado.app.model.ReadAloudUiState
 import io.legado.app.model.ReadBook
 import io.legado.app.model.analyzeRule.AnalyzeRule
 import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setChapter
@@ -321,13 +322,18 @@ class ReadBookActivity : BaseReadBookActivity(),
         binding.btnReadAloudFromCurrentPage.setOnClickListener {
             readAloudFromCurrentPage()
         }
+        binding.btnReadAloudPlayback.setOnClickListener {
+            if (BaseReadAloudService.pause) {
+                ReadAloud.resume(this)
+            } else {
+                ReadAloud.pause(this)
+            }
+        }
         window.setBackgroundDrawable(null)
         upScreenTimeOut()
         ReadBook.register(this)
         updateReadAloudPageFloating()
-        if (ReadBook.readAloudPageDetached) {
-            showReadAloudPagePanel()
-        }
+        updateReadAloudPanels()
         onBackPressedDispatcher.addCallback(this) {
             if (binding.readAiPanel.isVisible) {
                 binding.readAiPanel.close()
@@ -418,6 +424,10 @@ class ReadBookActivity : BaseReadBookActivity(),
         registerReceiver(timeBatteryReceiver, timeBatteryReceiver.filter)
         binding.readView.upTime()
         updateReadAloudPageFloating()
+        if (ReadAloudUiState.consumeAudioPlayerReturn()) {
+            handler.post { restoreReadAloudPlayerPosition() }
+        }
+        updateReadAloudPanels()
         screenOffTimerStart()
         bookmarkLoadChapterIndex = -1
         upChapterBookmarks()
@@ -1562,10 +1572,77 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
     }
 
+    private fun updateReadAloudPanels() {
+        when (
+            ReadAloudUiState.readerPanelMode(
+                BaseReadAloudService.isRun,
+                ReadBook.readAloudPageDetached,
+            )
+        ) {
+            ReadAloudUiState.ReaderPanelMode.HIDDEN -> {
+                hideReadAloudPagePanel()
+                hideReadAloudPlaybackPanel()
+            }
+            ReadAloudUiState.ReaderPanelMode.PLAYBACK -> {
+                hideReadAloudPagePanel()
+                showReadAloudPlaybackPanel()
+            }
+            ReadAloudUiState.ReaderPanelMode.PAGE_ACTION -> {
+                hideReadAloudPlaybackPanel()
+                showReadAloudPagePanel()
+            }
+        }
+    }
+
+    private fun showReadAloudPlaybackPanel() {
+        if (!BaseReadAloudService.isRun) return
+        binding.readAloudPlaybackPanel.post {
+            if (
+                ReadAloudUiState.readerPanelMode(
+                    BaseReadAloudService.isRun,
+                    ReadBook.readAloudPageDetached,
+                ) != ReadAloudUiState.ReaderPanelMode.PLAYBACK
+            ) {
+                return@post
+            }
+            val params = binding.readAloudPlaybackPanel.layoutParams as? FrameLayout.LayoutParams
+                ?: return@post
+            val bottomMargin = binding.navigationBar.height + 28.dpToPx()
+            if (params.bottomMargin != bottomMargin) {
+                params.bottomMargin = bottomMargin
+                binding.readAloudPlaybackPanel.layoutParams = params
+            }
+            binding.btnReadAloudPlayback.setText(
+                if (BaseReadAloudService.pause) {
+                    R.string.read_aloud_resume_playback
+                } else {
+                    R.string.read_aloud_pause_playback
+                }
+            )
+            binding.readAloudPlaybackPanel.visible()
+            binding.readAloudPlaybackPanel.bringToFront()
+            postReadAloudFloatingAvoidanceForView(
+                EventBus.FLOATING_AVOID_SOURCE_READ_ALOUD_PLAYBACK_PANEL,
+                binding.readAloudPlaybackPanel,
+            )
+        }
+    }
+
+    private fun hideReadAloudPlaybackPanel() {
+        binding.readAloudPlaybackPanel.gone()
+        clearReadAloudFloatingAvoidance(EventBus.FLOATING_AVOID_SOURCE_READ_ALOUD_PLAYBACK_PANEL)
+    }
+
     private fun showReadAloudPagePanel() {
         if (!BaseReadAloudService.isRun) return
+        hideReadAloudPlaybackPanel()
         binding.readAloudPagePanel.post {
-            if (!ReadBook.readAloudPageDetached || !BaseReadAloudService.isRun) {
+            if (
+                ReadAloudUiState.readerPanelMode(
+                    BaseReadAloudService.isRun,
+                    ReadBook.readAloudPageDetached,
+                ) != ReadAloudUiState.ReaderPanelMode.PAGE_ACTION
+            ) {
                 return@post
             }
             val params = binding.readAloudPagePanel.layoutParams as? FrameLayout.LayoutParams
@@ -1587,6 +1664,26 @@ class ReadBookActivity : BaseReadBookActivity(),
     private fun hideReadAloudPagePanel() {
         binding.readAloudPagePanel.gone()
         clearReadAloudFloatingAvoidance(EventBus.FLOATING_AVOID_SOURCE_READ_ALOUD_PAGE_PANEL)
+    }
+
+    private fun restoreReadAloudPlayerPosition() {
+        val chapterIndex = lastReadAloudChapterIndex ?: ReadBook.durChapterIndex
+        val chapterPos = lastReadAloudChapterPos ?: ReadBook.durChapterPos
+        if (chapterIndex != ReadBook.durChapterIndex) {
+            ReadBook.skipReadAloudSyncOnce = true
+            val opened = ReadBook.openChapter(chapterIndex, chapterPos, true) {
+                ReadBook.skipReadAloudSyncOnce = false
+                binding.readView.upContent(resetPageOffset = false)
+                updateReadAloudPanels()
+            }
+            if (!opened) {
+                ReadBook.skipReadAloudSyncOnce = false
+            }
+        } else {
+            ReadBook.durChapterPos = chapterPos
+            binding.readView.upContent(resetPageOffset = false)
+            updateReadAloudPanels()
+        }
     }
 
     private fun backToReadAloudProgress() {
@@ -1620,6 +1717,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         hideReadAloudPagePanel()
         binding.readView.upContent(resetPageOffset = false)
         upSeekBarProgress()
+        updateReadAloudPanels()
     }
 
     private fun postAttachReadAloudProgressIfCurrentPage() {
@@ -2754,14 +2852,18 @@ class ReadBookActivity : BaseReadBookActivity(),
                     }
                 }
             }
+            updateReadAloudPanels()
         }
         observeEvent<Boolean>(EventBus.READ_ALOUD_PAGE_DETACHED) { detached ->
             if (detached) {
                 pageChanged = false
-                showReadAloudPagePanel()
             } else {
                 hideReadAloudPagePanel()
             }
+            updateReadAloudPanels()
+        }
+        observeEvent<Boolean>(EventBus.READ_ALOUD_DIALOG_VISIBILITY) {
+            updateReadAloudPanels()
         }
         observeEventSticky<Bundle>(EventBus.TTS_PROGRESS) { progress ->
             val chapterIndex = progress.getInt("chapterIndex", ReadBook.durChapterIndex)

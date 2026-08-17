@@ -1,6 +1,7 @@
 package io.legado.app.ui.book.audio
 
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.view.Gravity
@@ -10,6 +11,7 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.SeekBar
+import androidx.activity.addCallback
 import androidx.activity.viewModels
 import androidx.lifecycle.lifecycleScope
 import com.dirror.lyricviewx.OnPlayClickListener
@@ -28,6 +30,7 @@ import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.ThemeStore.Companion.accentColor
 import io.legado.app.model.BookCover
 import io.legado.app.model.ReadAloud
+import io.legado.app.model.ReadAloudUiState
 import io.legado.app.model.ReadBook
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.service.ReadAloudEngineType
@@ -37,6 +40,7 @@ import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.audio.SliderPopup.Companion.SPEED
 import io.legado.app.ui.book.audio.SliderPopup.Companion.TIMER
 import io.legado.app.ui.book.audio.config.AudioSkipCredits
+import io.legado.app.ui.book.read.config.SpeakEngineDialog
 import io.legado.app.ui.book.cache.CacheManageViewModel
 import io.legado.app.ui.book.cache.CacheManageActivity
 import io.legado.app.ui.book.toc.TocActivityResult
@@ -73,6 +77,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     private var loadedLyric: String? = null
     private val ttsParagraphViews = arrayListOf<TextView>()
     private var ttsTextChapterIndex = -1
+    private var preserveAfterEngineSwitch = false
 
     private val tocActivityResult = registerForActivityResult(TocActivityResult()) { result ->
         result ?: return@registerForActivityResult
@@ -108,6 +113,18 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         updatePlayState()
         updateSessionIndicators()
         updateProgressForSelectedEngine()
+        onBackPressedDispatcher.addCallback(this) {
+            ReadBook.saveRead()
+            if (intent.getBooleanExtra("returnToReader", false)) {
+                ReadAloudUiState.markAudioPlayerReturn()
+            }
+            finish()
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
     }
 
     private fun initProgressControl() = binding.playerProgress.run {
@@ -137,7 +154,9 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
 
     private fun initControls(book: Book) = binding.run {
         fabPlayStop.setOnClickListener {
-            if (BaseReadAloudService.pause) {
+            if (!BaseReadAloudService.isRun) {
+                ReadAloud.play(this@AudioPlayActivity)
+            } else if (BaseReadAloudService.pause) {
                 ReadAloud.resume(this@AudioPlayActivity)
             } else {
                 ReadAloud.pause(this@AudioPlayActivity)
@@ -442,6 +461,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         menu.findItem(R.id.menu_wake_lock).isVisible = false
         menu.findItem(R.id.menu_skip_credits).isVisible = sourceAudio
         menu.findItem(R.id.menu_audio_cache).isVisible = sourceAudio
+        menu.findItem(R.id.menu_audio_engine).isVisible = true
         return super.onCompatCreateOptionsMenu(menu)
     }
 
@@ -461,6 +481,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             R.id.menu_audio_cache -> startActivity<CacheManageActivity> {
                 putExtra(CacheManageActivity.EXTRA_MODE, CacheManageActivity.MODE_AUDIO)
             }
+            R.id.menu_audio_engine -> showDialogFragment<SpeakEngineDialog>()
             R.id.menu_log -> showDialogFragment<AppLogDialog>()
         }
         return super.onCompatOptionsItemSelected(item)
@@ -469,12 +490,19 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     override fun observeLiveBus() {
         observeEvent<Int>(EventBus.ALOUD_STATE) { state ->
             updatePlayState()
-            if (state == Status.STOP) finish()
+            if (state == Status.STOP) {
+                if (preserveAfterEngineSwitch) {
+                    preserveAfterEngineSwitch = false
+                } else {
+                    finish()
+                }
+            }
         }
         observeEvent<ReadAloudProgress>(EventBus.READ_ALOUD_PROGRESS) {
             if (ReadAloud.isProgressForSelectedEngine(it)) updateProgress(it)
         }
         observeEvent<ReadAloudEngineType>(EventBus.READ_ALOUD_ENGINE_CHANGED) {
+            preserveAfterEngineSwitch = true
             updateEngineUi()
             updateProgressForSelectedEngine()
         }
