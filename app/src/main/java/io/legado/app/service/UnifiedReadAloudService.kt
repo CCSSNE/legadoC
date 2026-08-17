@@ -1,20 +1,14 @@
 package io.legado.app.service
 
 import android.app.PendingIntent
+import android.os.Bundle
 import androidx.lifecycle.lifecycleScope
-import io.legado.app.R
-import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.IntentAction
-import io.legado.app.data.entities.BookChapter
-import io.legado.app.help.MediaHelp
+import io.legado.app.help.book.isAudio
 import io.legado.app.help.config.AppConfig
-import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
-import io.legado.app.service.help.ReadBook as ReadBookHelper
-import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.servicePendingIntent
-import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -28,8 +22,7 @@ import kotlinx.coroutines.launch
 class UnifiedReadAloudService : BaseReadAloudService() {
 
     private lateinit var engineManager: ReadAloudEngineManager
-    private var playIndexJob: Job? = null
-    private var dsJob: Job? = null
+    private var playMonitorJob: Job? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -38,124 +31,147 @@ class UnifiedReadAloudService : BaseReadAloudService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        playMonitorJob?.cancel()
         engineManager.release()
     }
 
-    override fun newReadAloud(dataChanged: Boolean) {
-        val book = ReadBook.book ?: return
-        val chapter = ReadBook.curTextChapter ?: return
+    override fun onTaskRemoved(rootIntent: android.content.Intent?) {
+        super.onTaskRemoved(rootIntent)
+        stopSelf()
+    }
 
-        if (dataChanged) {
-            playIndexJob?.cancel()
-            playIndexJob = null
+    override fun onStartCommand(intent: android.content.Intent?, flags: Int, startId: Int): Int {
+        intent?.action?.let { action ->
+            when (action) {
+                IntentAction.play -> {
+                    // 处理播放请求
+                    startPlayback()
+                }
+                IntentAction.pause -> {
+                    pauseReadAloud(true)
+                }
+                IntentAction.resume -> {
+                    resumeReadAloud()
+                }
+                IntentAction.stop -> {
+                    stopSelf()
+                }
+                IntentAction.adjustSpeed -> {
+                    upSpeechRate()
+                }
+            }
+        }
+        return super.onStartCommand(intent, flags, startId)
+    }
+
+    private fun startPlayback() {
+        val book = ReadBook.book
+        val textChapter = ReadBook.curTextChapter
+
+        if (book == null || textChapter == null) {
+            AppLog.put("朗读启动失败：书籍或章节为空")
+            stopSelf()
+            return
         }
 
-        // 创建合适的引擎
         try {
-            val engine = engineManager.createEngine(book, chapter.getBookChapter())
+            // 创建合适的引擎
+            val engine = engineManager.createEngine(book, textChapter.chapter)
 
             // 获取内容
-            val content = getReadContent(chapter)
+            val content = getReadContent(textChapter)
 
             if (content.isEmpty()) {
-                toastOnUi("内容为空")
-                ReadAloud.stop(this)
+                AppLog.put("朗读内容为空")
+                nextChapter()
                 return
             }
 
             // 使用引擎播放
-            val startPos = if (dataChanged) 0 else engineManager.getCurrentPosition()
+            val startPos = 0 // 从头开始
             engine.play(content, startPos)
 
-            // 启动进度监控
-            startPlayIndexJob()
+            // 启动播放监控
+            startPlayMonitor()
 
         } catch (e: Exception) {
             AppLog.put("朗读启动失败\n${e.localizedMessage}", e)
-            toastOnUi("朗读启动失败: ${e.localizedMessage}")
+            stopSelf()
         }
     }
 
     /**
      * 获取要朗读的内容
      */
-    private fun getReadContent(chapter: io.legado.app.model.readBook.TextChapter): String {
+    private fun getReadContent(textChapter: io.legado.app.ui.book.read.page.entities.TextChapter): String {
         val book = ReadBook.book ?: return ""
 
-        // 音频书：返回音频URL
+        // 音频书：返回音频URL（从 chapter 的 url 字段）
         if (book.isAudio) {
-            val bookChapter = chapter.getBookChapter()
-            // 从 chapter 中获取音频 URL
-            // 这里简化处理，实际应该通过 AudioPlay 逻辑获取
-            return bookChapter.url ?: ""
+            return textChapter.chapter.url ?: ""
         }
 
         // 普通书：返回文本内容
         val content = StringBuilder()
-        chapter.getContents().forEach { line ->
-            if (line.isNotEmpty()) {
-                content.append(line).append("\n")
+        textChapter.pages.forEach { page ->
+            page.lines.forEach { line ->
+                content.append(line.text).append("\n")
             }
         }
         return content.toString()
     }
 
-    override fun pauseReadAloud(pause: Boolean) {
-        super.pauseReadAloud(pause)
-        if (pause) {
-            engineManager.pause()
-        } else {
-            engineManager.resume()
-        }
+    override fun play() {
+        super.play()
+        startPlayback()
+    }
+
+    override fun pauseReadAloud(abandonFocus: Boolean) {
+        super.pauseReadAloud(abandonFocus)
+        engineManager.pause()
+        playMonitorJob?.cancel()
     }
 
     override fun resumeReadAloud() {
         super.resumeReadAloud()
         engineManager.resume()
-        startPlayIndexJob()
+        startPlayMonitor()
     }
 
-    private fun startPlayIndexJob() {
-        playIndexJob?.cancel()
-        playIndexJob = lifecycleScope.launch {
+    private fun startPlayMonitor() {
+        playMonitorJob?.cancel()
+        playMonitorJob = lifecycleScope.launch {
             while (isActive) {
                 // 检查是否播放完成
-                if (!engineManager.isPlaying()) {
-                    // 播放下一章
+                if (!engineManager.isPlaying() && !pause) {
                     delay(100)
                     if (!engineManager.isPlaying()) {
-                        ReadAloud.nextParagraph(this@UnifiedReadAloudService)
+                        // 播放下一章
+                        nextChapter()
+                        break
                     }
-                    break
                 }
-                delay(100)
+                delay(500)
             }
         }
     }
 
-    override fun upMediaSessionMetadata() {
-        super.upMediaSessionMetadata()
-        val book = ReadBook.book ?: return
-        val chapter = ReadBook.durChapterTitle
-
-        mediaSessionCompat?.setMetadata(
-            buildMediaMetadata(
-                title = chapter,
-                subtitle = book.name,
-                artist = book.getRealAuthor(),
-                mediaUri = book.bookUrl,
-                iconUri = book.getDisplayCover()
-            )
-        )
+    /**
+     * 实现抽象方法：停止播放
+     */
+    override fun playStop() {
+        engineManager.stop()
+        playMonitorJob?.cancel()
     }
 
     /**
-     * 更新播放速度
+     * 实现抽象方法：更新播放速度
      */
-    override fun upSpeechRate() {
-        val speed = if (ReadBook.book?.isAudio == true) {
+    override fun upSpeechRate(reset: Boolean) {
+        val book = ReadBook.book ?: return
+        val speed = if (book.isAudio) {
             // 音频书使用音频速度
-            AppConfig.readAloudSpeed
+            1.0f // TODO: 从配置获取
         } else {
             // TTS 使用 TTS 速度
             AppConfig.ttsSpeechRate / 10f + 0.5f
@@ -163,38 +179,10 @@ class UnifiedReadAloudService : BaseReadAloudService() {
         engineManager.setSpeed(speed.coerceIn(0.5f, 3.0f))
     }
 
-    override fun clearTTS() {
-        engineManager.stop()
-    }
-
-    override fun currentReadAloudChapterIndex(): Int {
-        return ReadBook.durChapterIndex
-    }
-
-    override fun currentReadAloudChapterPos(): Int {
-        return engineManager.getCurrentPosition()
-    }
-
     /**
-     * 处理媒体按钮
+     * 实现抽象方法：创建通知栏的 PendingIntent
      */
-    override fun onMediaButton(action: String) {
-        when (action) {
-            IntentAction.play -> {
-                if (engineManager.isPlaying()) {
-                    pauseReadAloud(true)
-                } else {
-                    resumeReadAloud()
-                }
-            }
-            IntentAction.pause -> pauseReadAloud(true)
-            IntentAction.resume -> resumeReadAloud()
-            IntentAction.prev -> ReadAloud.prevParagraph(this)
-            IntentAction.next -> ReadAloud.nextParagraph(this)
-            IntentAction.adjustSpeed -> upSpeechRate()
-            IntentAction.adjustProgress -> {
-                // 调整进度
-            }
-        }
+    override fun aloudServicePendingIntent(actionStr: String): PendingIntent? {
+        return servicePendingIntent<UnifiedReadAloudService>(actionStr)
     }
 }

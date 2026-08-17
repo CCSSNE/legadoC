@@ -28,6 +28,7 @@ import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
 import io.legado.app.utils.*
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import io.legado.app.help.book.isAudio
 
 
 class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud),

@@ -1,13 +1,14 @@
 package io.legado.app.service.engine
 
 import android.content.Context
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
 import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.exoplayer.ExoPlayerHelper
-import io.legado.app.model.AudioPlay
 import io.legado.app.service.ReadAloudEngine
-import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -18,21 +19,27 @@ import kotlinx.coroutines.launch
 /**
  * 融合第一阶段：书源音频引擎实现
  *
- * 将 AudioPlay 的逻辑封装为引擎，与 TTS 引擎平级
+ * 使用 ExoPlayer 播放书源音频
  */
 class SourceAudioEngine(
     private val context: Context,
     private val callback: ReadAloudEngine.Callback?
-) : ReadAloudEngine {
+) : ReadAloudEngine, Player.Listener {
 
     private var book: Book? = null
     private var chapter: BookChapter? = null
     private var audioUrl: String = ""
-    private var isPlaying = false
+    private var isPlayingFlag = false
     private var currentPosition = 0
     private var duration = 0
     private val scope = CoroutineScope(Dispatchers.Main)
     private var progressJob: Job? = null
+
+    private val exoPlayer: ExoPlayer by lazy {
+        ExoPlayerHelper.createHttpExoPlayer(context).apply {
+            addListener(this@SourceAudioEngine)
+        }
+    }
 
     override fun getType(): ReadAloudEngine.Type {
         return ReadAloudEngine.Type.SOURCE_AUDIO
@@ -55,16 +62,22 @@ class SourceAudioEngine(
         try {
             callback?.onLoading(true)
 
-            // 使用 ExoPlayerHelper 播放音频
-            ExoPlayerHelper.play(
-                context = context,
-                url = audioUrl,
-                title = chapter?.title ?: "",
-                coverUrl = book?.getDisplayCover(),
-                startPosition = startPos.toLong()
-            )
+            // 创建 MediaItem
+            val mediaItem = ExoPlayerHelper.createMediaItem(audioUrl, emptyMap())
 
-            isPlaying = true
+            // 准备播放
+            exoPlayer.setMediaItem(mediaItem)
+            exoPlayer.prepare()
+
+            // 跳转到起始位置
+            if (startPos > 0) {
+                exoPlayer.seekTo(startPos.toLong())
+            }
+
+            // 开始播放
+            exoPlayer.play()
+
+            isPlayingFlag = true
             callback?.onLoading(false)
 
             // 启动进度更新
@@ -78,58 +91,82 @@ class SourceAudioEngine(
     }
 
     override fun pause() {
-        if (isPlaying) {
-            ExoPlayerHelper.pause()
-            isPlaying = false
+        if (isPlayingFlag) {
+            exoPlayer.pause()
+            isPlayingFlag = false
             stopProgressUpdate()
         }
     }
 
     override fun resume() {
-        if (!isPlaying && audioUrl.isNotEmpty()) {
-            ExoPlayerHelper.resume()
-            isPlaying = true
+        if (!isPlayingFlag && audioUrl.isNotEmpty()) {
+            exoPlayer.play()
+            isPlayingFlag = true
             startProgressUpdate()
         }
     }
 
     override fun stop() {
-        ExoPlayerHelper.stop()
-        isPlaying = false
+        exoPlayer.stop()
+        isPlayingFlag = false
         currentPosition = 0
         stopProgressUpdate()
     }
 
     override fun setSpeed(speed: Float) {
-        ExoPlayerHelper.setSpeed(speed.coerceIn(0.5f, 3.0f))
+        exoPlayer.setPlaybackSpeed(speed.coerceIn(0.5f, 3.0f))
     }
 
     override fun seekTo(position: Int) {
         currentPosition = position
-        ExoPlayerHelper.seekTo(position.toLong())
+        exoPlayer.seekTo(position.toLong())
     }
 
     override fun getCurrentPosition(): Int {
-        return ExoPlayerHelper.getCurrentPosition()?.toInt() ?: currentPosition
+        return exoPlayer.currentPosition.toInt()
     }
 
     override fun getDuration(): Int {
-        return ExoPlayerHelper.getDuration()?.toInt() ?: duration
+        return exoPlayer.duration.toInt()
     }
 
     override fun isPlaying(): Boolean {
-        return isPlaying && ExoPlayerHelper.isPlaying()
+        return isPlayingFlag && exoPlayer.isPlaying
     }
 
     override fun release() {
         stop()
-        ExoPlayerHelper.release()
+        exoPlayer.release()
+    }
+
+    // ExoPlayer.Listener 实现
+    override fun onPlaybackStateChanged(playbackState: Int) {
+        when (playbackState) {
+            Player.STATE_ENDED -> {
+                isPlayingFlag = false
+                callback?.onCompletion()
+            }
+            Player.STATE_READY -> {
+                // 准备就绪
+            }
+            Player.STATE_BUFFERING -> {
+                callback?.onLoading(true)
+            }
+            Player.STATE_IDLE -> {
+                // 空闲
+            }
+        }
+    }
+
+    override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+        AppLog.put("ExoPlayer 错误: ${error.message}", error)
+        callback?.onError("播放错误: ${error.message}")
     }
 
     private fun startProgressUpdate() {
         stopProgressUpdate()
         progressJob = scope.launch {
-            while (isActive && isPlaying) {
+            while (isActive && isPlayingFlag) {
                 try {
                     val pos = getCurrentPosition()
                     val dur = getDuration()
@@ -141,7 +178,7 @@ class SourceAudioEngine(
 
                         // 检查是否播放完成
                         if (pos >= dur - 500) { // 提前500ms判断完成
-                            isPlaying = false
+                            isPlayingFlag = false
                             callback?.onCompletion()
                             break
                         }
