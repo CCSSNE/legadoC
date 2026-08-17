@@ -1,0 +1,109 @@
+> Task :modules:rhino:preBuild UP-TO-DATE
+> Task :modules:book:preBuild UP-TO-DATE
+> Task :modules:rhino:preDebugBuild UP-TO-DATE
+> Task :modules:book:preDebugBuild UP-TO-DATE
+> Task :modules:rhino:generateDebugResources FROM-CACHE
+> Task :modules:book:generateDebugResources FROM-CACHE
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preAppCBuild UP-TO-DATE
+> Task :app:mergeAppCNativeDebugMetadata NO-SOURCE
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :modules:rhino:packageDebugResources
+> Task :modules:book:packageDebugResources
+> Task :modules:book:processDebugNavigationResources FROM-CACHE
+> Task :modules:rhino:processDebugNavigationResources FROM-CACHE
+> Task :modules:book:parseDebugLocalResources FROM-CACHE
+> Task :modules:rhino:parseDebugLocalResources FROM-CACHE
+> Task :modules:book:generateDebugRFile FROM-CACHE
+> Task :modules:rhino:generateDebugRFile FROM-CACHE
+> Task :app:dataBindingMergeDependencyArtifactsAppC
+> Task :app:generateAppCResources
+> Task :modules:book:extractDeepLinksDebug FROM-CACHE
+> Task :modules:rhino:extractDeepLinksDebug FROM-CACHE
+> Task :modules:book:writeDebugAarMetadata
+> Task :modules:rhino:writeDebugAarMetadata
+> Task :modules:book:processDebugManifest FROM-CACHE
+> Task :modules:rhino:processDebugManifest FROM-CACHE
+> Task :modules:rhino:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :modules:book:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :modules:book:compileDebugLibraryResources
+> Task :modules:book:compileDebugKotlin NO-SOURCE
+> Task :modules:rhino:compileDebugLibraryResources
+> Task :modules:book:javaPreCompileDebug FROM-CACHE
+> Task :modules:book:compileDebugJavaWithJavac FROM-CACHE
+> Task :modules:book:generateDebugAssets UP-TO-DATE
+> Task :modules:book:mergeDebugAssets
+> Task :modules:book:bundleLibRuntimeToJarDebug
+> Task :modules:book:bundleLibCompileToJarDebug
+> Task :modules:book:processDebugJavaRes
+> Task :modules:book:mergeDebugJniLibFolders
+> Task :modules:book:mergeDebugNativeLibs NO-SOURCE
+> Task :modules:book:copyDebugJniLibsProjectOnly
+> Task :modules:rhino:javaPreCompileDebug FROM-CACHE
+> Task :modules:rhino:generateDebugAssets UP-TO-DATE
+> Task :modules:rhino:mergeDebugAssets
+> Task :modules:rhino:mergeDebugJniLibFolders
+> Task :modules:rhino:mergeDebugNativeLibs NO-SOURCE
+> Task :modules:rhino:copyDebugJniLibsProjectOnly
+
+> Task :app:mergeAppCResources
+D:\AI\audio\legadoC-own\app\src\main\res\values\strings.xml:573:4: Multiple substitutions specified in non-positional format of string resource string/qq_group_url. Did you mean to add the formatted="false" attribute?
+
+> Task :app:packageAppCResources
+> Task :app:processAppCNavigationResources
+> Task :app:generateAppCBuildConfig FROM-CACHE
+> Task :app:compileAppCNavigationResources FROM-CACHE
+> Task :app:mapAppCSourceSetPaths
+> Task :app:createAppCCompatibleScreenManifests
+> Task :app:extractDeepLinksAppC FROM-CACHE
+> Task :app:checkAppCAarMetadata
+> Task :app:processAppCMainManifest FROM-CACHE
+> Task :app:processAppCManifest FROM-CACHE
+> Task :app:processAppCManifestForPackage FROM-CACHE
+> Task :app:generateAppCAssets UP-TO-DATE
+> Task :app:javaPreCompileAppC
+> Task :app:mergeAppCAssets
+> Task :app:parseAppCLocalResources
+> Task :app:compressAppCAssets
+> Task :app:dataBindingGenBaseClassesAppC
+> Task :app:processAppCResources FROM-CACHE
+> Task :app:mergeAppCJniLibFolders
+> Task :app:checkAppCDuplicateClasses
+> Task :app:mergeAppCNativeLibs
+> Task :app:validateSigningAppC
+> Task :app:writeAppCAppMetadata
+> Task :app:writeAppCSigningConfigVersions
+
+> Task :app:stripAppCDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libarchive-jni.so, libimage_processing_util_jni.so, librenderscript-toolkit.so, librtmp-jni.so, libsurface_util_jni.so. Run with --info option to learn more.
+
+> Task :modules:rhino:compileDebugKotlin
+> Task :modules:rhino:compileDebugJavaWithJavac NO-SOURCE
+> Task :modules:rhino:bundleLibCompileToJarDebug
+> Task :modules:rhino:processDebugJavaRes
+> Task :modules:rhino:bundleLibRuntimeToJarDebug
+> Task :app:mergeLibDexAppC
+> Task :app:desugarAppCFileDependencies
+> Task :app:l8DexDesugarLibAppC
+> Task :app:mergeExtDexAppC
+
+> Task :app:kspAppCKotlin FAILED
+e: [ksp] java.lang.IllegalArgumentException: this and base files have different roots: C:\Users\user\.gradle\caches\8.14.4\transforms\09ffcb990e4fe5c9217718fc81f4f741\transformed\glide-svg-4.0.2-api.jar!\com\bumptech\glide\annotation\compiler\GlideIndexer_GlideModule_ch_qoqa_glide_svg_SvgLibraryGlideModule.class and D:\AI\audio\legadoC-own\app.
+
+> Task :app:copyRoomSchemas NO-SOURCE
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:kspAppCKotlin'.
+> A failure occurred while executing com.google.devtools.ksp.gradle.KspAAWorkerAction
+   > this and base files have different roots: C:\Users\user\.gradle\caches\8.14.4\transforms\09ffcb990e4fe5c9217718fc81f4f741\transformed\glide-svg-4.0.2-api.jar!\com\bumptech\glide\annotation\compiler\GlideIndexer_GlideModule_ch_qoqa_glide_svg_SvgLibraryGlideModule.class and D:\AI\audio\legadoC-own\app.
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 49s
+66 actionable tasks: 44 executed, 22 from cache
