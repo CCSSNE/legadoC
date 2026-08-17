@@ -42,17 +42,18 @@ object ReadAloud {
             SourceAudioReadAloudService::class.java -> ReadAloudEngineType.SOURCE_AUDIO
             HttpReadAloudService::class.java -> ReadAloudEngineType.HTTP_TTS
             TTSReadAloudService::class.java -> ReadAloudEngineType.SYSTEM_TTS
-            else -> selectedEngineType()
+            else -> selectedEngineType
         }
 
-    private fun selectedEngineType(): ReadAloudEngineType {
-        val selected = ttsEngine
-        return when {
-            selected == SOURCE_AUDIO_ENGINE_ID -> ReadAloudEngineType.SOURCE_AUDIO
-            StringUtils.isNumeric(selected) -> ReadAloudEngineType.HTTP_TTS
-            else -> ReadAloudEngineType.SYSTEM_TTS
+    val selectedEngineType: ReadAloudEngineType
+        get() {
+            val selected = ttsEngine
+            return when {
+                selected == SOURCE_AUDIO_ENGINE_ID -> ReadAloudEngineType.SOURCE_AUDIO
+                selected != null && StringUtils.isNumeric(selected) -> ReadAloudEngineType.HTTP_TTS
+                else -> ReadAloudEngineType.SYSTEM_TTS
+            }
         }
-    }
 
     private fun getReadAloudClass(): Class<out BaseReadAloudService>? {
         val book = ReadBook.book
