@@ -198,6 +198,10 @@
     <string name="read_aloud_float_on_desktop_summary">在本 App 外显示朗读控制悬浮窗，需要悬浮窗权限；关闭时仅在阅读页内悬浮。</string>
     <string name="read_aloud_hide_floating_window">隐藏朗读悬浮窗</string>
     <string name="read_aloud_hide_floating_window_summary">不显示朗读控制悬浮窗，仅保留通知栏控制和前台服务通知用于保活。</string>
+    <string name="read_aloud_hide_playback_panel">隐藏当页小悬浮窗</string>
+    <string name="read_aloud_hide_playback_panel_summary">朗读菜单收起后，不显示暂停播放/继续播放的小悬浮窗。</string>
+    <string name="read_aloud_hide_page_panel">隐藏跨页小悬浮窗</string>
+    <string name="read_aloud_hide_page_panel_summary">朗读过程中翻页后，不显示原进度/从本页听的小悬浮窗。</string>
     <string name="read_aloud_original_progress">原进度</string>
     <string name="read_aloud_from_current_page">从本页听</string>
     <string name="read_aloud_pause_playback">暂停播放</string>

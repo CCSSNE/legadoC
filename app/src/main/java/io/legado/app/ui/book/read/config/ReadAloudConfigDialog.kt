@@ -138,6 +138,11 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                     postEvent(PreferKey.readAloudHideFloatingWindow, "")
                 }
 
+                PreferKey.readAloudHidePlaybackPanel,
+                PreferKey.readAloudHidePagePanel -> {
+                    postEvent(key, "")
+                }
+
                 PreferKey.ignoreAudioFocus -> {
                     Unit
                 }

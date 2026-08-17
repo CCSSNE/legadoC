@@ -57,6 +57,20 @@
 
         <io.legado.app.lib.prefs.SwitchPreference
             android:defaultValue="false"
+            android:key="readAloudHidePlaybackPanel"
+            android:summary="@string/read_aloud_hide_playback_panel_summary"
+            android:title="@string/read_aloud_hide_playback_panel"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="false"
+            android:key="readAloudHidePagePanel"
+            android:summary="@string/read_aloud_hide_page_panel_summary"
+            android:title="@string/read_aloud_hide_page_panel"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="false"
             android:key="readAloudFloatOnDesktop"
             android:summary="@string/read_aloud_float_on_desktop_summary"
             android:title="@string/read_aloud_float_on_desktop"
