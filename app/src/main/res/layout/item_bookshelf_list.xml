@@ -32,15 +32,15 @@
         android:id="@+id/iv_audio"
         android:layout_width="20dp"
         android:layout_height="20dp"
-        android:layout_marginStart="4dp"
         android:layout_marginTop="4dp"
-        android:background="@drawable/bg_bookshelf_local_badge"
+        android:layout_marginEnd="4dp"
+        android:background="@drawable/bg_bookshelf_audio_badge"
         android:contentDescription="@string/audio"
         android:padding="4dp"
         android:src="@drawable/ic_volume_up"
         android:visibility="gone"
-        app:layout_constraintStart_toStartOf="@+id/iv_cover"
-        app:layout_constraintTop_toTopOf="@+id/iv_cover"
+        app:layout_constraintEnd_toEndOf="@+id/iv_cover"
+        app:layout_constraintTop_toBottomOf="@+id/iv_local"
         tools:visibility="visible" />
 
     <androidx.appcompat.widget.AppCompatImageView
