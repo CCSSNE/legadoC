@@ -37,6 +37,13 @@ abstract class BaseDialogFragment(
     private val adaptationSoftKeyboard: Boolean = false
 ) : DialogFragment(layoutID) {
 
+    protected enum class ChromeMode {
+        HEADERLESS,
+        FULL_SCREEN_TOOL,
+    }
+
+    protected open val chromeMode: ChromeMode = ChromeMode.HEADERLESS
+
     private var onDismissListener: OnDismissListener? = null
 
     fun setOnDismissListener(onDismissListener: OnDismissListener?) {
@@ -103,7 +110,9 @@ abstract class BaseDialogFragment(
             view.applyUiBodyTypeface(requireContext())
         }
         onFragmentCreated(view, savedInstanceState)
-        dialogSurfaceView(view).applyHeaderlessDialogChrome()
+        if (chromeMode == ChromeMode.HEADERLESS) {
+            dialogSurfaceView(view).applyHeaderlessDialogChrome()
+        }
         observeLiveBus()
     }
 
