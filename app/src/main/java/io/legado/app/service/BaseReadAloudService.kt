@@ -482,14 +482,14 @@ abstract class BaseReadAloudService : BaseService(),
     }
 
     private fun openReadAloudBook() {
-        if (readBookActivityActive) {
-            postEvent(EventBus.OPEN_READ_ALOUD_DIALOG, true)
-            return
-        }
+        // 融合第二阶段：点击悬浮窗打开听书页面
         ReadBook.book?.let { book ->
             val chapterPos = currentReadAloudChapterPos()
             ReadBook.saveRead()
-            startActivityForBook(book) {
+
+            // 打开 AudioPlayActivity（听书页面）
+            val intent = Intent(this, io.legado.app.ui.book.audio.AudioPlayActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 putExtra("bookUrl", book.bookUrl)
                 putExtra("index", currentReadAloudChapterIndex())
@@ -497,6 +497,7 @@ abstract class BaseReadAloudService : BaseService(),
                 putExtra("fromReadAloudFloating", true)
                 putExtra("inBookshelf", ReadBook.inBookshelf)
             }
+            startActivity(intent)
         }
     }
 
