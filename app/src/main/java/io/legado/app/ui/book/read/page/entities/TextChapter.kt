@@ -5,6 +5,7 @@ import androidx.annotation.Keep
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.ReplaceRule
+import io.legado.app.help.book.AudioTextMapping
 import io.legado.app.help.book.BookContent
 import io.legado.app.ui.book.read.page.provider.LayoutProgressListener
 import io.legado.app.ui.book.read.page.provider.TextChapterLayout
@@ -214,6 +215,18 @@ data class TextChapter(
         } else {
             if (isCompleted) paragraphs else paragraphsInternal
         }
+    }
+
+    fun bindAudioTextMapping(mapping: AudioTextMapping): AudioTextMapping.LayoutBinding {
+        return mapping.bindLayout(
+            getParagraphs(false).mapIndexed { index, paragraph ->
+                AudioTextMapping.LayoutParagraph(
+                    index = index,
+                    text = paragraph.text,
+                    isStructural = paragraph.isTitle,
+                )
+            }
+        )
     }
 
     fun getLastParagraphPosition(): Int {

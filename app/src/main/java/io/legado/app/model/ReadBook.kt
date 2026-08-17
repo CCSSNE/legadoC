@@ -933,9 +933,15 @@ object ReadBook : CoroutineScope by MainScope() {
 
         val legacyAudioPosition = book.durChapterPos.coerceAtLeast(0)
         val mapping = AudioTextMapping.parse(textChapter.chapter.getVariable("lyric"))
-        val paragraphIndex = mapping.paragraphAt(legacyAudioPosition)
+        val layoutParagraphs = textChapter.getParagraphs(false)
+        val layoutBinding = if (mapping.hasTimeMapping) {
+            textChapter.bindAudioTextMapping(mapping)
+        } else {
+            null
+        }
+        val paragraphIndex = layoutBinding?.layoutParagraphAt(legacyAudioPosition)
         val paragraph = paragraphIndex?.let {
-            textChapter.getParagraphs(false).getOrNull(it)
+            layoutParagraphs.getOrNull(it)
         }
         val textPosition = paragraph?.chapterPosition ?: 0
         book.setSourceAudioProgress(textChapter.chapter.index, legacyAudioPosition)

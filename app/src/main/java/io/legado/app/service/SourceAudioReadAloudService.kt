@@ -36,6 +36,7 @@ class SourceAudioReadAloudService : BaseReadAloudService(), Player.Listener {
     private var resolveJob: Job? = null
     private var progressJob: Job? = null
     private var mapping = AudioTextMapping(emptyList(), emptyList())
+    private var layoutBinding: AudioTextMapping.LayoutBinding? = null
     private var playbackGeneration = 0L
     private var lastMappedParagraph = -1
     private var lastPersistedAt = 0L
@@ -53,6 +54,7 @@ class SourceAudioReadAloudService : BaseReadAloudService(), Player.Listener {
         resolveJob?.cancel()
         progressJob?.cancel()
         player.stop()
+        layoutBinding = null
         upReadAloudLoading(true)
         resolveJob = lifecycleScope.launch {
             val result = runCatching {
@@ -68,8 +70,10 @@ class SourceAudioReadAloudService : BaseReadAloudService(), Player.Listener {
                 return@launch
             }
             runCatching {
-                mapping = resolved.mapping
-                validateMapping()
+                val resolvedMapping = resolved.mapping
+                val resolvedBinding = bindMappingToLayout(resolvedMapping)
+                mapping = resolvedMapping
+                layoutBinding = resolvedBinding
                 currentMediaUrl = resolved.request.url
                 val mediaSource = if (resolved.request.url.isJsonArray()) {
                     requireNotNull(
@@ -97,16 +101,23 @@ class SourceAudioReadAloudService : BaseReadAloudService(), Player.Listener {
         }
     }
 
-    private fun validateMapping() {
-        if (!mapping.hasTimeMapping) return
-        val layoutParagraphCount = textChapter?.getParagraphs(false)?.size ?: 0
-        require(mapping.paragraphs.size == layoutParagraphCount) {
-            "字幕与正文段落数量不一致：subtitle=${mapping.paragraphs.size}, layout=$layoutParagraphCount"
-        }
+    private fun bindMappingToLayout(
+        mapping: AudioTextMapping,
+    ): AudioTextMapping.LayoutBinding? {
+        if (!mapping.hasTimeMapping) return null
+        val chapter = requireNotNull(textChapter) { "绑定字幕时当前章节为空" }
+        val layoutParagraphs = chapter.getParagraphs(false)
+        val binding = chapter.bindAudioTextMapping(mapping)
+        AppLog.putDebug(
+            "Source audio mapping bound: chapter=${chapter.chapter.index}, " +
+                "subtitle=${mapping.paragraphs.size}, layout=${layoutParagraphs.size}, " +
+                "content=${binding.paragraphCount}"
+        )
+        return binding
     }
 
     private fun resolveStartPosition(book: Book, chapterIndex: Int): Int {
-        val mappedStart = mapping.timeForParagraph(nowSpeak)
+        val mappedStart = layoutBinding?.timeForLayoutParagraph(nowSpeak)
         if (mappedStart != null) {
             return if (mappedStart == 0) {
                 (book.getOpenCredits() * 1000).coerceAtLeast(0)
@@ -266,7 +277,7 @@ class SourceAudioReadAloudService : BaseReadAloudService(), Player.Listener {
     }
 
     private fun syncTextPosition(position: Int) {
-        val paragraphIndex = mapping.paragraphAt(position) ?: return
+        val paragraphIndex = layoutBinding?.layoutParagraphAt(position) ?: return
         if (paragraphIndex == lastMappedParagraph) return
         val chapter = textChapter ?: return
         val paragraphs = chapter.getParagraphs(false)

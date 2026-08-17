@@ -60,4 +60,39 @@ class AudioTextMappingTest {
     fun `invalid lrc seconds are rejected`() {
         AudioTextMapping.parse("[00:61.00]非法字幕")
     }
+
+    @Test
+    fun `layout binding excludes structural title and preserves real paragraph indexes`() {
+        val mapping = AudioTextMapping.parse(
+            """
+            [00:01.00]First line
+            [00:03.00]Second line
+            """.trimIndent()
+        )
+
+        val binding = mapping.bindLayout(
+            listOf(
+                AudioTextMapping.LayoutParagraph(0, "Chapter title", isStructural = true),
+                AudioTextMapping.LayoutParagraph(1, "\u3000\u3000First line", isStructural = false),
+                AudioTextMapping.LayoutParagraph(2, "\u3000\u3000Second line", isStructural = false),
+            )
+        )
+
+        assertEquals(1_000, binding.timeForLayoutParagraph(0))
+        assertEquals(1_000, binding.timeForLayoutParagraph(1))
+        assertEquals(3_000, binding.timeForLayoutParagraph(2))
+        assertEquals(1, binding.layoutParagraphAt(1_000))
+        assertEquals(2, binding.layoutParagraphAt(3_000))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun `layout binding rejects content mismatches`() {
+        val mapping = AudioTextMapping.parse("[00:01.00]Expected")
+
+        mapping.bindLayout(
+            listOf(
+                AudioTextMapping.LayoutParagraph(0, "Different", isStructural = false)
+            )
+        )
+    }
 }
