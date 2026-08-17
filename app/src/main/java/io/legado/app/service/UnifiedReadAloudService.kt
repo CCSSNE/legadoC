@@ -56,7 +56,7 @@ class UnifiedReadAloudService : BaseReadAloudService() {
                 IntentAction.stop -> {
                     stopSelf()
                 }
-                IntentAction.adjustSpeed -> {
+                IntentAction.setSpeed -> {
                     upSpeechRate()
                 }
             }
