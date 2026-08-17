@@ -121,6 +121,15 @@ abstract class BaseReadAloudService : BaseService(),
         var runningClass: Class<*>? = null
             private set
 
+        @Volatile
+        var readAloudProgress: ReadAloudProgress? = null
+            private set
+
+        fun publishReadAloudProgress(progress: ReadAloudProgress) {
+            readAloudProgress = progress
+            postEvent(EventBus.READ_ALOUD_PROGRESS, progress)
+        }
+
         fun isPlay(): Boolean {
             return isRun && !pause
         }
@@ -482,14 +491,14 @@ abstract class BaseReadAloudService : BaseService(),
     }
 
     private fun openReadAloudBook() {
-        // 融合第二阶段：点击悬浮窗打开听书页面
+        if (readBookActivityActive) {
+            postEvent(EventBus.OPEN_READ_ALOUD_DIALOG, true)
+            return
+        }
         ReadBook.book?.let { book ->
             val chapterPos = currentReadAloudChapterPos()
             ReadBook.saveRead()
-
-            // 打开 AudioPlayActivity（听书页面）
-            val intent = Intent(this, io.legado.app.ui.book.audio.AudioPlayActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivityForBook(book) {
                 addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 putExtra("bookUrl", book.bookUrl)
                 putExtra("index", currentReadAloudChapterIndex())
@@ -497,7 +506,6 @@ abstract class BaseReadAloudService : BaseService(),
                 putExtra("fromReadAloudFloating", true)
                 putExtra("inBookshelf", ReadBook.inBookshelf)
             }
-            startActivity(intent)
         }
     }
 
@@ -668,6 +676,7 @@ abstract class BaseReadAloudService : BaseService(),
     @SuppressLint("WakelockTimeout")
     override fun onCreate() {
         super.onCreate()
+        readAloudProgress = null
         isRun = true
         pause = false
         runningClass = this::class.java
@@ -820,6 +829,7 @@ abstract class BaseReadAloudService : BaseService(),
         loading = false
         if (runningClass == this::class.java) {
             runningClass = null
+            readAloudProgress = null
         }
         abandonFocus()
         unregisterReceiver(broadcastReceiver)
@@ -849,6 +859,10 @@ abstract class BaseReadAloudService : BaseService(),
             IntentAction.upTtsSpeechRate -> upSpeechRate(true)
             IntentAction.prevParagraph -> prevP()
             IntentAction.nextParagraph -> nextP()
+            IntentAction.seekReadAloudParagraph -> seekToParagraph(
+                intent.getIntExtra("chapterIndex", -1),
+                intent.getIntExtra("paragraphIndex", -1)
+            )
             IntentAction.prev -> prevChapter()
             IntentAction.next -> nextChapter()
             IntentAction.addTimer -> addTimer()
@@ -923,6 +937,7 @@ abstract class BaseReadAloudService : BaseService(),
             }
         }
         paragraphStartPos = pos
+        publishParagraphProgress()
         return true
     }
 
@@ -1012,10 +1027,80 @@ abstract class BaseReadAloudService : BaseService(),
     abstract fun upSpeechRate(reset: Boolean = false)
 
     fun upTtsProgress(progress: Int) {
+        publishParagraphProgress()
         postEvent(EventBus.TTS_PROGRESS, Bundle().apply {
             putInt("chapterIndex", textChapter?.chapter?.index ?: ReadBook.durChapterIndex)
             putInt("chapterPos", progress)
         })
+    }
+
+    private fun publishParagraphProgress() {
+        val chapter = textChapter ?: return
+        if (contentList.isEmpty() || nowSpeak !in contentList.indices) {
+            return
+        }
+        publishReadAloudProgress(
+            ReadAloudProgress(
+                chapterIndex = chapter.chapter.index,
+                position = nowSpeak,
+                total = contentList.size,
+                kind = ReadAloudProgress.Kind.PARAGRAPH,
+            )
+        )
+    }
+
+    private fun seekToParagraph(chapterIndex: Int, paragraphIndex: Int) {
+        val chapter = textChapter ?: run {
+            stopReadAloudOnInvalidPosition("Read aloud seek failed: chapter is missing")
+            return
+        }
+        if (chapter.chapter.index != chapterIndex) {
+            AppLog.putDebug(
+                "Ignore stale read aloud seek: requestedChapter=$chapterIndex, " +
+                        "currentChapter=${chapter.chapter.index}"
+            )
+            publishParagraphProgress()
+            return
+        }
+        if (paragraphIndex !in contentList.indices) {
+            stopReadAloudOnInvalidPosition(
+                "Read aloud seek paragraph is out of range: " +
+                        "paragraph=$paragraphIndex, total=${contentList.size}"
+            )
+            return
+        }
+        val paragraphs = chapter.getParagraphs(readAloudByPage)
+        val paragraph = paragraphs.getOrNull(paragraphIndex) ?: run {
+            stopReadAloudOnInvalidPosition(
+                "Read aloud paragraph mapping is inconsistent: " +
+                        "content=${contentList.size}, layout=${paragraphs.size}, " +
+                        "paragraph=$paragraphIndex"
+            )
+            return
+        }
+        val targetPageIndex = chapter.getPageIndexByCharIndex(paragraph.chapterPosition)
+        if (targetPageIndex !in 0 until chapter.pageSize) {
+            stopReadAloudOnInvalidPosition(
+                "Read aloud seek page is invalid: page=$targetPageIndex, " +
+                        "paragraph=$paragraphIndex"
+            )
+            return
+        }
+
+        val resumeAfterSeek = !pause
+        playStop()
+        nowSpeak = paragraphIndex
+        readAloudNumber = paragraph.chapterPosition
+        paragraphStartPos = 0
+        pageIndex = targetPageIndex
+        AppLog.putDebug(
+            "Read aloud seek: chapter=$chapterIndex, paragraph=$paragraphIndex, " +
+                    "chapterPosition=$readAloudNumber, page=$pageIndex"
+        )
+        upTtsProgress(readAloudNumber + 1)
+        if (resumeAfterSeek) {
+            play()
+        }
     }
 
     protected fun upReadAloudLoading(loading: Boolean) {

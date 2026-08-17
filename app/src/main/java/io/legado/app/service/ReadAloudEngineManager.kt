@@ -2,7 +2,6 @@ package io.legado.app.service
 
 import android.content.Context
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -12,7 +11,6 @@ import io.legado.app.model.ReadBook
 import io.legado.app.service.engine.HttpTtsEngine
 import io.legado.app.service.engine.SourceAudioEngine
 import io.legado.app.service.engine.SystemTtsEngine
-import io.legado.app.utils.postEvent
 import io.legado.app.utils.toastOnUi
 
 /**
@@ -27,8 +25,18 @@ class ReadAloudEngineManager(private val context: Context) {
 
     private val engineCallback = object : ReadAloudEngine.Callback {
         override fun onProgressUpdate(position: Int, duration: Int) {
-            // 发送进度更新事件到 UI
-            postEvent(EventBus.READ_ALOUD_PROGRESS, Pair(position, duration))
+            BaseReadAloudService.publishReadAloudProgress(
+                ReadAloudProgress(
+                    chapterIndex = ReadBook.durChapterIndex,
+                    position = position,
+                    total = duration,
+                    kind = if (currentEngineType == ReadAloudEngine.Type.SOURCE_AUDIO) {
+                        ReadAloudProgress.Kind.TIME
+                    } else {
+                        ReadAloudProgress.Kind.PARAGRAPH
+                    },
+                )
+            )
         }
 
         override fun onCompletion() {

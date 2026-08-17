@@ -1339,6 +1339,7 @@
     <string name="cover_show_author_summary">Author shown on cover</string>
     <string name="read_aloud_prev_paragraph">Read aloud the previous paragraph</string>
     <string name="read_aloud_next_paragraph">Read aloud the next paragraph</string>
+    <string name="read_aloud_paragraph_progress">Paragraph %1$d</string>
     <string name="wait_download">wait download</string>
     <string name="download_success">download success</string>
     <string name="download_error">download failure</string>

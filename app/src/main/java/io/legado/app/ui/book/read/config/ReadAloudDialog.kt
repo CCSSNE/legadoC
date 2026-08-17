@@ -24,11 +24,11 @@ import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.service.BaseReadAloudService
+import io.legado.app.service.ReadAloudProgress
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
 import io.legado.app.utils.*
 import io.legado.app.utils.viewbindingdelegate.viewBinding
-import io.legado.app.help.book.isAudio
 
 
 class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud),
@@ -37,6 +37,8 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
     private val binding by viewBinding(DialogReadAloudBinding::bind)
     private var loadingAnimator: ObjectAnimator? = null
     private var showMainMenuOnDismiss = false
+    private var displayedReadProgress: ReadAloudProgress? = null
+    private var trackingReadProgress = false
 
     override fun onStart() {
         super.onStart()
@@ -209,33 +211,38 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
             }
         })
 
-        // 融合第一阶段：朗读进度条控制
         seekReadProgress.setOnSeekBarChangeListener(object : SeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
-                // 实时更新进度显示
-                if (fromUser) {
-                    val book = ReadBook.book
-                    if (book?.isAudio == true) {
-                        // 音频引擎：显示时间
-                        binding.tvDurTime.text = formatTime(progress)
-                    } else {
-                        // TTS 引擎：显示段落
-                        binding.tvDurTime.text = "段 $progress"
+                if (!fromUser) return
+                when (displayedReadProgress?.kind) {
+                    ReadAloudProgress.Kind.PARAGRAPH -> {
+                        binding.tvDurTime.text = getString(
+                            R.string.read_aloud_paragraph_progress,
+                            progress + 1
+                        )
                     }
+                    ReadAloudProgress.Kind.TIME -> {
+                        binding.tvDurTime.text = formatTime(progress)
+                    }
+                    null -> Unit
                 }
             }
 
+            override fun onStartTrackingTouch(seekBar: SeekBar) {
+                trackingReadProgress = true
+            }
+
             override fun onStopTrackingTouch(seekBar: SeekBar) {
-                // 拖动结束，跳转到对应位置
-                val book = ReadBook.book
-                if (book?.isAudio == true) {
-                    // 音频引擎：跳转到对应时间（毫秒）
-                    // TODO: 通过引擎接口跳转
-                    // currentEngine?.seekTo(seekBar.progress)
-                } else {
-                    // TTS 引擎：跳转到对应段落
-                    // TODO: 通过引擎接口跳转
-                    // currentEngine?.seekTo(seekBar.progress)
+                trackingReadProgress = false
+                val progress = displayedReadProgress ?: return
+                if (progress.kind == ReadAloudProgress.Kind.PARAGRAPH &&
+                    seekBar.progress != progress.position
+                ) {
+                    ReadAloud.seekToParagraph(
+                        requireContext(),
+                        progress.chapterIndex,
+                        seekBar.progress
+                    )
                 }
             }
         })
@@ -334,52 +341,10 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
         ReadAloud.upTtsSpeechRate(requireContext())
     }
 
-    // 融合第一阶段：更新朗读进度条
-    private fun upReadProgress() = binding.run {
-        // 根据当前引擎类型显示不同的进度
-        val book = ReadBook.book
-
-        if (book?.isAudio == true) {
-            // 音频书：显示时间进度
-            upAudioProgress()
-        } else {
-            // 普通书：显示段落进度
-            upTtsProgress()
-        }
-    }
-
-    private fun upAudioProgress() = binding.run {
-        // 音频引擎：显示时间进度（00:00 / 15:30）
-        val currentPos = 0 // TODO: 从引擎获取当前位置（毫秒）
-        val duration = 0   // TODO: 从引擎获取总时长（毫秒）
-
-        tvDurTime.text = formatTime(currentPos)
-        tvAllTime.text = formatTime(duration)
-
-        if (duration > 0) {
-            seekReadProgress.max = duration
-            seekReadProgress.progress = currentPos
-        } else {
-            seekReadProgress.max = 100
-            seekReadProgress.progress = 0
-        }
-    }
-
-    private fun upTtsProgress() = binding.run {
-        // TTS 引擎：显示段落进度（段 3 / 15）
-        val currentPara = 0  // TODO: 从引擎获取当前段落
-        val totalPara = 0    // TODO: 从引擎获取总段落数
-
-        tvDurTime.text = "段 $currentPara"
-        tvAllTime.text = "段 $totalPara"
-
-        if (totalPara > 0) {
-            seekReadProgress.max = totalPara
-            seekReadProgress.progress = currentPara
-        } else {
-            seekReadProgress.max = 100
-            seekReadProgress.progress = 0
-        }
+    private fun upReadProgress() {
+        val progress = BaseReadAloudService.readAloudProgress
+        binding.panelProgress.visible(progress != null)
+        progress?.let(::updateReadProgress)
     }
 
     private fun formatTime(milliseconds: Int): String {
@@ -395,30 +360,33 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
         observeEvent<Boolean>(EventBus.CLOSE_READ_ALOUD_DIALOG) {
             dismissAllowingStateLoss()
         }
-        // 融合第一阶段：监听进度更新事件
-        observeEvent<Pair<Int, Int>>(EventBus.READ_ALOUD_PROGRESS) { (position, duration) ->
-            updateReadProgress(position, duration)
+        observeEvent<ReadAloudProgress>(EventBus.READ_ALOUD_PROGRESS) { progress ->
+            updateReadProgress(progress)
         }
     }
 
-    private fun updateReadProgress(position: Int, duration: Int) = binding.run {
-        val book = ReadBook.book
-        if (book?.isAudio == true) {
-            // 音频引擎：更新时间进度
-            tvDurTime.text = formatTime(position)
-            tvAllTime.text = formatTime(duration)
-            if (duration > 0) {
-                seekReadProgress.max = duration
-                seekReadProgress.progress = position
+    private fun updateReadProgress(progress: ReadAloudProgress) = binding.run {
+        displayedReadProgress = progress
+        panelProgress.visible()
+        when (progress.kind) {
+            ReadAloudProgress.Kind.PARAGRAPH -> {
+                tvDurTime.text = getString(
+                    R.string.read_aloud_paragraph_progress,
+                    progress.position + 1
+                )
+                tvAllTime.text = getString(R.string.read_aloud_paragraph_progress, progress.total)
+                seekReadProgress.max = progress.total - 1
+                seekReadProgress.isEnabled = progress.total > 1
             }
-        } else {
-            // TTS 引擎：更新段落进度
-            tvDurTime.text = "段 $position"
-            tvAllTime.text = "段 $duration"
-            if (duration > 0) {
-                seekReadProgress.max = duration
-                seekReadProgress.progress = position
+            ReadAloudProgress.Kind.TIME -> {
+                tvDurTime.text = formatTime(progress.position)
+                tvAllTime.text = formatTime(progress.total)
+                seekReadProgress.max = progress.total
+                seekReadProgress.isEnabled = false
             }
+        }
+        if (!trackingReadProgress) {
+            seekReadProgress.progress = progress.position
         }
     }
 
