@@ -23,6 +23,7 @@ import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
+import io.legado.app.model.ReadAloudUiState
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.service.ReadAloudEngineType
 import io.legado.app.service.ReadAloudProgress
@@ -38,6 +39,7 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
     private val binding by viewBinding(DialogReadAloudBinding::bind)
     private var loadingAnimator: ObjectAnimator? = null
     private var showMainMenuOnDismiss = false
+    private var ownsDialogVisibility = false
     private var displayedReadProgress: ReadAloudProgress? = null
     private var trackingReadProgress = false
     private val isSourceAudioSelected
@@ -63,6 +65,11 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
 
     override fun onDismiss(dialog: DialogInterface) {
         super.onDismiss(dialog)
+        if (ownsDialogVisibility) {
+            ownsDialogVisibility = false
+            ReadAloudUiState.setReadAloudDialogVisible(false)
+            postEvent(EventBus.READ_ALOUD_DIALOG_VISIBILITY, false)
+        }
         stopLoadingAnimation()
         (activity as ReadBookActivity).bottomDialog--
         (activity as? ReadBookActivity)?.clearReadAloudFloatingAvoidance(
@@ -80,7 +87,10 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
             dismiss()
             return
         }
+        ownsDialogVisibility = true
         binding.root.applyUiBodyTypefaceDeep(requireContext().uiTypeface())
+        ReadAloudUiState.setReadAloudDialogVisible(true)
+        postEvent(EventBus.READ_ALOUD_DIALOG_VISIBILITY, true)
         val bg = requireContext().bottomBackground
         val isLight = ColorUtils.isColorLight(bg)
         val textColor = requireContext().getPrimaryTextColor(isLight)
@@ -94,6 +104,7 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
             tvNext.setTextColor(textColor)
             ivPlayPrev.setColorFilter(textColor)
             ivPlayPause.setColorFilter(textColor)
+            ivOpenAudioPlay.setColorFilter(textColor)
             ivPlayNext.setColorFilter(textColor)
             ivStop.setColorFilter(textColor)
             ivTimer.setColorFilter(textColor)
@@ -156,6 +167,12 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
             dismissAllowingStateLoss()
         }
         ivPlayPause.setOnClickListener { callBack?.onClickReadAloud() }
+        ivOpenAudioPlay.setOnClickListener {
+            ReadAloudUiState.setReadAloudDialogVisible(false)
+            postEvent(EventBus.READ_ALOUD_DIALOG_VISIBILITY, false)
+            dismissAllowingStateLoss()
+            ReadAloud.openAudioPlayActivity(requireContext())
+        }
         ivPlayPrev.setOnClickListener { ReadAloud.prevParagraph(requireContext()) }
         ivPlayNext.setOnClickListener { ReadAloud.nextParagraph(requireContext()) }
         llToBackstage.setOnClickListener {

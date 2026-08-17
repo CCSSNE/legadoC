@@ -54,6 +54,11 @@
         app:showAsAction="never" />
 
     <item
+        android:id="@+id/menu_audio_engine"
+        android:title="@string/speak_engine"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/menu_log"
         android:title="@string/log"
         app:showAsAction="never" />

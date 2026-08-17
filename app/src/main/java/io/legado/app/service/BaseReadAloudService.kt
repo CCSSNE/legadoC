@@ -64,6 +64,7 @@ import io.legado.app.help.glide.ImageLoader
 import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
 import io.legado.app.model.ReadAloud
+import io.legado.app.model.ReadAloudUiState
 import io.legado.app.model.ReadBook
 import io.legado.app.receiver.MediaButtonReceiver
 import io.legado.app.ui.book.audio.AudioPlayActivity
@@ -197,6 +198,11 @@ abstract class BaseReadAloudService : BaseService(),
                 upReadAloudNotification()
                 return
             }
+            if (activity is ReadBookActivity && !ReadAloudUiState.readAloudDialogVisible) {
+                removeReadAloudFloatingWindow()
+                upReadAloudNotification()
+                return
+            }
             if (AppConfig.readAloudHideFloatingWindow) {
                 removeReadAloudFloatingWindow()
                 upReadAloudNotification()
@@ -218,7 +224,10 @@ abstract class BaseReadAloudService : BaseService(),
             }
         }
         override fun onActivityStopped(activity: Activity) {
-            if (isRun && activity is AudioPlayActivity && canDrawFloatingWindow()) {
+            if (isRun &&
+                (activity is AudioPlayActivity || activity is ReadBookActivity) &&
+                canDrawFloatingWindow()
+            ) {
                 showReadAloudFloatingWindow()
             }
         }
@@ -268,6 +277,12 @@ abstract class BaseReadAloudService : BaseService(),
             return
         }
         if (appFloatingActivity is AudioPlayActivity) {
+            removeReadAloudFloatingWindow()
+            upReadAloudNotification()
+            return
+        }
+        val reader = appFloatingActivity as? ReadBookActivity ?: ReadBookActivity.activeActivity()
+        if (reader != null && !ReadAloudUiState.readAloudDialogVisible) {
             removeReadAloudFloatingWindow()
             upReadAloudNotification()
             return
@@ -504,20 +519,7 @@ abstract class BaseReadAloudService : BaseService(),
     }
 
     private fun openReadAloudBook() {
-        ReadBook.book?.let { book ->
-            ReadBook.saveRead()
-            startActivity(
-                Intent(this, AudioPlayActivity::class.java).apply {
-                    addFlags(
-                        Intent.FLAG_ACTIVITY_NEW_TASK or
-                                Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                                Intent.FLAG_ACTIVITY_SINGLE_TOP
-                    )
-                    putExtra("bookUrl", book.bookUrl)
-                    putExtra("readAloudSession", true)
-                }
-            )
-        }
+        ReadAloud.openAudioPlayActivity(this)
     }
 
     private fun isMainThread(): Boolean {
@@ -724,6 +726,20 @@ abstract class BaseReadAloudService : BaseService(),
                 currentAvoidanceSource = null
                 currentAvoidanceY = 0
                 applyReadAloudFloatingAvoidance(0)
+            }
+        }
+        observeEvent<Boolean>(EventBus.READ_ALOUD_DIALOG_VISIBILITY) { visible ->
+            if (visible) {
+                showReadAloudFloatingWindow()
+            } else {
+                val reader = appFloatingActivity as? ReadBookActivity
+                    ?: ReadBookActivity.activeActivity()
+                if (reader != null) {
+                    removeReadAloudFloatingWindow()
+                    upReadAloudNotification()
+                } else {
+                    showReadAloudFloatingWindow()
+                }
             }
         }
         observeSharedPreferences { _, key ->

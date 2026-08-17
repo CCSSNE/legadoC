@@ -201,6 +201,9 @@
     <string name="read_aloud_hide_floating_window_summary">Do not show the read aloud floating controls. Keep notification controls and the foreground-service notification alive instead.</string>
     <string name="read_aloud_original_progress">Original</string>
     <string name="read_aloud_from_current_page">From page</string>
+    <string name="read_aloud_pause_playback">Pause playback</string>
+    <string name="read_aloud_resume_playback">Resume playback</string>
+    <string name="open_read_aloud_player">Open listening page</string>
     <string name="playing_timer">Playing(%d min left)</string>
     <string name="ps_hide_navigation_bar">Hide virtual buttons when reading</string>
     <string name="pt_hide_navigation_bar">Hide navigation bar</string>
@@ -1281,6 +1284,7 @@
     <string name="hide">Hide</string>
     <string name="hide_when_status_bar_show">Hide when status bar show</string>
     <string name="reverse_toc">Reverse toc</string>
+    <string name="reverse_toc_display">Reverse display</string>
     <string name="show_discovery">Show Discovery</string>
     <string name="modern_discovery_page">Use Modern Discovery Page</string>
     <string name="modern_discovery_page_summary">Use source selector + tag tabs + in-page discovery book list</string>
