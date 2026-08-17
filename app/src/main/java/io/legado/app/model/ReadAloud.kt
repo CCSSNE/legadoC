@@ -130,6 +130,16 @@ object ReadAloud {
         }
     }
 
+    fun seekToParagraph(context: Context, chapterIndex: Int, paragraphIndex: Int) {
+        if (BaseReadAloudService.isRun) {
+            val intent = Intent(context, commandClass())
+            intent.action = IntentAction.seekReadAloudParagraph
+            intent.putExtra("chapterIndex", chapterIndex)
+            intent.putExtra("paragraphIndex", paragraphIndex)
+            context.startForegroundServiceCompat(intent)
+        }
+    }
+
     fun prevChapter(context: Context) {
         if (BaseReadAloudService.isRun) {
             val intent = Intent(context, commandClass())
