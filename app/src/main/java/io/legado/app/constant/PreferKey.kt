@@ -110,6 +110,8 @@ object PreferKey {
     const val bookImportFileName = "bookImportFileName"
     const val episodeExportFileName = "episodeExportFileName"
     const val recordLog = "recordLog"
+    const val disableSourceToast = "disableSourceToast"
+    const val disableAllToast = "disableAllToast"
     const val processText = "process_text"
     const val cleanCache = "cleanCache"
     const val cacheManage = "cacheManage"

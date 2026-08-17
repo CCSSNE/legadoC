@@ -2092,4 +2092,8 @@
     <string name="ai_chapter_purify_request_template_summary_inherited">未单独配置，继承全局请求模板。</string>
     <string name="ai_chapter_purify_request_template_summary_custom">使用独立请求模板。</string>
     <string name="ai_restore_global_request">恢复全局请求</string>
+    <string name="disable_source_toast">关闭书源底部弹窗</string>
+    <string name="disable_source_toast_summary">不显示书源脚本通过 toast 或 longToast 发出的底部弹窗</string>
+    <string name="disable_all_toast">关闭所有底部弹窗</string>
+    <string name="disable_all_toast_summary">不显示应用内通过 Toast 发出的所有底部弹窗，包括书源弹窗</string>
 </resources>

@@ -17,6 +17,13 @@ private var toast: Toast? = null
 
 private var toastLegacy: Toast? = null
 
+private fun cancelToastsWhenDisabled(): Boolean {
+    if (!AppConfig.disableAllToast) return false
+    toast?.cancel()
+    toastLegacy?.cancel()
+    return true
+}
+
 fun Context.toastOnUi(message: Int, duration: Int = Toast.LENGTH_SHORT) {
     toastOnUi(getString(message), duration)
 }
@@ -25,6 +32,7 @@ fun Context.toastOnUi(message: Int, duration: Int = Toast.LENGTH_SHORT) {
 @Suppress("DEPRECATION")
 fun Context.toastOnUi(message: CharSequence?, duration: Int = Toast.LENGTH_SHORT) {
     runOnUI {
+        if (cancelToastsWhenDisabled()) return@runOnUI
         kotlin.runCatching {
             toast?.cancel()
             toast = Toast(this)
@@ -43,6 +51,7 @@ fun Context.toastOnUi(message: CharSequence?, duration: Int = Toast.LENGTH_SHORT
 
 fun Context.toastOnUiLegacy(message: CharSequence) {
     runOnUI {
+        if (cancelToastsWhenDisabled()) return@runOnUI
         kotlin.runCatching {
             if (toastLegacy == null || BuildConfig.DEBUG || AppConfig.recordLog) {
                 toastLegacy = Toast.makeText(this, message, Toast.LENGTH_SHORT)
@@ -65,6 +74,7 @@ fun Context.longToastOnUi(message: CharSequence?) {
 
 fun Context.longToastOnUiLegacy(message: CharSequence) {
     runOnUI {
+        if (cancelToastsWhenDisabled()) return@runOnUI
         kotlin.runCatching {
             if (toastLegacy == null || BuildConfig.DEBUG || AppConfig.recordLog) {
                 toastLegacy = Toast.makeText(this, message, Toast.LENGTH_LONG)

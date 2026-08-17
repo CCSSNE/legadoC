@@ -1512,6 +1512,12 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
     val recordHeapDump get() = appCtx.getPrefBoolean(PreferKey.recordHeapDump, false)
 
+    val disableSourceToast
+        get() = appCtx.getPrefBoolean(PreferKey.disableSourceToast, false)
+
+    val disableAllToast
+        get() = appCtx.getPrefBoolean(PreferKey.disableAllToast, false)
+
     val loadCoverOnlyWifi get() = appCtx.getPrefBoolean(PreferKey.loadCoverOnlyWifi, false)
 
     val showAddToShelfAlert get() = appCtx.getPrefBoolean(PreferKey.showAddToShelfAlert, true)
