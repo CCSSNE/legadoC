@@ -64,6 +64,19 @@ import io.legado.app.utils.gone
 
 /**
  * 音频播放
+ *
+ * 融合第二阶段：听书页面统一
+ * TODO: 当前只支持音频书（AudioPlay），将来应该支持所有引擎类型：
+ * - SourceAudioEngine：书源音频（当前支持）
+ * - SystemTtsEngine：系统 TTS 朗读（待支持）
+ * - HttpTtsEngine：HTTP TTS 朗读（待支持）
+ *
+ * 需要修改：
+ * 1. 检测当前使用的引擎类型（通过 BaseReadAloudService.engineManager）
+ * 2. 根据引擎类型显示不同的 UI
+ *    - 音频引擎：显示时间进度、播放/暂停、快进/快退
+ *    - TTS 引擎：显示段落进度、播放/暂停、上一段/下一段
+ * 3. 统一的播放控制接口
  */
 @SuppressLint("ObsoleteSdkInt")
 class AudioPlayActivity :

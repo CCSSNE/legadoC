@@ -25,6 +25,15 @@ object ReadAloud {
     var httpTTS: HttpTTS? = null
 
     private fun getReadAloudClass(): Class<*> {
+        // 融合第一阶段：优先使用统一服务
+        // 如果启用了融合模式，使用 UnifiedReadAloudService
+        val useFusion = true // TODO: 可以通过配置控制是否启用融合模式
+
+        if (useFusion) {
+            return io.legado.app.service.UnifiedReadAloudService::class.java
+        }
+
+        // 原有逻辑：根据 TTS 引擎选择服务
         val ttsEngine = ttsEngine
         if (ttsEngine.isNullOrBlank()) {
             httpTTS = null
