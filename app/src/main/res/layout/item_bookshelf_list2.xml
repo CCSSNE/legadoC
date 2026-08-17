@@ -39,8 +39,8 @@
         android:padding="3dp"
         android:src="@drawable/ic_volume_up"
         android:visibility="gone"
-        app:layout_constraintEnd_toEndOf="@+id/iv_cover"
-        app:layout_constraintTop_toBottomOf="@+id/iv_local"
+        app:layout_constraintEnd_toStartOf="@+id/iv_local"
+        app:layout_constraintTop_toTopOf="@+id/iv_cover"
         tools:visibility="visible" />
 
     <androidx.appcompat.widget.AppCompatImageView
