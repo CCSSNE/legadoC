@@ -1088,6 +1088,7 @@ interface JsExtensions : JsEncodeUtils {
      */
     fun toast(msg: Any?) {
         rhinoContextOrNull?.ensureActive()
+        if (AppConfig.disableSourceToast) return
         appCtx.toastOnUi("${getTag()}: ${msg.toString()}")
     }
 
@@ -1096,6 +1097,7 @@ interface JsExtensions : JsEncodeUtils {
      */
     fun longToast(msg: Any?) {
         rhinoContextOrNull?.ensureActive()
+        if (AppConfig.disableSourceToast) return
         appCtx.longToastOnUi("${getTag()}: ${msg.toString()}")
     }
 

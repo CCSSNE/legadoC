@@ -1326,4 +1326,8 @@
     <string name="export_tab_background">背景</string>
     <string name="epub_background_color">背景顏色</string>
     <string name="epub_background_image">背景圖片</string>
+    <string name="disable_source_toast">關閉書源底部彈窗</string>
+    <string name="disable_source_toast_summary">不顯示書源腳本透過 toast 或 longToast 發出的底部彈窗</string>
+    <string name="disable_all_toast">關閉所有底部彈窗</string>
+    <string name="disable_all_toast_summary">不顯示應用程式透過 Toast 發出的所有底部彈窗，包括書源彈窗</string>
 </resources>
