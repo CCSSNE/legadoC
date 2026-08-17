@@ -153,7 +153,6 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         }
         ivChapter.setOnClickListener { tocActivityResult.launch(book.bookUrl) }
         ivCache?.setOnClickListener { showAudioCacheRangeDialog(book) }
-        ivPlayMode?.gone()
         llPlayMenu.applyNavigationBarPadding()
     }
 
@@ -356,7 +355,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             updatePlayState()
             if (state == Status.STOP) finish()
         }
-        observeEvent<ReadAloudProgress>(EventBus.READ_ALOUD_PROGRESS, ::updateProgress)
+        observeEvent<ReadAloudProgress>(EventBus.READ_ALOUD_PROGRESS) { updateProgress(it) }
         observeEvent<Int>(EventBus.READ_ALOUD_DS) { updateSessionIndicators() }
         observeEvent<Bundle>(EventBus.TTS_PROGRESS) { updateChapterUi() }
         observeEvent<Boolean>(EventBus.MEDIA_BUTTON) { updatePlayState() }
