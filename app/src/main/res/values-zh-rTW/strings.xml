@@ -1324,4 +1324,5 @@
     <string name="disable_source_toast_summary">不顯示書源腳本透過 toast 或 longToast 發出的底部彈窗</string>
     <string name="disable_all_toast">關閉所有底部彈窗</string>
     <string name="disable_all_toast_summary">不顯示應用程式透過 Toast 發出的所有底部彈窗，包括書源彈窗</string>
+    <string name="reverse_toc_display">&#x53CD;&#x5411;&#x986F;&#x793A;</string>
 </resources>

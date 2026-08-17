@@ -76,6 +76,17 @@ fun Menu.applyUiMenuStyle(context: Context, theme: Theme = Theme.Auto): Menu {
     return applyTint(context, theme)
 }
 
+@SuppressLint("RestrictedApi")
+fun Menu.surfaceOverflowItems(): List<MenuItem> {
+    return buildList {
+        for (index in 0 until size()) {
+            val item = getItem(index)
+            val requiresOverflow = (item as? MenuItemImpl)?.requiresOverflow() ?: true
+            if (item.isVisible && requiresOverflow) add(item)
+        }
+    }
+}
+
 fun Menu.applyUiMenuTitleSize(context: Context? = null) {
     val textSize = context?.resources?.getDimensionPixelSize(R.dimen.menu_text_size) ?: 16
     val dip = context == null

@@ -150,6 +150,7 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
             AppConfig.tocCountWords
         menu.findItem(R.id.menu_split_long_chapter)?.isChecked =
             viewModel.bookData.value?.getSplitLongChapter() == true
+        menu.findItem(R.id.menu_reverse_toc_display)?.isChecked = viewModel.isTocDisplayReversed
         return super.onMenuOpened(featureId, menu)
     }
 
@@ -173,6 +174,11 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
                     putExtra("index", it.durChapterIndex)
                     putExtra("chapterPos", 0)
                 })
+            }
+
+            R.id.menu_reverse_toc_display -> {
+                item.isChecked = viewModel.toggleTocDisplayOrder()
+                viewModel.chapterListCallBack?.upChapterList(searchView?.query?.toString())
             }
 
             R.id.menu_use_replace -> {

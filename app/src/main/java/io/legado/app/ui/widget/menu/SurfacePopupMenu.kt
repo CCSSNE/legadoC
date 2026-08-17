@@ -112,6 +112,7 @@ class SurfacePopupMenu(
 
     private val levels = ArrayDeque<Level>()
     private var itemClickListener: ((MenuItem) -> Boolean)? = null
+    private var activeMenu: Menu = menu
 
     fun inflate(@MenuRes menuRes: Int) {
         SupportMenuInflater(context).inflate(menuRes, menu)
@@ -122,11 +123,16 @@ class SurfacePopupMenu(
     }
 
     fun show() {
+        show(menu, menu.visibleItemsForSurface())
+    }
+
+    fun show(sourceMenu: Menu, rootItems: List<MenuItem>) {
         cancelDismissFade()
         val generation = ++surfaceGeneration
-        menu.applyUiMenuStyle(context)
+        activeMenu = sourceMenu
+        sourceMenu.applyUiMenuStyle(context)
         levels.clear()
-        levels.addLast(Level(null, menu.visibleItemsForSurface()))
+        levels.addLast(Level(null, rootItems))
         renderCurrentLevel()
         SurfaceBackdrop.installStatic(surface, SurfaceStyles.popup(context))
         measurePopup()
@@ -180,7 +186,7 @@ class SurfacePopupMenu(
                     prepareBackdrop(++surfaceGeneration)
                 } else {
                     dismissWithFade {
-                        itemClickListener?.invoke(item) ?: menu.performIdentifierAction(item.itemId, 0)
+                        itemClickListener?.invoke(item) ?: activeMenu.performIdentifierAction(item.itemId, 0)
                     }
                 }
             }
