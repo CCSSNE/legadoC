@@ -250,53 +250,55 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         }
     }
 
-    private fun bindTtsText() = binding.run {
+    private fun bindTtsText() {
         val chapter = ReadBook.curTextChapter ?: run {
-            ttsContentScroll.gone()
-            return@run
+            binding.ttsContentScroll.gone()
+            return
         }
-        val paragraphs = chapter.getParagraphs(false)
-        val canReuseViews = ttsTextChapterIndex == chapter.chapter.index &&
-                ttsParagraphViews.size == paragraphs.size &&
-                paragraphs.indices.all { index ->
-                    ttsParagraphViews[index].text.toString() == paragraphs[index].text
+        binding.run {
+            val paragraphs = chapter.getParagraphs(false)
+            val canReuseViews = ttsTextChapterIndex == chapter.chapter.index &&
+                    ttsParagraphViews.size == paragraphs.size &&
+                    paragraphs.indices.all { index ->
+                        ttsParagraphViews[index].text.toString() == paragraphs[index].text
+                    }
+            if (canReuseViews) {
+                ttsContentScroll.visible(paragraphs.isNotEmpty())
+                updateTtsParagraphHighlight(displayedProgress)
+                return@run
+            }
+            ttsTextChapterIndex = chapter.chapter.index
+            ttsContent.removeAllViews()
+            ttsParagraphViews.clear()
+            paragraphs.forEach { paragraph ->
+                val view = TextView(this@AudioPlayActivity).apply {
+                    text = paragraph.text
+                    textSize = if (paragraph.isTitle) 22f else 19f
+                    setTextColor(Color.WHITE)
+                    alpha = if (paragraph.isTitle) 1f else 0.9f
+                    setLineSpacing(0f, 1.12f)
+                    setPadding(0, 8.dpToPx(), 0, 8.dpToPx())
+                    isClickable = true
+                    setOnClickListener {
+                        ReadAloud.seekToTextPosition(
+                            this@AudioPlayActivity,
+                            chapter.chapter.index,
+                            paragraph.chapterPosition,
+                        )
+                    }
                 }
-        if (canReuseViews) {
+                ttsParagraphViews += view
+                ttsContent.addView(
+                    view,
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    )
+                )
+            }
             ttsContentScroll.visible(paragraphs.isNotEmpty())
             updateTtsParagraphHighlight(displayedProgress)
-            return@run
         }
-        ttsTextChapterIndex = chapter.chapter.index
-        ttsContent.removeAllViews()
-        ttsParagraphViews.clear()
-        paragraphs.forEach { paragraph ->
-            val view = TextView(this@AudioPlayActivity).apply {
-                text = paragraph.text
-                textSize = if (paragraph.isTitle) 22f else 19f
-                setTextColor(Color.WHITE)
-                alpha = if (paragraph.isTitle) 1f else 0.9f
-                setLineSpacing(0f, 1.12f)
-                setPadding(0, 8.dpToPx(), 0, 8.dpToPx())
-                isClickable = true
-                setOnClickListener {
-                    ReadAloud.seekToTextPosition(
-                        this@AudioPlayActivity,
-                        chapter.chapter.index,
-                        paragraph.chapterPosition,
-                    )
-                }
-            }
-            ttsParagraphViews += view
-            ttsContent.addView(
-                view,
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                )
-            )
-        }
-        ttsContentScroll.visible(paragraphs.isNotEmpty())
-        updateTtsParagraphHighlight(displayedProgress)
     }
 
     private fun updateTtsParagraphHighlight(progress: ReadAloudProgress?) {
