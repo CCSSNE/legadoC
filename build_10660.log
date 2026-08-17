@@ -1,0 +1,104 @@
+Starting a Gradle Daemon (subsequent builds will be faster)
+> Task :modules:rhino:preBuild UP-TO-DATE
+> Task :modules:book:preBuild UP-TO-DATE
+> Task :modules:book:preDebugBuild UP-TO-DATE
+> Task :modules:rhino:preDebugBuild UP-TO-DATE
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preAppCBuild UP-TO-DATE
+> Task :modules:rhino:generateDebugResources UP-TO-DATE
+> Task :modules:book:generateDebugResources UP-TO-DATE
+> Task :app:mergeAppCNativeDebugMetadata NO-SOURCE
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :modules:rhino:packageDebugResources UP-TO-DATE
+> Task :modules:book:packageDebugResources UP-TO-DATE
+> Task :modules:rhino:processDebugNavigationResources UP-TO-DATE
+> Task :modules:book:processDebugNavigationResources UP-TO-DATE
+> Task :modules:book:parseDebugLocalResources UP-TO-DATE
+> Task :modules:book:generateDebugRFile UP-TO-DATE
+> Task :modules:book:writeDebugAarMetadata UP-TO-DATE
+> Task :modules:book:extractDeepLinksDebug UP-TO-DATE
+> Task :modules:book:processDebugManifest UP-TO-DATE
+> Task :modules:book:compileDebugLibraryResources UP-TO-DATE
+> Task :modules:book:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :modules:rhino:parseDebugLocalResources UP-TO-DATE
+> Task :modules:rhino:generateDebugRFile UP-TO-DATE
+> Task :modules:rhino:writeDebugAarMetadata UP-TO-DATE
+> Task :modules:rhino:extractDeepLinksDebug UP-TO-DATE
+> Task :modules:rhino:processDebugManifest UP-TO-DATE
+> Task :modules:rhino:compileDebugLibraryResources UP-TO-DATE
+> Task :modules:rhino:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :modules:book:compileDebugKotlin NO-SOURCE
+> Task :modules:book:javaPreCompileDebug UP-TO-DATE
+> Task :app:dataBindingMergeDependencyArtifactsAppC UP-TO-DATE
+> Task :modules:book:compileDebugJavaWithJavac UP-TO-DATE
+> Task :modules:book:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :modules:book:generateDebugAssets UP-TO-DATE
+> Task :modules:book:mergeDebugAssets UP-TO-DATE
+> Task :modules:book:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :modules:book:processDebugJavaRes UP-TO-DATE
+> Task :modules:book:mergeDebugJniLibFolders UP-TO-DATE
+> Task :modules:book:mergeDebugNativeLibs NO-SOURCE
+> Task :modules:book:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :modules:rhino:compileDebugKotlin UP-TO-DATE
+> Task :modules:rhino:javaPreCompileDebug UP-TO-DATE
+> Task :modules:rhino:compileDebugJavaWithJavac NO-SOURCE
+> Task :modules:rhino:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :modules:rhino:generateDebugAssets UP-TO-DATE
+> Task :modules:rhino:mergeDebugAssets UP-TO-DATE
+> Task :modules:rhino:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :modules:rhino:processDebugJavaRes UP-TO-DATE
+> Task :modules:rhino:mergeDebugJniLibFolders UP-TO-DATE
+> Task :modules:rhino:mergeDebugNativeLibs NO-SOURCE
+> Task :modules:rhino:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :app:generateAppCResources
+> Task :app:packageAppCResources
+> Task :app:processAppCNavigationResources
+> Task :app:generateAppCBuildConfig
+> Task :app:checkAppCAarMetadata UP-TO-DATE
+> Task :app:compileAppCNavigationResources UP-TO-DATE
+> Task :app:mapAppCSourceSetPaths
+> Task :app:createAppCCompatibleScreenManifests
+> Task :app:extractDeepLinksAppC UP-TO-DATE
+> Task :app:parseAppCLocalResources
+> Task :app:mergeAppCResources
+> Task :app:processAppCMainManifest
+> Task :app:dataBindingGenBaseClassesAppC
+> Task :app:processAppCManifest
+> Task :app:javaPreCompileAppC UP-TO-DATE
+> Task :app:generateAppCAssets UP-TO-DATE
+> Task :app:mergeAppCAssets UP-TO-DATE
+> Task :app:compressAppCAssets UP-TO-DATE
+> Task :app:l8DexDesugarLibAppC UP-TO-DATE
+> Task :app:desugarAppCFileDependencies UP-TO-DATE
+> Task :app:checkAppCDuplicateClasses UP-TO-DATE
+> Task :app:mergeExtDexAppC UP-TO-DATE
+> Task :app:mergeLibDexAppC UP-TO-DATE
+> Task :app:mergeAppCJniLibFolders UP-TO-DATE
+> Task :app:mergeAppCNativeLibs UP-TO-DATE
+> Task :app:stripAppCDebugSymbols UP-TO-DATE
+> Task :app:validateSigningAppC UP-TO-DATE
+> Task :app:writeAppCAppMetadata UP-TO-DATE
+> Task :app:writeAppCSigningConfigVersions UP-TO-DATE
+> Task :app:processAppCManifestForPackage
+> Task :app:processAppCResources
+> Task :app:kspAppCKotlin
+> Task :app:compileAppCKotlin
+w: file:///D:/AI/audio/legadoC-own/app/src/main/java/io/legado/app/base/BaseActivity.kt:292:27 'val defaultDisplay: Display!' is deprecated. Deprecated in Java.
+w: file:///D:/AI/audio/legadoC-own/app/src/main/java/io/legado/app/help/ai/AiMcpClient.kt:281:34 Elvis operator (?:) always returns the left operand of non-nullable type 'ResponseBody'.
+w: file:///D:/AI/audio/legadoC-own/app/src/main/java/io/legado/app/ui/book/cache/CacheChapterDialog.kt:45:28 'fun <T : Parcelable!> getParcelable(p0: String?): T?' is deprecated. Deprecated in Java.
+w: file:///D:/AI/audio/legadoC-own/app/src/main/java/io/legado/app/ui/book/read/config/ReadStyleDialog.kt:998:25 'fun setColorFilter(p0: Int, p1: PorterDuff.Mode): Unit' is deprecated. Deprecated in Java.
+w: file:///D:/AI/audio/legadoC-own/app/src/main/java/io/legado/app/ui/main/MainActivity.kt:781:23 Return in function with expression body and without explicit return type. Use block body '{...}' or add an explicit return type. This will become an error in language version 2.4. See https://youtrack.jetbrains.com/issue/KTLC-288.
+
+> Task :app:compileAppCJavaWithJavac
+> Task :app:copyRoomSchemas NO-SOURCE
+> Task :app:dexBuilderAppC
+> Task :app:mergeAppCGlobalSynthetics UP-TO-DATE
+> Task :app:processAppCJavaRes UP-TO-DATE
+> Task :app:mergeAppCJavaResource UP-TO-DATE
+> Task :app:mergeProjectDexAppC
+> Task :app:packageAppC
+> Task :app:createAppCApkListingFileRedirect
+> Task :app:assembleAppC
+
+BUILD SUCCESSFUL in 3m 15s
+75 actionable tasks: 20 executed, 55 up-to-date
