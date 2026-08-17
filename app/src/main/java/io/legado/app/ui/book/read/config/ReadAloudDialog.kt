@@ -40,6 +40,8 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
     private var showMainMenuOnDismiss = false
     private var displayedReadProgress: ReadAloudProgress? = null
     private var trackingReadProgress = false
+    private val isSourceAudioSelected
+        get() = ReadAloud.selectedEngineType == ReadAloudEngineType.SOURCE_AUDIO
 
     override fun onStart() {
         super.onStart()
@@ -118,11 +120,6 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
         upPlayState()
         upSpeakEngineSummary()
         upTimerText(BaseReadAloudService.timeMinute)
-        val sourceAudio = ReadAloud.engineType == ReadAloudEngineType.SOURCE_AUDIO
-        cbTtsFollowSys.visible(!sourceAudio)
-        cbTtsFollowSys.isChecked = !sourceAudio &&
-            requireContext().getPrefBoolean("ttsFollowSys", false)
-        upTtsSpeechRateEnabled(sourceAudio || !cbTtsFollowSys.isChecked)
         upSeekTimer()
         upReadProgress()
     }
@@ -165,14 +162,6 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
             (activity as? ReadBookActivity)?.toReadAloudBackstage()
             dismissAllowingStateLoss()
         }
-        cbTtsFollowSys.setOnCheckedChangeListener { _, isChecked ->
-            if (ReadAloud.engineType == ReadAloudEngineType.SOURCE_AUDIO) {
-                return@setOnCheckedChangeListener
-            }
-            AppConfig.ttsFlowSys = isChecked
-            upTtsSpeechRateEnabled(!isChecked)
-            upTtsSpeechRate()
-        }
         ivTtsSpeechReduce.setOnClickListener {
             seekTtsSpeechRate.progress -= 1
             saveSpeechRate(seekTtsSpeechRate.progress)
@@ -194,8 +183,6 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
                 ReadAloud.setTimer(requireContext(), times[index])
             }
         }
-        //设置保存的默认值
-        configureSpeechRateSlider()
         seekTtsSpeechRate.setOnSeekBarChangeListener(object : SeekBarChangeListener {
 
             override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
@@ -258,6 +245,7 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
             R.string.current_tts_engine_summary,
             speakEngineSummary()
         )
+        bindSpeechRateControls()
     }
 
     private fun speakEngineSummary(): String {
@@ -280,6 +268,22 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
             seekTtsSpeechRate.isEnabled = enabled
             ivTtsSpeechReduce.isEnabled = enabled
             ivTtsSpeechAdd.isEnabled = enabled
+        }
+    }
+
+    private fun bindSpeechRateControls() = binding.run {
+        cbTtsFollowSys.setOnCheckedChangeListener(null)
+        cbTtsFollowSys.visible(!isSourceAudioSelected)
+        cbTtsFollowSys.isChecked = AppConfig.ttsFlowSys
+        configureSpeechRateSlider()
+        upTtsSpeechRateEnabled(isSourceAudioSelected || !cbTtsFollowSys.isChecked)
+        cbTtsFollowSys.setOnCheckedChangeListener { _, isChecked ->
+            if (isSourceAudioSelected) {
+                return@setOnCheckedChangeListener
+            }
+            AppConfig.ttsFlowSys = isChecked
+            upTtsSpeechRateEnabled(!isChecked)
+            upTtsSpeechRate()
         }
     }
 
@@ -342,7 +346,7 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
 
     @SuppressLint("SetTextI18n")
     private fun upTtsSpeechRateText(value: Int) {
-        binding.tvTtsSpeedValue.text = if (ReadAloud.engineType == ReadAloudEngineType.SOURCE_AUDIO) {
+        binding.tvTtsSpeedValue.text = if (isSourceAudioSelected) {
             "%.1f".format(value / 10f + 0.5f)
         } else {
             ((value + 5) / 10f).toString()
@@ -350,7 +354,7 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
     }
 
     private fun upTtsSpeechRate() {
-        if (ReadAloud.engineType == ReadAloudEngineType.SOURCE_AUDIO) {
+        if (isSourceAudioSelected) {
             ReadAloud.setSpeed(
                 requireContext(),
                 binding.seekTtsSpeechRate.progress / 10f + 0.5f,
@@ -361,7 +365,7 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
     }
 
     private fun configureSpeechRateSlider() = binding.seekTtsSpeechRate.run {
-        if (ReadAloud.engineType == ReadAloudEngineType.SOURCE_AUDIO) {
+        if (isSourceAudioSelected) {
             max = 25
         } else {
             max = 45
@@ -371,7 +375,7 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
     }
 
     private fun currentSpeechRateProgress(): Int {
-        return if (ReadAloud.engineType == ReadAloudEngineType.SOURCE_AUDIO) {
+        return if (isSourceAudioSelected) {
             (((ReadBook.book?.getPlaySpeed() ?: 1f) - 0.5f) * 10).toInt().coerceIn(0, 25)
         } else {
             AppConfig.ttsSpeechRate
@@ -379,7 +383,7 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
     }
 
     private fun saveSpeechRate(progress: Int) {
-        if (ReadAloud.engineType != ReadAloudEngineType.SOURCE_AUDIO) {
+        if (!isSourceAudioSelected) {
             AppConfig.ttsSpeechRate = progress
         }
     }

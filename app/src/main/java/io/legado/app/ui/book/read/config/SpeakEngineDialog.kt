@@ -293,8 +293,12 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
     private fun upTts(tts: String) {
         ttsEngine = tts
         sysTtsViews.forEach {
-            val isChecked = GSON.fromJsonObject<SelectItem<String>>(ttsEngine)
-                .getOrNull()?.value == it.tag
+            val isChecked = if (ttsEngine == ReadAloud.SOURCE_AUDIO_ENGINE_ID) {
+                it.tag == ReadAloud.SOURCE_AUDIO_ENGINE_ID
+            } else {
+                GSON.fromJsonObject<SelectItem<String>>(ttsEngine)
+                    .getOrNull()?.value == it.tag
+            }
             if (isChecked) {
                 currentSelect = -1
             }
