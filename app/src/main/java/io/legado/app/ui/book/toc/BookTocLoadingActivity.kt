@@ -66,7 +66,8 @@ class BookTocLoadingActivity :
     private fun startReadActivity(book: Book) {
         val cls = when {
             book.isVideo -> VideoPlayerActivity::class.java
-            book.isAudio -> AudioPlayActivity::class.java
+            // 融合第一阶段：音频书也进入普通阅读页面
+            // book.isAudio -> AudioPlayActivity::class.java
             !book.isLocal && book.isImage && AppConfig.showMangaUi -> ReadMangaActivity::class.java
             else -> ReadBookActivity::class.java
         }

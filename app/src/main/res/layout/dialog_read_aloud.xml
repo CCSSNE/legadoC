@@ -125,6 +125,46 @@
 
     </LinearLayout>
 
+    <!-- 融合第一阶段：朗读进度条 -->
+    <LinearLayout
+        android:id="@+id/panel_progress"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="10dp"
+        android:paddingTop="6dp"
+        android:paddingEnd="10dp"
+        android:paddingBottom="6dp">
+
+        <TextView
+            android:id="@+id/tv_dur_time"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="00:00"
+            android:textColor="@color/primaryText"
+            android:textSize="12sp" />
+
+        <io.legado.app.lib.theme.view.ThemeSeekBar
+            android:id="@+id/seek_read_progress"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:layout_marginEnd="8dp"
+            android:max="100" />
+
+        <TextView
+            android:id="@+id/tv_all_time"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="00:00"
+            android:textColor="@color/primaryText"
+            android:textSize="12sp" />
+
+    </LinearLayout>
+
     <LinearLayout
         android:id="@+id/panel_timer"
         android:layout_width="match_parent"
