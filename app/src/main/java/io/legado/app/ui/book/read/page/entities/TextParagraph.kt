@@ -13,5 +13,6 @@ data class TextParagraph(
     val chapterPosition: Int get() = firstLine.chapterPosition
     val realNum: Int get() = firstLine.paragraphNum
     val isParagraphEnd: Boolean get() = lastLine.isParagraphEnd
+    val isTitle: Boolean get() = textLines.isNotEmpty() && textLines.all { it.isTitle }
 
 }
