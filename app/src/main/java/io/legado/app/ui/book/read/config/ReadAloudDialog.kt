@@ -117,6 +117,7 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
         cbTtsFollowSys.isChecked = requireContext().getPrefBoolean("ttsFollowSys", false)
         upTtsSpeechRateEnabled(!cbTtsFollowSys.isChecked)
         upSeekTimer()
+        upReadProgress()
     }
 
     private fun initEvent() = binding.run {
@@ -204,6 +205,15 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
 
             override fun onStopTrackingTouch(seekBar: SeekBar) {
                 ReadAloud.setTimer(requireContext(), seekTimer.progress)
+            }
+        })
+
+        // 融合第一阶段：朗读进度条控制
+        seekReadProgress.setOnSeekBarChangeListener(object : SeekBarChangeListener {
+            override fun onStopTrackingTouch(seekBar: SeekBar) {
+                // TODO: 处理进度拖动
+                // 对于 TTS 引擎：跳转到对应段落
+                // 对于音频引擎：跳转到对应时间
             }
         })
     }
@@ -299,6 +309,17 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
 
     private fun upTtsSpeechRate() {
         ReadAloud.upTtsSpeechRate(requireContext())
+    }
+
+    // 融合第一阶段：更新朗读进度条
+    private fun upReadProgress() = binding.run {
+        // TODO: 根据当前引擎类型显示不同的进度
+        // 音频引擎：显示时间进度（00:00 / 15:30）
+        // TTS 引擎：显示段落进度（段 3 / 15）
+        tvDurTime.text = "00:00"
+        tvAllTime.text = "00:00"
+        seekReadProgress.progress = 0
+        seekReadProgress.max = 100
     }
 
     override fun observeLiveBus() {
