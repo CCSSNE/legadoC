@@ -61,6 +61,8 @@ class ChangeBookSourceDialog() : BaseDialogFragment(R.layout.dialog_book_change_
     Toolbar.OnMenuItemClickListener,
     ChangeBookSourceAdapter.CallBack {
 
+    protected override val chromeMode: ChromeMode = ChromeMode.FULL_SCREEN_TOOL
+
     constructor(name: String, author: String) : this() {
         arguments = Bundle().apply {
             putString("name", name)

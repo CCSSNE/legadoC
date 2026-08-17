@@ -58,6 +58,8 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_chapter_c
     ChangeChapterSourceAdapter.CallBack,
     ChangeChapterTocAdapter.Callback {
 
+    protected override val chromeMode: ChromeMode = ChromeMode.FULL_SCREEN_TOOL
+
     constructor(name: String, author: String, chapterIndex: Int, chapterTitle: String) : this() {
         arguments = Bundle().apply {
             putString("name", name)
