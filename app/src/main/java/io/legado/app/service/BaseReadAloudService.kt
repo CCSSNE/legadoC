@@ -34,7 +34,6 @@ import android.telephony.TelephonyManager
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
-import android.view.ViewGroup
 import android.view.ViewOutlineProvider
 import android.view.WindowManager
 import android.view.animation.LinearInterpolator
@@ -263,7 +262,6 @@ abstract class BaseReadAloudService : BaseService(),
                 (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this))
     }
 
-    @SuppressLint("ClickableViewAccessibility")
     private fun showReadAloudFloatingWindow() {
         if (!isMainThread()) {
             lifecycleScope.launch(Main) {
@@ -352,7 +350,6 @@ abstract class BaseReadAloudService : BaseService(),
     }
 
     private fun onReadAloudFloatingAttached(view: View) {
-        attachReadAloudFloatingTouch(view)
         updateReadAloudFloatingCover()
         updateReadAloudFloatingPlayState()
         applyReadAloudFloatingAvoidance(currentAvoidanceY)
@@ -425,7 +422,7 @@ abstract class BaseReadAloudService : BaseService(),
             }
         }
         container.addView(closeView, LinearLayout.LayoutParams(iconSize, iconSize))
-        return FrameLayout(this).apply {
+        return ReadAloudFloatingLayout(this).apply {
             addView(
                 container,
                 FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, height)
@@ -609,68 +606,67 @@ abstract class BaseReadAloudService : BaseService(),
         return rootLocation[1]
     }
 
-    private fun attachReadAloudFloatingTouch(view: View) {
-        val listener = ReadAloudFloatingTouchListener(view)
-        fun attach(target: View) {
-            target.setOnTouchListener(listener)
-            if (target is ViewGroup) {
-                for (index in 0 until target.childCount) {
-                    attach(target.getChildAt(index))
-                }
-            }
-        }
-        attach(view)
-    }
-
-    private inner class ReadAloudFloatingTouchListener(
-        private val dragView: View
-    ) : View.OnTouchListener {
+    private inner class ReadAloudFloatingLayout(context: Context) : FrameLayout(context) {
         private var initialX = 0
         private var initialY = 0
         private var initialTouchX = 0f
         private var initialTouchY = 0f
-        private var isClick = true
+        private var dragging = false
 
-        override fun onTouch(v: View, event: MotionEvent): Boolean {
+        init {
+            isClickable = true
+        }
+
+        override fun onInterceptTouchEvent(event: MotionEvent): Boolean {
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    val frameParams = dragView.layoutParams as? FrameLayout.LayoutParams
+                    val frameParams = layoutParams as? FrameLayout.LayoutParams
                     initialX = floatingParams?.x ?: frameParams?.leftMargin ?: 0
                     initialY = floatingParams?.y ?: (
                             (frameParams?.topMargin ?: 0) +
-                                    ((dragView.parent as? View)?.let { rootTopOnScreen(it) } ?: 0)
+                                    ((parent as? View)?.let { rootTopOnScreen(it) } ?: 0)
                             )
                     initialTouchX = event.rawX
                     initialTouchY = event.rawY
-                    isClick = true
+                    dragging = false
                     return false
                 }
-
                 MotionEvent.ACTION_MOVE -> {
                     val dx = (event.rawX - initialTouchX).toInt()
                     val dy = (event.rawY - initialTouchY).toInt()
                     if (kotlin.math.abs(dx) > 6.dpToPx() || kotlin.math.abs(dy) > 6.dpToPx()) {
-                        isClick = false
-                        updateReadAloudFloatingPosition(dragView, initialX + dx, initialY + dy)
+                        dragging = true
                         return true
                     }
                 }
-
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    if (!isClick) {
-                        val frameParams = dragView.layoutParams as? FrameLayout.LayoutParams
-                        saveReadAloudFloatingPosition(
-                            floatingParams?.x ?: frameParams?.leftMargin ?: initialX,
-                            floatingParams?.y ?: (
-                                    (frameParams?.topMargin ?: initialY) +
-                                            ((dragView.parent as? View)?.let { rootTopOnScreen(it) } ?: 0)
-                                    )
-                        )
-                    }
-                    return !isClick
+                    return dragging
                 }
             }
-            return false
+            return dragging
+        }
+
+        override fun onTouchEvent(event: MotionEvent): Boolean {
+            if (!dragging) return super.onTouchEvent(event)
+            when (event.action) {
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = (event.rawX - initialTouchX).toInt()
+                    val dy = (event.rawY - initialTouchY).toInt()
+                    updateReadAloudFloatingPosition(this, initialX + dx, initialY + dy)
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    val frameParams = layoutParams as? FrameLayout.LayoutParams
+                    saveReadAloudFloatingPosition(
+                        floatingParams?.x ?: frameParams?.leftMargin ?: initialX,
+                        floatingParams?.y ?: (
+                                (frameParams?.topMargin ?: initialY) +
+                                        ((parent as? View)?.let { rootTopOnScreen(it) } ?: 0)
+                                )
+                    )
+                    dragging = false
+                }
+            }
+            return true
         }
     }
 

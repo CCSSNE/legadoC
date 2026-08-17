@@ -42,6 +42,7 @@ object AudioCacheTaskManager {
     private val cancelFlags = ConcurrentHashMap<String, AtomicBoolean>()
     private val futures = ConcurrentHashMap<String, Future<*>>()
     private val lastNotifyTimes = ConcurrentHashMap<String, Long>()
+    private val lastNotifyStatuses = ConcurrentHashMap<String, CacheTaskStatus>()
     private val requests = ConcurrentHashMap<String, AudioCacheTaskRequest>()
     private val pausingBookUrls = ConcurrentHashMap.newKeySet<String>()
     private val pendingResumeBookUrls = ConcurrentHashMap.newKeySet<String>()
@@ -289,6 +290,7 @@ object AudioCacheTaskManager {
                     }
                 }
                 lastNotifyTimes.remove(book.bookUrl)
+                lastNotifyStatuses.remove(book.bookUrl)
             }
         }
         futures[book.bookUrl] = future
@@ -415,26 +417,31 @@ object AudioCacheTaskManager {
         val terminal = !state.active && state.status.isTerminalNotificationStatus()
         val now = System.currentTimeMillis()
         val last = lastNotifyTimes[state.bookUrl] ?: 0L
-        if (!terminal && now - last < NOTIFICATION_INTERVAL_MS) return
+        val statusChanged = lastNotifyStatuses[state.bookUrl] != state.status
+        if (!terminal && !statusChanged && now - last < NOTIFICATION_INTERVAL_MS) return
         lastNotifyTimes[state.bookUrl] = now
+        lastNotifyStatuses[state.bookUrl] = state.status
         val chapterPercent = state.currentChapterPercent()
         val totalPosition = when {
             state.status == CacheTaskStatus.COMPLETED -> state.totalChapters
             state.currentChapterIndex > 0 -> state.currentChapterIndex
             else -> state.completedChapters
         }.coerceIn(0, state.totalChapters.coerceAtLeast(0))
+        val contentText = if (state.status == CacheTaskStatus.RESOLVING) {
+            state.message
+        } else {
+            appCtx.getString(
+                R.string.audio_cache_notification_progress,
+                state.bookName,
+                chapterPercent?.toString() ?: "--",
+                totalPosition,
+                state.totalChapters,
+            )
+        }
         val builder = NotificationCompat.Builder(appCtx, AppConst.channelIdDownload)
             .setSmallIcon(R.drawable.ic_status_bar_r)
             .setContentTitle(appCtx.getString(R.string.offline_cache))
-            .setContentText(
-                appCtx.getString(
-                    R.string.audio_cache_notification_progress,
-                    state.bookName,
-                    chapterPercent?.toString() ?: "--",
-                    totalPosition,
-                    state.totalChapters,
-                )
-            )
+            .setContentText(contentText)
             .setOngoing(state.active)
             .setOnlyAlertOnce(true)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)

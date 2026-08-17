@@ -305,30 +305,55 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         if (progress?.kind != ReadAloudProgress.Kind.PARAGRAPH ||
             progress.chapterIndex != ttsTextChapterIndex
         ) {
-            ttsParagraphViews.forEach { it.setTextColor(Color.WHITE) }
+            applyTtsParagraphHighlight(null)
             return
         }
         val chapter = ReadBook.curTextChapter ?: return
         val serviceParagraphs = chapter.getParagraphs(
             getPrefBoolean(PreferKey.readAloudByPage, false)
         )
-        val serviceParagraph = serviceParagraphs.getOrNull(progress.position) ?: return
+        val serviceParagraph = serviceParagraphs.getOrNull(progress.position) ?: run {
+            applyTtsParagraphHighlight(null)
+            return
+        }
         val selectedIndex = chapter.getParagraphs(false).indexOfFirst {
             serviceParagraph.chapterPosition in it.chapterIndices
         }
-        if (selectedIndex !in ttsParagraphViews.indices) return
-        ttsParagraphViews.forEachIndexed { index, view ->
-            view.setTextColor(if (index == selectedIndex) accentColor else Color.WHITE)
+        applyTtsParagraphHighlight(selectedIndex.takeIf { it in ttsParagraphViews.indices })
+    }
+
+    private fun updateTtsParagraphHighlightAt(chapterIndex: Int, chapterPosition: Int) {
+        if (chapterIndex != ttsTextChapterIndex) {
+            applyTtsParagraphHighlight(null)
+            return
         }
-        val selected = ttsParagraphViews[selectedIndex]
+        val chapter = ReadBook.curTextChapter ?: return
+        val selectedIndex = chapter.getParagraphs(false).indexOfFirst {
+            chapterPosition in it.chapterIndices
+        }
+        applyTtsParagraphHighlight(selectedIndex.takeIf { it in ttsParagraphViews.indices })
+    }
+
+    private fun applyTtsParagraphHighlight(selectedIndex: Int?) {
+        ttsParagraphViews.forEachIndexed { index, view ->
+            if (selectedIndex == null) {
+                view.setTextColor(Color.WHITE)
+                view.alpha = if (view.textSize >= 21.dpToPx().toFloat()) 1f else 0.9f
+            } else {
+                val selected = index == selectedIndex
+                view.setTextColor(if (selected) accentColor else Color.WHITE)
+                view.alpha = if (selected) 1f else 0.42f
+            }
+        }
+        val selected = selectedIndex?.let { ttsParagraphViews[it] } ?: return
         binding.ttsContentScroll.post {
-            val top = binding.ttsContentScroll.scrollY
-            val bottom = top + binding.ttsContentScroll.height
-            if (selected.top < top || selected.bottom > bottom) {
-                binding.ttsContentScroll.smoothScrollTo(
-                    0,
-                    (selected.top - binding.ttsContentScroll.height / 3).coerceAtLeast(0),
-                )
+            val viewportHeight = binding.ttsContentScroll.height
+            if (viewportHeight <= 0) return@post
+            val maxScroll = (binding.ttsContent.height - viewportHeight).coerceAtLeast(0)
+            val target = (selected.top - (viewportHeight - selected.height) / 2)
+                .coerceIn(0, maxScroll)
+            if (kotlin.math.abs(binding.ttsContentScroll.scrollY - target) > 4) {
+                binding.ttsContentScroll.smoothScrollTo(0, target)
             }
         }
     }
@@ -509,7 +534,15 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             updateProgressForSelectedEngine()
         }
         observeEvent<Int>(EventBus.READ_ALOUD_DS) { updateSessionIndicators() }
-        observeEvent<Bundle>(EventBus.TTS_PROGRESS) { updateChapterUi() }
+        observeEvent<Bundle>(EventBus.TTS_PROGRESS) { progress ->
+            updateChapterUi()
+            if (ReadAloud.selectedEngineType != ReadAloudEngineType.SOURCE_AUDIO) {
+                updateTtsParagraphHighlightAt(
+                    progress.getInt("chapterIndex", ReadBook.durChapterIndex),
+                    progress.getInt("chapterPos", 0),
+                )
+            }
+        }
         observeEvent<Boolean>(EventBus.MEDIA_BUTTON) { updatePlayState() }
     }
 }

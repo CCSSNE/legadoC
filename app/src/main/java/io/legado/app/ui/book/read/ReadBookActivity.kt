@@ -1585,11 +1585,19 @@ class ReadBookActivity : BaseReadBookActivity(),
             }
             ReadAloudUiState.ReaderPanelMode.PLAYBACK -> {
                 hideReadAloudPagePanel()
-                showReadAloudPlaybackPanel()
+                if (AppConfig.readAloudHidePlaybackPanel) {
+                    hideReadAloudPlaybackPanel()
+                } else {
+                    showReadAloudPlaybackPanel()
+                }
             }
             ReadAloudUiState.ReaderPanelMode.PAGE_ACTION -> {
                 hideReadAloudPlaybackPanel()
-                showReadAloudPagePanel()
+                if (AppConfig.readAloudHidePagePanel) {
+                    hideReadAloudPagePanel()
+                } else {
+                    showReadAloudPagePanel()
+                }
             }
         }
     }
@@ -2897,6 +2905,12 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
         observeEvent<String>(PreferKey.readAloudFloatOnDesktop) {
             updateReadAloudPageFloating()
+        }
+        observeEvent<String>(PreferKey.readAloudHidePlaybackPanel) {
+            updateReadAloudPanels()
+        }
+        observeEvent<String>(PreferKey.readAloudHidePagePanel) {
+            updateReadAloudPanels()
         }
         observeEvent<List<SearchResult>>(EventBus.SEARCH_RESULT) {
             viewModel.searchResultList = it
