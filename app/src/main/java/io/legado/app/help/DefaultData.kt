@@ -21,6 +21,8 @@ import java.io.File
 
 object DefaultData {
 
+    private const val REMOVED_DEFAULT_RSS_SOURCE_URL = "https://loyc.xyz/b/daoru"
+
     fun upVersion() {
         if (LocalConfig.versionCode < AppConst.appInfo.versionCode) {
             Coroutine.async {
@@ -121,6 +123,7 @@ object DefaultData {
     }
 
     fun importDefaultRssSources() {
+        appDb.rssSourceDao.delete(REMOVED_DEFAULT_RSS_SOURCE_URL)
         appDb.rssSourceDao.deleteDefault()
         appDb.rssSourceDao.insert(*rssSources.toTypedArray())
     }
