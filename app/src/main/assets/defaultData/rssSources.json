@@ -1,5 +1,23 @@
 [
   {
+    "articleStyle": 0,
+    "cacheFirst": false,
+    "customOrder": 0,
+    "enableJs": true,
+    "enabled": true,
+    "enabledCookieJar": true,
+    "lastUpdateTime": 1782961017187,
+    "loadWithBaseUrl": true,
+    "preload": false,
+    "showWebLog": false,
+    "singleUrl": true,
+    "sourceGroup": "legado",
+    "sourceIcon": "https://legado.erchuang.online/favicon.ico",
+    "sourceName": "阅读 · 全版本汇总",
+    "sourceUrl": "https://legado.erchuang.online/",
+    "type": 0
+  },
+  {
     "customOrder": 2,
     "enableJs": true,
     "enabled": true,
@@ -22,16 +40,6 @@
     "sourceIcon": "https://gitee.com/lyc486/yuedu/raw/master/ycktb.gif",
     "sourceName": "源仓库",
     "sourceUrl": "http@js:eval(String(cache.getFromMemory('yckdm')))"
-  },
-  {
-    "customOrder": 4,
-    "enableJs": true,
-    "enabled": true,
-    "singleUrl": true,
-    "sourceComment": "版本：在线版\n——洛娅橙",
-    "sourceIcon": "https://gitee.com/lyc486/yuedu/raw/master/drtb.gif",
-    "sourceName": "导入",
-    "sourceUrl": "https://loyc.xyz/b/daoru"
   },
   {
     "customOrder": 5,
