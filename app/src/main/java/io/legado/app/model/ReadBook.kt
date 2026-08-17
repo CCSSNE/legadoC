@@ -15,9 +15,11 @@ import io.legado.app.data.entities.ReadRecord
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.ReadRecordDailyHelper
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.AudioTextMapping
 import io.legado.app.help.book.CacheManifestHelper
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.isEpub
+import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isPdf
@@ -881,6 +883,7 @@ object ReadBook : CoroutineScope by MainScope() {
                         }
                         callBack?.onLayoutPageCompleted(index, page)
                     }
+                    migrateLegacyAudioProgress(book, textChapter)
                     if (upContent) callBack?.upContent(offset, !available && resetPageOffset)
                     curPageChanged()
                     callBack?.contentLoadFinish("loadChapter")
@@ -923,6 +926,28 @@ object ReadBook : CoroutineScope by MainScope() {
         }
         chapterLoadingJobs[chapter.index] = job
         job.start()
+    }
+
+    private fun migrateLegacyAudioProgress(book: Book, textChapter: TextChapter) {
+        if (!book.isAudio || book.getAudioProgressVersion() >= 1) return
+
+        val legacyAudioPosition = book.durChapterPos.coerceAtLeast(0)
+        val mapping = AudioTextMapping.parse(textChapter.chapter.getVariable("lyric"))
+        val paragraphIndex = mapping.paragraphAt(legacyAudioPosition)
+        val paragraph = paragraphIndex?.let {
+            textChapter.getParagraphs(false).getOrNull(it)
+        }
+        val textPosition = paragraph?.chapterPosition ?: 0
+        book.setSourceAudioProgress(textChapter.chapter.index, legacyAudioPosition)
+        book.durChapterPos = textPosition
+        durChapterPos = textPosition
+        book.setAudioProgressVersion(1)
+        book.update()
+        AppLog.putDebug(
+            "Audio progress migrated: book=${book.bookUrl}, chapter=${textChapter.chapter.index}, " +
+                    "audioMs=$legacyAudioPosition, textPosition=$textPosition, " +
+                    "mapped=${paragraph != null}"
+        )
     }
 
     suspend fun contentLoadFinishAwait(
@@ -973,6 +998,7 @@ object ReadBook : CoroutineScope by MainScope() {
                         }
                         callBack?.onLayoutPageCompleted(index, page)
                     }
+                    migrateLegacyAudioProgress(book, textChapter)
                     if (upContent) callBack?.upContent(offset, !available && resetPageOffset)
                     curPageChanged()
                     callBack?.contentLoadFinish("contentLoadAwait")

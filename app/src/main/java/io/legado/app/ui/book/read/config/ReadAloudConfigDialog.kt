@@ -74,9 +74,12 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
             get() {
                 val ttsEngine = ReadAloud.ttsEngine
                     ?: return getString(R.string.system_tts)
+                if (ttsEngine == ReadAloud.SOURCE_AUDIO_ENGINE_ID) {
+                    return getString(R.string.source_audio_engine)
+                }
                 if (StringUtils.isNumeric(ttsEngine)) {
                     return appDb.httpTTSDao.getName(ttsEngine.toLong())
-                        ?: getString(R.string.system_tts)
+                        ?: getString(R.string.http_tts_missing, ttsEngine)
                 }
                 return GSON.fromJsonObject<SelectItem<String>>(ttsEngine).getOrNull()?.title
                     ?: getString(R.string.system_tts)

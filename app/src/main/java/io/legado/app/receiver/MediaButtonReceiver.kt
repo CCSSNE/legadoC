@@ -8,10 +8,8 @@ import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
 import io.legado.app.help.LifecycleHelp
 import io.legado.app.help.config.AppConfig
-import io.legado.app.model.AudioPlay
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
-import io.legado.app.service.AudioPlayService
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.book.audio.AudioPlayActivity
 import io.legado.app.ui.book.read.ReadBookActivity
@@ -83,18 +81,8 @@ class MediaButtonReceiver : BroadcastReceiver() {
                 BaseReadAloudService.isRun -> {
                     if (BaseReadAloudService.isPlay()) {
                         ReadAloud.pause(context)
-                        AudioPlay.pause(context)
                     } else {
                         ReadAloud.resume(context)
-                        AudioPlay.resume(context)
-                    }
-                }
-
-                AudioPlayService.isRun -> {
-                    if (AudioPlayService.pause) {
-                        AudioPlay.resume(context)
-                    } else {
-                        AudioPlay.pause(context)
                     }
                 }
 

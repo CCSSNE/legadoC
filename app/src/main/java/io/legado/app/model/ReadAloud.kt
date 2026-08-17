@@ -12,8 +12,9 @@ import io.legado.app.help.book.isAudio
 import io.legado.app.help.config.AppConfig
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.service.HttpReadAloudService
+import io.legado.app.service.ReadAloudEngineType
+import io.legado.app.service.SourceAudioReadAloudService
 import io.legado.app.service.TTSReadAloudService
-import io.legado.app.service.UnifiedReadAloudService
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.StringUtils
 import io.legado.app.utils.postEvent
@@ -22,26 +23,60 @@ import io.legado.app.utils.toastOnUi
 import splitties.init.appCtx
 
 object ReadAloud {
-    private var aloudClass: Class<*> = getReadAloudClass()
-    val ttsEngine get() = ReadBook.book?.getTtsEngine() ?: AppConfig.ttsEngine
-    var httpTTS: HttpTTS? = null
+    const val SOURCE_AUDIO_ENGINE_ID = "sourceAudio"
 
-    private fun getReadAloudClass(): Class<*> {
-        if (ReadBook.book?.isAudio == true) {
-            httpTTS = null
-            return UnifiedReadAloudService::class.java
+    val ttsEngine: String?
+        get() = ReadBook.book?.let { book ->
+            book.getTtsEngine() ?: if (book.isAudio) {
+                SOURCE_AUDIO_ENGINE_ID
+            } else {
+                AppConfig.ttsEngine
+            }
+        } ?: AppConfig.ttsEngine
+
+    var httpTTS: HttpTTS? = null
+        private set
+
+    val engineType: ReadAloudEngineType
+        get() = when (BaseReadAloudService.runningClass) {
+            SourceAudioReadAloudService::class.java -> ReadAloudEngineType.SOURCE_AUDIO
+            HttpReadAloudService::class.java -> ReadAloudEngineType.HTTP_TTS
+            TTSReadAloudService::class.java -> ReadAloudEngineType.SYSTEM_TTS
+            else -> selectedEngineType()
         }
 
-        val ttsEngine = ttsEngine
-        if (ttsEngine.isNullOrBlank()) {
+    private fun selectedEngineType(): ReadAloudEngineType {
+        val selected = ttsEngine
+        return when {
+            selected == SOURCE_AUDIO_ENGINE_ID -> ReadAloudEngineType.SOURCE_AUDIO
+            StringUtils.isNumeric(selected) -> ReadAloudEngineType.HTTP_TTS
+            else -> ReadAloudEngineType.SYSTEM_TTS
+        }
+    }
+
+    private fun getReadAloudClass(): Class<out BaseReadAloudService>? {
+        val book = ReadBook.book
+        if (ttsEngine == SOURCE_AUDIO_ENGINE_ID) {
+            httpTTS = null
+            if (book?.isAudio != true) {
+                reportEngineError("书源音频引擎只能用于有声书")
+                return null
+            }
+            return SourceAudioReadAloudService::class.java
+        }
+
+        val selected = ttsEngine
+        if (selected.isNullOrBlank()) {
             httpTTS = null
             return TTSReadAloudService::class.java
         }
-        if (StringUtils.isNumeric(ttsEngine)) {
-            httpTTS = appDb.httpTTSDao.get(ttsEngine.toLong())
-            if (httpTTS != null) {
-                return HttpReadAloudService::class.java
+        if (StringUtils.isNumeric(selected)) {
+            httpTTS = appDb.httpTTSDao.get(selected.toLong())
+            if (httpTTS == null) {
+                reportEngineError("HTTP TTS 配置不存在：$selected")
+                return null
             }
+            return HttpReadAloudService::class.java
         }
         httpTTS = null
         return TTSReadAloudService::class.java
@@ -49,11 +84,17 @@ object ReadAloud {
 
     fun upReadAloudClass() {
         stop(appCtx)
-        aloudClass = getReadAloudClass()
     }
 
-    private fun commandClass(): Class<*> {
-        return BaseReadAloudService.runningClass ?: aloudClass
+    private fun commandClass(): Class<out BaseReadAloudService>? {
+        @Suppress("UNCHECKED_CAST")
+        return BaseReadAloudService.runningClass as? Class<out BaseReadAloudService>
+            ?: getReadAloudClass()
+    }
+
+    private fun reportEngineError(message: String) {
+        AppLog.put(message)
+        appCtx.toastOnUi(message)
     }
 
     fun play(
@@ -62,7 +103,8 @@ object ReadAloud {
         pageIndex: Int = ReadBook.durPageIndex,
         startPos: Int = 0
     ) {
-        val intent = Intent(context, aloudClass)
+        val serviceClass = commandClass() ?: return
+        val intent = Intent(context, serviceClass)
         intent.action = IntentAction.play
         intent.putExtra("play", play)
         intent.putExtra("pageIndex", pageIndex)
@@ -92,7 +134,7 @@ object ReadAloud {
 
     fun pause(context: Context) {
         if (BaseReadAloudService.isRun) {
-            val intent = Intent(context, commandClass())
+            val intent = Intent(context, commandClass() ?: return)
             intent.action = IntentAction.pause
             context.startForegroundServiceCompat(intent)
         }
@@ -100,7 +142,7 @@ object ReadAloud {
 
     fun resume(context: Context) {
         if (BaseReadAloudService.isRun) {
-            val intent = Intent(context, commandClass())
+            val intent = Intent(context, commandClass() ?: return)
             intent.action = IntentAction.resume
             context.startForegroundServiceCompat(intent)
         }
@@ -108,7 +150,7 @@ object ReadAloud {
 
     fun stop(context: Context) {
         if (BaseReadAloudService.isRun) {
-            val intent = Intent(context, commandClass())
+            val intent = Intent(context, commandClass() ?: return)
             intent.action = IntentAction.stop
             context.startForegroundServiceCompat(intent)
         }
@@ -116,7 +158,7 @@ object ReadAloud {
 
     fun prevParagraph(context: Context) {
         if (BaseReadAloudService.isRun) {
-            val intent = Intent(context, commandClass())
+            val intent = Intent(context, commandClass() ?: return)
             intent.action = IntentAction.prevParagraph
             context.startForegroundServiceCompat(intent)
         }
@@ -124,25 +166,25 @@ object ReadAloud {
 
     fun nextParagraph(context: Context) {
         if (BaseReadAloudService.isRun) {
-            val intent = Intent(context, commandClass())
+            val intent = Intent(context, commandClass() ?: return)
             intent.action = IntentAction.nextParagraph
             context.startForegroundServiceCompat(intent)
         }
     }
 
-    fun seekToParagraph(context: Context, chapterIndex: Int, paragraphIndex: Int) {
+    fun seekToProgress(context: Context, chapterIndex: Int, position: Int) {
         if (BaseReadAloudService.isRun) {
-            val intent = Intent(context, commandClass())
-            intent.action = IntentAction.seekReadAloudParagraph
+            val intent = Intent(context, commandClass() ?: return)
+            intent.action = IntentAction.seekReadAloudProgress
             intent.putExtra("chapterIndex", chapterIndex)
-            intent.putExtra("paragraphIndex", paragraphIndex)
+            intent.putExtra("position", position)
             context.startForegroundServiceCompat(intent)
         }
     }
 
     fun prevChapter(context: Context) {
         if (BaseReadAloudService.isRun) {
-            val intent = Intent(context, commandClass())
+            val intent = Intent(context, commandClass() ?: return)
             intent.action = IntentAction.prev
             context.startForegroundServiceCompat(intent)
         }
@@ -150,7 +192,7 @@ object ReadAloud {
 
     fun nextChapter(context: Context) {
         if (BaseReadAloudService.isRun) {
-            val intent = Intent(context, commandClass())
+            val intent = Intent(context, commandClass() ?: return)
             intent.action = IntentAction.next
             context.startForegroundServiceCompat(intent)
         }
@@ -158,7 +200,7 @@ object ReadAloud {
 
     fun upTtsSpeechRate(context: Context) {
         if (BaseReadAloudService.isRun) {
-            val intent = Intent(context, commandClass())
+            val intent = Intent(context, commandClass() ?: return)
             intent.action = IntentAction.upTtsSpeechRate
             context.startForegroundServiceCompat(intent)
         }
@@ -166,9 +208,18 @@ object ReadAloud {
 
     fun setTimer(context: Context, minute: Int) {
         if (BaseReadAloudService.isRun) {
-            val intent = Intent(context, commandClass())
+            val intent = Intent(context, commandClass() ?: return)
             intent.action = IntentAction.setTimer
             intent.putExtra("minute", minute)
+            context.startForegroundServiceCompat(intent)
+        }
+    }
+
+    fun setSpeed(context: Context, speed: Float) {
+        if (BaseReadAloudService.isRun) {
+            val intent = Intent(context, commandClass() ?: return)
+            intent.action = IntentAction.setSpeed
+            intent.putExtra("speed", speed)
             context.startForegroundServiceCompat(intent)
         }
     }

@@ -1,6 +1,7 @@
 package io.legado.app.help.book
 
 import android.os.Build
+import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.AppPattern.spaceRegex
@@ -98,42 +99,21 @@ class ContentProcessor private constructor(
         chineseConvert: Boolean = true,
         reSegment: Boolean = true
     ): BookContent {
-        // 融合第一阶段：音频书内容适配
         if (book.isAudio) {
-            // 对于音频书，content 是音频 URL
-            // 尝试获取歌词/字幕作为显示内容
-            val lyric = chapter.getVariable("lyric")
-            val displayContent = if (!lyric.isNullOrBlank()) {
-                lyric
-            } else {
-                // 没有歌词时显示占位文本
-                "♪ 正在播放音频\n\n本章节为音频内容，请点击朗读按钮收听。\n\n音频地址：${content.take(50)}${if (content.length > 50) "..." else ""}"
-            }
-
-            // 处理标题
-            val titleText = if (includeTitle) {
-                chapter.getDisplayTitle(
+            val transcript = AudioTextMapping.parse(chapter.getVariable("lyric"))
+            val contents = arrayListOf<String>()
+            if (includeTitle) {
+                contents += chapter.getDisplayTitle(
                     getTitleReplaceRules(),
                     useReplace = useReplace && book.getUseReplaceRule(),
                     replaceBook = book.toReplaceBook()
-                ) + "\n"
-            } else {
-                ""
+                )
             }
-
-            // 分段处理
-            val contents = arrayListOf<String>()
-            (titleText + displayContent).split("\n").forEach { str ->
-                val paragraph = str.trim {
-                    it.code <= 0x20 || it == '　'
-                }
-                if (paragraph.isNotEmpty()) {
-                    if (contents.isEmpty() && includeTitle) {
-                        contents.add(paragraph)
-                    } else {
-                        contents.add("${ReadBookConfig.paragraphIndent}$paragraph")
-                    }
-                }
+            val transcriptParagraphs = transcript.paragraphs.ifEmpty {
+                listOf(appCtx.getString(R.string.audio_chapter_no_transcript))
+            }
+            transcriptParagraphs.forEach { paragraph ->
+                contents += "${ReadBookConfig.paragraphIndent}$paragraph"
             }
             return BookContent(false, contents, null)
         }

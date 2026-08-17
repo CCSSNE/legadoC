@@ -1655,12 +1655,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefInt(PreferKey.sourceEditMaxLine, value)
         }
 
-    var audioPlayUseWakeLock: Boolean
-        get() = appCtx.getPrefBoolean(PreferKey.audioPlayWakeLock)
-        set(value) {
-            appCtx.putPrefBoolean(PreferKey.audioPlayWakeLock, value)
-        }
-
     var brightnessVwPos: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.brightnessVwPos)
         set(value) {

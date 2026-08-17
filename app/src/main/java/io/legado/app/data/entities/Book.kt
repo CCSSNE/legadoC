@@ -262,6 +262,27 @@ data class Book(
         return config.ttsEngine
     }
 
+    fun setSourceAudioProgress(chapterIndex: Int, position: Int) {
+        config.sourceAudioChapterIndex = chapterIndex
+        config.sourceAudioPosition = position.coerceAtLeast(0)
+    }
+
+    fun getSourceAudioChapterIndex(): Int? {
+        return config.sourceAudioChapterIndex
+    }
+
+    fun getSourceAudioPosition(): Int {
+        return config.sourceAudioPosition.coerceAtLeast(0)
+    }
+
+    fun getAudioProgressVersion(): Int {
+        return config.audioProgressVersion
+    }
+
+    fun setAudioProgressVersion(version: Int) {
+        config.audioProgressVersion = version
+    }
+
     fun setSplitLongChapter(limitLongContent: Boolean) {
         config.splitLongChapter = limitLongContent
     }
@@ -481,6 +502,9 @@ data class Book(
         var closeCredits: Int = 0,       //音频片尾
         var playMode: Int = 0,           //音频播放模式
         var playSpeed: Float = 1.0f,     //音频播放速度
+        var sourceAudioChapterIndex: Int? = null,
+        var sourceAudioPosition: Int = 0,
+        var audioProgressVersion: Int = 0,
         var mangaHorizontalScroll: Boolean? = null,
         var mangaDisablePageAnim: Boolean? = null,
         var mangaDisableHorizontalPageSnap: Boolean? = null,
