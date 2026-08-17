@@ -14,6 +14,7 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.ui.main.bookshelf.BookCollectionShelfItem
+import io.legado.app.ui.main.bookshelf.bindBookMediaBadge
 import io.legado.app.ui.main.bookshelf.loadCollectionCovers
 import io.legado.app.utils.gone
 import io.legado.app.utils.invisible
@@ -72,6 +73,7 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
                         tvName.gone()
                     }
                     ivCover.loadThumb(item, false)
+                    root.bindBookMediaBadge(item)
                     ivLocal.visible(AppConfig.showLocalBookIcon && item.isLocal)
                     upRefresh(binding, item)
                 } else {
@@ -86,7 +88,10 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
                                 )
 
                                 "refresh" -> upRefresh(binding, item)
-                                "local" -> ivLocal.visible(AppConfig.showLocalBookIcon && item.isLocal)
+                                "type" -> {
+                                    root.bindBookMediaBadge(item)
+                                    ivLocal.visible(AppConfig.showLocalBookIcon && item.isLocal)
+                                }
                             }
                         }
                     }
@@ -98,6 +103,7 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
                 if (payloads.isEmpty()) {
                     tvName.text = item.name
                     ivCover.loadThumb(item, false)
+                    root.bindBookMediaBadge(item)
                     ivLocal.visible(AppConfig.showLocalBookIcon && item.isLocal)
                     upRefresh(binding, item)
                 } else {
@@ -112,7 +118,10 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
                                 )
 
                                 "refresh" -> upRefresh(binding, item)
-                                "local" -> ivLocal.visible(AppConfig.showLocalBookIcon && item.isLocal)
+                                "type" -> {
+                                    root.bindBookMediaBadge(item)
+                                    ivLocal.visible(AppConfig.showLocalBookIcon && item.isLocal)
+                                }
                             }
                         }
                     }

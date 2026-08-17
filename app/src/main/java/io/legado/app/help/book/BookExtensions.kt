@@ -8,6 +8,7 @@ import com.script.buildScriptBindings
 import com.script.rhino.RhinoScriptEngine
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
+import io.legado.app.constant.BookMediaType
 import io.legado.app.constant.BookSourceType
 import io.legado.app.constant.BookType
 import io.legado.app.data.appDb
@@ -311,6 +312,11 @@ fun Book.releaseHtmlData() {
 }
 
 fun Book.isSameNameAuthor(other: Any?): Boolean {
+    if (other is Book) {
+        return name == other.name &&
+                author == other.author &&
+                BookMediaType.fromBookType(type) == BookMediaType.fromBookType(other.type)
+    }
     if (other is BaseBook) {
         return name == other.name && author == other.author
     }

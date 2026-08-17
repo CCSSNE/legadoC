@@ -14,6 +14,7 @@ import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import io.legado.app.R
+import io.legado.app.constant.BookMediaType
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.ui.book.toc.BookTocLoadingActivity
@@ -95,6 +96,7 @@ fun Fragment.startActivityForBook(
             putExtra("name", book.name)
             putExtra("author", book.author)
             putExtra("bookUrl", book.bookUrl)
+            putExtra(BookMediaType.EXTRA_MEDIA_TYPE, BookMediaType.fromBookType(book.type))
             apply(configIntent)
         }
         return

@@ -15,6 +15,7 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.ui.main.bookshelf.BookCollectionShelfItem
+import io.legado.app.ui.main.bookshelf.bindBookMediaBadge
 import io.legado.app.ui.main.bookshelf.loadCollectionCovers
 import io.legado.app.utils.gone
 import io.legado.app.utils.invisible
@@ -104,6 +105,7 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
             tvRead.text = item.durChapterTitle
             tvLast.text = item.latestChapterTitle
             ivCover.load(item, false)
+            root.bindBookMediaBadge(item)
             flHasNew.visible()
             ivAuthor.visible()
             ivLast.visible()
@@ -130,6 +132,7 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
                             )
 
                             "refresh" -> upRefresh(this, item)
+                            "type" -> root.bindBookMediaBadge(item)
                         }
                     }
                 }
@@ -174,6 +177,7 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
             tvRead.text = item.durChapterTitle
             tvLast.text = item.latestChapterTitle
             ivCover.load(item, false)
+            root.bindBookMediaBadge(item)
             flHasNew.visible()
             ivAuthor.visible()
             ivLast.visible()
@@ -199,6 +203,7 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
                             )
 
                             "refresh" -> upRefresh(this, item)
+                            "type" -> root.bindBookMediaBadge(item)
                         }
                     }
                 }

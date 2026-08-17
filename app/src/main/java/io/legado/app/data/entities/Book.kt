@@ -9,6 +9,7 @@ import androidx.room.PrimaryKey
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
 import io.legado.app.constant.AppPattern
+import io.legado.app.constant.BookMediaType
 import io.legado.app.constant.BookType
 import io.legado.app.constant.PageAnim
 import io.legado.app.data.appDb
@@ -35,7 +36,7 @@ import kotlin.math.max
 @TypeConverters(Book.Converters::class)
 @Entity(
     tableName = "books",
-    indices = [Index(value = ["name", "author"], unique = true)]
+    indices = [Index(value = ["name", "author", "mediaType"], unique = true)]
 )
 data class Book(
     // 详情页Url(本地书源存储完整文件路径)
@@ -74,6 +75,10 @@ data class Book(
     // 类型,详见BookType
     @ColumnInfo(defaultValue = "0")
     var type: Int = BookType.text,
+    // Stable identity category. Mutable state flags remain in type.
+    @ColumnInfo(defaultValue = "0")
+    @BookMediaType.Type
+    var mediaType: Int = BookMediaType.fromBookType(type),
     // 自定义分组索引号
     @ColumnInfo(defaultValue = "0")
     var group: Long = 0,
@@ -173,6 +178,10 @@ data class Book(
     fun getDisplayCover() = if (customCoverUrl.isNullOrEmpty()) coverUrl else customCoverUrl
 
     fun getDisplayIntro() = if (customIntro.isNullOrEmpty()) intro else customIntro
+
+    fun syncMediaType() {
+        mediaType = BookMediaType.fromBookType(type)
+    }
 
     //自定义简介有自动更新的需求时，可通过更新intro再调用upCustomIntro()完成
     @Suppress("unused")

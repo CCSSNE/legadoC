@@ -430,7 +430,11 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
                 requireContext().showReadRecordBookActionDialog(item.book.name, item.book, item.book.name) {
                     viewLifecycleOwner.lifecycleScope.launch {
                         withContext(IO) {
-                            appDb.readRecentBookDao.deleteSameBook(item.book.name, item.book.author)
+                            appDb.readRecentBookDao.deleteSameBook(
+                                item.book.name,
+                                item.book.author,
+                                item.book.mediaType
+                            )
                             ReadRecordWidgetStore.removeRecentSnapshot(item.book)
                         }
                         loadData(force = true)
@@ -496,7 +500,11 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
                     viewLifecycleOwner.lifecycleScope.launch {
                         withContext(IO) {
                             item.book?.let { book ->
-                                appDb.readRecentBookDao.deleteSameBook(book.name, book.author)
+                                appDb.readRecentBookDao.deleteSameBook(
+                                    book.name,
+                                    book.author,
+                                    book.mediaType
+                                )
                                 ReadRecordWidgetStore.removeRecentSnapshot(book)
                             } ?: run {
                                 appDb.readRecentBookDao.delete(item.snapshot.bookUrl)

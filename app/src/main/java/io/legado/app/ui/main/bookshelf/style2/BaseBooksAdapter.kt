@@ -31,8 +31,7 @@ abstract class BaseBooksAdapter<VH : RecyclerView.ViewHolder>(
         override fun areItemsTheSame(oldItem: Any, newItem: Any): Boolean {
             return when {
                 oldItem is Book && newItem is Book -> {
-                    oldItem.name == newItem.name
-                            && oldItem.author == newItem.author
+                    oldItem.bookUrl == newItem.bookUrl
                 }
 
                 oldItem is BookGroup && newItem is BookGroup -> {
@@ -56,6 +55,7 @@ abstract class BaseBooksAdapter<VH : RecyclerView.ViewHolder>(
                             oldItem.durChapterTitle == newItem.durChapterTitle &&
                             oldItem.latestChapterTitle == newItem.latestChapterTitle &&
                             oldItem.lastCheckCount == newItem.lastCheckCount &&
+                            oldItem.type == newItem.type &&
                             oldItem.getDisplayCover() == newItem.getDisplayCover() &&
                             oldItem.getUnreadChapterNum() == newItem.getUnreadChapterNum()
                 }
@@ -102,6 +102,9 @@ abstract class BaseBooksAdapter<VH : RecyclerView.ViewHolder>(
                         || oldItem.getUnreadChapterNum() != newItem.getUnreadChapterNum()
                     ) {
                         bundle.putBoolean("refresh", true)
+                    }
+                    if (oldItem.type != newItem.type) {
+                        bundle.putBoolean("type", true)
                     }
                 }
 

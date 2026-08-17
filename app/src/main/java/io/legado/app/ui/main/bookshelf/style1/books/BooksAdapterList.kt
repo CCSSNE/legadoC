@@ -15,6 +15,7 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.ui.main.bookshelf.BookCollectionShelfItem
+import io.legado.app.ui.main.bookshelf.bindBookMediaBadge
 import io.legado.app.ui.main.bookshelf.loadCollectionCovers
 import io.legado.app.utils.gone
 import io.legado.app.utils.invisible
@@ -75,6 +76,7 @@ class BooksAdapterList(
                 tvRead.text = item.durChapterTitle
                 tvLast.text = item.latestChapterTitle
                 ivCover.loadThumb(item, false, fragment, lifecycle)
+                root.bindBookMediaBadge(item)
                 ivLocal.visible(AppConfig.showLocalBookIcon && item.isLocal)
                 upRefresh(binding, item)
                 upLastUpdateTime(binding, item)
@@ -96,7 +98,10 @@ class BooksAdapterList(
 
                             "refresh" -> upRefresh(binding, item)
                             "lastUpdateTime" -> upLastUpdateTime(binding, item)
-                            "local" -> ivLocal.visible(AppConfig.showLocalBookIcon && item.isLocal)
+                            "type" -> {
+                                root.bindBookMediaBadge(item)
+                                ivLocal.visible(AppConfig.showLocalBookIcon && item.isLocal)
+                            }
                         }
                     }
                 }

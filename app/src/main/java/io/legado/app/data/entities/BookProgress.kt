@@ -1,8 +1,12 @@
 package io.legado.app.data.entities
 
+import io.legado.app.constant.BookMediaType
+
 data class BookProgress(
     val name: String,
     val author: String,
+    @BookMediaType.Type
+    val mediaType: Int = BookMediaType.text,
     val durChapterIndex: Int,
     val durChapterPos: Int,
     val durChapterTime: Long,
@@ -12,6 +16,7 @@ data class BookProgress(
     constructor(book: Book) : this(
         name = book.name,
         author = book.author,
+        mediaType = BookMediaType.fromBookType(book.type),
         durChapterIndex = book.durChapterIndex,
         durChapterPos = book.durChapterPos,
         durChapterTime = book.durChapterTime,

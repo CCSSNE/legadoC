@@ -3,6 +3,7 @@ package io.legado.app.ui.book
 import android.content.Context
 import android.content.Intent
 import io.legado.app.constant.BookSourceType
+import io.legado.app.constant.BookMediaType
 import io.legado.app.constant.BookType
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.SearchBook
@@ -19,6 +20,7 @@ object SearchBookOpenHelper {
             putExtra("bookUrl", book.bookUrl)
             putExtra("origin", book.origin)
             putExtra("originName", book.originName)
+            putExtra(BookMediaType.EXTRA_MEDIA_TYPE, BookMediaType.fromBookType(book.type))
             if (isVideo) {
                 putExtra(VideoPlayerActivity.EXTRA_PREPARE_BOOK_INFO, true)
             }

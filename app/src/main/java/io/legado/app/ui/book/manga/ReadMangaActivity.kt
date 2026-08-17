@@ -696,6 +696,7 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
             bookInfoActivity.launch {
                 putExtra("name", it.name)
                 putExtra("author", it.author)
+                putExtra("bookUrl", it.bookUrl)
             }
         }
     }

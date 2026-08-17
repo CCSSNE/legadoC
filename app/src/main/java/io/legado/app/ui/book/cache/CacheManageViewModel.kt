@@ -11,6 +11,7 @@ import com.bumptech.glide.Glide
 import io.legado.app.R
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.BookType
+import io.legado.app.constant.BookMediaType
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
@@ -353,7 +354,11 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
         return withContext(Dispatchers.IO) {
             val manifest = item.manifest ?: CacheManifestHelper.read(item.book) ?: return@withContext false
             val sameUrlBook = appDb.bookDao.getBook(manifest.bookUrl)
-            val sameNameBook = appDb.bookDao.getBook(manifest.name, manifest.author)
+            val sameNameBook = appDb.bookDao.getBook(
+                manifest.name,
+                manifest.author,
+                BookMediaType.fromBookType(manifest.type)
+            )
             val cacheBook = CacheManifestHelper.toBook(manifest).apply {
                 removeType(BookType.notShelf)
                 sameUrlBook?.let {

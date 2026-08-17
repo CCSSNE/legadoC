@@ -6,6 +6,7 @@ import android.view.MenuItem
 import androidx.activity.viewModels
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
+import io.legado.app.constant.BookMediaType
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
@@ -91,7 +92,11 @@ class AllBookmarkActivity : VMBaseActivity<ActivityAllBookmarkBinding, AllBookma
     override fun onItemClick(bookmark: Bookmark, position: Int) {
         lifecycleScope.launch {
             val book = withContext(IO) {
-                appDb.bookDao.getBook(bookmark.bookName, bookmark.bookAuthor)
+                appDb.bookDao.getBook(
+                    bookmark.bookName,
+                    bookmark.bookAuthor,
+                    BookMediaType.text
+                )
             }
             if (book == null) {
                 showDialogFragment(BookmarkDialog(bookmark, position))

@@ -9,6 +9,7 @@ import androidx.activity.viewModels
 import io.legado.app.R
 import io.legado.app.base.BaseViewModel
 import io.legado.app.base.VMBaseActivity
+import io.legado.app.constant.BookMediaType
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.data.appDb
@@ -49,7 +50,11 @@ class BookTocLoadingActivity :
         viewModel.loadBookToc(
             bookUrl = intent.getStringExtra("bookUrl"),
             name = intent.getStringExtra("name"),
-            author = intent.getStringExtra("author")
+            author = intent.getStringExtra("author"),
+            mediaType = intent.getIntExtra(
+                BookMediaType.EXTRA_MEDIA_TYPE,
+                BookMediaType.text
+            )
         ) { result ->
             result
                 .onSuccess { startReadActivity(it) }
@@ -96,6 +101,10 @@ class BookTocLoadingActivity :
                 .putExtra("name", intent.getStringExtra("name"))
                 .putExtra("author", intent.getStringExtra("author"))
                 .putExtra("bookUrl", intent.getStringExtra("bookUrl"))
+                .putExtra(
+                    BookMediaType.EXTRA_MEDIA_TYPE,
+                    intent.getIntExtra(BookMediaType.EXTRA_MEDIA_TYPE, BookMediaType.text)
+                )
         )
         finish()
     }
@@ -112,10 +121,11 @@ class BookTocLoadingViewModel(application: Application) : BaseViewModel(applicat
         bookUrl: String?,
         name: String?,
         author: String?,
+        @BookMediaType.Type mediaType: Int,
         success: (Result<Book>) -> Unit
     ) {
         execute {
-            val book = findBook(bookUrl, name, author)
+            val book = findBook(bookUrl, name, author, mediaType)
             if (appDb.bookChapterDao.getChapterCount(book.bookUrl) > 0) {
                 return@execute book
             }
@@ -132,12 +142,17 @@ class BookTocLoadingViewModel(application: Application) : BaseViewModel(applicat
         }
     }
 
-    private fun findBook(bookUrl: String?, name: String?, author: String?): Book {
+    private fun findBook(
+        bookUrl: String?,
+        name: String?,
+        author: String?,
+        @BookMediaType.Type mediaType: Int
+    ): Book {
         bookUrl?.let {
             appDb.bookDao.getBook(it)?.let { book -> return book }
         }
         if (!name.isNullOrBlank()) {
-            appDb.bookDao.getBook(name, author.orEmpty())?.let { return it }
+            appDb.bookDao.getBook(name, author.orEmpty(), mediaType)?.let { return it }
         }
         throw NoStackTraceException("book is null")
     }
