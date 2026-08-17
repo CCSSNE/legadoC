@@ -1096,6 +1096,8 @@
     <string name="read_aloud_prev_paragraph">朗读上一段</string>
     <string name="read_aloud_next_paragraph">朗读下一段</string>
     <string name="read_aloud_paragraph_progress">段 %1$d</string>
+    <string name="read_aloud_paragraph_pending">段 --</string>
+    <string name="read_aloud_time_pending">--:--</string>
     <string name="wait_download">待下载</string>
     <string name="download_success">下载完成</string>
     <string name="download_error">下载失败</string>
@@ -1994,6 +1996,7 @@
     <string name="cache_manage_audio_url_empty">未获取到音频链接</string>
     <string name="cache_manage_resolving_chapter">正在解析 %1$d/%2$d</string>
     <string name="cache_manage_task_progress">%1$d/%2$d · %3$s / %4$s · %5$s</string>
+    <string name="audio_cache_notification_progress">%1$s · %2$s%% · %3$d/%4$d章</string>
     <string name="cache_manage_task_done">缓存完成：%1$d 章</string>
     <string name="cache_manage_task_cancelled">缓存已停止</string>
     <string name="cache_manage_task_paused">缓存已暂停</string>

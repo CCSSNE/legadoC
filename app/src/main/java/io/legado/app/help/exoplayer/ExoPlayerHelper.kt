@@ -41,6 +41,7 @@ import splitties.init.appCtx
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import kotlin.math.max
 
 
 @Suppress("unused")
@@ -316,12 +317,15 @@ object ExoPlayerHelper {
         var totalCached = 0L
         val urls = getMediaUrls(request.url)
         require(urls.isNotEmpty()) { "media url is empty" }
+        var completedLength = 0L
+        var completedCached = 0L
         urls.forEach { url ->
             require(isDownloadableMediaUrl(url)) { "media url is not downloadable" }
             if (shouldCancel?.invoke() == true) {
                 throw kotlinx.coroutines.CancellationException("audio cache cancelled")
             }
             var cached = 0L
+            var knownLength = 0L
             val dataSourceFactory = if (useVideoCache) {
                 videoMediaDataSourceFactory(request.headers, book?.let(::videoBookCacheDir))
             } else {
@@ -342,10 +346,17 @@ object ExoPlayerHelper {
                 }
                 val newBytesCached = (bytesCached - cached).coerceAtLeast(0L)
                 cached = bytesCached
-                progress?.invoke(requestLength, bytesCached, newBytesCached)
+                knownLength = max(knownLength, requestLength.coerceAtLeast(0L))
+                progress?.invoke(
+                    if (requestLength > 0L) completedLength + requestLength else 0L,
+                    completedCached + bytesCached,
+                    newBytesCached
+                )
             }
             markMediaUrlComplete(url, useVideoCache, book)
             totalCached += cached
+            completedLength += knownLength
+            completedCached += cached
         }
         return totalCached
     }

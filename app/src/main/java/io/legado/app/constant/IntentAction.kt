@@ -13,6 +13,7 @@ object IntentAction {
     const val prevParagraph = "prevParagraph"
     const val nextParagraph = "nextParagraph"
     const val seekReadAloudProgress = "seekReadAloudProgress"
+    const val seekReadAloudTextPosition = "seekReadAloudTextPosition"
     const val upTtsSpeechRate = "upTtsSpeechRate"
     const val upTtsProgress = "upTtsProgress"
     const val adjustProgress = "adjustProgress"

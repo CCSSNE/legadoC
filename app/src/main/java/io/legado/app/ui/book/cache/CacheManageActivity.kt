@@ -46,6 +46,11 @@ class CacheManageActivity :
     CacheManageAdapter.Callback,
     CacheChapterDialog.Callback {
 
+    companion object {
+        const val EXTRA_MODE = "cacheManageMode"
+        const val MODE_AUDIO = "audio"
+    }
+
     override val binding by viewBinding(ActivityCacheManageBinding::inflate)
     override val viewModel by viewModels<CacheManageViewModel>()
 
@@ -58,10 +63,14 @@ class CacheManageActivity :
     private var swipeDownY = 0f
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        initView()
+        val initialMode = when (intent.getStringExtra(EXTRA_MODE)) {
+            MODE_AUDIO -> CacheManageMode.AUDIO
+            else -> CacheManageMode.BOOK
+        }
+        initView(initialMode)
         observeData()
         observeTasks()
-        viewModel.load(CacheManageMode.BOOK)
+        viewModel.load(initialMode)
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
@@ -82,7 +91,7 @@ class CacheManageActivity :
         return super.dispatchTouchEvent(ev)
     }
 
-    private fun initView() = binding.run {
+    private fun initView(initialMode: CacheManageMode) = binding.run {
         listOf(cardStatsTotal, cardStatsDetail, cardStatsCache).forEach {
             it.background = UiCorner.rounded(
                 ContextCompat.getColor(this@CacheManageActivity, R.color.background_card),
@@ -108,7 +117,7 @@ class CacheManageActivity :
         btnDeleteAll.setOnClickListener { deleteAll() }
         batchBar.applyNavigationBarMargin(withInitialMargin = true)
         statsScroll.applyNavigationBarPadding(withInitialPadding = true)
-        updateTabs(CacheManageMode.BOOK)
+        updateTabs(initialMode)
     }
 
     private fun observeData() {

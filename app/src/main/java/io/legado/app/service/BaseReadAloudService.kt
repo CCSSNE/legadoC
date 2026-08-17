@@ -192,6 +192,11 @@ abstract class BaseReadAloudService : BaseService(),
         override fun onActivityStarted(activity: Activity) = Unit
         override fun onActivityResumed(activity: Activity) {
             appFloatingActivity = activity
+            if (activity is AudioPlayActivity) {
+                removeReadAloudFloatingWindow()
+                upReadAloudNotification()
+                return
+            }
             if (AppConfig.readAloudHideFloatingWindow) {
                 removeReadAloudFloatingWindow()
                 upReadAloudNotification()
@@ -212,7 +217,11 @@ abstract class BaseReadAloudService : BaseService(),
                 appFloatingActivity = null
             }
         }
-        override fun onActivityStopped(activity: Activity) = Unit
+        override fun onActivityStopped(activity: Activity) {
+            if (isRun && activity is AudioPlayActivity && canDrawFloatingWindow()) {
+                showReadAloudFloatingWindow()
+            }
+        }
         override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
         override fun onActivityDestroyed(activity: Activity) {
             if (appFloatingActivity === activity) {
@@ -254,6 +263,11 @@ abstract class BaseReadAloudService : BaseService(),
             return
         }
         if (AppConfig.readAloudHideFloatingWindow) {
+            removeReadAloudFloatingWindow()
+            upReadAloudNotification()
+            return
+        }
+        if (appFloatingActivity is AudioPlayActivity) {
             removeReadAloudFloatingWindow()
             upReadAloudNotification()
             return
@@ -847,6 +861,10 @@ abstract class BaseReadAloudService : BaseService(),
                 intent.getIntExtra("chapterIndex", -1),
                 intent.getIntExtra("position", -1)
             )
+            IntentAction.seekReadAloudTextPosition -> seekToReadAloudTextPosition(
+                intent.getIntExtra("chapterIndex", -1),
+                intent.getIntExtra("chapterPosition", -1)
+            )
             IntentAction.setSpeed -> setPlaybackSpeed(intent.getFloatExtra("speed", Float.NaN))
             IntentAction.prev -> prevChapter()
             IntentAction.next -> nextChapter()
@@ -1095,6 +1113,34 @@ abstract class BaseReadAloudService : BaseService(),
         if (resumeAfterSeek) {
             play()
         }
+    }
+
+    protected open fun seekToReadAloudTextPosition(
+        chapterIndex: Int,
+        chapterPosition: Int
+    ) {
+        val chapter = textChapter ?: run {
+            stopReadAloudOnInvalidPosition("Read aloud text seek failed: chapter is missing")
+            return
+        }
+        if (chapter.chapter.index != chapterIndex) {
+            AppLog.putDebug(
+                "Ignore stale read aloud text seek: requestedChapter=$chapterIndex, " +
+                        "currentChapter=${chapter.chapter.index}"
+            )
+            publishParagraphProgress()
+            return
+        }
+        val paragraphs = chapter.getParagraphs(readAloudByPage)
+        val position = paragraphs.indexOfFirst { chapterPosition in it.chapterIndices }
+        if (position !in contentList.indices) {
+            stopReadAloudOnInvalidPosition(
+                "Read aloud text seek mapping is inconsistent: chapterPosition=$chapterPosition, " +
+                        "paragraph=$position, content=${contentList.size}, layout=${paragraphs.size}"
+            )
+            return
+        }
+        seekToReadAloudProgress(chapterIndex, position)
     }
 
     protected open fun setPlaybackSpeed(speed: Float) {

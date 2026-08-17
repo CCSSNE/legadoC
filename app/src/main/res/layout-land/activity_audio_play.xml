@@ -65,24 +65,48 @@
         app:civ_border_color="@color/accent"
         app:civ_border_width="2dp"
         app:layout_constraintBottom_toTopOf="@+id/ll_player_progress"
-        app:layout_constraintEnd_toStartOf="@+id/lyricViewX"
+        app:layout_constraintEnd_toStartOf="@+id/play_content"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/title_bar"
         tools:src="@drawable/image_rss_article" />
 
-    <com.dirror.lyricviewx.LyricViewX
-        android:id="@+id/lyricViewX"
+    <FrameLayout
+        android:id="@+id/play_content"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:visibility="gone"
         app:layout_constraintBottom_toTopOf="@+id/tv_sub_title"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toEndOf="@+id/iv_cover"
-        app:layout_constraintTop_toTopOf="@+id/iv_bg"
+        app:layout_constraintTop_toTopOf="@+id/iv_bg">
+
+        <com.dirror.lyricviewx.LyricViewX
+        android:id="@+id/lyricViewX"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone"
         app:lrcCurrentTextColor="@color/md_white_1000"
         app:lrcPadding="16dp"
         tools:visibility="visible"
         tools:lrcLabel="歌词文本区" />
+
+        <androidx.core.widget.NestedScrollView
+        android:id="@+id/tts_content_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fillViewport="true"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/tts_content"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+
+        </androidx.core.widget.NestedScrollView>
+
+    </FrameLayout>
 
     <TextView
         android:id="@+id/tv_sub_title"
