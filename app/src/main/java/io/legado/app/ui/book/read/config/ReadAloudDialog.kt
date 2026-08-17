@@ -210,10 +210,32 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
 
         // 融合第一阶段：朗读进度条控制
         seekReadProgress.setOnSeekBarChangeListener(object : SeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
+                // 实时更新进度显示
+                if (fromUser) {
+                    val book = ReadBook.book
+                    if (book?.isAudio == true) {
+                        // 音频引擎：显示时间
+                        binding.tvDurTime.text = formatTime(progress)
+                    } else {
+                        // TTS 引擎：显示段落
+                        binding.tvDurTime.text = "段 $progress"
+                    }
+                }
+            }
+
             override fun onStopTrackingTouch(seekBar: SeekBar) {
-                // TODO: 处理进度拖动
-                // 对于 TTS 引擎：跳转到对应段落
-                // 对于音频引擎：跳转到对应时间
+                // 拖动结束，跳转到对应位置
+                val book = ReadBook.book
+                if (book?.isAudio == true) {
+                    // 音频引擎：跳转到对应时间（毫秒）
+                    // TODO: 通过引擎接口跳转
+                    // currentEngine?.seekTo(seekBar.progress)
+                } else {
+                    // TTS 引擎：跳转到对应段落
+                    // TODO: 通过引擎接口跳转
+                    // currentEngine?.seekTo(seekBar.progress)
+                }
             }
         })
     }
@@ -313,13 +335,57 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
 
     // 融合第一阶段：更新朗读进度条
     private fun upReadProgress() = binding.run {
-        // TODO: 根据当前引擎类型显示不同的进度
+        // 根据当前引擎类型显示不同的进度
+        val book = ReadBook.book
+
+        if (book?.isAudio == true) {
+            // 音频书：显示时间进度
+            upAudioProgress()
+        } else {
+            // 普通书：显示段落进度
+            upTtsProgress()
+        }
+    }
+
+    private fun upAudioProgress() = binding.run {
         // 音频引擎：显示时间进度（00:00 / 15:30）
+        val currentPos = 0 // TODO: 从引擎获取当前位置（毫秒）
+        val duration = 0   // TODO: 从引擎获取总时长（毫秒）
+
+        tvDurTime.text = formatTime(currentPos)
+        tvAllTime.text = formatTime(duration)
+
+        if (duration > 0) {
+            seekReadProgress.max = duration
+            seekReadProgress.progress = currentPos
+        } else {
+            seekReadProgress.max = 100
+            seekReadProgress.progress = 0
+        }
+    }
+
+    private fun upTtsProgress() = binding.run {
         // TTS 引擎：显示段落进度（段 3 / 15）
-        tvDurTime.text = "00:00"
-        tvAllTime.text = "00:00"
-        seekReadProgress.progress = 0
-        seekReadProgress.max = 100
+        val currentPara = 0  // TODO: 从引擎获取当前段落
+        val totalPara = 0    // TODO: 从引擎获取总段落数
+
+        tvDurTime.text = "段 $currentPara"
+        tvAllTime.text = "段 $totalPara"
+
+        if (totalPara > 0) {
+            seekReadProgress.max = totalPara
+            seekReadProgress.progress = currentPara
+        } else {
+            seekReadProgress.max = 100
+            seekReadProgress.progress = 0
+        }
+    }
+
+    private fun formatTime(milliseconds: Int): String {
+        val seconds = milliseconds / 1000
+        val minutes = seconds / 60
+        val secs = seconds % 60
+        return String.format("%02d:%02d", minutes, secs)
     }
 
     override fun observeLiveBus() {
@@ -327,6 +393,31 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
         observeEvent<Int>(EventBus.READ_ALOUD_DS) { binding.seekTimer.progress = it }
         observeEvent<Boolean>(EventBus.CLOSE_READ_ALOUD_DIALOG) {
             dismissAllowingStateLoss()
+        }
+        // 融合第一阶段：监听进度更新事件
+        observeEvent<Pair<Int, Int>>(EventBus.READ_ALOUD_PROGRESS) { (position, duration) ->
+            updateReadProgress(position, duration)
+        }
+    }
+
+    private fun updateReadProgress(position: Int, duration: Int) = binding.run {
+        val book = ReadBook.book
+        if (book?.isAudio == true) {
+            // 音频引擎：更新时间进度
+            tvDurTime.text = formatTime(position)
+            tvAllTime.text = formatTime(duration)
+            if (duration > 0) {
+                seekReadProgress.max = duration
+                seekReadProgress.progress = position
+            }
+        } else {
+            // TTS 引擎：更新段落进度
+            tvDurTime.text = "段 $position"
+            tvAllTime.text = "段 $duration"
+            if (duration > 0) {
+                seekReadProgress.max = duration
+                seekReadProgress.progress = position
+            }
         }
     }
 
