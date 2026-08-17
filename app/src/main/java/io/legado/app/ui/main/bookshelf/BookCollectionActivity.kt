@@ -432,6 +432,7 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
         startActivity<BookInfoActivity> {
             putExtra("name", book.name)
             putExtra("author", book.author)
+            putExtra("bookUrl", book.bookUrl)
         }
     }
 

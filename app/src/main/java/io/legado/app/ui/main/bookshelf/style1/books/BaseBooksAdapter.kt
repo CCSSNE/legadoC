@@ -33,7 +33,7 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
             override fun areItemsTheSame(oldItem: Any, newItem: Any): Boolean {
                 return when {
                     oldItem is Book && newItem is Book -> {
-                        oldItem.name == newItem.name && oldItem.author == newItem.author
+                        oldItem.bookUrl == newItem.bookUrl
                     }
 
                     oldItem is BookCollectionShelfItem && newItem is BookCollectionShelfItem -> {
@@ -103,7 +103,7 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
                     bundle.putBoolean("lastUpdateTime", true)
                 }
                 if (oldItem.type != newItem.type) {
-                    bundle.putBoolean("local", true)
+                    bundle.putBoolean("type", true)
                 }
                 if (bundle.isEmpty) return null
                 return bundle

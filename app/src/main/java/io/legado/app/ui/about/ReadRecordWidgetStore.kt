@@ -1,6 +1,7 @@
 package io.legado.app.ui.about
 
 import io.legado.app.constant.PreferKey
+import io.legado.app.constant.BookMediaType
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.ReadRecordShow
@@ -17,6 +18,8 @@ data class ReadRecentVisualSnapshot(
     val bookUrl: String,
     val name: String,
     val author: String = "",
+    @BookMediaType.Type
+    val mediaType: Int = BookMediaType.text,
     val coverUrl: String? = null,
     val customCoverUrl: String? = null,
     val lastRead: Long = System.currentTimeMillis()
@@ -49,13 +52,16 @@ object ReadRecordWidgetStore {
 
     fun updateRecentSnapshot(book: Book, lastRead: Long) {
         val current = loadRecentSnapshots().toMutableList()
-        current.removeAll { it.sameBook(book.name, book.author) || it.bookUrl == book.bookUrl }
+        current.removeAll {
+            it.sameBook(book.name, book.author, book.mediaType) || it.bookUrl == book.bookUrl
+        }
         current.add(
             0,
             ReadRecentVisualSnapshot(
                 bookUrl = book.bookUrl,
                 name = book.name,
                 author = book.author,
+                mediaType = book.mediaType,
                 coverUrl = book.coverUrl,
                 customCoverUrl = book.customCoverUrl,
                 lastRead = lastRead
@@ -84,7 +90,9 @@ object ReadRecordWidgetStore {
 
     fun removeRecentSnapshot(book: Book) {
         val current = loadRecentSnapshots()
-            .filterNot { it.sameBook(book.name, book.author) || it.bookUrl == book.bookUrl }
+            .filterNot {
+                it.sameBook(book.name, book.author, book.mediaType) || it.bookUrl == book.bookUrl
+            }
         saveRecentSnapshots(current)
         updateAllWidgets()
     }
@@ -140,17 +148,22 @@ object ReadRecordWidgetStore {
         val normalizedName = name.trim()
         val normalizedAuthor = author.trim()
         return if (normalizedName.isNotEmpty()) {
-            "$normalizedName\n$normalizedAuthor"
+            "$normalizedName\n$normalizedAuthor\n$mediaType"
         } else {
             bookUrl
         }
     }
 
-    private fun ReadRecentVisualSnapshot.sameBook(name: String, author: String?): Boolean {
+    private fun ReadRecentVisualSnapshot.sameBook(
+        name: String,
+        author: String?,
+        @BookMediaType.Type mediaType: Int
+    ): Boolean {
         val normalizedName = name.trim()
         if (normalizedName.isEmpty()) return false
         return this.name.trim() == normalizedName &&
-            this.author.trim() == author.orEmpty().trim()
+            this.author.trim() == author.orEmpty().trim() &&
+            this.mediaType == mediaType
     }
 
     private fun updateAllWidgets() {

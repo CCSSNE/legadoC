@@ -255,7 +255,11 @@ object BookController {
         GSON.fromJsonObject<BookProgress>(postData)
             .onFailure { it.printOnDebug() }
             .getOrNull()?.let { bookProgress ->
-                appDb.bookDao.getBook(bookProgress.name, bookProgress.author)?.let { book ->
+                appDb.bookDao.getBook(
+                    bookProgress.name,
+                    bookProgress.author,
+                    bookProgress.mediaType
+                )?.let { book ->
                     book.durChapterIndex = bookProgress.durChapterIndex
                     book.durChapterPos = bookProgress.durChapterPos
                     book.durChapterTitle = bookProgress.durChapterTitle
@@ -266,7 +270,8 @@ object BookController {
                     appDb.bookDao.update(book)
                     ReadBook.book?.let {
                         if (it.name == bookProgress.name &&
-                            it.author == bookProgress.author
+                            it.author == bookProgress.author &&
+                            it.mediaType == bookProgress.mediaType
                         ) {
                             ReadBook.webBookProgress = bookProgress
                         }

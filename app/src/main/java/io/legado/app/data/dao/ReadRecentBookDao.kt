@@ -20,6 +20,7 @@ interface ReadRecentBookDao {
             inner join books as innerBooks on innerRecent.bookUrl = innerBooks.bookUrl
             where innerBooks.name = books.name
             and ifnull(innerBooks.author, '') = ifnull(books.author, '')
+            and innerBooks.mediaType = books.mediaType
             order by innerRecent.lastRead desc
             limit 1
         )
@@ -48,8 +49,9 @@ interface ReadRecentBookDao {
             select bookUrl from books
             where name = :name
             and ifnull(author, '') = ifnull(:author, '')
+            and mediaType = :mediaType
         )
         """
     )
-    fun deleteSameBook(name: String, author: String?)
+    fun deleteSameBook(name: String, author: String?, mediaType: Int)
 }

@@ -7,6 +7,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
+import io.legado.app.constant.BookMediaType
 import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
@@ -116,8 +117,11 @@ interface BookDao {
     @Query("SELECT * FROM books WHERE bookUrl = :bookUrl")
     fun getBook(bookUrl: String): Book?
 
+    @Query("SELECT * FROM books WHERE name = :name and author = :author and mediaType = :mediaType")
+    fun getBook(name: String, author: String, @BookMediaType.Type mediaType: Int): Book?
+
     @Query("SELECT * FROM books WHERE name = :name and author = :author")
-    fun getBook(name: String, author: String): Book?
+    fun getBooks(name: String, author: String): List<Book>
 
     @Query("""select distinct bs.* from books, book_sources bs 
         where origin == bookSourceUrl and origin not like '${BookType.localTag}%' 
@@ -171,8 +175,8 @@ interface BookDao {
     @Query("select exists(select 1 from books where bookUrl = :bookUrl)")
     fun has(bookUrl: String): Boolean
 
-    @Query("select exists(select 1 from books where name = :name and author = :author)")
-    fun has(name: String, author: String): Boolean
+    @Query("select exists(select 1 from books where name = :name and author = :author and mediaType = :mediaType)")
+    fun has(name: String, author: String, @BookMediaType.Type mediaType: Int): Boolean
 
     @Query(
         """select exists(select 1 from books where type & ${BookType.local} > 0 
@@ -181,10 +185,20 @@ interface BookDao {
     fun hasFile(fileName: String): Boolean
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    fun insert(vararg book: Book)
+    fun insertEntities(vararg book: Book)
+
+    fun insert(vararg book: Book) {
+        book.forEach(Book::syncMediaType)
+        insertEntities(*book)
+    }
 
     @Update
-    fun update(vararg book: Book)
+    fun updateEntities(vararg book: Book)
+
+    fun update(vararg book: Book) {
+        book.forEach(Book::syncMediaType)
+        updateEntities(*book)
+    }
 
     @Delete
     fun delete(vararg book: Book)

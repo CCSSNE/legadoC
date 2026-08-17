@@ -16,6 +16,7 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.ui.main.bookshelf.BookCollectionShelfItem
+import io.legado.app.ui.main.bookshelf.bindBookMediaBadge
 import io.legado.app.ui.main.bookshelf.loadCollectionCovers
 import io.legado.app.utils.gone
 import io.legado.app.utils.invisible
@@ -118,6 +119,7 @@ class BooksAdapterGrid(context: Context, callBack: CallBack) :
                 tvName.text = item.name
             }
             ivCover.load(item, false)
+            root.bindBookMediaBadge(item)
             upRefresh(this, item)
         }
 
@@ -137,6 +139,7 @@ class BooksAdapterGrid(context: Context, callBack: CallBack) :
                             )
 
                             "refresh" -> upRefresh(this, item)
+                            "type" -> root.bindBookMediaBadge(item)
                         }
                     }
                 }
@@ -175,6 +178,7 @@ class BooksAdapterGrid(context: Context, callBack: CallBack) :
         fun onBind(item: Book, position: Int) = binding.run {
             tvName.text = item.name
             ivCover.load(item, false)
+            root.bindBookMediaBadge(item)
             upRefresh(this, item)
         }
 
@@ -194,6 +198,7 @@ class BooksAdapterGrid(context: Context, callBack: CallBack) :
                             )
 
                             "refresh" -> upRefresh(this, item)
+                            "type" -> root.bindBookMediaBadge(item)
                         }
                     }
                 }

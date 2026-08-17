@@ -44,6 +44,7 @@ import com.bumptech.glide.Glide
 import com.bumptech.glide.request.RequestOptions
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
+import io.legado.app.constant.BookMediaType
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
@@ -1787,6 +1788,10 @@ class BookInfoActivity :
                     .putExtra("name", book.name)
                     .putExtra("author", book.author)
                     .putExtra("bookUrl", book.bookUrl)
+                    .putExtra(
+                        BookMediaType.EXTRA_MEDIA_TYPE,
+                        BookMediaType.fromBookType(book.type)
+                    )
                     .putExtra("inBookshelf", viewModel.inBookshelf)
                     .putExtra("chapterChanged", chapterChanged)
             )

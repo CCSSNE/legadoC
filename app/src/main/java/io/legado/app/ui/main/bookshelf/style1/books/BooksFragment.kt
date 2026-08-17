@@ -749,6 +749,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         startActivity<BookInfoActivity> {
             putExtra("name", book.name)
             putExtra("author", book.author)
+            putExtra("bookUrl", book.bookUrl)
         }
     }
 

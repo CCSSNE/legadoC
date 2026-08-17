@@ -382,7 +382,11 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
                 showReadRecordBookActionDialog(item.book.name, item.book, item.book.name) {
                     lifecycleScope.launch {
                         withContext(IO) {
-                            appDb.readRecentBookDao.deleteSameBook(item.book.name, item.book.author)
+                            appDb.readRecentBookDao.deleteSameBook(
+                                item.book.name,
+                                item.book.author,
+                                item.book.mediaType
+                            )
                             ReadRecordWidgetStore.removeRecentSnapshot(item.book)
                         }
                         loadData()
@@ -448,7 +452,11 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
                     lifecycleScope.launch {
                         withContext(IO) {
                             item.book?.let { book ->
-                                appDb.readRecentBookDao.deleteSameBook(book.name, book.author)
+                                appDb.readRecentBookDao.deleteSameBook(
+                                    book.name,
+                                    book.author,
+                                    book.mediaType
+                                )
                                 ReadRecordWidgetStore.removeRecentSnapshot(book)
                             } ?: run {
                                 appDb.readRecentBookDao.delete(item.snapshot.bookUrl)

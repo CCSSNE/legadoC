@@ -799,7 +799,9 @@ object AiBookshelfTool {
         val name = arguments?.optString("name")?.trim().orEmpty()
         val author = arguments?.optString("author")?.trim().orEmpty()
         if (name.isNotBlank() && author.isNotBlank()) {
-            appDb.bookDao.getBook(name, author)?.let { return it }
+            val exactMatches = appDb.bookDao.getBooks(name, author)
+            if (exactMatches.size == 1) return exactMatches.single()
+            if (exactMatches.size > 1) return null
         }
         val query = listOf(name, author).filter { it.isNotBlank() }.joinToString(" ")
         if (query.isNotBlank()) {

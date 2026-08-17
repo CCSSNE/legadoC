@@ -11,6 +11,7 @@ import io.legado.app.R
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
+import io.legado.app.constant.BookMediaType
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
@@ -67,6 +68,40 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
     val waitDialogData = MutableLiveData<Boolean>()
     val actionLive = MutableLiveData<String>()
 
+    private fun findBook(intent: Intent): Book? {
+        val bookUrl = intent.getStringExtra("bookUrl").orEmpty()
+        if (bookUrl.isNotBlank()) {
+            appDb.bookDao.getBook(bookUrl)?.let { return it }
+            appDb.searchBookDao.getSearchBook(bookUrl)?.toBook()?.let { return it }
+        }
+        val name = intent.getStringExtra("name").orEmpty()
+        val author = intent.getStringExtra("author").orEmpty()
+        if (name.isBlank()) return null
+        val searchBooks = appDb.searchBookDao.getByNameAuthor(name, author)
+        if (intent.hasExtra(BookMediaType.EXTRA_MEDIA_TYPE)) {
+            val mediaType = intent.getIntExtra(
+                BookMediaType.EXTRA_MEDIA_TYPE,
+                BookMediaType.text
+            )
+            appDb.bookDao.getBook(name, author, mediaType)?.let { return it }
+            return searchBooks
+                .firstOrNull { BookMediaType.fromBookType(it.type) == mediaType }
+                ?.toBook()
+        }
+        val storedBooks = appDb.bookDao.getBooks(name, author)
+        if (storedBooks.size > 1) {
+            throw NoStackTraceException("同名书包含多个媒体类别，必须提供 bookUrl")
+        }
+        storedBooks.singleOrNull()?.let { return it }
+        val searchMediaTypes = searchBooks.map {
+            BookMediaType.fromBookType(it.type)
+        }.distinct()
+        if (searchMediaTypes.size > 1) {
+            throw NoStackTraceException("同名搜索结果包含多个媒体类别，必须提供 bookUrl")
+        }
+        return searchBooks.firstOrNull()?.toBook()
+    }
+
     fun initData(intent: Intent) {
         execute {
             val name = intent.getStringExtra("name") ?: ""
@@ -74,23 +109,8 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
             val bookUrl = intent.getStringExtra("bookUrl") ?: ""
             val origin = intent.getStringExtra("origin") ?: ""
             val originName = intent.getStringExtra("originName") ?: ""
-            appDb.bookDao.getBook(name, author)?.let {
-                inBookshelf = !it.isNotShelf
-                upBook(it)
-                return@execute
-            }
-            if (bookUrl.isNotBlank()) {
-                appDb.bookDao.getBook(bookUrl)?.let {
-                    inBookshelf = !it.isNotShelf
-                    upBook(it)
-                    return@execute
-                }
-                appDb.searchBookDao.getSearchBook(bookUrl)?.toBook()?.let {
-                    upBook(it)
-                    return@execute
-                }
-            }
-            appDb.searchBookDao.getFirstByNameAuthor(name, author)?.toBook()?.let {
+            findBook(intent)?.let {
+                inBookshelf = appDb.bookDao.has(it.bookUrl) && !it.isNotShelf
                 upBook(it)
                 return@execute
             }
@@ -101,7 +121,13 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
                         author = author,
                         bookUrl = bookUrl,
                         origin = origin,
-                        originName = originName
+                        originName = originName,
+                        type = BookMediaType.toBookType(
+                            intent.getIntExtra(
+                                BookMediaType.EXTRA_MEDIA_TYPE,
+                                BookMediaType.text
+                            )
+                        )
                     )
                 )
                 return@execute
@@ -115,9 +141,7 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
 
     fun upBook(intent: Intent) {
         execute {
-            val name = intent.getStringExtra("name") ?: ""
-            val author = intent.getStringExtra("author") ?: ""
-            appDb.bookDao.getBook(name, author)?.let { book ->
+            findBook(intent)?.let { book ->
                 upBook(book)
             }
         }
@@ -232,7 +256,11 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
             }
             WebBook.getBookInfo(scope, bookSource, book, canReName = canReName)
                 .onSuccess(IO) {
-                    val dbBook = appDb.bookDao.getBook(book.name, book.author)
+                    val dbBook = appDb.bookDao.getBook(
+                        book.name,
+                        book.author,
+                        BookMediaType.fromBookType(book.type)
+                    )
                     if (!inBookshelf && dbBook != null && !dbBook.isNotShelf && dbBook.origin == book.origin) {
                         /**
                          * book 来自搜索时(inBookshelf == false)，搜索的书名不存在于书架，但是加载详情后，书名更新，存在同名书籍
@@ -477,7 +505,11 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
             if (book.order == 0) {
                 book.order = appDb.bookDao.minOrder - 1
             }
-            appDb.bookDao.getBook(book.name, book.author)?.let {
+            appDb.bookDao.getBook(
+                book.name,
+                book.author,
+                BookMediaType.fromBookType(book.type)
+            )?.let {
                 book.durChapterIndex = it.durChapterIndex
                 book.durVolumeIndex = it.durVolumeIndex
                 book.chapterInVolumeIndex = it.chapterInVolumeIndex
@@ -534,7 +566,11 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
                 if (book.order == 0) {
                     book.order = appDb.bookDao.minOrder - 1
                 }
-                appDb.bookDao.getBook(book.name, book.author)?.let {
+                appDb.bookDao.getBook(
+                    book.name,
+                    book.author,
+                    BookMediaType.fromBookType(book.type)
+                )?.let {
                     book.durChapterIndex = it.durChapterIndex
                     book.durVolumeIndex = it.durVolumeIndex
                     book.chapterInVolumeIndex = it.chapterInVolumeIndex
