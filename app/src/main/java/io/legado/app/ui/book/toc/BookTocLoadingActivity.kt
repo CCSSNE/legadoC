@@ -16,21 +16,15 @@ import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ActivityBookTocLoadingBinding
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.BookHelp
-import io.legado.app.help.book.isAudio
-import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.book.isWebFile
 import io.legado.app.help.book.removeType
-import io.legado.app.help.config.AppConfig
 import io.legado.app.model.ReadBook
 import io.legado.app.model.localBook.LocalBook
 import io.legado.app.model.webBook.WebBook
-import io.legado.app.ui.book.audio.AudioPlayActivity
 import io.legado.app.ui.book.info.BookInfoActivity
-import io.legado.app.ui.book.manga.ReadMangaActivity
-import io.legado.app.ui.book.read.ReadBookActivity
-import io.legado.app.ui.video.VideoPlayerActivity
+import io.legado.app.utils.defaultReadingActivityClass
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.currentCoroutineContext
@@ -64,16 +58,8 @@ class BookTocLoadingActivity :
     }
 
     private fun startReadActivity(book: Book) {
-        val cls = when {
-            book.isVideo -> VideoPlayerActivity::class.java
-            // 融合第一阶段：音频书也进入普通阅读页面
-            // book.isAudio -> AudioPlayActivity::class.java
-            !book.isLocal && book.isImage && AppConfig.showMangaUi -> ReadMangaActivity::class.java
-            else -> ReadBookActivity::class.java
-        }
-
         val sourceIntent = intent
-        val readIntent = Intent(this, cls).apply {
+        val readIntent = Intent(this, book.defaultReadingActivityClass()).apply {
             sourceIntent.extras?.let { putExtras(it) }
 
             putExtra("bookUrl", book.bookUrl)
@@ -84,7 +70,7 @@ class BookTocLoadingActivity :
                 removeExtra("inBookshelf")
             }
 
-            if (book.isAudio || book.isVideo) {
+            if (book.isVideo) {
                 removeExtra("chapterChanged")
             } else if (sourceIntent.hasExtra("chapterChanged")) {
                 putExtra("chapterChanged", sourceIntent.getBooleanExtra("chapterChanged", false))
