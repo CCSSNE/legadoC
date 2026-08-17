@@ -129,14 +129,12 @@
     <LinearLayout
         android:id="@+id/panel_progress"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="42dp"
         android:layout_marginTop="10dp"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingStart="10dp"
-        android:paddingTop="6dp"
-        android:paddingEnd="10dp"
-        android:paddingBottom="6dp">
+        android:paddingEnd="10dp">
 
         <TextView
             android:id="@+id/tv_dur_time"
@@ -168,11 +166,12 @@
     <LinearLayout
         android:id="@+id/panel_timer"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="42dp"
         android:layout_marginTop="10dp"
         android:gravity="center"
         android:orientation="horizontal"
-        android:padding="6dp">
+        android:paddingStart="6dp"
+        android:paddingEnd="6dp">
 
         <androidx.appcompat.widget.AppCompatImageView
             android:id="@+id/iv_timer"
@@ -208,16 +207,16 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="10dp"
         android:orientation="vertical"
-        android:paddingTop="6dp"
         android:paddingBottom="8dp">
 
         <LinearLayout
             android:id="@+id/ll_tts_SpeechRate"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_vertical"
+            android:layout_height="42dp"
+            android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:padding="8dp">
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp">
 
             <TextView
                 android:id="@+id/tv_tts_speed"
