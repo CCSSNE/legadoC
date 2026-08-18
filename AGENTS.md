@@ -231,6 +231,6 @@ uiautomator2 / ADB
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- `3.26.081807c` / `10667`，2026-08-18（UTC），`feature/audio-reading-ui-unification` 分支（代码提交 `249c407`）。统一朗读悬浮窗与阅读页菜单可见性：新增 `EventBus.READ_MAIN_MENU_VISIBILITY` 事件，`BaseReadAloudService` 的悬浮窗显示/隐藏改由阅读页主菜单可见性（`ReadAloudUiState.readerMenuVisible`）驱动，`showAppReadAloudFloatingWindow` 改为显式携带宿主 `ReadBookActivity` 并修复启动时 `appFloatingActivity` 的初始化；音频缓存通知进度改由任务状态统一计算（`CacheNotificationProgress`），`PAUSED` 状态下 resume 不再被在途工作器快照覆盖；听书页接入 `ConfigurableLyricViewX` 歌词视图并重构 `AudioPlayActivity` 交互；新增 `IntegerInputDialog`、`NotificationPermission`；`HeaderlessDialogChrome`、`SurfacePopupMenu`、`MoreConfigDialog`、TOC 相关页面按无头弹窗与表面内核规范收尾；`app/build.gradle` 的 `releaseTime()` 改按 UTC 取值（版本名按 UTC 记录）。已通过隐藏后台正式 `:app:assembleAppC` 构建，退出码为 0；`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.081807c` / `10667`、中文名“阅读 C”、架构 `arm64-v8a`，`apksigner` 退出码为 0。已覆盖安装到雷电模拟器 `emulator-5554`，冒烟启动确认进程正常、无 FATAL。朗读/听书业务回归与在线书源、音频书源播放、全屏听书页未纳入本次编译交付结论。
+- `3.26.081808c` / `10668`，2026-08-18（UTC），`feature/audio-reading-ui-unification` 分支（代码提交 `a445fbe`）。修复听书页 `AudioPlayActivity` 空会话处理与未运行状态：`ReadBook.book` 为空时记录 `AppLog` 并提示“当前没有可控制的听书会话”，延迟到界面展示后再 `finish()`，避免 toast 未显示即关闭；`updatePlayState()` 在朗读服务未运行时隐藏加载指示、启用播放按钮并显示播放图标，不再引用失效的 `BaseReadAloudService.loading`。已通过隐藏后台正式 `:app:assembleAppC` 构建，退出码为 0；`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.081808c` / `10668`、中文名“阅读 C”、架构 `arm64-v8a`，`apksigner` 退出码为 0。已覆盖安装到雷电模拟器 `emulator-5554`，冒烟启动确认进程正常、无 FATAL。听书页具体业务回归（含朗读会话场景）未纳入本次编译交付结论。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
