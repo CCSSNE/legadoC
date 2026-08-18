@@ -444,6 +444,9 @@ class ReadMenu @JvmOverloads constructor(
 
     override fun onDetachedFromWindow() {
         cancelMenuFade()
+        if (isVisible || isMenuOutAnimating) {
+            callBack.onReadMenuAvoidanceChanged(false)
+        }
         super.onDetachedFromWindow()
         contentObserver?.let {
             context.contentResolver.unregisterContentObserver(it)

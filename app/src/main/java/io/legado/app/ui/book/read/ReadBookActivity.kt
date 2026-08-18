@@ -427,7 +427,6 @@ class ReadBookActivity : BaseReadBookActivity(),
         upSystemUiVisibility()
         registerReceiver(timeBatteryReceiver, timeBatteryReceiver.filter)
         binding.readView.upTime()
-        updateReadAloudMainMenuVisibility(binding.readMenu.isVisible)
         updateReadAloudPageFloating()
         if (ReadAloudUiState.consumeAudioPlayerReturn()) {
             handler.post { restoreReadAloudPlayerPosition() }
@@ -2375,7 +2374,6 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun onMenuShow() {
         binding.readView.autoPager.pause()
-        updateReadAloudMainMenuVisibility(true)
     }
 
     override fun onMenuHide() {
@@ -2384,12 +2382,13 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun onReadMenuAvoidanceChanged(show: Boolean) {
         if (show) {
-            val y = binding.readMenu.bottomMenuTopOnScreen() ?: return
-            postReadAloudFloatingAvoidance(EventBus.FLOATING_AVOID_SOURCE_READ_MENU, y)
+            binding.readMenu.bottomMenuTopOnScreen()?.let { y ->
+                postReadAloudFloatingAvoidance(EventBus.FLOATING_AVOID_SOURCE_READ_MENU, y)
+            }
         } else {
             clearReadAloudFloatingAvoidance(EventBus.FLOATING_AVOID_SOURCE_READ_MENU)
-            updateReadAloudMainMenuVisibility(false)
         }
+        updateReadAloudMainMenuVisibility(show)
     }
 
     override fun onLayoutPageCompleted(index: Int, page: TextPage) {
