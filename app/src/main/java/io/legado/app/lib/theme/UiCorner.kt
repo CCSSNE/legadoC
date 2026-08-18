@@ -127,10 +127,10 @@ object UiCorner {
     }
 
     fun dialogSurfaceColor(color: Int): Int {
-        val transparency = AppConfig.dialogAlpha.coerceIn(0, 100)
-        val alpha = (Color.alpha(color) * (100 - transparency) / 100f)
-            .roundToInt()
-        return ColorUtils.setAlphaComponent(color, alpha)
+        return ColorUtils.setAlphaComponent(
+            color,
+            (Color.alpha(color) * dialogSurfaceAlpha()).roundToInt()
+        )
     }
 
     /**
@@ -138,6 +138,7 @@ object UiCorner {
      * 弹窗透明度 0% 表示不透明，100% 表示最透明。
      */
     fun dialogSurfaceAlpha(): Float {
+        if (AppConfig.isEInkMode) return 1f
         return ((100 - AppConfig.dialogAlpha.coerceIn(0, 100)) / 100f)
             .coerceIn(0f, 1f)
     }
