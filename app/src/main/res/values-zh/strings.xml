@@ -207,11 +207,11 @@
     <string name="decimal_input_range_invalid">请输入 %1$s 到 %2$s 之间的数字。</string>
     <string name="read_aloud_hide_playback_panel">隐藏当页小悬浮窗</string>
     <string name="read_aloud_hide_playback_panel_summary">不显示临时的暂停/继续播放小悬浮窗，直接在页脚中央显示操作。</string>
-    <string name="read_aloud_playback_panel_duration">当页小悬浮窗停留时长</string>
-    <string name="read_aloud_playback_panel_duration_summary">%s 秒后将暂停/继续播放收进页脚中央。</string>
-    <string name="read_aloud_playback_panel_duration_dialog_title">当页小悬浮窗停留时长（秒）</string>
+    <string name="read_aloud_playback_panel_duration">小悬浮窗停留时长</string>
+    <string name="read_aloud_playback_panel_duration_summary">连续 %s 秒无操作后，将暂停/继续或原进度/从本页听收进页脚中央。</string>
+    <string name="read_aloud_playback_panel_duration_dialog_title">小悬浮窗停留时长（秒）</string>
     <string name="read_aloud_hide_page_panel">隐藏跨页小悬浮窗</string>
-    <string name="read_aloud_hide_page_panel_summary">朗读过程中翻页后，不显示原进度/从本页听的小悬浮窗。</string>
+    <string name="read_aloud_hide_page_panel_summary">不显示临时的原进度/从本页听小悬浮窗，直接在页脚中央显示展开入口。</string>
     <string name="read_aloud_panel_on_page_footer">小悬浮窗放在页脚内</string>
     <string name="read_aloud_panel_on_page_footer_summary">让暂停/继续播放和原进度/从本页听小悬浮窗在页脚内水平、垂直居中；关闭时贴在页脚上沿外侧。</string>
     <string name="read_aloud_scroll_follow_timeout_title">朗读跟随延迟</string>
@@ -226,6 +226,7 @@
     <string name="integer_input_range_invalid">请输入 %1$d 到 %2$d 之间的整数。</string>
     <string name="read_aloud_original_progress">原进度</string>
     <string name="read_aloud_from_current_page">从本页听</string>
+    <string name="read_aloud_page_actions">原进度 / 从本页听</string>
     <string name="read_aloud_pause_playback">暂停播放</string>
     <string name="read_aloud_resume_playback">继续播放</string>
     <string name="open_read_aloud_player">进入听书页</string>

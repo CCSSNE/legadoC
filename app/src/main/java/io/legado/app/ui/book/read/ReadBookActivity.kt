@@ -289,25 +289,23 @@ class ReadBookActivity : BaseReadBookActivity(),
     private var lastReadAloudChapterIndex: Int? = null
     private var finishReadAloudBackstage = false
     private val readAloudPanelFadeDuration = 140L
-    private enum class ReadAloudPlaybackPresentation {
+    private enum class ReadAloudPanelPresentation {
         HIDDEN,
         PANEL,
         FOOTER,
     }
-    private var readAloudPlaybackPresentation = ReadAloudPlaybackPresentation.HIDDEN
+    private var readAloudPanelPresentation = ReadAloudPanelPresentation.HIDDEN
+    private var readAloudPanelMode = ReadAloudUiState.ReaderPanelMode.HIDDEN
     private val handler by lazy { buildMainHandler() }
-    private val collapseReadAloudPlaybackPanel = Runnable {
+    private val collapseReadAloudPanel = Runnable {
+        val currentMode = currentReadAloudPanelMode()
         if (
-            readAloudPlaybackPresentation == ReadAloudPlaybackPresentation.PANEL &&
-            !AppConfig.readAloudHidePlaybackPanel &&
-            ReadAloudUiState.readerPanelMode(
-                BaseReadAloudService.isRun,
-                ReadBook.readAloudPageDetached,
-            ) == ReadAloudUiState.ReaderPanelMode.PLAYBACK
+            readAloudPanelPresentation == ReadAloudPanelPresentation.PANEL &&
+            readAloudPanelMode == currentMode
         ) {
-            readAloudPlaybackPresentation = ReadAloudPlaybackPresentation.FOOTER
-            hideReadAloudPlaybackPanelView()
-            showReadAloudPlaybackInFooter()
+            readAloudPanelPresentation = ReadAloudPanelPresentation.FOOTER
+            hideReadAloudPanelViews()
+            showReadAloudPanelInFooter(currentMode)
         }
     }
     private val readAloudAvoidanceGenerations = mutableMapOf<String, Long>()
@@ -339,12 +337,17 @@ class ReadBookActivity : BaseReadBookActivity(),
         binding.selectionMagnifierView.bindOverlays(binding.cursorLeft, binding.cursorRight)
         binding.readAiPanel.attach(this)
         binding.btnReadAloudOriginalProgress.setOnClickListener {
+            restartReadAloudPanelTimeout()
             backToReadAloudProgress()
         }
         binding.btnReadAloudFromCurrentPage.setOnClickListener {
+            restartReadAloudPanelTimeout()
             readAloudFromCurrentPage()
         }
-        binding.btnReadAloudPlayback.setOnClickListener { toggleReadAloudPlayback() }
+        binding.btnReadAloudPlayback.setOnClickListener {
+            restartReadAloudPanelTimeout()
+            toggleReadAloudPlayback()
+        }
         binding.readAloudDialogOutsideTap.setOnClickListener {
             postEvent(EventBus.CLOSE_READ_ALOUD_DIALOG, true)
         }
@@ -1599,51 +1602,76 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     private fun updateReadAloudPanels() {
-        when (
-            ReadAloudUiState.readerPanelMode(
-                BaseReadAloudService.isRun,
-                ReadBook.readAloudPageDetached,
-            )
-        ) {
+        val mode = currentReadAloudPanelMode()
+        if (mode != readAloudPanelMode) {
+            resetReadAloudPanelPresentation()
+            readAloudPanelMode = mode
+        }
+        when (mode) {
             ReadAloudUiState.ReaderPanelMode.HIDDEN -> {
-                hideReadAloudPagePanel()
-                resetReadAloudPlaybackPresentation()
+                resetReadAloudPanelPresentation()
             }
             ReadAloudUiState.ReaderPanelMode.PLAYBACK -> {
-                hideReadAloudPagePanel()
-                if (AppConfig.readAloudHidePlaybackPanel) {
-                    showReadAloudPlaybackInFooterOnly()
+                if (
+                    AppConfig.readAloudHidePlaybackPanel &&
+                    readAloudPanelPresentation == ReadAloudPanelPresentation.HIDDEN
+                ) {
+                    showReadAloudPanelInFooterOnly(mode)
                 } else {
-                    updateReadAloudPlaybackPresentation()
+                    updateReadAloudPanelPresentation(mode)
                 }
             }
             ReadAloudUiState.ReaderPanelMode.PAGE_ACTION -> {
-                resetReadAloudPlaybackPresentation()
-                if (AppConfig.readAloudHidePagePanel) {
-                    hideReadAloudPagePanel()
+                if (
+                    AppConfig.readAloudHidePagePanel &&
+                    readAloudPanelPresentation == ReadAloudPanelPresentation.HIDDEN
+                ) {
+                    showReadAloudPanelInFooterOnly(mode)
                 } else {
-                    showReadAloudPagePanel()
+                    updateReadAloudPanelPresentation(mode)
                 }
             }
         }
     }
 
-    private fun updateReadAloudPlaybackPresentation() {
-        when (readAloudPlaybackPresentation) {
-            ReadAloudPlaybackPresentation.HIDDEN -> {
-                readAloudPlaybackPresentation = ReadAloudPlaybackPresentation.PANEL
-                clearReadAloudPlaybackInFooter()
+    private fun currentReadAloudPanelMode() = ReadAloudUiState.readerPanelMode(
+        BaseReadAloudService.isRun,
+        ReadBook.readAloudPageDetached,
+    )
+
+    private fun updateReadAloudPanelPresentation(mode: ReadAloudUiState.ReaderPanelMode) {
+        when (readAloudPanelPresentation) {
+            ReadAloudPanelPresentation.HIDDEN -> expandReadAloudPanel(mode)
+            ReadAloudPanelPresentation.PANEL -> showReadAloudPanel(mode)
+            ReadAloudPanelPresentation.FOOTER -> {
+                hideReadAloudPanelViews()
+                showReadAloudPanelInFooter(mode)
+            }
+        }
+    }
+
+    private fun expandReadAloudPanel(mode: ReadAloudUiState.ReaderPanelMode = currentReadAloudPanelMode()) {
+        check(mode != ReadAloudUiState.ReaderPanelMode.HIDDEN) {
+            "Cannot expand a hidden read-aloud panel"
+        }
+        readAloudPanelMode = mode
+        readAloudPanelPresentation = ReadAloudPanelPresentation.PANEL
+        clearReadAloudPanelInFooter()
+        showReadAloudPanel(mode)
+        restartReadAloudPanelTimeout()
+    }
+
+    private fun showReadAloudPanel(mode: ReadAloudUiState.ReaderPanelMode) {
+        when (mode) {
+            ReadAloudUiState.ReaderPanelMode.PLAYBACK -> {
+                hideReadAloudPagePanel()
                 showReadAloudPlaybackPanel()
-                handler.postDelayed(
-                    collapseReadAloudPlaybackPanel,
-                    AppConfig.readAloudPlaybackPanelDuration * 1_000L
-                )
             }
-            ReadAloudPlaybackPresentation.PANEL -> showReadAloudPlaybackPanel()
-            ReadAloudPlaybackPresentation.FOOTER -> {
+            ReadAloudUiState.ReaderPanelMode.PAGE_ACTION -> {
                 hideReadAloudPlaybackPanelView()
-                showReadAloudPlaybackInFooter()
+                showReadAloudPagePanel()
             }
+            ReadAloudUiState.ReaderPanelMode.HIDDEN -> error("Cannot show a hidden read-aloud panel")
         }
     }
 
@@ -1651,8 +1679,8 @@ class ReadBookActivity : BaseReadBookActivity(),
         if (!BaseReadAloudService.isRun) return
         binding.readAloudPlaybackPanel.post {
             if (
-                readAloudPlaybackPresentation != ReadAloudPlaybackPresentation.PANEL ||
-                AppConfig.readAloudHidePlaybackPanel ||
+                readAloudPanelPresentation != ReadAloudPanelPresentation.PANEL ||
+                readAloudPanelMode != ReadAloudUiState.ReaderPanelMode.PLAYBACK ||
                 ReadAloudUiState.readerPanelMode(
                     BaseReadAloudService.isRun,
                     ReadBook.readAloudPageDetached,
@@ -1687,33 +1715,53 @@ class ReadBookActivity : BaseReadBookActivity(),
         clearReadAloudFloatingAvoidance(EventBus.FLOATING_AVOID_SOURCE_READ_ALOUD_PLAYBACK_PANEL)
     }
 
-    private fun resetReadAloudPlaybackPresentation(immediate: Boolean = false) {
-        handler.removeCallbacks(collapseReadAloudPlaybackPanel)
-        readAloudPlaybackPresentation = ReadAloudPlaybackPresentation.HIDDEN
-        hideReadAloudPlaybackPanelView(immediate)
-        clearReadAloudPlaybackInFooter()
+    private fun resetReadAloudPanelPresentation(immediate: Boolean = false) {
+        handler.removeCallbacks(collapseReadAloudPanel)
+        readAloudPanelPresentation = ReadAloudPanelPresentation.HIDDEN
+        hideReadAloudPanelViews(immediate)
+        clearReadAloudPanelInFooter()
     }
 
-    private fun showReadAloudPlaybackInFooterOnly() {
-        handler.removeCallbacks(collapseReadAloudPlaybackPanel)
-        readAloudPlaybackPresentation = ReadAloudPlaybackPresentation.FOOTER
-        hideReadAloudPlaybackPanelView()
-        showReadAloudPlaybackInFooter()
+    private fun showReadAloudPanelInFooterOnly(mode: ReadAloudUiState.ReaderPanelMode) {
+        handler.removeCallbacks(collapseReadAloudPanel)
+        readAloudPanelPresentation = ReadAloudPanelPresentation.FOOTER
+        hideReadAloudPanelViews()
+        showReadAloudPanelInFooter(mode)
     }
 
-    private fun showReadAloudPlaybackInFooter() {
-        val text = getText(
-            if (BaseReadAloudService.pause) {
-                R.string.read_aloud_resume_playback
-            } else {
-                R.string.read_aloud_pause_playback
-            }
-        )
-        binding.readView.setFooterCenterAction(text, ::toggleReadAloudPlayback)
+    private fun showReadAloudPanelInFooter(mode: ReadAloudUiState.ReaderPanelMode) {
+        val text = when (mode) {
+            ReadAloudUiState.ReaderPanelMode.PLAYBACK -> getText(
+                if (BaseReadAloudService.pause) {
+                    R.string.read_aloud_resume_playback
+                } else {
+                    R.string.read_aloud_pause_playback
+                }
+            )
+            ReadAloudUiState.ReaderPanelMode.PAGE_ACTION ->
+                getText(R.string.read_aloud_page_actions)
+            ReadAloudUiState.ReaderPanelMode.HIDDEN ->
+                error("Cannot put a hidden read-aloud panel in the footer")
+        }
+        binding.readView.setFooterCenterAction(text) { expandReadAloudPanel(mode) }
     }
 
-    private fun clearReadAloudPlaybackInFooter() {
+    private fun clearReadAloudPanelInFooter() {
         binding.readView.setFooterCenterAction(null, null)
+    }
+
+    private fun hideReadAloudPanelViews(immediate: Boolean = false) {
+        hideReadAloudPlaybackPanelView(immediate)
+        hideReadAloudPagePanel(immediate)
+    }
+
+    private fun restartReadAloudPanelTimeout() {
+        if (readAloudPanelPresentation != ReadAloudPanelPresentation.PANEL) return
+        handler.removeCallbacks(collapseReadAloudPanel)
+        handler.postDelayed(
+            collapseReadAloudPanel,
+            AppConfig.readAloudPlaybackPanelDuration * 1_000L
+        )
     }
 
     private fun toggleReadAloudPlayback() {
@@ -1728,6 +1776,8 @@ class ReadBookActivity : BaseReadBookActivity(),
         if (!BaseReadAloudService.isRun) return
         binding.readAloudPagePanel.post {
             if (
+                readAloudPanelPresentation != ReadAloudPanelPresentation.PANEL ||
+                readAloudPanelMode != ReadAloudUiState.ReaderPanelMode.PAGE_ACTION ||
                 ReadAloudUiState.readerPanelMode(
                     BaseReadAloudService.isRun,
                     ReadBook.readAloudPageDetached,
@@ -2922,7 +2972,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         postEvent(EventBus.READ_BOOK_ACTIVITY_ACTIVE, false)
         textActionMenu.dismiss()
         popupAction.dismiss()
-        resetReadAloudPlaybackPresentation(immediate = true)
+        resetReadAloudPanelPresentation(immediate = true)
         binding.readView.onDestroy()
         ReadBook.unregister(this)
         // 退出阅读停止内嵌音频块播放（配图音频不是听书）
@@ -3007,7 +3057,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         observeEvent<Boolean>(EventBus.READ_ALOUD_FLOATING_VISIBILITY) { visible ->
             if (visible) {
                 hideReadAloudPagePanel(immediate = true)
-                resetReadAloudPlaybackPresentation(immediate = true)
+                resetReadAloudPanelPresentation(immediate = true)
             } else {
                 updateReadAloudPanels()
             }
@@ -3046,14 +3096,15 @@ class ReadBookActivity : BaseReadBookActivity(),
             updateReadAloudPageFloating()
         }
         observeEvent<String>(PreferKey.readAloudHidePlaybackPanel) {
-            resetReadAloudPlaybackPresentation()
+            resetReadAloudPanelPresentation()
             updateReadAloudPanels()
         }
         observeEvent<String>(PreferKey.readAloudPlaybackPanelDuration) {
-            resetReadAloudPlaybackPresentation()
+            resetReadAloudPanelPresentation()
             updateReadAloudPanels()
         }
         observeEvent<String>(PreferKey.readAloudHidePagePanel) {
+            resetReadAloudPanelPresentation()
             updateReadAloudPanels()
         }
         observeEvent<String>(PreferKey.readAloudPanelOnPageFooter) {
