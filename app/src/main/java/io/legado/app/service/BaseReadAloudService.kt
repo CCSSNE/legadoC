@@ -357,6 +357,7 @@ abstract class BaseReadAloudService : BaseService(),
     }
 
     private fun onReadAloudFloatingAttached(view: View) {
+        updateReadAloudFloatingVisibility(true)
         updateReadAloudFloatingCover()
         updateReadAloudFloatingPlayState()
         applyReadAloudFloatingAvoidance(currentAvoidanceY)
@@ -541,6 +542,13 @@ abstract class BaseReadAloudService : BaseService(),
         floatingWindowManager = null
         floatingCoverView = null
         floatingPlayPauseView = null
+        updateReadAloudFloatingVisibility(false)
+    }
+
+    private fun updateReadAloudFloatingVisibility(visible: Boolean) {
+        if (ReadAloudUiState.readAloudFloatingVisible == visible) return
+        ReadAloudUiState.setReadAloudFloatingVisible(visible)
+        postEvent(EventBus.READ_ALOUD_FLOATING_VISIBILITY, visible)
     }
 
     private fun removeAppReadAloudFloatingWindow() {

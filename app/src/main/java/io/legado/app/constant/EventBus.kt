@@ -13,6 +13,7 @@ object EventBus {
     const val READ_ALOUD_ENGINE_CHANGED = "readAloudEngineChanged"
     const val READ_MAIN_MENU_VISIBILITY = "readMainMenuVisibility"
     const val READ_ALOUD_DIALOG_VISIBILITY = "readAloudDialogVisibility"
+    const val READ_ALOUD_FLOATING_VISIBILITY = "readAloudFloatingVisibility"
     const val BATTERY_CHANGED = "batteryChanged"
     const val TIME_CHANGED = "timeChanged"
     const val UP_CONFIG = "upConfig"
