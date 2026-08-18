@@ -22,6 +22,7 @@ import androidx.activity.addCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.core.view.get
+import androidx.core.view.doOnLayout
 import androidx.core.view.isVisible
 import androidx.core.view.setPadding
 import androidx.core.view.size
@@ -1677,7 +1678,18 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     private fun showReadAloudPlaybackPanel() {
         if (!BaseReadAloudService.isRun) return
-        binding.readAloudPlaybackPanel.post {
+        if (
+            readAloudPanelPresentation != ReadAloudPanelPresentation.PANEL ||
+            readAloudPanelMode != ReadAloudUiState.ReaderPanelMode.PLAYBACK ||
+            ReadAloudUiState.readerPanelMode(
+                BaseReadAloudService.isRun,
+                ReadBook.readAloudPageDetached,
+            ) != ReadAloudUiState.ReaderPanelMode.PLAYBACK
+        ) {
+            return
+        }
+        binding.readAloudPlaybackPanel.visible()
+        binding.readAloudPlaybackPanel.doOnLayout {
             if (
                 readAloudPanelPresentation != ReadAloudPanelPresentation.PANEL ||
                 readAloudPanelMode != ReadAloudUiState.ReaderPanelMode.PLAYBACK ||
@@ -1686,10 +1698,10 @@ class ReadBookActivity : BaseReadBookActivity(),
                     ReadBook.readAloudPageDetached,
                 ) != ReadAloudUiState.ReaderPanelMode.PLAYBACK
             ) {
-                return@post
+                return@doOnLayout
             }
             val params = binding.readAloudPlaybackPanel.layoutParams as? FrameLayout.LayoutParams
-                ?: return@post
+                ?: return@doOnLayout
             val bottomMargin = readAloudPanelBottomMargin(binding.readAloudPlaybackPanel.height)
             if (params.bottomMargin != bottomMargin) {
                 params.bottomMargin = bottomMargin
@@ -1774,7 +1786,18 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     private fun showReadAloudPagePanel() {
         if (!BaseReadAloudService.isRun) return
-        binding.readAloudPagePanel.post {
+        if (
+            readAloudPanelPresentation != ReadAloudPanelPresentation.PANEL ||
+            readAloudPanelMode != ReadAloudUiState.ReaderPanelMode.PAGE_ACTION ||
+            ReadAloudUiState.readerPanelMode(
+                BaseReadAloudService.isRun,
+                ReadBook.readAloudPageDetached,
+            ) != ReadAloudUiState.ReaderPanelMode.PAGE_ACTION
+        ) {
+            return
+        }
+        binding.readAloudPagePanel.visible()
+        binding.readAloudPagePanel.doOnLayout {
             if (
                 readAloudPanelPresentation != ReadAloudPanelPresentation.PANEL ||
                 readAloudPanelMode != ReadAloudUiState.ReaderPanelMode.PAGE_ACTION ||
@@ -1783,10 +1806,10 @@ class ReadBookActivity : BaseReadBookActivity(),
                     ReadBook.readAloudPageDetached,
                 ) != ReadAloudUiState.ReaderPanelMode.PAGE_ACTION
             ) {
-                return@post
+                return@doOnLayout
             }
             val params = binding.readAloudPagePanel.layoutParams as? FrameLayout.LayoutParams
-                ?: return@post
+                ?: return@doOnLayout
             val bottomMargin = readAloudPanelBottomMargin(binding.readAloudPagePanel.height)
             if (params.bottomMargin != bottomMargin) {
                 params.bottomMargin = bottomMargin
