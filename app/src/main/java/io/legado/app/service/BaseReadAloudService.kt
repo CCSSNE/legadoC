@@ -136,6 +136,7 @@ abstract class BaseReadAloudService : BaseService(),
 
         private const val TAG = "BaseReadAloudService"
         private const val MIN_READ_ALOUD_PRELOAD_LENGTH = 300
+        const val READ_ALOUD_COVER_ROTATION_DURATION = 2400L
 
     }
 
@@ -180,6 +181,7 @@ abstract class BaseReadAloudService : BaseService(),
     private var floatingCoverView: ImageView? = null
     private var floatingPlayPauseView: ImageView? = null
     private var floatingLoadingAnimator: ObjectAnimator? = null
+    private var floatingCoverAnimator: ObjectAnimator? = null
     private var appFloatingActivity: Activity? = null
     private var currentAvoidanceSource: String? = null
     private var currentAvoidanceY: Int = 0
@@ -465,6 +467,7 @@ abstract class BaseReadAloudService : BaseService(),
             }
         )
         updateFloatingLoadingAnimation()
+        updateFloatingCoverAnimation()
     }
 
     private fun updateFloatingLoadingAnimation() {
@@ -481,6 +484,24 @@ abstract class BaseReadAloudService : BaseService(),
         } else {
             floatingLoadingAnimator?.cancel()
             floatingLoadingAnimator = null
+            view.rotation = 0f
+        }
+    }
+
+    private fun updateFloatingCoverAnimation() {
+        val view = floatingCoverView ?: return
+        if (isPlay() && !loading) {
+            if (floatingCoverAnimator?.isStarted == true) return
+            floatingCoverAnimator?.cancel()
+            floatingCoverAnimator = ObjectAnimator.ofFloat(view, View.ROTATION, 0f, 360f).apply {
+                duration = READ_ALOUD_COVER_ROTATION_DURATION
+                repeatCount = ObjectAnimator.INFINITE
+                interpolator = LinearInterpolator()
+                start()
+            }
+        } else {
+            floatingCoverAnimator?.cancel()
+            floatingCoverAnimator = null
             view.rotation = 0f
         }
     }
@@ -507,7 +528,10 @@ abstract class BaseReadAloudService : BaseService(),
     private fun clearReadAloudFloatingRefs() {
         floatingLoadingAnimator?.cancel()
         floatingLoadingAnimator = null
+        floatingCoverAnimator?.cancel()
+        floatingCoverAnimator = null
         floatingPlayPauseView?.rotation = 0f
+        floatingCoverView?.rotation = 0f
         floatingView = null
         floatingParams = null
         floatingWindowManager = null

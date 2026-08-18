@@ -1,5 +1,6 @@
 package io.legado.app.ui.book.audio
 
+import android.animation.ObjectAnimator
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.graphics.Color
@@ -10,7 +11,9 @@ import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
+import android.view.View
 import android.view.ViewGroup
+import android.view.animation.LinearInterpolator
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.SeekBar
@@ -90,6 +93,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     private var listeningTextScrollFollowJob: Job? = null
     private var pendingListeningTextHighlightIndex: Int? = null
     private var preserveAfterEngineSwitch = false
+    private var coverRotationAnimator: ObjectAnimator? = null
 
     private val tocActivityResult = registerForActivityResult(TocActivityResult()) { result ->
         result ?: return@registerForActivityResult
@@ -544,6 +548,24 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
                 R.drawable.ic_pause_24dp
             }
         )
+        updateCoverRotation()
+    }
+
+    private fun updateCoverRotation() {
+        if (BaseReadAloudService.isPlay() && !BaseReadAloudService.loading) {
+            if (coverRotationAnimator?.isStarted == true) return
+            coverRotationAnimator?.cancel()
+            coverRotationAnimator = ObjectAnimator.ofFloat(binding.ivCover, View.ROTATION, 0f, 360f).apply {
+                duration = BaseReadAloudService.READ_ALOUD_COVER_ROTATION_DURATION
+                repeatCount = ObjectAnimator.INFINITE
+                interpolator = LinearInterpolator()
+                start()
+            }
+        } else {
+            coverRotationAnimator?.cancel()
+            coverRotationAnimator = null
+            binding.ivCover.rotation = 0f
+        }
     }
 
     @SuppressLint("SetTextI18n")
@@ -667,6 +689,13 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             }
         }
         observeEvent<Boolean>(EventBus.MEDIA_BUTTON) { updatePlayState() }
+    }
+
+    override fun onDestroy() {
+        coverRotationAnimator?.cancel()
+        coverRotationAnimator = null
+        binding.ivCover.rotation = 0f
+        super.onDestroy()
     }
 
     private data class ListeningTextItem(
