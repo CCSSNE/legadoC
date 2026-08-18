@@ -66,7 +66,6 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
             attributes = attr
             setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
-        publishFloatingHost()
         binding.rootView.removeOnLayoutChangeListener(menuLayoutChangeListener)
         binding.rootView.addOnLayoutChangeListener(menuLayoutChangeListener)
         binding.rootView.doOnLayout(::publishMenuTopOnScreen)
@@ -98,6 +97,7 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
         val root = binding.rootView
         root.doAfterFirstDraw {
             if (!ownsDialogVisibility || dialogPresentationReady) return@doAfterFirstDraw
+            publishFloatingHost()
             updateDialogVisibility(true)
         }
     }
