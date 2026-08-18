@@ -6,7 +6,6 @@ import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ObjectAnimator
 import android.graphics.PorterDuff
-import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.provider.Settings
@@ -328,16 +327,9 @@ class ReadMenu @JvmOverloads constructor(
         }
     }
 
-    fun bottomMenuTopOnScreen(): Int? {
-        val rect = Rect()
-        return if (binding.bottomMenu.getGlobalVisibleRect(rect) && rect.height() > 0) {
-            rect.top
-        } else {
-            null
-        }
-    }
-
     fun bottomMenuView(): View = binding.bottomMenu
+
+    fun titleBarView(): View = binding.titleBar
 
     private fun upColorConfig() {
         bgColor = if (immersiveMenu) {

@@ -93,6 +93,7 @@ import splitties.systemservices.notificationManager
 import splitties.systemservices.powerManager
 import splitties.systemservices.telephonyManager
 import splitties.systemservices.wifiManager
+import kotlin.math.abs
 
 /**
  * 朗读服务
@@ -189,8 +190,13 @@ abstract class BaseReadAloudService : BaseService(),
     }
 
     private var floatingHostMode = FloatingHostMode.NONE
-    private val avoidanceTops = mutableMapOf<String, Int>()
-    private var currentAvoidanceY: Int = 0
+    private data class FloatingAvoidanceBounds(
+        val topOnScreen: Int,
+        val bottomOnScreen: Int,
+    )
+
+    private val avoidanceBounds = mutableMapOf<String, FloatingAvoidanceBounds>()
+    private var dragBaseYOnScreen: Int? = null
     private var rebuildFloatingJob: Job? = null
     private val isDesktopFloating: Boolean
         get() = floatingHostMode == FloatingHostMode.DESKTOP_OVERLAY
@@ -426,7 +432,7 @@ abstract class BaseReadAloudService : BaseService(),
         updateReadAloudFloatingVisibility(true)
         updateReadAloudFloatingCover()
         updateReadAloudFloatingPlayState()
-        applyReadAloudFloatingAvoidance(currentAvoidanceY)
+        applyReadAloudFloatingAvoidance()
     }
 
     private fun createReadAloudFloatingView(): View {
@@ -599,8 +605,8 @@ abstract class BaseReadAloudService : BaseService(),
         floatingParams = null
         floatingWindowManager = null
         floatingHostMode = FloatingHostMode.NONE
-        avoidanceTops.clear()
-        currentAvoidanceY = 0
+        avoidanceBounds.clear()
+        dragBaseYOnScreen = null
         floatingCoverView = null
         floatingPlayPauseView = null
         updateReadAloudFloatingVisibility(false)
@@ -680,19 +686,22 @@ abstract class BaseReadAloudService : BaseService(),
         val manager = checkNotNull(floatingWindowManager) {
             "Floating WindowManager is missing while moving the read-aloud panel"
         }
+        val requestedScreenY = if (isDesktopFloating) desktopYToScreenY(y) else y
+        dragBaseYOnScreen = coerceReadAloudFloatingY(requestedScreenY)
         params.x = fixedX
-        params.y = if (isDesktopFloating) {
-            coerceReadAloudDesktopFloatingY(y)
-        } else {
-            coerceReadAloudFloatingY(y)
-        }
+        params.y = resolveFloatingWindowY(view)
         manager.updateViewLayout(view, params)
     }
 
     private fun saveReadAloudFloatingPosition(x: Int, y: Int) {
         appCtx.putPrefInt(PreferKey.readAloudFloatX, x.coerceAtLeast(0))
-        val screenY = if (isDesktopFloating) desktopYToScreenY(y) else y
-        appCtx.putPrefInt(PreferKey.readAloudFloatY, coerceReadAloudFloatingY(screenY))
+        val fallbackScreenY = if (isDesktopFloating) desktopYToScreenY(y) else y
+        appCtx.putPrefInt(
+            PreferKey.readAloudFloatY,
+            dragBaseYOnScreen ?: coerceReadAloudFloatingY(fallbackScreenY),
+        )
+        dragBaseYOnScreen = null
+        applyReadAloudFloatingAvoidance()
     }
 
     private inner class ReadAloudFloatingLayout(context: Context) : FrameLayout(context) {
@@ -797,10 +806,8 @@ abstract class BaseReadAloudService : BaseService(),
             val startPos = it.getInt("startPos")
             newReadAloud(play, pageIndex, startPos)
         }
-        observeEvent<Bundle>(EventBus.READ_ALOUD_FLOATING_AVOIDANCE) {
-            val source = it.getString("source").orEmpty()
-            val y = it.getInt("y")
-            onReadAloudFloatingAvoidance(source, y)
+        observeEvent<ReadAloudFloatingObstruction>(EventBus.READ_ALOUD_FLOATING_AVOIDANCE) {
+            onReadAloudFloatingAvoidance(it)
         }
         observeEvent<ReadAloudFloatingHost>(EventBus.READ_ALOUD_DIALOG_FLOATING_HOST) {
             readAloudDialogFloatingHost = it
@@ -813,9 +820,9 @@ abstract class BaseReadAloudService : BaseService(),
                 appFloatingActivity = ReadBookActivity.activeActivity() ?: appFloatingActivity
                 showReadAloudFloatingWindow()
             } else {
-                avoidanceTops.clear()
-                currentAvoidanceY = 0
-                applyReadAloudFloatingAvoidance(0)
+                avoidanceBounds.clear()
+                dragBaseYOnScreen = null
+                applyReadAloudFloatingAvoidance()
             }
         }
         observeEvent<Boolean>(EventBus.READ_ALOUD_DIALOG_VISIBILITY) { visible ->
@@ -873,44 +880,69 @@ abstract class BaseReadAloudService : BaseService(),
         rebuildReadAloudFloatingWindowDelay()
     }
 
-    private fun onReadAloudFloatingAvoidance(source: String, y: Int) {
-        if (source.isBlank()) {
+    private fun onReadAloudFloatingAvoidance(obstruction: ReadAloudFloatingObstruction) {
+        if (obstruction.source.isBlank()) {
             return
         }
-        if (y > 0) {
-            avoidanceTops[source] = y
+        if (obstruction.active) {
+            check(
+                obstruction.topOnScreen >= 0 &&
+                    obstruction.bottomOnScreen > obstruction.topOnScreen
+            ) {
+                "Read-aloud floating obstruction has invalid bounds: " +
+                    "[${obstruction.topOnScreen}, ${obstruction.bottomOnScreen}]"
+            }
+            avoidanceBounds[obstruction.source] = FloatingAvoidanceBounds(
+                obstruction.topOnScreen,
+                obstruction.bottomOnScreen,
+            )
         } else {
-            avoidanceTops.remove(source)
+            avoidanceBounds.remove(obstruction.source)
         }
-        currentAvoidanceY = avoidanceTops.values.minOrNull() ?: 0
-        applyReadAloudFloatingAvoidance(currentAvoidanceY)
+        applyReadAloudFloatingAvoidance()
     }
 
-    private fun applyReadAloudFloatingAvoidance(obstructionTop: Int) {
+    private fun applyReadAloudFloatingAvoidance() {
         val view = floatingView ?: return
-        val baseY = readAloudFloatingY()
-        val height = view.height.takeIf { it > 0 } ?: floatingHeight
-        val gap = 10.dpToPx()
         val params = checkNotNull(floatingParams) {
             "Floating layout params are missing while applying read-aloud avoidance"
         }
         val manager = checkNotNull(floatingWindowManager) {
             "Floating WindowManager is missing while applying read-aloud avoidance"
         }
-        val targetScreenY = if (obstructionTop > 0) {
-            minOf(baseY, obstructionTop - height - gap).coerceAtLeast(floatingMinY)
-        } else {
-            baseY
-        }
-        val targetY = if (isDesktopFloating) {
-            screenYToDesktopY(targetScreenY)
-        } else {
-            targetScreenY
-        }
+        val targetY = resolveFloatingWindowY(view)
         if (params.y != targetY) {
             params.y = targetY
             manager.updateViewLayout(view, params)
         }
+    }
+
+    private fun resolveFloatingWindowY(view: View): Int {
+        val height = view.height.takeIf { it > 0 } ?: floatingHeight
+        val targetScreenY = resolveFloatingScreenY(height)
+        return if (isDesktopFloating) screenYToDesktopY(targetScreenY) else targetScreenY
+    }
+
+    private fun resolveFloatingScreenY(height: Int): Int {
+        val gap = 10.dpToPx()
+        val minY = floatingMinY
+        val maxY = (floatingUsableHeight() - height - gap).coerceAtLeast(minY)
+        val baseY = (dragBaseYOnScreen ?: readAloudFloatingY()).coerceIn(minY, maxY)
+        val candidates = linkedSetOf(baseY)
+        avoidanceBounds.values.forEach { bounds ->
+            candidates += (bounds.topOnScreen - height - gap).coerceIn(minY, maxY)
+            candidates += (bounds.bottomOnScreen + gap).coerceIn(minY, maxY)
+        }
+        return candidates
+            .asSequence()
+            .filter { candidate ->
+                avoidanceBounds.values.none { bounds ->
+                    candidate + height + gap > bounds.topOnScreen &&
+                        candidate < bounds.bottomOnScreen + gap
+                }
+            }
+            .minByOrNull { candidate -> abs(candidate - baseY) }
+            ?: error("No usable position remains for the read-aloud floating window")
     }
 
     override fun onDestroy() {
