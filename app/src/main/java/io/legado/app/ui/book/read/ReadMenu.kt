@@ -47,6 +47,7 @@ import io.legado.app.utils.activity
 import io.legado.app.utils.applyStatusBarPadding
 import io.legado.app.utils.applyNavigationBarPadding
 import io.legado.app.utils.dpToPx
+import io.legado.app.utils.doAfterFirstDraw
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.gone
 import io.legado.app.utils.invisible
@@ -114,7 +115,6 @@ class ReadMenu @JvmOverloads constructor(
 
     private fun onMenuShownEnd() {
         binding.vwMenuBg.setOnClickListener { runMenuOut() }
-        publishMenuVisibility(true)
         callBack.upSystemUiVisibility()
     }
 
@@ -467,6 +467,13 @@ class ReadMenu @JvmOverloads constructor(
         callBack.onMenuShow()
         clearMenuBlur()
         this.visible()
+        val presentationGeneration = generation
+        this@ReadMenu.doAfterFirstDraw {
+            if (presentationGeneration != menuBlurGeneration || isMenuOutAnimating || !isVisible) {
+                return@doAfterFirstDraw
+            }
+            publishMenuVisibility(true)
+        }
         binding.titleBar.visible()
         binding.bottomMenu.visible()
         val originalAlpha = alpha.takeIf { it > 0f } ?: 1f
