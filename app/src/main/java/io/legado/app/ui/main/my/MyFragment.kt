@@ -563,7 +563,6 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
                 "fileManage" -> startActivity<FileManageActivity>()
                 "readRecord" -> startActivity<ReadRecordActivity>()
                 "about" -> startActivity<AboutActivity>()
-                "exit" -> activity?.finish()
                 else -> Unit
             }
             return super.onPreferenceTreeClick(preference)
