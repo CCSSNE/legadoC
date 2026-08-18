@@ -56,6 +56,14 @@
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
+            android:defaultValue="2400"
+            android:dependency="readAloudCoverRotation"
+            android:key="readAloudCoverRotationDuration"
+            android:summary="@string/read_aloud_cover_rotation_duration_summary"
+            android:title="@string/read_aloud_cover_rotation_duration"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
             android:defaultValue="3000"
             android:key="readAloudScrollFollowTimeout"
             android:summary="@string/read_aloud_scroll_follow_timeout_summary"

@@ -551,15 +551,21 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         updateCoverRotation()
     }
 
-    private fun updateCoverRotation() {
+    private fun updateCoverRotation(restart: Boolean = false) {
         if (AppConfig.readAloudCoverRotation &&
             BaseReadAloudService.isPlay() &&
             !BaseReadAloudService.loading
         ) {
-            if (coverRotationAnimator?.isStarted == true) return
+            if (!restart && coverRotationAnimator?.isStarted == true) return
             coverRotationAnimator?.cancel()
-            coverRotationAnimator = ObjectAnimator.ofFloat(binding.ivCover, View.ROTATION, 0f, 360f).apply {
-                duration = BaseReadAloudService.READ_ALOUD_COVER_ROTATION_DURATION
+            val startRotation = binding.ivCover.rotation
+            coverRotationAnimator = ObjectAnimator.ofFloat(
+                binding.ivCover,
+                View.ROTATION,
+                startRotation,
+                startRotation + 360f
+            ).apply {
+                duration = AppConfig.readAloudCoverRotationDuration.toLong()
                 repeatCount = ObjectAnimator.INFINITE
                 interpolator = LinearInterpolator()
                 start()
@@ -693,6 +699,9 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         }
         observeEvent<Boolean>(EventBus.MEDIA_BUTTON) { updatePlayState() }
         observeEvent<String>(PreferKey.readAloudCoverRotation) { updateCoverRotation() }
+        observeEvent<String>(PreferKey.readAloudCoverRotationDuration) {
+            updateCoverRotation(restart = true)
+        }
     }
 
     override fun onDestroy() {

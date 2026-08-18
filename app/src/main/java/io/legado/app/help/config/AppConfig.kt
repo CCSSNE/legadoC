@@ -1500,6 +1500,28 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val readAloudCoverRotation
         get() = appCtx.getPrefBoolean(PreferKey.readAloudCoverRotation, true)
 
+    const val DEFAULT_READ_ALOUD_COVER_ROTATION_DURATION = 2400
+    const val MIN_READ_ALOUD_COVER_ROTATION_DURATION = 100
+    const val MAX_READ_ALOUD_COVER_ROTATION_DURATION = 60000
+
+    var readAloudCoverRotationDuration: Int
+        get() {
+            val duration = appCtx.getPrefInt(
+                PreferKey.readAloudCoverRotationDuration,
+                DEFAULT_READ_ALOUD_COVER_ROTATION_DURATION
+            )
+            check(duration in MIN_READ_ALOUD_COVER_ROTATION_DURATION..MAX_READ_ALOUD_COVER_ROTATION_DURATION) {
+                "Invalid read-aloud cover rotation duration: $duration"
+            }
+            return duration
+        }
+        set(value) {
+            require(value in MIN_READ_ALOUD_COVER_ROTATION_DURATION..MAX_READ_ALOUD_COVER_ROTATION_DURATION) {
+                "Read-aloud cover rotation duration is out of range: $value"
+            }
+            appCtx.putPrefInt(PreferKey.readAloudCoverRotationDuration, value)
+        }
+
     val readAloudFloatOnDesktop
         get() = appCtx.getPrefBoolean(PreferKey.readAloudFloatOnDesktop, false)
 

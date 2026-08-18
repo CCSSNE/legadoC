@@ -20,6 +20,7 @@ import io.legado.app.data.appDb
 import io.legado.app.help.IntentHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.SelectItem
+import io.legado.app.lib.dialogs.showDecimalInputDialog
 import io.legado.app.lib.dialogs.showIntegerInputDialog
 import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
@@ -35,6 +36,8 @@ import io.legado.app.utils.postEvent
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.showDialogFragment
+import java.math.BigDecimal
+import kotlin.math.roundToInt
 
 class ReadAloudConfigDialog : BasePrefDialogFragment() {
     private val readAloudPreferTag = "readAloudPreferTag"
@@ -92,6 +95,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
             initPhoneCallPausePreference()
             initFloatOnDesktopPreference()
             upFloatOnDesktopPreference()
+            upCoverRotationDurationSummary()
             upScrollFollowTimeoutSummary()
             upProgressPollIntervalSummary()
         }
@@ -117,6 +121,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
             when (preference.key) {
                 PreferKey.ttsEngine -> showDialogFragment(SpeakEngineDialog())
                 "sysTtsConfig" -> IntentHelp.openTTSSetting()
+                PreferKey.readAloudCoverRotationDuration -> showCoverRotationDurationDialog()
                 PreferKey.readAloudScrollFollowTimeout -> showScrollFollowTimeoutDialog()
                 PreferKey.readAloudProgressPollInterval -> showProgressPollIntervalDialog()
             }
@@ -163,6 +168,29 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 )
         }
 
+        private fun showCoverRotationDurationDialog() {
+            val secondsRange =
+                (AppConfig.MIN_READ_ALOUD_COVER_ROTATION_DURATION / 1000.0)..
+                        (AppConfig.MAX_READ_ALOUD_COVER_ROTATION_DURATION / 1000.0)
+            showDecimalInputDialog(
+                title = R.string.read_aloud_cover_rotation_duration_dialog_title,
+                currentValue = AppConfig.readAloudCoverRotationDuration / 1000.0,
+                validRange = secondsRange,
+                defaultValue = AppConfig.DEFAULT_READ_ALOUD_COVER_ROTATION_DURATION / 1000.0
+            ) {
+                AppConfig.readAloudCoverRotationDuration = (it * 1000).roundToInt()
+                upCoverRotationDurationSummary()
+            }
+        }
+
+        private fun upCoverRotationDurationSummary() {
+            val seconds = BigDecimal.valueOf(
+                AppConfig.readAloudCoverRotationDuration / 1000.0
+            ).stripTrailingZeros().toPlainString()
+            findPreference<Preference>(PreferKey.readAloudCoverRotationDuration)?.summary =
+                getString(R.string.read_aloud_cover_rotation_duration_summary, seconds)
+        }
+
         override fun onSharedPreferenceChanged(
             sharedPreferences: SharedPreferences?,
             key: String?
@@ -190,6 +218,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
 
                 PreferKey.readAloudScrollFollowTimeout -> upScrollFollowTimeoutSummary()
                 PreferKey.readAloudProgressPollInterval -> upProgressPollIntervalSummary()
+                PreferKey.readAloudCoverRotationDuration -> upCoverRotationDurationSummary()
 
                 PreferKey.ignoreAudioFocus -> {
                     Unit

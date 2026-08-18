@@ -136,8 +136,6 @@ abstract class BaseReadAloudService : BaseService(),
 
         private const val TAG = "BaseReadAloudService"
         private const val MIN_READ_ALOUD_PRELOAD_LENGTH = 300
-        const val READ_ALOUD_COVER_ROTATION_DURATION = 2400L
-
     }
 
     private val useWakeLock = appCtx.getPrefBoolean(PreferKey.readAloudWakeLock, false)
@@ -488,13 +486,19 @@ abstract class BaseReadAloudService : BaseService(),
         }
     }
 
-    private fun updateFloatingCoverAnimation() {
+    private fun updateFloatingCoverAnimation(restart: Boolean = false) {
         val view = floatingCoverView ?: return
         if (AppConfig.readAloudCoverRotation && isPlay() && !loading) {
-            if (floatingCoverAnimator?.isStarted == true) return
+            if (!restart && floatingCoverAnimator?.isStarted == true) return
             floatingCoverAnimator?.cancel()
-            floatingCoverAnimator = ObjectAnimator.ofFloat(view, View.ROTATION, 0f, 360f).apply {
-                duration = READ_ALOUD_COVER_ROTATION_DURATION
+            val startRotation = view.rotation
+            floatingCoverAnimator = ObjectAnimator.ofFloat(
+                view,
+                View.ROTATION,
+                startRotation,
+                startRotation + 360f
+            ).apply {
+                duration = AppConfig.readAloudCoverRotationDuration.toLong()
                 repeatCount = ObjectAnimator.INFINITE
                 interpolator = LinearInterpolator()
                 start()
@@ -780,6 +784,10 @@ abstract class BaseReadAloudService : BaseService(),
                 PreferKey.readAloudCoverRotation -> {
                     updateFloatingCoverAnimation()
                     postEvent(PreferKey.readAloudCoverRotation, "")
+                }
+                PreferKey.readAloudCoverRotationDuration -> {
+                    updateFloatingCoverAnimation(restart = true)
+                    postEvent(PreferKey.readAloudCoverRotationDuration, "")
                 }
             }
         }
