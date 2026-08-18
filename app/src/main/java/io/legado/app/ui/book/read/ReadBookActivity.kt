@@ -1646,8 +1646,8 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
     }
 
-    private fun hideReadAloudPlaybackPanel() {
-        fadeReadAloudPanel(binding.readAloudPlaybackPanel, false)
+    private fun hideReadAloudPlaybackPanel(immediate: Boolean = false) {
+        fadeReadAloudPanel(binding.readAloudPlaybackPanel, false, immediate)
         clearReadAloudFloatingAvoidance(EventBus.FLOATING_AVOID_SOURCE_READ_ALOUD_PLAYBACK_PANEL)
     }
 
@@ -1677,15 +1677,20 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
     }
 
-    private fun hideReadAloudPagePanel() {
-        fadeReadAloudPanel(binding.readAloudPagePanel, false)
+    private fun hideReadAloudPagePanel(immediate: Boolean = false) {
+        fadeReadAloudPanel(binding.readAloudPagePanel, false, immediate)
         clearReadAloudFloatingAvoidance(EventBus.FLOATING_AVOID_SOURCE_READ_ALOUD_PAGE_PANEL)
     }
 
-    private fun fadeReadAloudPanel(view: View, show: Boolean) {
+    private fun fadeReadAloudPanel(view: View, show: Boolean, immediate: Boolean = false) {
         view.animate().cancel()
         val generation = ((view.getTag(R.id.tag1) as? Long) ?: 0L) + 1L
         view.setTag(R.id.tag1, generation)
+        if (!show && immediate) {
+            view.alpha = 0f
+            view.gone()
+            return
+        }
         if (show) {
             val wasVisible = view.visibility == View.VISIBLE
             view.visible()
@@ -2914,6 +2919,14 @@ class ReadBookActivity : BaseReadBookActivity(),
                 binding.readAloudDialogOutsideTap.gone()
             }
             updateReadAloudPanels()
+        }
+        observeEvent<Boolean>(EventBus.READ_ALOUD_FLOATING_VISIBILITY) { visible ->
+            if (visible) {
+                hideReadAloudPagePanel(immediate = true)
+                hideReadAloudPlaybackPanel(immediate = true)
+            } else {
+                updateReadAloudPanels()
+            }
         }
         observeEventSticky<Bundle>(EventBus.TTS_PROGRESS) { progress ->
             val chapterIndex = progress.getInt("chapterIndex", ReadBook.durChapterIndex)
