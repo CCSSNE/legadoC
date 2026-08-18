@@ -23,6 +23,7 @@ import android.media.AudioManager
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Bundle
+import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
@@ -348,7 +349,8 @@ abstract class BaseReadAloudService : BaseService(),
                 ?: error("ReadBookActivity window token is unavailable for the read-aloud panel")
             val view = createReadAloudFloatingView()
             addAppReadAloudFloatingWindow(
-                ReadAloudFloatingHost(activity.windowManager, token),
+                activity.windowManager,
+                token,
                 view,
             )
             onReadAloudFloatingAttached(view)
@@ -359,7 +361,8 @@ abstract class BaseReadAloudService : BaseService(),
     }
 
     private fun addAppReadAloudFloatingWindow(
-        host: ReadAloudFloatingHost,
+        windowManager: WindowManager,
+        token: IBinder,
         view: View,
     ) {
         val params = WindowManager.LayoutParams(
@@ -375,11 +378,11 @@ abstract class BaseReadAloudService : BaseService(),
             gravity = Gravity.START or Gravity.TOP
             x = readAloudFloatingX()
             y = readAloudFloatingY()
-            token = host.token
+            this.token = token
             title = "ReadAloudFloating"
         }
-        host.windowManager.addView(view, params)
-        floatingWindowManager = host.windowManager
+        windowManager.addView(view, params)
+        floatingWindowManager = windowManager
         floatingParams = params
         floatingView = view
         floatingHostMode = FloatingHostMode.APPLICATION_PANEL
@@ -393,19 +396,6 @@ abstract class BaseReadAloudService : BaseService(),
         floatingWindowManager = null
         floatingParams = null
         floatingHostMode = FloatingHostMode.NONE
-    }
-
-    private fun promoteAppReadAloudFloatingWindow(host: ReadAloudFloatingHost) {
-        if (isDesktopFloating) return
-        val view = floatingView ?: return
-        runCatching {
-            detachFloatingView(view)
-            addAppReadAloudFloatingWindow(host, view)
-            onReadAloudFloatingAttached(view)
-        }.onFailure {
-            clearReadAloudFloatingRefs()
-            AppLog.put("promote app floating window failed\n${it.localizedMessage}", it)
-        }
     }
 
     private fun onReadAloudFloatingAttached(view: View) {
@@ -788,9 +778,6 @@ abstract class BaseReadAloudService : BaseService(),
             val y = it.getInt("y")
             onReadAloudFloatingAvoidance(source, y)
         }
-        observeEvent<ReadAloudFloatingHost>(EventBus.READ_ALOUD_FLOATING_HOST) { host ->
-            promoteAppReadAloudFloatingWindow(host)
-        }
         observeEvent<Boolean>(EventBus.READ_BOOK_ACTIVITY_ACTIVE) {
             if (it) {
                 appFloatingActivity = ReadBookActivity.activeActivity() ?: appFloatingActivity
@@ -801,19 +788,10 @@ abstract class BaseReadAloudService : BaseService(),
                 applyReadAloudFloatingAvoidance(0)
             }
         }
-        observeEvent<Boolean>(EventBus.READ_ALOUD_DIALOG_VISIBILITY) { visible ->
+        observeEvent<Boolean>(EventBus.READ_ALOUD_DIALOG_VISIBILITY) {
             showReadAloudFloatingWindow()
         }
-        observeEvent<Boolean>(EventBus.READ_MAIN_MENU_VISIBILITY) { visible ->
-            if (visible) {
-                ReadBookActivity.activeActivity()?.let { activity ->
-                    val token = activity.window?.decorView?.windowToken
-                        ?: error("ReadBookActivity window token is unavailable for the main menu floating host")
-                    promoteAppReadAloudFloatingWindow(
-                        ReadAloudFloatingHost(activity.windowManager, token)
-                    )
-                }
-            }
+        observeEvent<Boolean>(EventBus.READ_MAIN_MENU_VISIBILITY) {
             showReadAloudFloatingWindow()
         }
         observeSharedPreferences { _, key ->

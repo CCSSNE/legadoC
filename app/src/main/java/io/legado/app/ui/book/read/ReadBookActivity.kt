@@ -1994,6 +1994,15 @@ class ReadBookActivity : BaseReadBookActivity(),
         view?.postDelayed({ postForView() }, 500L)
     }
 
+    fun postReadAloudFloatingAvoidanceFromScreenTop(source: String, topOnScreen: Int) {
+        check(topOnScreen > 0) {
+            "Read-aloud floating obstruction has invalid screen top: $topOnScreen"
+        }
+        readAloudAvoidanceGenerations[source] =
+            (readAloudAvoidanceGenerations[source] ?: 0L) + 1L
+        postReadAloudFloatingAvoidance(source, topOnScreen)
+    }
+
     fun clearReadAloudFloatingAvoidance(source: String) {
         readAloudAvoidanceGenerations[source] =
             (readAloudAvoidanceGenerations[source] ?: 0L) + 1L
