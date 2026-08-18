@@ -60,6 +60,7 @@ import io.legado.app.utils.observeEvent
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
+import io.legado.app.utils.StringUtils
 import io.legado.app.utils.toDurationTime
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -316,8 +317,9 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         listeningTextRows.clear()
         items.forEach { item ->
             val normalAlpha = if (item.isTitle) 1f else BODY_TEXT_ALPHA
+            val displayText = StringUtils.trim(item.text)
             val view = TextView(this@AudioPlayActivity).apply {
-                text = item.text
+                text = displayText
                 setTextSize(TypedValue.COMPLEX_UNIT_PX, NORMAL_TEXT_SIZE_PX)
                 setTextColor(Color.WHITE)
                 alpha = normalAlpha
