@@ -231,6 +231,6 @@ uiautomator2 / ADB
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- `3.26.081808c` / `10668`，2026-08-18（UTC），`feature/audio-reading-ui-unification` 分支（代码提交 `a445fbe`）。修复听书页 `AudioPlayActivity` 空会话处理与未运行状态：`ReadBook.book` 为空时记录 `AppLog` 并提示“当前没有可控制的听书会话”，延迟到界面展示后再 `finish()`，避免 toast 未显示即关闭；`updatePlayState()` 在朗读服务未运行时隐藏加载指示、启用播放按钮并显示播放图标，不再引用失效的 `BaseReadAloudService.loading`。已通过隐藏后台正式 `:app:assembleAppC` 构建，退出码为 0；`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.081808c` / `10668`、中文名“阅读 C”、架构 `arm64-v8a`，`apksigner` 退出码为 0。已覆盖安装到雷电模拟器 `emulator-5554`，冒烟启动确认进程正常、无 FATAL。听书页具体业务回归（含朗读会话场景）未纳入本次编译交付结论。
+- `3.26.081809c` / `10671`，2026-08-18（UTC），`feature/audio-reading-ui-unification` 分支（代码提交 `a73821a`）。修复听书页启动任务标志与朗读悬浮窗可见性：`ReadAloud` 从 Activity 上下文启动 `AudioPlayActivity` 时不再强制 `NEW_TASK|CLEAR_TOP|SINGLE_TOP`，仅非 Activity 上下文加 `NEW_TASK`；`BaseReadAloudService` 改以 `ReadBookActivity.activeActivity()` 检测活跃阅读页，悬浮窗已存在且非桌面悬浮、活跃阅读页不在时移除悬浮窗；朗读主菜单可见性更新收敛到 `onReadMenuAvoidanceChanged` 统一入口（修复 `?: return` 提前返回跳过清理逻辑），`ReadMenu` 销毁（detach）时若菜单仍可见或正在退场动画则补发避让清理回调。已通过隐藏后台正式 `:app:clean :app:assembleAppC` 构建，退出码为 0；`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.081809c` / `10671`、中文名“阅读 C”、架构 `arm64-v8a`，`apksigner` 退出码为 0。已覆盖安装到雷电模拟器 `127.0.0.1:5555`，冒烟启动确认进程正常、无 FATAL、主界面在前台。听书页具体业务回归（含朗读会话场景）未纳入本次编译交付结论。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
