@@ -317,7 +317,9 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         listeningTextRows.clear()
         items.forEach { item ->
             val normalAlpha = if (item.isTitle) 1f else BODY_TEXT_ALPHA
-            val displayText = StringUtils.trim(item.text)
+            val displayText = StringUtils.trim(item.text).let { text ->
+                if (item.isTitle || text.isEmpty()) text else "$LISTENING_PARAGRAPH_INDENT$text"
+            }
             val view = TextView(this@AudioPlayActivity).apply {
                 text = displayText
                 setTextSize(TypedValue.COMPLEX_UNIT_PX, NORMAL_TEXT_SIZE_PX)
@@ -730,6 +732,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     )
 
     private companion object {
+        const val LISTENING_PARAGRAPH_INDENT = "  "
         const val NORMAL_TEXT_SIZE_PX = 50f
         const val CURRENT_TEXT_SIZE_PX = 60f
         const val BODY_TEXT_ALPHA = 0.9f
