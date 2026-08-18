@@ -26,6 +26,7 @@ import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.model.ReadAloudUiState
 import io.legado.app.service.BaseReadAloudService
+import io.legado.app.service.ReadAloudDialogFloatingPresentation
 import io.legado.app.service.ReadAloudEngineType
 import io.legado.app.service.ReadAloudFloatingHost
 import io.legado.app.service.ReadAloudProgress
@@ -72,14 +73,11 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
         publishDialogVisibilityAfterFirstDraw()
     }
 
-    private fun publishFloatingHost() {
+    private fun resolveFloatingHost(): ReadAloudFloatingHost {
         val window = dialog?.window ?: error("ReadAloudDialog window is unavailable")
         val token = window.decorView.windowToken
             ?: error("ReadAloudDialog window token is unavailable")
-        postEvent(
-            EventBus.READ_ALOUD_DIALOG_FLOATING_HOST,
-            ReadAloudFloatingHost(window.windowManager, token),
-        )
+        return ReadAloudFloatingHost(window.windowManager, token)
     }
 
     private fun publishMenuTopOnScreen(view: View) {
@@ -97,7 +95,6 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
         val root = binding.rootView
         root.doAfterFirstDraw {
             if (!ownsDialogVisibility || dialogPresentationReady) return@doAfterFirstDraw
-            publishFloatingHost()
             updateDialogVisibility(true)
         }
     }
@@ -110,9 +107,13 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
         } else if (!dialogPresentationReady) {
             return
         }
+        val floatingPresentation = ReadAloudDialogFloatingPresentation(
+            if (visible) resolveFloatingHost() else null
+        )
         dialogPresentationReady = visible
         ReadAloudUiState.setReadAloudDialogVisible(visible)
         postEvent(EventBus.READ_ALOUD_DIALOG_VISIBILITY, visible)
+        postEvent(EventBus.READ_ALOUD_DIALOG_FLOATING_PRESENTATION, floatingPresentation)
     }
 
     override fun onDismiss(dialog: DialogInterface) {

@@ -368,11 +368,7 @@ abstract class BaseReadAloudService : BaseService(),
     private fun resolveAppReadAloudFloatingHost(
         activity: ReadBookActivity,
     ): ReadAloudFloatingHost {
-        if (ReadAloudUiState.readAloudDialogVisible) {
-            return checkNotNull(readAloudDialogFloatingHost) {
-                "ReadAloudDialog host is unavailable while the dialog is visible"
-            }
-        }
+        readAloudDialogFloatingHost?.let { return it }
         val token = activity.window?.decorView?.windowToken
             ?: error("ReadBookActivity window token is unavailable for the read-aloud panel")
         return ReadAloudFloatingHost(activity.windowManager, token)
@@ -809,11 +805,11 @@ abstract class BaseReadAloudService : BaseService(),
         observeEvent<ReadAloudFloatingObstruction>(EventBus.READ_ALOUD_FLOATING_AVOIDANCE) {
             onReadAloudFloatingAvoidance(it)
         }
-        observeEvent<ReadAloudFloatingHost>(EventBus.READ_ALOUD_DIALOG_FLOATING_HOST) {
-            readAloudDialogFloatingHost = it
-            if (ReadAloudUiState.readAloudDialogVisible) {
-                showReadAloudFloatingWindow()
-            }
+        observeEvent<ReadAloudDialogFloatingPresentation>(
+            EventBus.READ_ALOUD_DIALOG_FLOATING_PRESENTATION
+        ) {
+            readAloudDialogFloatingHost = it.host
+            showReadAloudFloatingWindow()
         }
         observeEvent<Boolean>(EventBus.READ_BOOK_ACTIVITY_ACTIVE) {
             if (it) {
@@ -824,12 +820,6 @@ abstract class BaseReadAloudService : BaseService(),
                 dragBaseYOnScreen = null
                 applyReadAloudFloatingAvoidance()
             }
-        }
-        observeEvent<Boolean>(EventBus.READ_ALOUD_DIALOG_VISIBILITY) { visible ->
-            if (!visible) {
-                readAloudDialogFloatingHost = null
-            }
-            showReadAloudFloatingWindow()
         }
         observeEvent<Boolean>(EventBus.READ_MAIN_MENU_VISIBILITY) {
             showReadAloudFloatingWindow()

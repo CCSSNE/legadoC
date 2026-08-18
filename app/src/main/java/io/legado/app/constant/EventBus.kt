@@ -42,7 +42,7 @@ object EventBus {
     const val OPEN_READ_ALOUD_DIALOG = "openReadAloudDialog"
     const val CLOSE_READ_ALOUD_DIALOG = "closeReadAloudDialog"
     const val READ_ALOUD_FLOATING_AVOIDANCE = "readAloudFloatingAvoidance"
-    const val READ_ALOUD_DIALOG_FLOATING_HOST = "readAloudDialogFloatingHost"
+    const val READ_ALOUD_DIALOG_FLOATING_PRESENTATION = "readAloudDialogFloatingPresentation"
     const val READ_BOOK_ACTIVITY_ACTIVE = "readBookActivityActive"
     const val FLOATING_AVOID_SOURCE_READ_MENU = "read_menu"
     const val FLOATING_AVOID_SOURCE_READ_MENU_TOP = "read_menu_top"
