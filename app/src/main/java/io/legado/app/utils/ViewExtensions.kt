@@ -10,7 +10,9 @@ import android.graphics.Color
 import android.graphics.Picture
 import android.graphics.Rect
 import android.os.Build
+import android.text.Spannable
 import android.text.Spanned
+import android.text.method.ScrollingMovementMethod
 import android.text.style.ImageSpan
 import android.view.MotionEvent
 import android.view.View
@@ -303,9 +305,11 @@ private class InlineImageMovementMethod(
     private var activeTarget: InlineImageTouchTarget? = null
     private var longClickRunnable: Runnable? = null
     private var longClicked = false
+    private var imageDragging = false
     private var downX = 0f
     private var downY = 0f
     private var lastClickTime = 0L
+    private val scrollingMovementMethod = ScrollingMovementMethod.getInstance()
 
     override fun onTouchEvent(
         widget: TextView,
@@ -319,7 +323,9 @@ private class InlineImageMovementMethod(
                 activeTarget = target
                 downX = event.x
                 downY = event.y
+                imageDragging = false
                 widget.isLongClickable = false
+                scrollingMovementMethod.onTouchEvent(widget, buffer, event)
                 longClickRunnable = Runnable {
                     if (activeTarget == target) {
                         longClicked = true
@@ -335,9 +341,10 @@ private class InlineImageMovementMethod(
                 val deltaX = event.x - downX
                 val deltaY = event.y - downY
                 if (deltaX * deltaX + deltaY * deltaY > touchSlop * touchSlop) {
-                    cancelImageGesture(widget)
-                    return super.onTouchEvent(widget, buffer, event)
+                    cancelLongClick(widget)
+                    imageDragging = true
                 }
+                scrollingMovementMethod.onTouchEvent(widget, buffer, event)
                 return true
             }
 
@@ -345,8 +352,10 @@ private class InlineImageMovementMethod(
                 val target = activeTarget ?: return super.onTouchEvent(widget, buffer, event)
                 val releaseTarget = imageTargetAt(widget, event)
                 val wasLongClicked = longClicked
+                val wasDragged = imageDragging
+                endScrollingGesture(widget, buffer, event)
                 cancelImageGesture(widget)
-                if (!wasLongClicked && releaseTarget == target) {
+                if (!wasDragged && !wasLongClicked && releaseTarget == target) {
                     target.click?.let { click ->
                         val now = System.currentTimeMillis()
                         if (now - lastClickTime > 200) {
@@ -356,11 +365,12 @@ private class InlineImageMovementMethod(
                         return true
                     }
                 }
-                return wasLongClicked || super.onTouchEvent(widget, buffer, event)
+                return true
             }
 
             MotionEvent.ACTION_CANCEL -> {
                 if (activeTarget != null) {
+                    endScrollingGesture(widget, buffer, event)
                     cancelImageGesture(widget)
                     return true
                 }
@@ -381,11 +391,34 @@ private class InlineImageMovementMethod(
     }
 
     private fun cancelImageGesture(widget: TextView) {
-        longClickRunnable?.let(widget::removeCallbacks)
-        longClickRunnable = null
+        cancelLongClick(widget)
         activeTarget = null
+        imageDragging = false
         longClicked = false
         widget.isLongClickable = true
+    }
+
+    private fun cancelLongClick(widget: TextView) {
+        longClickRunnable?.let(widget::removeCallbacks)
+        longClickRunnable = null
+    }
+
+    private fun endScrollingGesture(
+        widget: TextView,
+        buffer: Spannable,
+        event: MotionEvent
+    ) {
+        if (event.actionMasked != MotionEvent.ACTION_CANCEL) {
+            scrollingMovementMethod.onTouchEvent(widget, buffer, event)
+            return
+        }
+        val endEvent = MotionEvent.obtain(event)
+        endEvent.action = MotionEvent.ACTION_UP
+        try {
+            scrollingMovementMethod.onTouchEvent(widget, buffer, endEvent)
+        } finally {
+            endEvent.recycle()
+        }
     }
 }
 
