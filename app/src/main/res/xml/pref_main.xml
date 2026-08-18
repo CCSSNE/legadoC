@@ -190,11 +190,6 @@
             android:title="@string/about"
             app:iconSpaceReserved="false" />
 
-        <io.legado.app.lib.prefs.Preference
-            android:key="exit"
-            android:title="@string/exit"
-            app:iconSpaceReserved="false" />
-
     </io.legado.app.lib.prefs.PreferenceCategory>
 
 </androidx.preference.PreferenceScreen>
