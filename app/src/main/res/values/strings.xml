@@ -227,7 +227,6 @@
     <string name="integer_input_range_invalid">Enter an integer from %1$d to %2$d.</string>
     <string name="read_aloud_original_progress">Original</string>
     <string name="read_aloud_from_current_page">From page</string>
-    <string name="read_aloud_page_actions">Original / From page</string>
     <string name="read_aloud_pause_playback">Pause playback</string>
     <string name="read_aloud_resume_playback">Resume playback</string>
     <string name="open_read_aloud_player">Open listening page</string>
