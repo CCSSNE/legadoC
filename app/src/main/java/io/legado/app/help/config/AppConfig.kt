@@ -88,7 +88,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             PreferKey.adaptSpecialStyle -> adaptSpecialStyle = appCtx.getPrefBoolean(PreferKey.adaptSpecialStyle, true)
 
             PreferKey.themeMode -> {
-                updateThemeModeCache(appCtx.getPrefString(PreferKey.themeMode, "0"))
+                updateThemeModeCache(appCtx.getPrefString(PreferKey.themeMode, "0") ?: "0")
             }
 
             PreferKey.clickActionTL -> clickActionTL =
