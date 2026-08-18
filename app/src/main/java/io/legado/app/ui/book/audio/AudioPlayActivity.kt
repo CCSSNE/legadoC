@@ -17,7 +17,6 @@ import androidx.activity.addCallback
 import androidx.activity.viewModels
 import androidx.core.view.doOnLayout
 import androidx.lifecycle.lifecycleScope
-import com.dirror.lyricviewx.OnPlayClickListener
 import io.legado.app.R
 import io.legado.app.base.BaseActivity
 import io.legado.app.constant.AppLog
@@ -33,7 +32,6 @@ import io.legado.app.help.book.AudioTextMapping
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.permission.NotificationPermission
-import io.legado.app.lib.theme.ThemeStore.Companion.accentColor
 import io.legado.app.model.BookCover
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadAloudUiState
@@ -82,13 +80,14 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     }
     private var displayedProgress: ReadAloudProgress? = null
     private var trackingProgress = false
-    private var loadedLyric: String? = null
-    private val ttsParagraphRows = arrayListOf<TtsParagraphRow>()
-    private var ttsTextChapterIndex = -1
-    private var ttsScrollTouching = false
-    private var ttsScrollFollowBlockedUntil = 0L
-    private var ttsScrollFollowJob: Job? = null
-    private var pendingTtsHighlightIndex: Int? = null
+    private var sourceAudioTextMapping: AudioTextMapping? = null
+    private var boundListeningTextItems = emptyList<ListeningTextItem>()
+    private val listeningTextRows = arrayListOf<ListeningTextRow>()
+    private var listeningTextChapterIndex = -1
+    private var listeningTextScrollTouching = false
+    private var listeningTextScrollFollowBlockedUntil = 0L
+    private var listeningTextScrollFollowJob: Job? = null
+    private var pendingListeningTextHighlightIndex: Int? = null
     private var preserveAfterEngineSwitch = false
 
     private val tocActivityResult = registerForActivityResult(TocActivityResult()) { result ->
@@ -196,18 +195,18 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         }
         ivChapter.setOnClickListener { tocActivityResult.launch(book.bookUrl) }
         ivCache?.setOnClickListener { showAudioCacheRangeDialog(book) }
-        ttsContentScroll.setOnTouchListener { _, event ->
+        listeningTextScroll.setOnTouchListener { _, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    ttsScrollTouching = true
-                    ttsScrollFollowJob?.cancel()
-                    ttsScrollFollowJob = null
+                    listeningTextScrollTouching = true
+                    listeningTextScrollFollowJob?.cancel()
+                    listeningTextScrollFollowJob = null
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    ttsScrollTouching = false
-                    ttsScrollFollowBlockedUntil =
+                    listeningTextScrollTouching = false
+                    listeningTextScrollFollowBlockedUntil =
                         SystemClock.uptimeMillis() + AppConfig.readAloudScrollFollowTimeout
-                    scheduleTtsParagraphCenter()
+                    scheduleListeningTextCenter()
                 }
             }
             false
@@ -228,28 +227,13 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     private fun updateEngineUi() = binding.run {
         val sourceAudio = ReadAloud.selectedEngineType == ReadAloudEngineType.SOURCE_AUDIO
         ivCache?.visible(sourceAudio)
-        if (sourceAudio) {
-            ttsScrollFollowJob?.cancel()
-            ttsScrollFollowJob = null
-            ttsScrollTouching = false
-            pendingTtsHighlightIndex = null
-            ttsContentScroll.gone()
-            loadLyric(ReadBook.curTextChapter?.chapter?.getVariable("lyric"))
-        } else {
-            loadedLyric = null
-            lyricViewX.gone()
-            bindTtsText()
-        }
+        bindListeningText()
         invalidateOptionsMenu()
     }
 
     private fun updateChapterUi() {
         binding.tvSubTitle.text = ReadBook.curTextChapter?.title.orEmpty()
-        if (ReadAloud.selectedEngineType == ReadAloudEngineType.SOURCE_AUDIO) {
-            loadLyric(ReadBook.curTextChapter?.chapter?.getVariable("lyric"))
-        } else {
-            bindTtsText()
-        }
+        bindListeningText()
     }
 
     private fun loadCover(book: Book) {
@@ -260,134 +244,163 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         }.into(binding.ivCover)
     }
 
-    private fun loadLyric(lyric: String?) {
-        if (loadedLyric == lyric) return
-        loadedLyric = lyric
-        val mapping = AudioTextMapping.parse(lyric)
-        if (!mapping.hasTimeMapping || lyric.isNullOrBlank()) {
-            binding.lyricViewX.gone()
+    private fun bindListeningText() {
+        if (ReadAloud.selectedEngineType == ReadAloudEngineType.SOURCE_AUDIO) {
+            bindSourceAudioText()
+        } else {
+            bindTtsText()
+        }
+    }
+
+    private fun bindSourceAudioText() {
+        val chapter = ReadBook.curTextChapter ?: run {
+            clearListeningText()
             return
         }
-        binding.lyricViewX.run {
-            loadLyric(lyric)
-            visible()
-            setNormalTextSize(50F)
-            setCurrentTextSize(60F)
-            setTimelineTextColor(accentColor)
-            setDraggable(true, object : OnPlayClickListener {
-                override fun onPlayClick(time: Long): Boolean {
-                    val progress = displayedProgress ?: return false
-                    ReadAloud.seekToProgress(
-                        this@AudioPlayActivity,
-                        progress.chapterIndex,
-                        time.coerceIn(0L, progress.total.toLong()).toInt(),
-                    )
-                    return true
-                }
-            })
+        val mapping = AudioTextMapping.parse(chapter.chapter.getVariable("lyric"))
+        if (!mapping.hasTimeMapping) {
+            clearListeningText()
+            return
         }
+        sourceAudioTextMapping = mapping
+        bindListeningTextItems(
+            chapterIndex = chapter.chapter.index,
+            items = mapping.cues.map { cue ->
+                ListeningTextItem(
+                    text = cue.text,
+                    isTitle = false,
+                    target = ListeningTextTarget.Time(cue.startMs),
+                )
+            },
+        )
     }
 
     private fun bindTtsText() {
         val chapter = ReadBook.curTextChapter ?: run {
-            binding.ttsContentScroll.gone()
+            clearListeningText()
             return
         }
-        binding.run {
-            val paragraphs = chapter.getParagraphs(false)
-            val canReuseViews = ttsTextChapterIndex == chapter.chapter.index &&
-                    ttsParagraphRows.size == paragraphs.size &&
-                    paragraphs.indices.all { index ->
-                        ttsParagraphRows[index].view.text.toString() == paragraphs[index].text
-                    }
-            if (canReuseViews) {
-                ttsContentScroll.visible(paragraphs.isNotEmpty())
-                updateTtsParagraphHighlight(displayedProgress)
-                return@run
-            }
-            ttsTextChapterIndex = chapter.chapter.index
-            ttsContent.removeAllViews()
-            ttsParagraphRows.clear()
-            paragraphs.forEach { paragraph ->
-                val normalTextSizeSp = if (paragraph.isTitle) {
-                    TTS_TITLE_TEXT_SIZE_SP
-                } else {
-                    TTS_BODY_TEXT_SIZE_SP
-                }
-                val normalAlpha = if (paragraph.isTitle) 1f else TTS_BODY_TEXT_ALPHA
-                val view = TextView(this@AudioPlayActivity).apply {
-                    text = paragraph.text
-                    textSize = normalTextSizeSp
-                    setTextColor(Color.WHITE)
-                    alpha = normalAlpha
-                    setLineSpacing(0f, 1.12f)
-                    setPadding(0, 8.dpToPx(), 0, 8.dpToPx())
-                    isClickable = true
-                    setOnClickListener {
-                        ReadAloud.seekToTextPosition(
-                            this@AudioPlayActivity,
-                            chapter.chapter.index,
-                            paragraph.chapterPosition,
-                        )
-                    }
-                }
-                ttsParagraphRows += TtsParagraphRow(
-                    view = view,
-                    normalTextSizeSp = normalTextSizeSp,
-                    normalAlpha = normalAlpha,
+        sourceAudioTextMapping = null
+        bindListeningTextItems(
+            chapterIndex = chapter.chapter.index,
+            items = chapter.getParagraphs(false).map { paragraph ->
+                ListeningTextItem(
+                    text = paragraph.text,
+                    isTitle = paragraph.isTitle,
+                    target = ListeningTextTarget.Text(paragraph.chapterPosition),
                 )
-                ttsContent.addView(
-                    view,
-                    LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                    )
-                )
-            }
-            ttsContentScroll.visible(paragraphs.isNotEmpty())
-            updateTtsParagraphHighlight(displayedProgress)
-        }
-    }
-
-    private fun updateTtsParagraphHighlight(progress: ReadAloudProgress?) {
-        if (progress?.kind != ReadAloudProgress.Kind.PARAGRAPH ||
-            progress.chapterIndex != ttsTextChapterIndex
-        ) {
-            applyTtsParagraphHighlight(null)
-            return
-        }
-        val chapter = ReadBook.curTextChapter ?: return
-        val serviceParagraphs = chapter.getParagraphs(
-            getPrefBoolean(PreferKey.readAloudByPage, false)
+            },
         )
-        val serviceParagraph = serviceParagraphs.getOrNull(progress.position) ?: run {
-            applyTtsParagraphHighlight(null)
-            return
-        }
-        val selectedIndex = chapter.getParagraphs(false).indexOfFirst {
-            serviceParagraph.chapterPosition in it.chapterIndices
-        }
-        applyTtsParagraphHighlight(selectedIndex.takeIf { it in ttsParagraphRows.indices })
     }
 
-    private fun updateTtsParagraphHighlightAt(chapterIndex: Int, chapterPosition: Int) {
-        if (chapterIndex != ttsTextChapterIndex) {
-            applyTtsParagraphHighlight(null)
+    private fun bindListeningTextItems(
+        chapterIndex: Int,
+        items: List<ListeningTextItem>,
+    ) = binding.run {
+        val canReuseViews = listeningTextChapterIndex == chapterIndex &&
+                boundListeningTextItems == items
+        if (canReuseViews) {
+            listeningTextScroll.visible(items.isNotEmpty())
+            updateListeningTextHighlight(displayedProgress)
+            return@run
+        }
+        resetListeningTextFollowState()
+        listeningTextChapterIndex = chapterIndex
+        boundListeningTextItems = items
+        listeningTextContent.removeAllViews()
+        listeningTextRows.clear()
+        items.forEach { item ->
+            val normalTextSizeSp = if (item.isTitle) {
+                TITLE_TEXT_SIZE_SP
+            } else {
+                BODY_TEXT_SIZE_SP
+            }
+            val normalAlpha = if (item.isTitle) 1f else BODY_TEXT_ALPHA
+            val view = TextView(this@AudioPlayActivity).apply {
+                text = item.text
+                textSize = normalTextSizeSp
+                setTextColor(Color.WHITE)
+                alpha = normalAlpha
+                setLineSpacing(0f, 1.12f)
+                setPadding(0, 8.dpToPx(), 0, 8.dpToPx())
+                isClickable = true
+                setOnClickListener {
+                    seekToListeningText(chapterIndex, item.target)
+                }
+            }
+            listeningTextRows += ListeningTextRow(
+                view = view,
+                normalTextSizeSp = normalTextSizeSp,
+                normalAlpha = normalAlpha,
+            )
+            listeningTextContent.addView(
+                view,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                )
+            )
+        }
+        listeningTextScroll.visible(items.isNotEmpty())
+        updateListeningTextHighlight(displayedProgress)
+    }
+
+    private fun seekToListeningText(chapterIndex: Int, target: ListeningTextTarget) {
+        when (target) {
+            is ListeningTextTarget.Text -> ReadAloud.seekToTextPosition(
+                this,
+                chapterIndex,
+                target.chapterPosition,
+            )
+            is ListeningTextTarget.Time -> ReadAloud.seekToProgress(
+                this,
+                chapterIndex,
+                target.positionMs,
+            )
+        }
+    }
+
+    private fun updateListeningTextHighlight(progress: ReadAloudProgress?) {
+        if (progress == null || progress.chapterIndex != listeningTextChapterIndex) {
+            applyListeningTextHighlight(null)
+            return
+        }
+        val selectedIndex = when (progress.kind) {
+            ReadAloudProgress.Kind.TIME -> sourceAudioTextMapping?.paragraphAt(progress.position)
+            ReadAloudProgress.Kind.PARAGRAPH -> ttsHighlightIndex(progress.position)
+        }
+        applyListeningTextHighlight(selectedIndex?.takeIf { it in listeningTextRows.indices })
+    }
+
+    private fun ttsHighlightIndex(serviceParagraphIndex: Int): Int? {
+        if (ReadAloud.selectedEngineType == ReadAloudEngineType.SOURCE_AUDIO) return null
+        val chapter = ReadBook.curTextChapter ?: return null
+        val serviceParagraph = chapter.getParagraphs(
+            getPrefBoolean(PreferKey.readAloudByPage, false)
+        ).getOrNull(serviceParagraphIndex) ?: return null
+        return chapter.getParagraphs(false).indexOfFirst {
+            serviceParagraph.chapterPosition in it.chapterIndices
+        }.takeIf { it >= 0 }
+    }
+
+    private fun updateListeningTextHighlightAt(chapterIndex: Int, chapterPosition: Int) {
+        if (chapterIndex != listeningTextChapterIndex) {
+            applyListeningTextHighlight(null)
             return
         }
         val chapter = ReadBook.curTextChapter ?: return
         val selectedIndex = chapter.getParagraphs(false).indexOfFirst {
             chapterPosition in it.chapterIndices
         }
-        applyTtsParagraphHighlight(selectedIndex.takeIf { it in ttsParagraphRows.indices })
+        applyListeningTextHighlight(selectedIndex.takeIf { it in listeningTextRows.indices })
     }
 
-    private fun applyTtsParagraphHighlight(selectedIndex: Int?) {
-        pendingTtsHighlightIndex = selectedIndex
-        ttsParagraphRows.forEachIndexed { index, row ->
+    private fun applyListeningTextHighlight(selectedIndex: Int?) {
+        pendingListeningTextHighlightIndex = selectedIndex
+        listeningTextRows.forEachIndexed { index, row ->
             val selected = index == selectedIndex
             row.view.textSize = if (selected) {
-                row.normalTextSizeSp * TTS_CURRENT_TEXT_SIZE_SCALE
+                row.normalTextSizeSp * CURRENT_TEXT_SIZE_SCALE
             } else {
                 row.normalTextSizeSp
             }
@@ -395,53 +408,76 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             row.view.alpha = when {
                 selected -> 1f
                 selectedIndex == null -> row.normalAlpha
-                else -> TTS_INACTIVE_TEXT_ALPHA
+                else -> INACTIVE_TEXT_ALPHA
             }
         }
         if (selectedIndex == null) {
-            ttsScrollFollowJob?.cancel()
-            ttsScrollFollowJob = null
+            listeningTextScrollFollowJob?.cancel()
+            listeningTextScrollFollowJob = null
             return
         }
-        scheduleTtsParagraphCenter()
+        scheduleListeningTextCenter()
     }
 
-    private fun scheduleTtsParagraphCenter() {
-        ttsScrollFollowJob?.cancel()
-        ttsScrollFollowJob = null
-        val selectedIndex = pendingTtsHighlightIndex ?: return
-        if (ttsScrollTouching) return
-        val delayMillis = (ttsScrollFollowBlockedUntil - SystemClock.uptimeMillis())
+    private fun scheduleListeningTextCenter() {
+        listeningTextScrollFollowJob?.cancel()
+        listeningTextScrollFollowJob = null
+        val selectedIndex = pendingListeningTextHighlightIndex ?: return
+        if (listeningTextScrollTouching) return
+        val delayMillis = (listeningTextScrollFollowBlockedUntil - SystemClock.uptimeMillis())
             .coerceAtLeast(0L)
         if (delayMillis == 0L) {
-            centerTtsParagraph(selectedIndex)
+            centerListeningText(selectedIndex)
             return
         }
-        ttsScrollFollowJob = lifecycleScope.launch {
+        listeningTextScrollFollowJob = lifecycleScope.launch {
             delay(delayMillis)
-            ttsScrollFollowJob = null
-            if (!ttsScrollTouching && pendingTtsHighlightIndex == selectedIndex) {
-                centerTtsParagraph(selectedIndex)
+            listeningTextScrollFollowJob = null
+            if (!listeningTextScrollTouching &&
+                pendingListeningTextHighlightIndex == selectedIndex
+            ) {
+                centerListeningText(selectedIndex)
             }
         }
     }
 
-    private fun centerTtsParagraph(index: Int) {
-        val selected = ttsParagraphRows.getOrNull(index)?.view ?: return
+    private fun centerListeningText(index: Int) {
+        val selected = listeningTextRows.getOrNull(index)?.view ?: return
         selected.doOnLayout {
-            binding.ttsContentScroll.post {
-                if (ttsScrollTouching || pendingTtsHighlightIndex != index) return@post
-                if (ttsParagraphRows.getOrNull(index)?.view !== selected) return@post
-                val viewportHeight = binding.ttsContentScroll.height
+            binding.listeningTextScroll.post {
+                if (listeningTextScrollTouching ||
+                    pendingListeningTextHighlightIndex != index
+                ) return@post
+                if (listeningTextRows.getOrNull(index)?.view !== selected) return@post
+                val viewportHeight = binding.listeningTextScroll.height
                 if (viewportHeight <= 0) return@post
-                val maxScroll = (binding.ttsContent.height - viewportHeight).coerceAtLeast(0)
+                val maxScroll = (binding.listeningTextContent.height - viewportHeight)
+                    .coerceAtLeast(0)
                 val target = (selected.top - (viewportHeight - selected.height) / 2)
                     .coerceIn(0, maxScroll)
-                if (kotlin.math.abs(binding.ttsContentScroll.scrollY - target) > 4) {
-                    binding.ttsContentScroll.smoothScrollTo(0, target)
+                if (kotlin.math.abs(binding.listeningTextScroll.scrollY - target) > 4) {
+                    binding.listeningTextScroll.smoothScrollTo(0, target)
                 }
             }
         }
+    }
+
+    private fun clearListeningText() = binding.run {
+        sourceAudioTextMapping = null
+        boundListeningTextItems = emptyList()
+        listeningTextRows.clear()
+        listeningTextChapterIndex = -1
+        resetListeningTextFollowState()
+        listeningTextContent.removeAllViews()
+        listeningTextScroll.gone()
+    }
+
+    private fun resetListeningTextFollowState() {
+        listeningTextScrollTouching = false
+        listeningTextScrollFollowBlockedUntil = 0L
+        pendingListeningTextHighlightIndex = null
+        listeningTextScrollFollowJob?.cancel()
+        listeningTextScrollFollowJob = null
     }
 
     private fun updateProgress(progress: ReadAloudProgress) = binding.run {
@@ -451,7 +487,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
                 playerProgress.max = progress.total
                 tvDurTime.text = progress.position.toDurationTime()
                 tvAllTime.text = progress.total.toDurationTime()
-                lyricViewX.updateTime(progress.position.toLong(), false)
+                updateListeningTextHighlight(progress)
                 ivRewind15?.setImageResource(R.drawable.ic_replay_15)
                 ivForward15?.setImageResource(R.drawable.ic_forward_15)
             }
@@ -461,7 +497,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
                 tvAllTime.text = getString(R.string.read_aloud_paragraph_progress, progress.total)
                 ivRewind15?.setImageResource(R.drawable.ic_skip_previous)
                 ivForward15?.setImageResource(R.drawable.ic_skip_next)
-                updateTtsParagraphHighlight(progress)
+                updateListeningTextHighlight(progress)
             }
         }
         playerProgress.isEnabled = playerProgress.max > 0
@@ -489,8 +525,8 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         } else {
             tvDurTime.setText(R.string.read_aloud_paragraph_pending)
             tvAllTime.setText(R.string.read_aloud_paragraph_pending)
-            updateTtsParagraphHighlight(null)
         }
+        applyListeningTextHighlight(null)
     }
 
     private fun progressLabel(kind: ReadAloudProgress.Kind?, position: Int): String {
@@ -629,7 +665,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         observeEvent<Bundle>(EventBus.TTS_PROGRESS) { progress ->
             updateChapterUi()
             if (ReadAloud.selectedEngineType != ReadAloudEngineType.SOURCE_AUDIO) {
-                updateTtsParagraphHighlightAt(
+                updateListeningTextHighlightAt(
                     progress.getInt("chapterIndex", ReadBook.durChapterIndex),
                     progress.getInt("chapterPos", 0),
                 )
@@ -638,17 +674,28 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         observeEvent<Boolean>(EventBus.MEDIA_BUTTON) { updatePlayState() }
     }
 
-    private data class TtsParagraphRow(
+    private data class ListeningTextItem(
+        val text: String,
+        val isTitle: Boolean,
+        val target: ListeningTextTarget,
+    )
+
+    private sealed interface ListeningTextTarget {
+        data class Text(val chapterPosition: Int) : ListeningTextTarget
+        data class Time(val positionMs: Int) : ListeningTextTarget
+    }
+
+    private data class ListeningTextRow(
         val view: TextView,
         val normalTextSizeSp: Float,
         val normalAlpha: Float,
     )
 
     private companion object {
-        const val TTS_BODY_TEXT_SIZE_SP = 19f
-        const val TTS_TITLE_TEXT_SIZE_SP = 22f
-        const val TTS_BODY_TEXT_ALPHA = 0.9f
-        const val TTS_INACTIVE_TEXT_ALPHA = 0.42f
-        const val TTS_CURRENT_TEXT_SIZE_SCALE = 1.2f
+        const val BODY_TEXT_SIZE_SP = 19f
+        const val TITLE_TEXT_SIZE_SP = 22f
+        const val BODY_TEXT_ALPHA = 0.9f
+        const val INACTIVE_TEXT_ALPHA = 0.42f
+        const val CURRENT_TEXT_SIZE_SCALE = 1.2f
     }
 }

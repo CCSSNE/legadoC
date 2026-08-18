@@ -348,8 +348,6 @@ dependencies {
 
     //com.github.AmrDeveloper:CodeView代码编辑已集成到应用内
     //epubLib集成到应用内
-    // 椒盐歌词
-    implementation(libs.lyricViewx)
     // sora-editor代码编辑器,更丰富的编辑功能
     implementation(platform(libs.soraEditor.bom))
     implementation(libs.soraEditor.core)
