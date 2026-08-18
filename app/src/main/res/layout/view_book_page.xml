@@ -147,6 +147,42 @@
             app:layout_constraintRight_toRightOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
 
+        <LinearLayout
+            android:id="@+id/footer_center_action_group"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintLeft_toLeftOf="parent"
+            app:layout_constraintRight_toRightOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <io.legado.app.ui.widget.BatteryView
+                android:id="@+id/tv_footer_action_primary"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:singleLine="true"
+                android:textSize="12sp" />
+
+            <View
+                android:id="@+id/vw_footer_action_divider"
+                android:layout_width="1dp"
+                android:layout_height="12dp"
+                android:background="@color/divider" />
+
+            <io.legado.app.ui.widget.BatteryView
+                android:id="@+id/tv_footer_action_secondary"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:singleLine="true"
+                android:textSize="12sp" />
+
+        </LinearLayout>
+
         <io.legado.app.ui.widget.BatteryView
             android:id="@+id/tv_footer_right"
             android:layout_width="wrap_content"
