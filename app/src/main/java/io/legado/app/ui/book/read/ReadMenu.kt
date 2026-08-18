@@ -12,6 +12,7 @@ import android.net.Uri
 import android.provider.Settings
 import android.util.AttributeSet
 import android.view.LayoutInflater
+import android.view.View
 import android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
 import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
@@ -335,6 +336,8 @@ class ReadMenu @JvmOverloads constructor(
             null
         }
     }
+
+    fun bottomMenuView(): View = binding.bottomMenu
 
     private fun upColorConfig() {
         bgColor = if (immersiveMenu) {

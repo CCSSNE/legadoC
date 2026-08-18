@@ -290,6 +290,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     private var finishReadAloudBackstage = false
     private val readAloudPanelFadeDuration = 140L
     private val handler by lazy { buildMainHandler() }
+    private val readAloudAvoidanceGenerations = mutableMapOf<String, Long>()
     private val screenOffRunnable by lazy { Runnable { keepScreenOn(false) } }
     private val executor = ReadBook.executor
     private val upSeekBarThrottle = throttle(200) {
@@ -1817,31 +1818,29 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     fun postReadAloudFloatingAvoidanceForView(source: String, view: View?) {
+        val generation = (readAloudAvoidanceGenerations[source] ?: 0L) + 1L
+        readAloudAvoidanceGenerations[source] = generation
         fun postForView() {
+            if (readAloudAvoidanceGenerations[source] != generation) return
             val target = view ?: return
             val rect = Rect()
-            val visibleFrame = Rect()
-            window.decorView.getWindowVisibleDisplayFrame(visibleFrame)
-            val hasRect = target.getGlobalVisibleRect(rect)
-            val measuredHeight = target.height.takeIf { it > 0 } ?: rect.height()
-            val y = if (hasRect && rect.top > visibleFrame.top && rect.height() > 0) {
-                rect.top
-            } else if (measuredHeight > 0 && visibleFrame.bottom > measuredHeight) {
-                visibleFrame.bottom - measuredHeight
-            } else {
-                0
-            }
-            if (y > 0) {
-                postReadAloudFloatingAvoidance(source, y)
-            }
+            if (target.visibility != View.VISIBLE ||
+                !target.getGlobalVisibleRect(rect) ||
+                rect.height() <= 0
+            ) return
+            postReadAloudFloatingAvoidance(source, rect.top)
         }
         view?.post { postForView() }
         view?.postDelayed({ postForView() }, 80L)
+        view?.postDelayed({ postForView() }, 160L)
         view?.postDelayed({ postForView() }, 240L)
+        view?.postDelayed({ postForView() }, 360L)
         view?.postDelayed({ postForView() }, 500L)
     }
 
     fun clearReadAloudFloatingAvoidance(source: String) {
+        readAloudAvoidanceGenerations[source] =
+            (readAloudAvoidanceGenerations[source] ?: 0L) + 1L
         postReadAloudFloatingAvoidance(source, 0)
     }
 
@@ -2387,9 +2386,10 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun onReadMenuAvoidanceChanged(show: Boolean) {
         if (show) {
-            binding.readMenu.bottomMenuTopOnScreen()?.let { y ->
-                postReadAloudFloatingAvoidance(EventBus.FLOATING_AVOID_SOURCE_READ_MENU, y)
-            }
+            postReadAloudFloatingAvoidanceForView(
+                EventBus.FLOATING_AVOID_SOURCE_READ_MENU,
+                binding.readMenu.bottomMenuView()
+            )
         } else {
             clearReadAloudFloatingAvoidance(EventBus.FLOATING_AVOID_SOURCE_READ_MENU)
         }

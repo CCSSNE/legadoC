@@ -23,6 +23,7 @@ import android.media.AudioManager
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Bundle
+import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
@@ -181,10 +182,18 @@ abstract class BaseReadAloudService : BaseService(),
     private var floatingLoadingAnimator: ObjectAnimator? = null
     private var floatingCoverAnimator: ObjectAnimator? = null
     private var appFloatingActivity: Activity? = null
-    private var currentAvoidanceSource: String? = null
+    private enum class FloatingHostMode {
+        NONE,
+        APPLICATION_PANEL,
+        DESKTOP_OVERLAY,
+    }
+
+    private var floatingHostMode = FloatingHostMode.NONE
+    private val avoidanceTops = mutableMapOf<String, Int>()
     private var currentAvoidanceY: Int = 0
     private var rebuildFloatingJob: Job? = null
-    private val isDesktopFloating: Boolean get() = floatingWindowManager != null
+    private val isDesktopFloating: Boolean
+        get() = floatingHostMode == FloatingHostMode.DESKTOP_OVERLAY
     private val floatingHeight get() = 50.dpToPx()
     private val floatingMinY get() = 24.dpToPx()
     private val appFloatingLifecycleCallbacks = object : Application.ActivityLifecycleCallbacks {
@@ -327,6 +336,7 @@ abstract class BaseReadAloudService : BaseService(),
             floatingWindowManager = windowManager
             floatingParams = params
             floatingView = view
+            floatingHostMode = FloatingHostMode.DESKTOP_OVERLAY
             onReadAloudFloatingAttached(view)
         }.onFailure {
             AppLog.put("显示朗读悬浮窗失败\n${it.localizedMessage}", it)
@@ -334,25 +344,69 @@ abstract class BaseReadAloudService : BaseService(),
     }
 
     private fun showAppReadAloudFloatingWindow(activity: ReadBookActivity) {
-        val root = activity.window?.decorView as? FrameLayout ?: return
         runCatching {
+            val token = activity.window?.decorView?.windowToken
+                ?: error("ReadBookActivity window token is unavailable for the read-aloud panel")
             val view = createReadAloudFloatingView()
-            floatingView = view
-            root.addView(
-                view,
-                FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.WRAP_CONTENT,
-                    floatingHeight
-                ).apply {
-                    gravity = Gravity.START or Gravity.TOP
-                    leftMargin = readAloudFloatingX()
-                    topMargin = readAloudFloatingYInRoot(root)
-                }
-            )
+            addAppReadAloudFloatingWindow(activity, view, token)
             onReadAloudFloatingAttached(view)
         }.onFailure {
             clearReadAloudFloatingRefs()
             AppLog.put("显示App内朗读悬浮窗失败\n${it.localizedMessage}", it)
+        }
+    }
+
+    private fun addAppReadAloudFloatingWindow(
+        activity: ReadBookActivity,
+        view: View,
+        token: IBinder,
+    ) {
+        val windowManager = activity.windowManager
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            floatingHeight,
+            WindowManager.LayoutParams.TYPE_APPLICATION_PANEL,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.START or Gravity.TOP
+            x = readAloudFloatingX()
+            y = readAloudFloatingY()
+            this.token = token
+            title = "ReadAloudFloating"
+        }
+        windowManager.addView(view, params)
+        floatingWindowManager = windowManager
+        floatingParams = params
+        floatingView = view
+        floatingHostMode = FloatingHostMode.APPLICATION_PANEL
+    }
+
+    private fun detachFloatingView(view: View) {
+        val windowManager = checkNotNull(floatingWindowManager) {
+            "Floating WindowManager is missing while a read-aloud panel is attached"
+        }
+        windowManager.removeView(view)
+        floatingWindowManager = null
+        floatingParams = null
+        floatingHostMode = FloatingHostMode.NONE
+    }
+
+    private fun promoteAppReadAloudFloatingWindow(activity: ReadBookActivity) {
+        if (isDesktopFloating) return
+        val view = floatingView ?: return
+        runCatching {
+            val token = activity.window?.decorView?.windowToken
+                ?: error("ReadBookActivity window token is unavailable while promoting the read-aloud panel")
+            detachFloatingView(view)
+            addAppReadAloudFloatingWindow(activity, view, token)
+            onReadAloudFloatingAttached(view)
+        }.onFailure {
+            clearReadAloudFloatingRefs()
+            AppLog.put("promote app floating window failed\n${it.localizedMessage}", it)
         }
     }
 
@@ -518,15 +572,7 @@ abstract class BaseReadAloudService : BaseService(),
             }
             return
         }
-        floatingView?.let { view ->
-            runCatching {
-                if (isDesktopFloating) {
-                    floatingWindowManager?.removeView(view)
-                } else {
-                    (view.parent as? FrameLayout)?.removeView(view)
-                }
-            }
-        }
+        floatingView?.let(::detachFloatingView)
         clearReadAloudFloatingRefs()
     }
 
@@ -540,6 +586,9 @@ abstract class BaseReadAloudService : BaseService(),
         floatingView = null
         floatingParams = null
         floatingWindowManager = null
+        floatingHostMode = FloatingHostMode.NONE
+        avoidanceTops.clear()
+        currentAvoidanceY = 0
         floatingCoverView = null
         floatingPlayPauseView = null
         updateReadAloudFloatingVisibility(false)
@@ -611,42 +660,27 @@ abstract class BaseReadAloudService : BaseService(),
         return y + navigationBarHeight
     }
 
-    private fun readAloudFloatingYInRoot(root: View): Int {
-        val rootLocation = IntArray(2)
-        root.getLocationOnScreen(rootLocation)
-        return (readAloudFloatingY() - rootLocation[1]).coerceAtLeast(0)
-    }
-
     private fun updateReadAloudFloatingPosition(view: View, x: Int, y: Int) {
         val fixedX = x.coerceAtLeast(0)
-        val params = floatingParams
-        val manager = floatingWindowManager
-        if (params != null && manager != null) {
-            params.x = fixedX
-            params.y = coerceReadAloudDesktopFloatingY(y)
-            runCatching { manager.updateViewLayout(view, params) }
-        } else {
-            val fixedY = coerceReadAloudFloatingY(y)
-            (view.layoutParams as? FrameLayout.LayoutParams)?.let {
-                val root = view.parent as? View ?: return@let
-                it.gravity = Gravity.START or Gravity.TOP
-                it.leftMargin = fixedX
-                it.topMargin = (fixedY - rootTopOnScreen(root)).coerceAtLeast(0)
-                view.layoutParams = it
-            }
+        val params = checkNotNull(floatingParams) {
+            "Floating layout params are missing while moving the read-aloud panel"
         }
+        val manager = checkNotNull(floatingWindowManager) {
+            "Floating WindowManager is missing while moving the read-aloud panel"
+        }
+        params.x = fixedX
+        params.y = if (isDesktopFloating) {
+            coerceReadAloudDesktopFloatingY(y)
+        } else {
+            coerceReadAloudFloatingY(y)
+        }
+        manager.updateViewLayout(view, params)
     }
 
     private fun saveReadAloudFloatingPosition(x: Int, y: Int) {
         appCtx.putPrefInt(PreferKey.readAloudFloatX, x.coerceAtLeast(0))
         val screenY = if (isDesktopFloating) desktopYToScreenY(y) else y
         appCtx.putPrefInt(PreferKey.readAloudFloatY, coerceReadAloudFloatingY(screenY))
-    }
-
-    private fun rootTopOnScreen(root: View): Int {
-        val rootLocation = IntArray(2)
-        root.getLocationOnScreen(rootLocation)
-        return rootLocation[1]
     }
 
     private inner class ReadAloudFloatingLayout(context: Context) : FrameLayout(context) {
@@ -663,12 +697,11 @@ abstract class BaseReadAloudService : BaseService(),
         override fun onInterceptTouchEvent(event: MotionEvent): Boolean {
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    val frameParams = layoutParams as? FrameLayout.LayoutParams
-                    initialX = floatingParams?.x ?: frameParams?.leftMargin ?: 0
-                    initialY = floatingParams?.y ?: (
-                            (frameParams?.topMargin ?: 0) +
-                                    ((parent as? View)?.let { rootTopOnScreen(it) } ?: 0)
-                            )
+                    val params = checkNotNull(floatingParams) {
+                        "Floating layout params are missing when dragging starts"
+                    }
+                    initialX = params.x
+                    initialY = params.y
                     initialTouchX = event.rawX
                     initialTouchY = event.rawY
                     dragging = false
@@ -698,13 +731,12 @@ abstract class BaseReadAloudService : BaseService(),
                     updateReadAloudFloatingPosition(this, initialX + dx, initialY + dy)
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    val frameParams = layoutParams as? FrameLayout.LayoutParams
+                    val params = checkNotNull(floatingParams) {
+                        "Floating layout params are missing when dragging ends"
+                    }
                     saveReadAloudFloatingPosition(
-                        floatingParams?.x ?: frameParams?.leftMargin ?: initialX,
-                        floatingParams?.y ?: (
-                                (frameParams?.topMargin ?: initialY) +
-                                        ((parent as? View)?.let { rootTopOnScreen(it) } ?: 0)
-                                )
+                        params.x,
+                        params.y,
                     )
                     dragging = false
                 }
@@ -763,15 +795,21 @@ abstract class BaseReadAloudService : BaseService(),
                 appFloatingActivity = ReadBookActivity.activeActivity() ?: appFloatingActivity
                 showReadAloudFloatingWindow()
             } else {
-                currentAvoidanceSource = null
+                avoidanceTops.clear()
                 currentAvoidanceY = 0
                 applyReadAloudFloatingAvoidance(0)
             }
         }
-        observeEvent<Boolean>(EventBus.READ_ALOUD_DIALOG_VISIBILITY) {
+        observeEvent<Boolean>(EventBus.READ_ALOUD_DIALOG_VISIBILITY) { visible ->
+            if (visible) {
+                ReadBookActivity.activeActivity()?.let(::promoteAppReadAloudFloatingWindow)
+            }
             showReadAloudFloatingWindow()
         }
-        observeEvent<Boolean>(EventBus.READ_MAIN_MENU_VISIBILITY) {
+        observeEvent<Boolean>(EventBus.READ_MAIN_MENU_VISIBILITY) { visible ->
+            if (visible) {
+                ReadBookActivity.activeActivity()?.let(::promoteAppReadAloudFloatingWindow)
+            }
             showReadAloudFloatingWindow()
         }
         observeSharedPreferences { _, key ->
@@ -825,14 +863,12 @@ abstract class BaseReadAloudService : BaseService(),
             return
         }
         if (y > 0) {
-            currentAvoidanceSource = source
-            currentAvoidanceY = y
-            applyReadAloudFloatingAvoidance(y)
-        } else if (source == currentAvoidanceSource) {
-            currentAvoidanceSource = null
-            currentAvoidanceY = 0
-            applyReadAloudFloatingAvoidance(0)
+            avoidanceTops[source] = y
+        } else {
+            avoidanceTops.remove(source)
         }
+        currentAvoidanceY = avoidanceTops.values.minOrNull() ?: 0
+        applyReadAloudFloatingAvoidance(currentAvoidanceY)
     }
 
     private fun applyReadAloudFloatingAvoidance(obstructionTop: Int) {
@@ -840,38 +876,25 @@ abstract class BaseReadAloudService : BaseService(),
         val baseY = readAloudFloatingY()
         val height = view.height.takeIf { it > 0 } ?: floatingHeight
         val gap = 10.dpToPx()
-        val params = floatingParams
-        val manager = floatingWindowManager
-        if (params != null && manager != null) {
-            val baseDesktopY = readAloudDesktopFloatingY()
-            val targetY = if (obstructionTop > 0) {
-                minOf(baseDesktopY, screenYToDesktopY(obstructionTop) - height - gap)
-                    .coerceAtLeast(floatingMinY)
-            } else {
-                baseDesktopY
-            }
-            if (params.y != targetY) {
-                params.y = targetY
-                runCatching { manager.updateViewLayout(view, params) }
-            }
-            return
+        val params = checkNotNull(floatingParams) {
+            "Floating layout params are missing while applying read-aloud avoidance"
         }
-        val frameParams = view.layoutParams as? FrameLayout.LayoutParams ?: return
-        val activity = appFloatingActivity ?: return
-        val root = activity.window?.decorView as? FrameLayout ?: return
-        val rootLocation = IntArray(2)
-        root.getLocationOnScreen(rootLocation)
-        val targetY = if (obstructionTop > 0) {
-            minOf(baseY, obstructionTop - height - gap)
-                .coerceAtLeast(rootLocation[1] + floatingMinY)
+        val manager = checkNotNull(floatingWindowManager) {
+            "Floating WindowManager is missing while applying read-aloud avoidance"
+        }
+        val targetScreenY = if (obstructionTop > 0) {
+            minOf(baseY, obstructionTop - height - gap).coerceAtLeast(floatingMinY)
         } else {
             baseY
         }
-        val targetTopMargin = (targetY - rootLocation[1]).coerceAtLeast(0)
-        if (frameParams.topMargin != targetTopMargin) {
-            frameParams.gravity = Gravity.START or Gravity.TOP
-            frameParams.topMargin = targetTopMargin
-            view.layoutParams = frameParams
+        val targetY = if (isDesktopFloating) {
+            screenYToDesktopY(targetScreenY)
+        } else {
+            targetScreenY
+        }
+        if (params.y != targetY) {
+            params.y = targetY
+            manager.updateViewLayout(view, params)
         }
     }
 
