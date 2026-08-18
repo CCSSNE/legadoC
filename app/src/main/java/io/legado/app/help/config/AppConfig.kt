@@ -1497,6 +1497,9 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val readAloudByMediaButton
         get() = appCtx.getPrefBoolean(PreferKey.readAloudByMediaButton, false)
 
+    val readAloudCoverRotation
+        get() = appCtx.getPrefBoolean(PreferKey.readAloudCoverRotation, true)
+
     val readAloudFloatOnDesktop
         get() = appCtx.getPrefBoolean(PreferKey.readAloudFloatOnDesktop, false)
 

@@ -48,6 +48,13 @@
             android:key="streamReadAloudAudio"
             app:iconSpaceReserved="false" />
 
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="true"
+            android:key="readAloudCoverRotation"
+            android:summary="@string/read_aloud_cover_rotation_summary"
+            android:title="@string/read_aloud_cover_rotation"
+            app:iconSpaceReserved="false" />
+
         <io.legado.app.lib.prefs.Preference
             android:defaultValue="3000"
             android:key="readAloudScrollFollowTimeout"
