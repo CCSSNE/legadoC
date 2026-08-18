@@ -26,7 +26,6 @@ import io.legado.app.model.ReadBook
 import io.legado.app.model.ReadAloudUiState
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.service.ReadAloudEngineType
-import io.legado.app.service.ReadAloudFloatingHost
 import io.legado.app.service.ReadAloudProgress
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
@@ -44,6 +43,10 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
     private var dialogPresentationReady = false
     private var displayedReadProgress: ReadAloudProgress? = null
     private var trackingReadProgress = false
+    private val menuLayoutChangeListener =
+        View.OnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
+            publishMenuTopOnScreen(view)
+        }
     private val isSourceAudioSelected
         get() = ReadAloud.selectedEngineType == ReadAloudEngineType.SOURCE_AUDIO
 
@@ -60,12 +63,21 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
             attr.gravity = Gravity.BOTTOM
             attributes = attr
             setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            (activity as? ReadBookActivity)?.postReadAloudFloatingAvoidanceForView(
-                EventBus.FLOATING_AVOID_SOURCE_READ_ALOUD_DIALOG,
-                binding.rootView
-            )
         }
+        binding.rootView.removeOnLayoutChangeListener(menuLayoutChangeListener)
+        binding.rootView.addOnLayoutChangeListener(menuLayoutChangeListener)
+        binding.rootView.doOnLayout(::publishMenuTopOnScreen)
         publishDialogVisibilityAfterFirstDraw()
+    }
+
+    private fun publishMenuTopOnScreen(view: View) {
+        check(view.height > 0) { "Read-aloud menu has no measurable height" }
+        val location = IntArray(2)
+        view.getLocationOnScreen(location)
+        (activity as? ReadBookActivity)?.postReadAloudFloatingAvoidanceFromScreenTop(
+            EventBus.FLOATING_AVOID_SOURCE_READ_ALOUD_DIALOG,
+            location[1],
+        )
     }
 
     private fun publishDialogVisibilityAfterFirstDraw() {
@@ -86,31 +98,12 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
         }
         dialogPresentationReady = visible
         ReadAloudUiState.setReadAloudDialogVisible(visible)
-        publishFloatingHost(visible)
         postEvent(EventBus.READ_ALOUD_DIALOG_VISIBILITY, visible)
-    }
-
-    private fun publishFloatingHost(dialogVisible: Boolean) {
-        val host = if (dialogVisible) {
-            val window = dialog?.window ?: error("ReadAloudDialog window is unavailable")
-            ReadAloudFloatingHost(
-                window.windowManager,
-                window.decorView.windowToken
-                    ?: error("ReadAloudDialog window token is unavailable"),
-            )
-        } else {
-            val window = requireActivity().window
-            ReadAloudFloatingHost(
-                window.windowManager,
-                window.decorView.windowToken
-                    ?: error("ReadBookActivity window token is unavailable after closing ReadAloudDialog"),
-            )
-        }
-        postEvent(EventBus.READ_ALOUD_FLOATING_HOST, host)
     }
 
     override fun onDismiss(dialog: DialogInterface) {
         super.onDismiss(dialog)
+        binding.rootView.removeOnLayoutChangeListener(menuLayoutChangeListener)
         if (ownsDialogVisibility) {
             ownsDialogVisibility = false
             updateDialogVisibility(false)
