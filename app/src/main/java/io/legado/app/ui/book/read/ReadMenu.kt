@@ -92,6 +92,7 @@ class ReadMenu @JvmOverloads constructor(
     }
 
     private var onMenuOutEnd: (() -> Unit)? = null
+    private var menuVisibilityPublished = false
     private val showBrightnessView
         get() = context.getPrefBoolean(
             PreferKey.showBrightnessView,
@@ -113,7 +114,7 @@ class ReadMenu @JvmOverloads constructor(
 
     private fun onMenuShownEnd() {
         binding.vwMenuBg.setOnClickListener { runMenuOut() }
-        callBack.onReadMenuAvoidanceChanged(true)
+        publishMenuVisibility(true)
         callBack.upSystemUiVisibility()
     }
 
@@ -130,7 +131,7 @@ class ReadMenu @JvmOverloads constructor(
         canShowMenu = false
         isMenuOutAnimating = false
         onMenuOutEnd?.invoke()
-        callBack.onReadMenuAvoidanceChanged(false)
+        publishMenuVisibility(false)
         callBack.upSystemUiVisibility()
     }
 
@@ -444,14 +445,18 @@ class ReadMenu @JvmOverloads constructor(
 
     override fun onDetachedFromWindow() {
         cancelMenuFade()
-        if (isVisible || isMenuOutAnimating) {
-            callBack.onReadMenuAvoidanceChanged(false)
-        }
+        publishMenuVisibility(false)
         super.onDetachedFromWindow()
         contentObserver?.let {
             context.contentResolver.unregisterContentObserver(it)
             contentObserver = null
         }
+    }
+
+    private fun publishMenuVisibility(visible: Boolean) {
+        if (menuVisibilityPublished == visible) return
+        menuVisibilityPublished = visible
+        callBack.onReadMenuAvoidanceChanged(visible)
     }
 
     fun runMenuIn() {

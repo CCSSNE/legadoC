@@ -7,9 +7,11 @@ import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import android.view.WindowManager
 import android.view.animation.LinearInterpolator
 import android.widget.SeekBar
+import androidx.core.view.doOnLayout
 import io.legado.app.R
 import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
@@ -40,6 +42,7 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
     private var loadingAnimator: ObjectAnimator? = null
     private var showMainMenuOnDismiss = false
     private var ownsDialogVisibility = false
+    private var dialogPresentationReady = false
     private var displayedReadProgress: ReadAloudProgress? = null
     private var trackingReadProgress = false
     private val isSourceAudioSelected
@@ -63,14 +66,51 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
                 binding.rootView
             )
         }
+        publishDialogVisibilityAfterFirstDraw()
+    }
+
+    private fun publishDialogVisibilityAfterFirstDraw() {
+        val root = binding.rootView
+        root.doOnLayout {
+            if (!ownsDialogVisibility || dialogPresentationReady) return@doOnLayout
+            val observer = root.viewTreeObserver
+            val listener = object : ViewTreeObserver.OnDrawListener {
+                private var callbackPosted = false
+
+                override fun onDraw() {
+                    if (callbackPosted) return
+                    callbackPosted = true
+                    root.post {
+                        if (observer.isAlive) {
+                            observer.removeOnDrawListener(this)
+                        }
+                        updateDialogVisibility(true)
+                    }
+                }
+            }
+            observer.addOnDrawListener(listener)
+            root.invalidate()
+        }
+    }
+
+    private fun updateDialogVisibility(visible: Boolean) {
+        if (visible) {
+            if (!ownsDialogVisibility || dialogPresentationReady || dialog?.isShowing != true) {
+                return
+            }
+        } else if (!dialogPresentationReady) {
+            return
+        }
+        dialogPresentationReady = visible
+        ReadAloudUiState.setReadAloudDialogVisible(visible)
+        postEvent(EventBus.READ_ALOUD_DIALOG_VISIBILITY, visible)
     }
 
     override fun onDismiss(dialog: DialogInterface) {
         super.onDismiss(dialog)
         if (ownsDialogVisibility) {
             ownsDialogVisibility = false
-            ReadAloudUiState.setReadAloudDialogVisible(false)
-            postEvent(EventBus.READ_ALOUD_DIALOG_VISIBILITY, false)
+            updateDialogVisibility(false)
         }
         stopLoadingAnimation()
         (activity as ReadBookActivity).bottomDialog--
@@ -91,8 +131,6 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
         }
         ownsDialogVisibility = true
         binding.root.applyUiBodyTypefaceDeep(requireContext().uiTypeface())
-        ReadAloudUiState.setReadAloudDialogVisible(true)
-        postEvent(EventBus.READ_ALOUD_DIALOG_VISIBILITY, true)
         val bg = requireContext().bottomBackground
         val isLight = ColorUtils.isColorLight(bg)
         val textColor = requireContext().getPrimaryTextColor(isLight)
@@ -170,8 +208,7 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
         }
         ivPlayPause.setOnClickListener { callBack?.onClickReadAloud() }
         ivOpenAudioPlay.setOnClickListener {
-            ReadAloudUiState.setReadAloudDialogVisible(false)
-            postEvent(EventBus.READ_ALOUD_DIALOG_VISIBILITY, false)
+            updateDialogVisibility(false)
             dismissAllowingStateLoss()
             ReadAloud.openAudioPlayActivity(requireContext())
         }
