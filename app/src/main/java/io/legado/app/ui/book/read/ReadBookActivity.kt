@@ -1627,7 +1627,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             }
             val params = binding.readAloudPlaybackPanel.layoutParams as? FrameLayout.LayoutParams
                 ?: return@post
-            val bottomMargin = binding.navigationBar.height + 28.dpToPx()
+            val bottomMargin = readAloudPanelBottomMargin()
             if (params.bottomMargin != bottomMargin) {
                 params.bottomMargin = bottomMargin
                 binding.readAloudPlaybackPanel.layoutParams = params
@@ -1665,7 +1665,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             }
             val params = binding.readAloudPagePanel.layoutParams as? FrameLayout.LayoutParams
                 ?: return@post
-            val bottomMargin = binding.navigationBar.height + 28.dpToPx()
+            val bottomMargin = readAloudPanelBottomMargin()
             if (params.bottomMargin != bottomMargin) {
                 params.bottomMargin = bottomMargin
                 binding.readAloudPagePanel.layoutParams = params
@@ -1681,6 +1681,15 @@ class ReadBookActivity : BaseReadBookActivity(),
     private fun hideReadAloudPagePanel(immediate: Boolean = false) {
         fadeReadAloudPanel(binding.readAloudPagePanel, false, immediate)
         clearReadAloudFloatingAvoidance(EventBus.FLOATING_AVOID_SOURCE_READ_ALOUD_PAGE_PANEL)
+    }
+
+    private fun readAloudPanelBottomMargin(): Int {
+        val footerClearance = if (AppConfig.readAloudPanelOnPageFooter) {
+            0
+        } else {
+            resources.getDimensionPixelSize(R.dimen.read_aloud_compact_panel_footer_clearance)
+        }
+        return binding.navigationBar.height + footerClearance
     }
 
     private fun fadeReadAloudPanel(view: View, show: Boolean, immediate: Boolean = false) {
@@ -2965,6 +2974,9 @@ class ReadBookActivity : BaseReadBookActivity(),
             updateReadAloudPanels()
         }
         observeEvent<String>(PreferKey.readAloudHidePagePanel) {
+            updateReadAloudPanels()
+        }
+        observeEvent<String>(PreferKey.readAloudPanelOnPageFooter) {
             updateReadAloudPanels()
         }
         observeEvent<List<SearchResult>>(EventBus.SEARCH_RESULT) {

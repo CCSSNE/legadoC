@@ -209,6 +209,8 @@
     <string name="read_aloud_hide_playback_panel_summary">朗读菜单收起后，不显示暂停播放/继续播放的小悬浮窗。</string>
     <string name="read_aloud_hide_page_panel">隐藏跨页小悬浮窗</string>
     <string name="read_aloud_hide_page_panel_summary">朗读过程中翻页后，不显示原进度/从本页听的小悬浮窗。</string>
+    <string name="read_aloud_panel_on_page_footer">小悬浮窗放在页底上</string>
+    <string name="read_aloud_panel_on_page_footer_summary">让暂停/继续播放和原进度/从本页听小悬浮窗覆盖阅读页底，不再显示在页底上方。</string>
     <string name="read_aloud_scroll_follow_timeout_title">朗读跟随延迟</string>
     <string name="read_aloud_scroll_follow_timeout_summary">滑动听书正文或歌词后，等待这段时间再恢复自动居中。</string>
     <string name="read_aloud_scroll_follow_timeout_dialog_title">朗读跟随延迟（毫秒）</string>
