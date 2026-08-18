@@ -66,27 +66,17 @@
         app:layout_constraintStart_toEndOf="@+id/iv_cover"
         app:layout_constraintTop_toTopOf="@+id/iv_bg">
 
-        <io.legado.app.ui.book.audio.ConfigurableLyricViewX
-        android:id="@+id/lyricViewX"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:visibility="gone"
-        app:lrcCurrentTextColor="@color/md_white_1000"
-        app:lrcPadding="16dp"
-        tools:visibility="visible"
-        tools:lrcLabel="歌词文本区" />
-
         <androidx.core.widget.NestedScrollView
-        android:id="@+id/tts_content_scroll"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:fillViewport="true"
-        android:paddingStart="20dp"
-        android:paddingEnd="20dp"
-        android:visibility="gone">
+            android:id="@+id/listening_text_scroll"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fillViewport="true"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:visibility="gone">
 
         <LinearLayout
-            android:id="@+id/tts_content"
+            android:id="@+id/listening_text_content"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical" />
