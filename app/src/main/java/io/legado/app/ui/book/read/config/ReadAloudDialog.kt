@@ -10,6 +10,7 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import android.view.animation.LinearInterpolator
 import android.widget.SeekBar
+import androidx.core.view.doOnLayout
 import io.legado.app.R
 import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
