@@ -26,6 +26,7 @@ import io.legado.app.model.ReadBook
 import io.legado.app.model.ReadAloudUiState
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.service.ReadAloudEngineType
+import io.legado.app.service.ReadAloudFloatingHost
 import io.legado.app.service.ReadAloudProgress
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
@@ -90,16 +91,22 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
     }
 
     private fun publishFloatingHost(dialogVisible: Boolean) {
-        val token = if (dialogVisible) {
-            dialog?.window?.decorView?.windowToken
-                ?: error("ReadAloudDialog window token is unavailable")
+        val host = if (dialogVisible) {
+            val window = dialog?.window ?: error("ReadAloudDialog window is unavailable")
+            ReadAloudFloatingHost(
+                window.windowManager,
+                window.decorView.windowToken
+                    ?: error("ReadAloudDialog window token is unavailable"),
+            )
         } else {
-            requireActivity().window.decorView.windowToken
-                ?: error("ReadBookActivity window token is unavailable after closing ReadAloudDialog")
+            val window = requireActivity().window
+            ReadAloudFloatingHost(
+                window.windowManager,
+                window.decorView.windowToken
+                    ?: error("ReadBookActivity window token is unavailable after closing ReadAloudDialog"),
+            )
         }
-        postEvent(EventBus.READ_ALOUD_FLOATING_HOST, Bundle().apply {
-            putBinder("token", token)
-        })
+        postEvent(EventBus.READ_ALOUD_FLOATING_HOST, host)
     }
 
     override fun onDismiss(dialog: DialogInterface) {
