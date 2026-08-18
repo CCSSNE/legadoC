@@ -6,6 +6,9 @@ import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.os.SystemClock
+import android.text.Layout
+import android.text.StaticLayout
+import android.text.TextPaint
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.Menu
@@ -131,6 +134,11 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         loadCover(book)
         initProgressControl()
         initControls(book)
+        binding.listeningTextContent.addOnLayoutChangeListener { _, left, _, right, _, oldLeft, _, oldRight, _ ->
+            if (right - left != oldRight - oldLeft) {
+                updateListeningTextIndentation()
+            }
+        }
         updateChapterUi()
         updateEngineUi()
         updatePlayState()
@@ -307,6 +315,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
                 boundListeningTextItems == items
         if (canReuseViews) {
             listeningTextScroll.visible(items.isNotEmpty())
+            scheduleListeningTextIndentation()
             updateListeningTextHighlight(displayedProgress)
             return@run
         }
@@ -317,16 +326,14 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         listeningTextRows.clear()
         items.forEach { item ->
             val normalAlpha = if (item.isTitle) 1f else BODY_TEXT_ALPHA
-            val displayText = StringUtils.trim(item.text).let { text ->
-                if (item.isTitle || text.isEmpty()) text else "$LISTENING_PARAGRAPH_INDENT$text"
-            }
+            val normalizedText = StringUtils.trim(item.text)
             val view = TextView(this@AudioPlayActivity).apply {
-                text = displayText
+                text = normalizedText
                 setTextSize(TypedValue.COMPLEX_UNIT_PX, NORMAL_TEXT_SIZE_PX)
                 setTextColor(Color.WHITE)
                 alpha = normalAlpha
                 gravity = Gravity.CENTER_HORIZONTAL
-                setLineSpacing(0f, 1.12f)
+                setLineSpacing(0f, LISTENING_LINE_SPACING_MULTIPLIER)
                 setPadding(0, 8.dpToPx(), 0, 8.dpToPx())
                 isClickable = true
                 setOnClickListener {
@@ -335,6 +342,8 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             }
             listeningTextRows += ListeningTextRow(
                 view = view,
+                normalizedText = normalizedText,
+                isTitle = item.isTitle,
                 normalAlpha = normalAlpha,
             )
             listeningTextContent.addView(
@@ -346,7 +355,50 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             )
         }
         listeningTextScroll.visible(items.isNotEmpty())
+        scheduleListeningTextIndentation()
         updateListeningTextHighlight(displayedProgress)
+    }
+
+    private fun scheduleListeningTextIndentation() {
+        binding.listeningTextContent.doOnLayout {
+            updateListeningTextIndentation()
+        }
+    }
+
+    private fun updateListeningTextIndentation() {
+        val availableWidth = binding.listeningTextContent.width
+        if (availableWidth <= 0) return
+        listeningTextRows.forEach { row ->
+            val shouldIndent = !row.isTitle &&
+                    row.normalizedText.isNotEmpty() &&
+                    listeningTextLineCount(row.normalizedText, row.view, availableWidth) >=
+                    LISTENING_LONG_TEXT_MIN_LINES
+            if (row.isIndented == shouldIndent) return@forEach
+            row.isIndented = shouldIndent
+            row.view.text = if (shouldIndent) {
+                "$LISTENING_PARAGRAPH_INDENT${row.normalizedText}"
+            } else {
+                row.normalizedText
+            }
+        }
+    }
+
+    private fun listeningTextLineCount(
+        text: String,
+        view: TextView,
+        availableWidth: Int,
+    ): Int {
+        // Measure the expanded text without indentation; apply the spaces only after this decision.
+        val paint = TextPaint(view.paint)
+        paint.textSize = CURRENT_TEXT_SIZE_PX
+        return StaticLayout.Builder.obtain(text, 0, text.length, paint, availableWidth)
+            .setAlignment(Layout.Alignment.ALIGN_CENTER)
+            .setIncludePad(view.includeFontPadding)
+            .setLineSpacing(0f, LISTENING_LINE_SPACING_MULTIPLIER)
+            .setBreakStrategy(view.breakStrategy)
+            .setHyphenationFrequency(view.hyphenationFrequency)
+            .build()
+            .lineCount
     }
 
     private fun seekToListeningText(chapterIndex: Int, target: ListeningTextTarget) {
@@ -414,6 +466,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
                 else -> INACTIVE_TEXT_ALPHA
             }
         }
+        scheduleListeningTextIndentation()
         if (selectedIndex == null) {
             listeningTextScrollFollowJob?.cancel()
             listeningTextScrollFollowJob = null
@@ -728,11 +781,16 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
 
     private data class ListeningTextRow(
         val view: TextView,
+        val normalizedText: String,
+        val isTitle: Boolean,
         val normalAlpha: Float,
+        var isIndented: Boolean = false,
     )
 
     private companion object {
         const val LISTENING_PARAGRAPH_INDENT = "  "
+        const val LISTENING_LINE_SPACING_MULTIPLIER = 1.12f
+        const val LISTENING_LONG_TEXT_MIN_LINES = 3
         const val NORMAL_TEXT_SIZE_PX = 50f
         const val CURRENT_TEXT_SIZE_PX = 60f
         const val BODY_TEXT_ALPHA = 0.9f
