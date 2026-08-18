@@ -85,7 +85,21 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
         }
         dialogPresentationReady = visible
         ReadAloudUiState.setReadAloudDialogVisible(visible)
+        publishFloatingHost(visible)
         postEvent(EventBus.READ_ALOUD_DIALOG_VISIBILITY, visible)
+    }
+
+    private fun publishFloatingHost(dialogVisible: Boolean) {
+        val token = if (dialogVisible) {
+            dialog?.window?.decorView?.windowToken
+                ?: error("ReadAloudDialog window token is unavailable")
+        } else {
+            requireActivity().window.decorView.windowToken
+                ?: error("ReadBookActivity window token is unavailable after closing ReadAloudDialog")
+        }
+        postEvent(EventBus.READ_ALOUD_FLOATING_HOST, Bundle().apply {
+            putBinder("token", token)
+        })
     }
 
     override fun onDismiss(dialog: DialogInterface) {
