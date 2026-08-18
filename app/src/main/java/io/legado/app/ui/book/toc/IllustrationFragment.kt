@@ -56,7 +56,7 @@ class IllustrationFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_illu
         binding.tvSelectAll.setOnClickListener {
             selectAllToggle()
         }
-        viewModel.bookData.observe(this) { book ->
+        viewModel.bookData.observe(viewLifecycleOwner) { book ->
             val adapter = IllustrationAdapter(
                 book,
                 onClick = { illustration -> openIllustration(illustration) },
@@ -75,12 +75,18 @@ class IllustrationFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_illu
     }
 
     private fun observeIllustrations(bookUrl: String) {
-        lifecycleScope.launch {
+        viewLifecycleOwner.lifecycleScope.launch {
             appDb.bookIllustrationDao.flowByBook(bookUrl).flowOn(IO).collect { list ->
                 adapter?.setItems(list)
                 binding.tvEmpty.visibility = if (list.isEmpty()) View.VISIBLE else View.GONE
             }
         }
+    }
+
+    override fun onDestroyView() {
+        binding.recyclerView.adapter = null
+        adapter = null
+        super.onDestroyView()
     }
 
     private fun showModeSelector() {

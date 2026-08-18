@@ -16,6 +16,7 @@ import io.legado.app.base.BaseFragment
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.FragmentMyConfigBinding
+import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.update.UpdateManager
@@ -41,6 +42,7 @@ import io.legado.app.ui.config.NavigationBarManageActivity
 import io.legado.app.ui.config.ThemeManageActivity
 import io.legado.app.ui.dict.rule.DictRuleActivity
 import io.legado.app.ui.file.FileManageActivity
+import io.legado.app.ui.main.MainActivity
 import io.legado.app.ui.main.MainFragmentInterface
 import io.legado.app.ui.replace.ReplaceRuleActivity
 import io.legado.app.ui.rss.source.manage.RssSourceActivity
@@ -213,6 +215,7 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
             }
             findPreference<EditTextPreference>(PreferKey.updateAcceleratorCustom)?.isVisible =
                 getPrefString(PreferKey.updateAccelerator) == "custom"
+            updateSettingsEntryVisibility()
         }
 
         override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -225,6 +228,7 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
         override fun onResume() {
             super.onResume()
             preferenceManager.sharedPreferences?.registerOnSharedPreferenceChangeListener(this)
+            updateSettingsEntryVisibility()
         }
 
         override fun onPause() {
@@ -260,6 +264,7 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
                 }
 
                 "recordLog" -> LogUtils.upLevel()
+                PreferKey.showRssPageInSettings -> updateSettingsEntryVisibility()
             }
         }
 
@@ -286,8 +291,10 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
                     is PreferenceGroup -> filterMainGroup(preference, keyword) || matchesMainPreference(preference, keyword)
                     else -> matchesMainPreference(preference, keyword)
                 }
-                preference.isVisible = visible
-                anyVisible = anyVisible || visible
+                val allowed = preference.key != KEY_RSS_PAGE
+                    || AppConfig.showRssPageInSettings
+                preference.isVisible = visible && allowed
+                anyVisible = anyVisible || preference.isVisible
             }
             group.isVisible = anyVisible || group == preferenceScreen
             return anyVisible
@@ -297,10 +304,20 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
             group.isVisible = true
             for (index in 0 until group.preferenceCount) {
                 val preference = group.getPreference(index)
-                preference.isVisible = true
+                preference.isVisible = preference.key != KEY_RSS_PAGE
+                    || AppConfig.showRssPageInSettings
                 if (preference is PreferenceGroup) {
                     resetVisibility(preference)
                 }
+            }
+        }
+
+        private fun updateSettingsEntryVisibility() {
+            if (activeSearchKeyword.isBlank()) {
+                findPreference<Preference>(KEY_RSS_PAGE)?.isVisible =
+                    AppConfig.showRssPageInSettings
+            } else {
+                filterMainPreferences(activeSearchKeyword)
             }
         }
 
@@ -501,6 +518,10 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
             when (preference.key) {
                 "bookSourceManage" -> startActivity<BookSourceActivity>()
                 "rssSourceManage" -> startActivity<RssSourceActivity>()
+                KEY_RSS_PAGE -> {
+                    (requireActivity() as MainActivity).openRssPageFromSettings()
+                    return true
+                }
                 "replaceManage" -> startActivity<ReplaceRuleActivity>()
                 "dictRuleManage" -> startActivity<DictRuleActivity>()
                 "txtTocRuleManage" -> startActivity<TxtTocRuleActivity>()
@@ -554,5 +575,6 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
     companion object {
         private const val SUB_SEARCH_GROUP_KEY = "subSearchResults"
         private const val SUB_SEARCH_ITEM_KEY_PREFIX = "subSearchResult:"
+        private const val KEY_RSS_PAGE = "rssPageManage"
     }
 }

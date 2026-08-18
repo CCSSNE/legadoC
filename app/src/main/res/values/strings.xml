@@ -203,6 +203,16 @@
     <string name="read_aloud_hide_playback_panel_summary">Hide the pause/resume panel shown after the read-aloud menu is closed.</string>
     <string name="read_aloud_hide_page_panel">Hide cross-page read-aloud panel</string>
     <string name="read_aloud_hide_page_panel_summary">Hide the original-position/from-page panel shown after turning pages while reading aloud.</string>
+    <string name="read_aloud_scroll_follow_timeout_title">Reading follow delay</string>
+    <string name="read_aloud_scroll_follow_timeout_summary">After you scroll the listening text or lyrics, wait this long before automatic centering resumes.</string>
+    <string name="read_aloud_scroll_follow_timeout_dialog_title">Reading follow delay (ms)</string>
+    <string name="read_aloud_scroll_follow_timeout_value">%sms</string>
+    <string name="read_aloud_progress_poll_interval_title">Reading progress update interval</string>
+    <string name="read_aloud_progress_poll_interval_summary">How often source audio updates playback position and text following; shorter follows more closely.</string>
+    <string name="read_aloud_progress_poll_interval_dialog_title">Reading progress update interval (ms)</string>
+    <string name="read_aloud_progress_poll_interval_value">%sms</string>
+    <string name="integer_input_range_hint">%1$d-%2$d</string>
+    <string name="integer_input_range_invalid">Enter an integer from %1$d to %2$d.</string>
     <string name="read_aloud_original_progress">Original</string>
     <string name="read_aloud_from_current_page">From page</string>
     <string name="read_aloud_pause_playback">Pause playback</string>
@@ -1296,6 +1306,9 @@
     <string name="discovery_settings_summary">Configure discovery entrance and page style.</string>
     <string name="subscription_settings_title">Subscription settings</string>
     <string name="subscription_settings_summary">Configure subscription entrance and page style.</string>
+    <string name="enter_rss_page">Open subscription page</string>
+    <string name="enter_rss_page_summary">Open the subscription content page</string>
+    <string name="show_rss_page_in_settings">Show subscription page in settings</string>
     <string name="discovery_subscription_settings_title">Discovery and subscriptions</string>
     <string name="discovery_subscription_settings_summary">Manage discovery and subscription entrances and page styles.</string>
     <string name="discovery_page_mode_modern">Modern discovery</string>
@@ -1553,6 +1566,7 @@
     <string name="same_title_removed">Remove duplicate title</string>
     <string name="update_book_fail">Update failed</string>
     <string name="notification_permission_rationale">Reading requires sending notifications to show reading control and download progress</string>
+    <string name="notification_permission_required_for_download">Notification permission is required to show download progress.</string>
     <string name="webdav_after_local_restore_confirm">The webDav book source is newer than the local one, whether to restore it or not</string>
     <string name="c_whitelist">白名单(contentWhitelist)</string>
     <string name="c_blacklist">黑名单(contentBlacklist)</string>

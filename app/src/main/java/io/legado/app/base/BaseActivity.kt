@@ -11,10 +11,10 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
-import android.view.Window
 import androidx.activity.addCallback
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.view.menu.ActionMenuItemView
 import androidx.appcompat.widget.ActionMenuView
 import androidx.core.view.ViewCompat
 import androidx.core.view.children
@@ -166,6 +166,7 @@ abstract class BaseActivity<VB : ViewBinding>(
         return super.onMenuOpened(featureId, menu)
     }
 
+    @SuppressLint("RestrictedApi")
     private fun installSurfaceOverflow(menu: Menu) {
         val toolbar = findViewById<TitleBar>(R.id.title_bar)?.toolbar ?: return
         toolbar.post {
@@ -179,23 +180,64 @@ abstract class BaseActivity<VB : ViewBinding>(
                 if (menu.surfaceOverflowItems().isNotEmpty()) {
                     AppLog.put("Surface menu takeover failed: toolbar overflow button not found")
                 }
-                return@post
-            }
-            overflowButton.setOnTouchListener(null)
-            overflowButton.setOnClickListener {
-                onMenuOpened(Window.FEATURE_ACTION_BAR, menu)
-                val overflowItems = menu.surfaceOverflowItems()
-                if (overflowItems.isEmpty()) return@setOnClickListener
-                surfaceOverflowPopup?.dismiss()
-                surfaceOverflowPopup = SurfacePopupMenu(this, toolbar).apply {
-                    setOnMenuItemClickListener { item ->
-                        onCompatOptionsItemSelected(item)
+            } else {
+                overflowButton.setOnTouchListener(null)
+                overflowButton.setOnClickListener {
+                    val overflowItems = menu.surfaceOverflowItems()
+                    if (overflowItems.isEmpty()) return@setOnClickListener
+                    surfaceOverflowPopup?.dismiss()
+                    dispatchSurfaceMenuOpened(menu)
+                    surfaceOverflowPopup = SurfacePopupMenu(this, toolbar).apply {
+                        setOnDismissListener {
+                            dispatchSurfaceMenuClosed(menu)
+                        }
+                        setOnMenuItemClickListener { item ->
+                            onCompatOptionsItemSelected(item)
+                        }
+                        show(menu, overflowItems)
                     }
-                    show(menu, overflowItems)
                 }
             }
+
+            // AppCompat still opens action-item submenus through its legacy
+            // ListPopupWindow. Route those children through the same owned
+            // surface as overflow menus so group/sort menus cannot leak a
+            // white platform popup.
+            menuView?.children
+                ?.filterIsInstance<ActionMenuItemView>()
+                ?.forEach { actionView ->
+                    val item = actionView.itemData
+                    val subMenu = item.subMenu ?: return@forEach
+                    if (!item.isVisible || !item.isEnabled) return@forEach
+                    actionView.setOnClickListener {
+                        surfaceOverflowPopup?.dismiss()
+                        dispatchSurfaceMenuOpened(subMenu)
+                        surfaceOverflowPopup = SurfacePopupMenu(this, actionView).apply {
+                            setOnDismissListener {
+                                dispatchSurfaceMenuClosed(subMenu)
+                            }
+                            setOnMenuItemClickListener { child ->
+                                onCompatOptionsItemSelected(child)
+                            }
+                            show(subMenu)
+                        }
+                    }
+                }
         }
     }
+
+    private fun dispatchSurfaceMenuOpened(menu: Menu) {
+        menu.applyOpenTint(this, showOpenMenuIcon)
+        onSurfaceMenuOpened(menu)
+    }
+
+    private fun dispatchSurfaceMenuClosed(menu: Menu) {
+        onSurfaceMenuClosed(menu)
+    }
+
+    protected open fun onSurfaceMenuOpened(menu: Menu) = Unit
+
+    protected open fun onSurfaceMenuClosed(menu: Menu) = Unit
 
     open fun onCompatCreateOptionsMenu(menu: Menu) = super.onCreateOptionsMenu(menu)
 

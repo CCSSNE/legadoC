@@ -20,6 +20,7 @@ import io.legado.app.data.appDb
 import io.legado.app.help.IntentHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.SelectItem
+import io.legado.app.lib.dialogs.showIntegerInputDialog
 import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
 import io.legado.app.lib.prefs.SwitchPreference
@@ -91,6 +92,8 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
             initPhoneCallPausePreference()
             initFloatOnDesktopPreference()
             upFloatOnDesktopPreference()
+            upScrollFollowTimeoutSummary()
+            upProgressPollIntervalSummary()
         }
 
         override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -114,8 +117,50 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
             when (preference.key) {
                 PreferKey.ttsEngine -> showDialogFragment(SpeakEngineDialog())
                 "sysTtsConfig" -> IntentHelp.openTTSSetting()
+                PreferKey.readAloudScrollFollowTimeout -> showScrollFollowTimeoutDialog()
+                PreferKey.readAloudProgressPollInterval -> showProgressPollIntervalDialog()
             }
             return super.onPreferenceTreeClick(preference)
+        }
+
+        private fun showScrollFollowTimeoutDialog() {
+            showIntegerInputDialog(
+                title = R.string.read_aloud_scroll_follow_timeout_dialog_title,
+                currentValue = AppConfig.readAloudScrollFollowTimeout,
+                validRange = 0..10000,
+                defaultValue = 3000
+            ) {
+                AppConfig.readAloudScrollFollowTimeout = it
+                upScrollFollowTimeoutSummary()
+            }
+        }
+
+        private fun upScrollFollowTimeoutSummary() {
+            findPreference<Preference>(PreferKey.readAloudScrollFollowTimeout)?.summary =
+                getString(
+                    R.string.read_aloud_scroll_follow_timeout_value,
+                    AppConfig.readAloudScrollFollowTimeout
+                )
+        }
+
+        private fun showProgressPollIntervalDialog() {
+            showIntegerInputDialog(
+                title = R.string.read_aloud_progress_poll_interval_dialog_title,
+                currentValue = AppConfig.readAloudProgressPollInterval,
+                validRange = 100..5000,
+                defaultValue = 500
+            ) {
+                AppConfig.readAloudProgressPollInterval = it
+                upProgressPollIntervalSummary()
+            }
+        }
+
+        private fun upProgressPollIntervalSummary() {
+            findPreference<Preference>(PreferKey.readAloudProgressPollInterval)?.summary =
+                getString(
+                    R.string.read_aloud_progress_poll_interval_value,
+                    AppConfig.readAloudProgressPollInterval
+                )
         }
 
         override fun onSharedPreferenceChanged(
@@ -142,6 +187,9 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 PreferKey.readAloudHidePagePanel -> {
                     postEvent(key, "")
                 }
+
+                PreferKey.readAloudScrollFollowTimeout -> upScrollFollowTimeoutSummary()
+                PreferKey.readAloudProgressPollInterval -> upProgressPollIntervalSummary()
 
                 PreferKey.ignoreAudioFocus -> {
                     Unit

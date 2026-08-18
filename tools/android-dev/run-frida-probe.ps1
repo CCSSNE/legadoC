@@ -47,7 +47,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Frida server push failed' }
     & $adb -s $env:LEIDIAN_SERIAL shell chmod 700 $remoteServer | Out-Null
     & $adb -s $env:LEIDIAN_SERIAL shell `
-        "su -c '$remoteServer -D </dev/null >/dev/null 2>&1'" | Out-Null
+        "su -c 'nohup $remoteServer -D >/data/local/tmp/legadoc-frida.log 2>&1 &'" | Out-Null
     Start-Sleep -Milliseconds 700
     $listener = & $adb -s $env:LEIDIAN_SERIAL shell "su -c 'ss -lntp | grep 27042'"
     $pidMatch = [regex]::Match(($listener -join "`n"), 'pid=(\d+)')

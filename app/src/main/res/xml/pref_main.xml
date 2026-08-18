@@ -24,6 +24,12 @@
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
+            android:key="rssPageManage"
+            android:summary="@string/enter_rss_page_summary"
+            android:title="@string/enter_rss_page"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
             android:key="txtTocRuleManage"
             android:summary="@string/config_txt_toc_rule"
             android:title="@string/txt_toc_rule"

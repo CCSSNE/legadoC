@@ -197,7 +197,7 @@ abstract class BaseReadAloudService : BaseService(),
                 upReadAloudNotification()
                 return
             }
-            if (activity is ReadBookActivity && !ReadAloudUiState.readAloudDialogVisible) {
+            if (activity is ReadBookActivity && !ReadAloudUiState.readerMenuVisible) {
                 removeReadAloudFloatingWindow()
                 upReadAloudNotification()
                 return
@@ -279,8 +279,8 @@ abstract class BaseReadAloudService : BaseService(),
             upReadAloudNotification()
             return
         }
-        val reader = appFloatingActivity as? ReadBookActivity ?: ReadBookActivity.activeActivity()
-        if (reader != null && !ReadAloudUiState.readAloudDialogVisible) {
+        val reader = appFloatingActivity as? ReadBookActivity
+        if (reader != null && !ReadAloudUiState.readerMenuVisible) {
             removeReadAloudFloatingWindow()
             upReadAloudNotification()
             return
@@ -290,8 +290,11 @@ abstract class BaseReadAloudService : BaseService(),
         }
         if (canDrawFloatingWindow()) {
             showDesktopReadAloudFloatingWindow()
+        } else if (reader != null) {
+            showAppReadAloudFloatingWindow(reader)
         } else {
-            showAppReadAloudFloatingWindow()
+            removeReadAloudFloatingWindow()
+            upReadAloudNotification()
         }
     }
 
@@ -325,8 +328,7 @@ abstract class BaseReadAloudService : BaseService(),
         }
     }
 
-    private fun showAppReadAloudFloatingWindow() {
-        val activity = appFloatingActivity ?: ReadBookActivity.activeActivity() ?: return
+    private fun showAppReadAloudFloatingWindow(activity: ReadBookActivity) {
         val root = activity.window?.decorView as? FrameLayout ?: return
         runCatching {
             val view = createReadAloudFloatingView()
@@ -682,6 +684,7 @@ abstract class BaseReadAloudService : BaseService(),
         initBroadcastReceiver()
         initPhoneStateListener()
         application.registerActivityLifecycleCallbacks(appFloatingLifecycleCallbacks)
+        appFloatingActivity = ReadBookActivity.activeActivity()
         upMediaSessionPlaybackState(PlaybackStateCompat.STATE_PLAYING)
         setTimer(AppConfig.ttsTimer)
         showReadAloudFloatingWindow()
@@ -724,19 +727,11 @@ abstract class BaseReadAloudService : BaseService(),
                 applyReadAloudFloatingAvoidance(0)
             }
         }
-        observeEvent<Boolean>(EventBus.READ_ALOUD_DIALOG_VISIBILITY) { visible ->
-            if (visible) {
-                showReadAloudFloatingWindow()
-            } else {
-                val reader = appFloatingActivity as? ReadBookActivity
-                    ?: ReadBookActivity.activeActivity()
-                if (reader != null) {
-                    removeReadAloudFloatingWindow()
-                    upReadAloudNotification()
-                } else {
-                    showReadAloudFloatingWindow()
-                }
-            }
+        observeEvent<Boolean>(EventBus.READ_ALOUD_DIALOG_VISIBILITY) {
+            showReadAloudFloatingWindow()
+        }
+        observeEvent<Boolean>(EventBus.READ_MAIN_MENU_VISIBILITY) {
+            showReadAloudFloatingWindow()
         }
         observeSharedPreferences { _, key ->
             when (key) {

@@ -16,6 +16,7 @@ import io.legado.app.databinding.DialogCacheChaptersBinding
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isVideo
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.permission.NotificationPermission
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.primaryTextColor
@@ -186,6 +187,20 @@ class CacheChapterDialog :
             toastOnUi(R.string.cache_manage_batch_empty)
             return
         }
+        if (book.isAudio || book.isVideo) {
+            NotificationPermission.ensure(
+                requireContext(),
+                onGranted = { cacheSelectedChapters(items) },
+                onDenied = {
+                    toastOnUi(R.string.notification_permission_required_for_download)
+                }
+            )
+            return
+        }
+        cacheSelectedChapters(items)
+    }
+
+    private fun cacheSelectedChapters(items: List<CacheChapterItem>) {
         lifecycleScope.launch {
             kotlin.runCatching {
                 if (book.isAudio || book.isVideo) {

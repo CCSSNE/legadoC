@@ -85,14 +85,21 @@ class BookmarkFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_bookmark
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        viewModel.bookMarkCallBack = this
+        viewModel.registerBookmarkCallBack(this)
         initView()
         initRecyclerView()
-        viewModel.bookData.observe(this) {
+        viewModel.bookData.observe(viewLifecycleOwner) {
             durChapterIndex = it.durChapterIndex
             durChapterPos = it.durChapterPos
             upBookmark(null)
         }
+    }
+
+    override fun onDestroyView() {
+        viewModel.unregisterBookmarkCallBack(this)
+        binding.recyclerView.adapter = null
+        mLayoutManager = null
+        super.onDestroyView()
     }
 
     private fun initView() {
@@ -120,7 +127,7 @@ class BookmarkFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_bookmark
 
     override fun upBookmark(searchKey: String?) {
         val book = viewModel.bookData.value ?: return
-        lifecycleScope.launch {
+        viewLifecycleOwner.lifecycleScope.launch {
             when {
                 searchKey.isNullOrBlank() -> appDb.bookmarkDao.flowByBook(book.name, book.author)
                 else -> appDb.bookmarkDao.flowSearch(book.name, book.author, searchKey)

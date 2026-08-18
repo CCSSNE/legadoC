@@ -31,24 +31,6 @@
         android:src="@drawable/ic_cursor_right"
         android:visibility="invisible" />
 
-    <io.legado.app.ui.book.read.ReadMenu
-        android:id="@+id/read_menu"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:visibility="gone" />
-
-    <io.legado.app.ui.book.read.SearchMenu
-        android:id="@+id/search_menu"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:visibility="gone" />
-
-    <io.legado.app.ui.book.read.ReadAiFloatingPanel
-        android:id="@+id/read_ai_panel"
-        android:layout_width="320dp"
-        android:layout_height="wrap_content"
-        android:visibility="gone" />
-
     <LinearLayout
         android:id="@+id/read_aloud_page_panel"
         android:layout_width="wrap_content"
@@ -125,6 +107,33 @@
             android:textSize="13sp" />
 
     </LinearLayout>
+
+    <io.legado.app.ui.book.read.ReadMenu
+        android:id="@+id/read_menu"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
+    <io.legado.app.ui.book.read.SearchMenu
+        android:id="@+id/search_menu"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
+    <io.legado.app.ui.book.read.ReadAiFloatingPanel
+        android:id="@+id/read_ai_panel"
+        android:layout_width="320dp"
+        android:layout_height="wrap_content"
+        android:visibility="gone" />
+
+    <View
+        android:id="@+id/read_aloud_dialog_outside_tap"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@android:color/transparent"
+        android:clickable="true"
+        android:focusable="true"
+        android:visibility="gone" />
 
     <View
         android:id="@+id/navigation_bar"

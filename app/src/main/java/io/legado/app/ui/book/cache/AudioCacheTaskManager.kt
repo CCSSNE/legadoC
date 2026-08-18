@@ -396,6 +396,10 @@ object AudioCacheTaskManager {
         _states.update { states ->
             val current = states[bookUrl] ?: return@update states
             val updated = transform(current)
+            // Resume replaces the state through startRequest; in-flight worker snapshots cannot do it.
+            if (current.status == CacheTaskStatus.PAUSED && updated.active) {
+                return@update states
+            }
             updatedState = updated
             states.toMutableMap().apply {
                 put(bookUrl, updated)
@@ -462,11 +466,9 @@ object AudioCacheTaskManager {
                 }
             )
         }
-        if (state.active || state.status == CacheTaskStatus.PAUSED) {
-            builder.setProgress(100, chapterPercent ?: 0, chapterPercent == null)
-        } else {
-            builder.setProgress(0, 0, false)
-        }
+        state.notificationProgress()?.let { progress ->
+            builder.setProgress(progress.max, progress.value, progress.indeterminate)
+        } ?: builder.setProgress(0, 0, false)
         notificationManager.notify(NotificationId.AudioCache, builder.build())
     }
 }
@@ -493,6 +495,12 @@ private data class AudioCacheTaskRequest(
 private const val PROGRESS_STATE_INTERVAL_MS = 750L
 private const val NOTIFICATION_INTERVAL_MS = 1000L
 private const val ACTION_AUDIO_CACHE_TOGGLE = "audioCacheToggle"
+
+private data class CacheNotificationProgress(
+    val max: Int,
+    val value: Int,
+    val indeterminate: Boolean
+)
 
 private fun CacheTaskStatus.isTerminalNotificationStatus(): Boolean {
     return this == CacheTaskStatus.COMPLETED ||
@@ -523,4 +531,28 @@ private fun AudioCacheTaskState.currentChapterPercent(): Int? {
     return ((currentChapterBytes.coerceIn(0L, total) * 100L) / total)
         .toInt()
         .coerceIn(0, 100)
+}
+
+private fun AudioCacheTaskState.notificationProgress(): CacheNotificationProgress? {
+    val chapterPercent = currentChapterPercent()
+    if (active) {
+        return CacheNotificationProgress(
+            max = 100,
+            value = chapterPercent ?: 0,
+            indeterminate = chapterPercent == null
+        )
+    }
+    if (status != CacheTaskStatus.PAUSED) return null
+    if (chapterPercent != null) {
+        return CacheNotificationProgress(
+            max = 100,
+            value = chapterPercent,
+            indeterminate = false
+        )
+    }
+    return CacheNotificationProgress(
+        max = 100,
+        value = 0,
+        indeterminate = false
+    )
 }

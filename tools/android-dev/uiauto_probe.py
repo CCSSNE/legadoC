@@ -9,7 +9,7 @@ from ldplayer_guard import ALLOWED_SERIAL, assert_ldplayer_target
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Probe the LDPlayer UI through uiautomator2")
-    parser.add_argument("--serial", default="emulator-5554")
+    parser.add_argument("--serial", default="127.0.0.1:5557")
     args = parser.parse_args()
     try:
         assert_ldplayer_target(args.serial)

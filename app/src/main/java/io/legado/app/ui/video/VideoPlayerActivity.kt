@@ -58,6 +58,7 @@ import io.legado.app.help.webView.WebJsExtensions.Companion.nameJava
 import io.legado.app.help.webView.WebJsExtensions.Companion.nameSource
 import io.legado.app.help.webView.WebViewPool
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.permission.NotificationPermission
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
@@ -1146,32 +1147,40 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
             }
             customView { alertBinding.root }
             okButton {
-                lifecycleScope.launch {
-                    val start = alertBinding.editStart.text?.toString()?.toIntOrNull()
-                        ?.coerceAtLeast(1) ?: 1
-                    val end = alertBinding.editEnd.text?.toString()?.toIntOrNull()
-                        ?.coerceAtLeast(start) ?: total.coerceAtLeast(start)
-                    val chapters = withContext(IO) {
-                        appDb.bookChapterDao.getChapterList(book.bookUrl, start - 1, end - 1)
-                    }
-                    if (chapters.isEmpty()) {
-                        toastOnUi(R.string.chapter_list_empty)
-                        return@launch
-                    }
-                    kotlin.runCatching {
-                        book.removeType(BookType.text, BookType.audio, BookType.image)
-                        book.addType(BookType.video)
-                        cacheViewModel.cacheMediaChapters(book, chapters)
-                    }.onSuccess { count ->
-                        if (count > 0) {
-                            toastOnUi(getString(R.string.cache_manage_audio_cache_started, count))
-                        } else {
-                            toastOnUi(R.string.cache_manage_batch_empty)
+                NotificationPermission.ensure(
+                    this@VideoPlayerActivity,
+                    onGranted = {
+                        lifecycleScope.launch {
+                            val start = alertBinding.editStart.text?.toString()?.toIntOrNull()
+                                ?.coerceAtLeast(1) ?: 1
+                            val end = alertBinding.editEnd.text?.toString()?.toIntOrNull()
+                                ?.coerceAtLeast(start) ?: total.coerceAtLeast(start)
+                            val chapters = withContext(IO) {
+                                appDb.bookChapterDao.getChapterList(book.bookUrl, start - 1, end - 1)
+                            }
+                            if (chapters.isEmpty()) {
+                                toastOnUi(R.string.chapter_list_empty)
+                                return@launch
+                            }
+                            kotlin.runCatching {
+                                book.removeType(BookType.text, BookType.audio, BookType.image)
+                                book.addType(BookType.video)
+                                cacheViewModel.cacheMediaChapters(book, chapters)
+                            }.onSuccess { count ->
+                                if (count > 0) {
+                                    toastOnUi(getString(R.string.cache_manage_audio_cache_started, count))
+                                } else {
+                                    toastOnUi(R.string.cache_manage_batch_empty)
+                                }
+                            }.onFailure {
+                                toastOnUi(getString(R.string.cache_manage_cache_failed, it.localizedMessage))
+                            }
                         }
-                    }.onFailure {
-                        toastOnUi(getString(R.string.cache_manage_cache_failed, it.localizedMessage))
+                    },
+                    onDenied = {
+                        toastOnUi(R.string.notification_permission_required_for_download)
                     }
-                }
+                )
             }
             cancelButton()
         }

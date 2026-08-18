@@ -75,14 +75,18 @@ class ChapterListAdapter(context: Context, val callback: Callback) :
 
     fun upDisplayTitles(startIndex: Int) {
         upDisplayTileJob?.cancel()
+        val items = getItems()
+        if (items.isEmpty()) {
+            return
+        }
+        val safeStartIndex = startIndex.coerceIn(items.indices)
         upDisplayTileJob = Coroutine.async(callback.scope) {
             val book = callback.book ?: return@async
             val replaceRules = ContentProcessor.get(book.name, book.origin).getTitleReplaceRules()
             val replaceBook = book.toReplaceBook()
             val useReplace = AppConfig.tocUiUseReplace && book.getUseReplaceRule()
-            val items = getItems()
             launch {
-                for (i in startIndex until items.size) {
+                for (i in safeStartIndex until items.size) {
                     val item = items[i]
                     if (displayTitleMap[item.title] == null) {
                         ensureActive()
@@ -90,13 +94,15 @@ class ChapterListAdapter(context: Context, val callback: Callback) :
                         ensureActive()
                         displayTitleMap[item.title] = displayTitle
                         handler.post {
-                            notifyItemChanged(i, true)
+                            if (getItem(i)?.title == item.title) {
+                                notifyItemChanged(i, true)
+                            }
                         }
                     }
                 }
             }
             launch {
-                for (i in startIndex downTo 0) {
+                for (i in safeStartIndex downTo 0) {
                     val item = items[i]
                     if (displayTitleMap[item.title] == null) {
                         ensureActive()
@@ -104,7 +110,9 @@ class ChapterListAdapter(context: Context, val callback: Callback) :
                         ensureActive()
                         displayTitleMap[item.title] = displayTitle
                         handler.post {
-                            notifyItemChanged(i, true)
+                            if (getItem(i)?.title == item.title) {
+                                notifyItemChanged(i, true)
+                            }
                         }
                     }
                 }

@@ -639,6 +639,9 @@
     <string name="tone_colour">線上朗讀音色</string>
     <string name="select_count">(%1$d/%2$d)</string>
     <string name="show_rss">顯示訂閱</string>
+    <string name="enter_rss_page">進入訂閱頁面</string>
+    <string name="enter_rss_page_summary">開啟訂閱內容頁面</string>
+    <string name="show_rss_page_in_settings">在設定中顯示訂閱頁面</string>
     <string name="service_stop">服務已停止</string>
     <string name="service_start">正在啟動服務\n具體訊息查看通知欄</string>
     <string name="default_path">預設路徑</string>
@@ -1033,6 +1036,8 @@
     <string name="read_aloud_double_tap_timeout_summary">越短單擊越跟手，但雙擊要求越快</string>
     <string name="read_aloud_double_tap_timeout_dialog_title">朗讀雙擊判定時間（毫秒）</string>
     <string name="read_aloud_double_tap_timeout_value">%sms</string>
+    <string name="integer_input_range_hint">%1$d-%2$d</string>
+    <string name="integer_input_range_invalid">請輸入 %1$d 到 %2$d 之間的整數。</string>
     <string name="example">範例</string>
     <string name="check_selected_interval">選中所選區間</string>
     <string name="show_add_to_shelf_alert_title">返回時提示放入書架</string>

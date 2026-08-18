@@ -441,15 +441,13 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
         }
     }
 
-    override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
+    override fun onSurfaceMenuOpened(menu: Menu) {
         if (menu === groupMenu) {
             groupMenuLifecycleOwner.onMenuOpened()
         }
-        return super.onMenuOpened(featureId, menu)
     }
 
-    override fun onPanelClosed(featureId: Int, menu: Menu) {
-        super.onPanelClosed(featureId, menu)
+    override fun onSurfaceMenuClosed(menu: Menu) {
         if (menu === groupMenu) {
             groupMenuLifecycleOwner.onMenuClosed()
         }

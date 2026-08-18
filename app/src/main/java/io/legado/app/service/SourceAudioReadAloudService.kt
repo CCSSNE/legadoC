@@ -10,6 +10,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
 import io.legado.app.help.book.AudioTextMapping
 import io.legado.app.help.book.SourceAudioResolver
+import io.legado.app.help.config.AppConfig
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.model.ReadBook
 import io.legado.app.utils.isJsonArray
@@ -255,7 +256,7 @@ class SourceAudioReadAloudService : BaseReadAloudService(), Player.Listener {
                         return@launch
                     }
                 }
-                delay(500)
+                delay(AppConfig.readAloudProgressPollInterval.toLong())
             }
         }
     }

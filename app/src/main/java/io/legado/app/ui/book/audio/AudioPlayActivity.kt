@@ -4,9 +4,11 @@ import android.annotation.SuppressLint
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
+import android.view.MotionEvent
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -26,7 +28,9 @@ import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ActivityAudioPlayBinding
 import io.legado.app.databinding.DialogDownloadChoiceBinding
 import io.legado.app.help.book.AudioTextMapping
+import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.permission.NotificationPermission
 import io.legado.app.lib.theme.ThemeStore.Companion.accentColor
 import io.legado.app.model.BookCover
 import io.legado.app.model.ReadAloud
@@ -58,6 +62,8 @@ import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
 import io.legado.app.utils.getPrefBoolean
 import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -77,6 +83,10 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     private var loadedLyric: String? = null
     private val ttsParagraphViews = arrayListOf<TextView>()
     private var ttsTextChapterIndex = -1
+    private var ttsScrollTouching = false
+    private var ttsScrollFollowBlockedUntil = 0L
+    private var ttsScrollFollowJob: Job? = null
+    private var pendingTtsHighlightIndex: Int? = null
     private var preserveAfterEngineSwitch = false
 
     private val tocActivityResult = registerForActivityResult(TocActivityResult()) { result ->
@@ -178,6 +188,22 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         }
         ivChapter.setOnClickListener { tocActivityResult.launch(book.bookUrl) }
         ivCache?.setOnClickListener { showAudioCacheRangeDialog(book) }
+        ttsContentScroll.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    ttsScrollTouching = true
+                    ttsScrollFollowJob?.cancel()
+                    ttsScrollFollowJob = null
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    ttsScrollTouching = false
+                    ttsScrollFollowBlockedUntil =
+                        SystemClock.uptimeMillis() + AppConfig.readAloudScrollFollowTimeout
+                    scheduleTtsParagraphCenter()
+                }
+            }
+            false
+        }
         llPlayMenu.applyNavigationBarPadding()
     }
 
@@ -195,6 +221,10 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         val sourceAudio = ReadAloud.selectedEngineType == ReadAloudEngineType.SOURCE_AUDIO
         ivCache?.visible(sourceAudio)
         if (sourceAudio) {
+            ttsScrollFollowJob?.cancel()
+            ttsScrollFollowJob = null
+            ttsScrollTouching = false
+            pendingTtsHighlightIndex = null
             ttsContentScroll.gone()
             loadLyric(ReadBook.curTextChapter?.chapter?.getVariable("lyric"))
         } else {
@@ -335,6 +365,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     }
 
     private fun applyTtsParagraphHighlight(selectedIndex: Int?) {
+        pendingTtsHighlightIndex = selectedIndex
         ttsParagraphViews.forEachIndexed { index, view ->
             if (selectedIndex == null) {
                 view.setTextColor(Color.WHITE)
@@ -345,8 +376,38 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
                 view.alpha = if (selected) 1f else 0.42f
             }
         }
-        val selected = selectedIndex?.let { ttsParagraphViews[it] } ?: return
+        if (selectedIndex == null) {
+            ttsScrollFollowJob?.cancel()
+            ttsScrollFollowJob = null
+            return
+        }
+        scheduleTtsParagraphCenter()
+    }
+
+    private fun scheduleTtsParagraphCenter() {
+        ttsScrollFollowJob?.cancel()
+        ttsScrollFollowJob = null
+        val selectedIndex = pendingTtsHighlightIndex ?: return
+        if (ttsScrollTouching) return
+        val delayMillis = (ttsScrollFollowBlockedUntil - SystemClock.uptimeMillis())
+            .coerceAtLeast(0L)
+        if (delayMillis == 0L) {
+            centerTtsParagraph(selectedIndex)
+            return
+        }
+        ttsScrollFollowJob = lifecycleScope.launch {
+            delay(delayMillis)
+            ttsScrollFollowJob = null
+            if (!ttsScrollTouching && pendingTtsHighlightIndex == selectedIndex) {
+                centerTtsParagraph(selectedIndex)
+            }
+        }
+    }
+
+    private fun centerTtsParagraph(index: Int) {
         binding.ttsContentScroll.post {
+            if (ttsScrollTouching || pendingTtsHighlightIndex != index) return@post
+            val selected = ttsParagraphViews.getOrNull(index) ?: return@post
             val viewportHeight = binding.ttsContentScroll.height
             if (viewportHeight <= 0) return@post
             val maxScroll = (binding.ttsContent.height - viewportHeight).coerceAtLeast(0)
@@ -429,13 +490,6 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         val timer = BaseReadAloudService.timeMinute.coerceAtLeast(0)
         tvTimer.text = getString(R.string.timer_m, timer)
         tvTimer.visible(timer > 0)
-        val speed = if (ReadAloud.selectedEngineType == ReadAloudEngineType.SOURCE_AUDIO) {
-            ReadBook.book?.getPlaySpeed() ?: 1f
-        } else {
-            (io.legado.app.help.config.AppConfig.ttsSpeechRate + 5) / 10f
-        }
-        tvSpeed.text = "%.1fX".format(speed)
-        tvSpeed.visible()
     }
 
     private fun showAudioCacheRangeDialog(book: Book) {
@@ -447,30 +501,38 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             }
             customView { alertBinding.root }
             okButton {
-                lifecycleScope.launch {
-                    val start = alertBinding.editStart.text?.toString()?.toIntOrNull()
-                        ?.coerceIn(1, total) ?: 1
-                    val end = alertBinding.editEnd.text?.toString()?.toIntOrNull()
-                        ?.coerceIn(start, total) ?: total
-                    val chapters = withContext(IO) {
-                        appDb.bookChapterDao.getChapterList(book.bookUrl, start - 1, end - 1)
-                    }
-                    if (chapters.isEmpty()) {
-                        toastOnUi(R.string.chapter_list_empty)
-                        return@launch
-                    }
-                    runCatching { cacheViewModel.cacheAudioChapters(book, chapters) }
-                        .onSuccess { count ->
-                            if (count > 0) {
-                                toastOnUi(getString(R.string.cache_manage_audio_cache_started, count))
-                            } else {
-                                toastOnUi(R.string.cache_manage_batch_empty)
+                NotificationPermission.ensure(
+                    this@AudioPlayActivity,
+                    onGranted = {
+                        lifecycleScope.launch {
+                            val start = alertBinding.editStart.text?.toString()?.toIntOrNull()
+                                ?.coerceIn(1, total) ?: 1
+                            val end = alertBinding.editEnd.text?.toString()?.toIntOrNull()
+                                ?.coerceIn(start, total) ?: total
+                            val chapters = withContext(IO) {
+                                appDb.bookChapterDao.getChapterList(book.bookUrl, start - 1, end - 1)
                             }
+                            if (chapters.isEmpty()) {
+                                toastOnUi(R.string.chapter_list_empty)
+                                return@launch
+                            }
+                            runCatching { cacheViewModel.cacheAudioChapters(book, chapters) }
+                                .onSuccess { count ->
+                                    if (count > 0) {
+                                        toastOnUi(getString(R.string.cache_manage_audio_cache_started, count))
+                                    } else {
+                                        toastOnUi(R.string.cache_manage_batch_empty)
+                                    }
+                                }
+                                .onFailure {
+                                    toastOnUi(getString(R.string.cache_manage_cache_failed, it.localizedMessage))
+                                }
                         }
-                        .onFailure {
-                            toastOnUi(getString(R.string.cache_manage_cache_failed, it.localizedMessage))
-                        }
-                }
+                    },
+                    onDenied = {
+                        toastOnUi(R.string.notification_permission_required_for_download)
+                    }
+                )
             }
             cancelButton()
         }
