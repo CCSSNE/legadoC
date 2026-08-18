@@ -8,7 +8,7 @@ $fridaServer = Join-Path $PSScriptRoot 'bin\frida-server-17.17.0-android-x86_64'
 
 Assert-LDPlayerTarget
 
-& $adb connect $env:LEIDIAN_SERIAL | Out-Null
+& $adb -s $env:LEIDIAN_SERIAL connect $env:LEIDIAN_SERIAL | Out-Null
 if ((& $adb -s $env:LEIDIAN_SERIAL get-state).Trim() -ne 'device') { throw "LDPlayer transport is not ready: $env:LEIDIAN_SERIAL" }
 
 $model = (& $adb -s $env:LEIDIAN_SERIAL shell getprop ro.product.model).Trim()

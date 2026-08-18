@@ -16,7 +16,7 @@ from ldplayer_guard import ALLOWED_SERIAL, assert_ldplayer_target
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Probe Frida through the explicit LDPlayer transport")
-    parser.add_argument("--serial", default="127.0.0.1:5557")
+    parser.add_argument("--serial", default=ALLOWED_SERIAL)
     parser.add_argument("--port", type=int, default=27042)
     parser.add_argument("--package", default="io.legado.app.c")
     parser.add_argument("--class-name", default="")
