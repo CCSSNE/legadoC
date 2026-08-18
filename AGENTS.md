@@ -32,7 +32,7 @@
 ### 雷电模拟器
 
 - APK 安装、运行和调试只使用雷电模拟器（LDPlayer），路径为 `F:\leidian\LDPlayer14\dnplayer.exe`。未启动时可尝试启动；失败则请用户手动打开。
-- 当前唯一雷电实例的正式调试传输为 `127.0.0.1:5555`；每条 `adb` 命令都必须显式带 `-s 127.0.0.1:5555`。执行前通过 `tools\android-dev\target.json` 的实例 0 校验确认目标确为模拟器；不确定时停止，禁止裸 `adb`。
+- 所有 ADB 调试目标只能是雷电模拟器；执行前通过 `tools\android-dev\target.json` 的实例 0 校验确认目标确为模拟器；不确定时停止，禁止裸 `adb`。
 - 真实小说优先用于阅读功能验证。`C:\Users\user\Documents\leidian14\Pictures` 与模拟器 Pictures 目录互通，可作为导入素材。
 
 ### 验证闭环
@@ -204,7 +204,7 @@ Activity 页面标题和正文标题不是“弹窗头”，不得为追求无�
 - 界面操作由用户实时完成，包括点击、滑动、返回、打开菜单、启动播放和翻页。Codex 根据当前排障目标持续准备采集、观察和分析，不要求用户逐轮确认下一步。
 - 这是一个连续调试回合，不得把每个操作拆成“先停下来询问、等待回复、再启动工具”的串行流程；工具采集、日志读取和证据对齐应在用户操作窗口内持续进行。
 - Codex 可以在 commentary 中简短说明当前正在监听的目标和所需操作，但不得重复已经明确的操作指令，也不得因为等待用户操作而结束调试回合。
-- 每次复现必须记录开始时间、用户操作窗口、结束时间和使用的设备；用户只操作唯一允许的雷电模拟器，Codex 只对 `127.0.0.1:5555` 执行命令。
+- 每次复现必须记录开始时间、用户操作窗口、结束时间和使用的设备；用户只操作唯一允许的雷电模拟器，Codex 只对雷电模拟器执行命令。
 - 半自动模式不改变真机禁令、构建约束、证据分层规则或代码修改授权；它只规定“工具由 Codex 连续采集、界面由用户实时操作”的协作方式。
 
 ### 分层调试
@@ -213,7 +213,7 @@ Activity 页面标题和正文标题不是“弹窗头”，不得为追求无�
 - 只有常规证据不足，且明确怀疑时序、线程、Window/Surface 合成或运行时调用链时，才升级到 Perfetto、Winscope 或 Frida。
 - 高级证据必须围绕同一次复现采集：记录开始时间、操作、结束时间；将 UI 层级、时间线、Window/Surface 与调用证据对齐，明确观察结果、排除项、根因和结构性修复。
 - 工具入口为 `tools\android-dev`，输出写入已忽略的 `test-records\android-dev`，不得提交 trace、截图、临时二进制或虚拟环境。雷电 Android 14 不支持的 WindowManager 时间序列 tracing 必须如实标为快照降级模式。
-- Frida 仅能连接 `127.0.0.1:5555`，默认只读；方法跟踪须限定包、类、方法和最长 30 秒，不修改参数、字段或返回值。脚本错误、`Java is not defined` 或初始化缺失均为失败；结束后卸载脚本并移除模拟器临时 server。
+- Frida 仅能连接雷电模拟器，默认只读；方法跟踪须限定包、类、方法和最长 30 秒，不修改参数、字段或返回值。脚本错误、`Java is not defined` 或初始化缺失均为失败；结束后卸载脚本并移除模拟器临时 server。
 
 理想环境操作：
 uiautomator2 / ADB
@@ -249,6 +249,6 @@ uiautomator2 / ADB
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- `3.26.081812c` / `10676`，2026-08-18（UTC），`feature/audio-reading-ui-unification` 分支（代码提交 `5a50da0`）。统一阅读主菜单与朗读菜单的首帧可见时序：新增共享 `doAfterFirstDraw` 入口，阅读主菜单在首次绘制后发布悬浮窗可见状态，不再等待菜单淡入动画结束；朗读菜单复用同一入口，并将 `OnDrawListener` 的移除延迟到绘制帧结束后，修复 Android 15 `Cannot call removeOnDrawListener inside of onDraw` 崩溃。已通过正式后台 `:app:assembleAppC` 构建，退出码为 0；`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.081812c` / `10676`，`apksigner` 退出码为 0。已覆盖安装到雷电模拟器 `127.0.0.1:5555`，启动冒烟确认 `MainActivity` 在前台且无 FATAL。
+- `3.26.081812c` / `10676`，2026-08-18（UTC），`feature/audio-reading-ui-unification` 分支（代码提交 `5a50da0`）。统一阅读主菜单与朗读菜单的首帧可见时序：新增共享 `doAfterFirstDraw` 入口，阅读主菜单在首次绘制后发布悬浮窗可见状态，不再等待菜单淡入动画结束；朗读菜单复用同一入口，并将 `OnDrawListener` 的移除延迟到绘制帧结束后，修复 Android 15 `Cannot call removeOnDrawListener inside of onDraw` 崩溃。已通过正式后台 `:app:assembleAppC` 构建，退出码为 0；`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.081812c` / `10676`，`apksigner` 退出码为 0。已覆盖安装到雷电模拟器，启动冒烟确认 `MainActivity` 在前台且无 FATAL。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
