@@ -1832,7 +1832,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         check(panelHeight > 0) { "Read-aloud panel has no measurable height" }
         val footerBounds = binding.readView.footerBounds
         val panelBottom = if (AppConfig.readAloudPanelOnPageFooter) {
-            (footerBounds.first + footerBounds.last + panelHeight) / 2
+            footerBounds.first + panelHeight
         } else {
             footerBounds.first
         }
