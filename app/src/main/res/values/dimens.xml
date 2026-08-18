@@ -111,7 +111,6 @@
     <!-- Reading-page compact read-aloud panels -->
     <dimen name="read_aloud_compact_panel_height">24dp</dimen>
     <dimen name="read_aloud_compact_panel_radius">12dp</dimen>
-    <dimen name="read_aloud_compact_panel_footer_clearance">28dp</dimen>
     <dimen name="read_aloud_compact_panel_padding_horizontal">4dp</dimen>
     <dimen name="read_aloud_compact_panel_button_padding_horizontal">4dp</dimen>
     <dimen name="read_aloud_compact_panel_text_size">12sp</dimen>

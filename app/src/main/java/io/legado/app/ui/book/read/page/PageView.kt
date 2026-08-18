@@ -100,6 +100,13 @@ class PageView(context: Context) : FrameLayout(context) {
         get() {
             return binding.vwRoot.paddingStart
         }
+    val footerBounds: IntRange
+        get() {
+            check(binding.llFooter.height > 0) {
+                "Reading page footer has no measurable height"
+            }
+            return binding.llFooter.top..binding.llFooter.bottom
+        }
     private val isClassicEpub: Boolean
         get() = ReadBook.book?.isEpub == true &&
             AppConfig.epubParseMode == AppConfig.EPUB_PARSE_MODE_CLASSIC
