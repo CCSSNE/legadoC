@@ -106,6 +106,7 @@ import io.legado.app.ui.book.read.config.ReadStyleDialog
 import io.legado.app.ui.book.read.config.TipConfigDialog.Companion.TIP_COLOR
 import io.legado.app.ui.book.read.config.TipConfigDialog.Companion.TIP_DIVIDER_COLOR
 import io.legado.app.ui.book.read.page.ContentTextView
+import io.legado.app.ui.book.read.page.FooterCenterAction
 import io.legado.app.ui.book.read.page.ReadView
 import io.legado.app.ui.book.read.page.SelectionHandleDrawable
 import io.legado.app.ui.book.read.page.delegate.ScrollPageDelegate
@@ -1743,20 +1744,45 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     private fun showReadAloudPanelInFooter(mode: ReadAloudUiState.ReaderPanelMode) {
-        val text = when (mode) {
-            ReadAloudUiState.ReaderPanelMode.PLAYBACK -> getText(
-                if (BaseReadAloudService.pause) {
-                    R.string.read_aloud_resume_playback
-                } else {
-                    R.string.read_aloud_pause_playback
+        when (mode) {
+            ReadAloudUiState.ReaderPanelMode.PLAYBACK -> {
+                val text = getText(
+                    if (BaseReadAloudService.pause) {
+                        R.string.read_aloud_resume_playback
+                    } else {
+                        R.string.read_aloud_pause_playback
+                    }
+                )
+                binding.readView.setFooterCenterAction(text) {
+                    performReadAloudFooterAction(mode, ::toggleReadAloudPlayback)
                 }
-            )
-            ReadAloudUiState.ReaderPanelMode.PAGE_ACTION ->
-                getText(R.string.read_aloud_page_actions)
+            }
+            ReadAloudUiState.ReaderPanelMode.PAGE_ACTION -> {
+                binding.readView.setFooterCenterActions(
+                    listOf(
+                        FooterCenterAction(getText(R.string.read_aloud_original_progress)) {
+                            performReadAloudFooterAction(mode, ::backToReadAloudProgress)
+                        },
+                        FooterCenterAction(getText(R.string.read_aloud_from_current_page)) {
+                            performReadAloudFooterAction(mode, ::readAloudFromCurrentPage)
+                        },
+                    )
+                )
+            }
             ReadAloudUiState.ReaderPanelMode.HIDDEN ->
                 error("Cannot put a hidden read-aloud panel in the footer")
         }
-        binding.readView.setFooterCenterAction(text) { expandReadAloudPanel(mode) }
+    }
+
+    private fun performReadAloudFooterAction(
+        mode: ReadAloudUiState.ReaderPanelMode,
+        action: () -> Unit,
+    ) {
+        check(currentReadAloudPanelMode() == mode) {
+            "Read-aloud footer action no longer matches the current panel mode"
+        }
+        expandReadAloudPanel(mode)
+        action()
     }
 
     private fun clearReadAloudPanelInFooter() {

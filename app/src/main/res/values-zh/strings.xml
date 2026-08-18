@@ -226,7 +226,6 @@
     <string name="integer_input_range_invalid">请输入 %1$d 到 %2$d 之间的整数。</string>
     <string name="read_aloud_original_progress">原进度</string>
     <string name="read_aloud_from_current_page">从本页听</string>
-    <string name="read_aloud_page_actions">原进度 / 从本页听</string>
     <string name="read_aloud_pause_playback">暂停播放</string>
     <string name="read_aloud_resume_playback">继续播放</string>
     <string name="open_read_aloud_player">进入听书页</string>
