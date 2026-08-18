@@ -257,6 +257,6 @@ uiautomator2 / ADB
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- `3.26.081812c` / `10676`，2026-08-18（UTC），`feature/audio-reading-ui-unification` 分支（代码提交 `5a50da0`）。统一阅读主菜单与朗读菜单的首帧可见时序：新增共享 `doAfterFirstDraw` 入口，阅读主菜单在首次绘制后发布悬浮窗可见状态，不再等待菜单淡入动画结束；朗读菜单复用同一入口，并将 `OnDrawListener` 的移除延迟到绘制帧结束后，修复 Android 15 `Cannot call removeOnDrawListener inside of onDraw` 崩溃。已通过正式后台 `:app:assembleAppC` 构建，退出码为 0；`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.081812c` / `10676`，`apksigner` 退出码为 0。已覆盖安装到雷电模拟器，启动冒烟确认 `MainActivity` 在前台且无 FATAL。
+- `3.26.081821c` / `10690`，2026-08-18（UTC），`Future` 分支（代码提交 `71f8fe9`）。有声小说与普通小说融合（统一阅读入口、统一朗读引擎、文字与音频双向映射）、朗读页脚小面板与悬浮窗层级/避让统一、朗读封面旋转、墨水屏弹窗与主题模式切换统一、听书页文本渲染与缩进控制、通知权限与音频缓存进度修复等（详见 README 更新记录）。已通过正式后台 `:app:assembleAppC` 构建，退出码为 0；`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.081821c` / `10690`、中文名 `阅读 C`、架构 `arm64-v8a`，`apksigner` 退出码为 0。已发布 GitHub Pre 版本 `v3.26.081821c`（prerelease，目标 `own` 分支 `71f8fe9`），源码已推送至 `origin/own`。本次未执行模拟器安装回归（用户未要求）。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
