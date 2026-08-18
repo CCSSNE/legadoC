@@ -200,6 +200,11 @@
     <string name="read_aloud_hide_floating_window_summary">不显示朗读控制悬浮窗，仅保留通知栏控制和前台服务通知用于保活。</string>
     <string name="read_aloud_cover_rotation">旋转朗读封面</string>
     <string name="read_aloud_cover_rotation_summary">播放时同时旋转朗读悬浮窗和听书页面中的封面。</string>
+    <string name="read_aloud_cover_rotation_duration">封面旋转一圈用时</string>
+    <string name="read_aloud_cover_rotation_duration_summary">%s 秒/圈</string>
+    <string name="read_aloud_cover_rotation_duration_dialog_title">每圈时长（秒）</string>
+    <string name="decimal_input_range_hint">%1$s-%2$s</string>
+    <string name="decimal_input_range_invalid">请输入 %1$s 到 %2$s 之间的数字。</string>
     <string name="read_aloud_hide_playback_panel">隐藏当页小悬浮窗</string>
     <string name="read_aloud_hide_playback_panel_summary">朗读菜单收起后，不显示暂停播放/继续播放的小悬浮窗。</string>
     <string name="read_aloud_hide_page_panel">隐藏跨页小悬浮窗</string>

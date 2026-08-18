@@ -201,6 +201,11 @@
     <string name="read_aloud_hide_floating_window_summary">Do not show the read aloud floating controls. Keep notification controls and the foreground-service notification alive instead.</string>
     <string name="read_aloud_cover_rotation">Rotate read-aloud cover</string>
     <string name="read_aloud_cover_rotation_summary">Rotate the cover while playing in the floating controller and listening page.</string>
+    <string name="read_aloud_cover_rotation_duration">Cover rotation period</string>
+    <string name="read_aloud_cover_rotation_duration_summary">%s seconds per revolution</string>
+    <string name="read_aloud_cover_rotation_duration_dialog_title">Seconds per revolution</string>
+    <string name="decimal_input_range_hint">%1$s-%2$s</string>
+    <string name="decimal_input_range_invalid">Enter a number from %1$s to %2$s.</string>
     <string name="read_aloud_hide_playback_panel">Hide current-page read-aloud panel</string>
     <string name="read_aloud_hide_playback_panel_summary">Hide the pause/resume panel shown after the read-aloud menu is closed.</string>
     <string name="read_aloud_hide_page_panel">Hide cross-page read-aloud panel</string>
