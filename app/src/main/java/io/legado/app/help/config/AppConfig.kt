@@ -54,6 +54,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var editThemeDark = appCtx.getPrefInt(PreferKey.editThemeDark, 0)
     var editTemeAuto = appCtx.getPrefBoolean(PreferKey.editTemeAuto)
     var isEInkMode = appCtx.getPrefString(PreferKey.themeMode) == "3"
+        private set
     var clickActionTL = appCtx.getPrefInt(PreferKey.clickActionTL, 2)
     var clickActionTC = appCtx.getPrefInt(PreferKey.clickActionTC, 14)
     var clickActionTR = appCtx.getPrefInt(PreferKey.clickActionTR, 1)
@@ -64,6 +65,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var clickActionBC = appCtx.getPrefInt(PreferKey.clickActionBC, 0)
     var clickActionBR = appCtx.getPrefInt(PreferKey.clickActionBR, 1)
     var themeMode = appCtx.getPrefString(PreferKey.themeMode, "0")
+        private set
     var useDefaultCover = appCtx.getPrefBoolean(PreferKey.useDefaultCover, false)
     var loadCoverHighQuality = appCtx.getPrefBoolean(PreferKey.loadCoverHighQuality, false)
     var optimizeRender = CanvasRecorderFactory.isSupport
@@ -86,8 +88,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             PreferKey.adaptSpecialStyle -> adaptSpecialStyle = appCtx.getPrefBoolean(PreferKey.adaptSpecialStyle, true)
 
             PreferKey.themeMode -> {
-                themeMode = appCtx.getPrefString(PreferKey.themeMode, "0")
-                isEInkMode = themeMode == "3"
+                updateThemeModeCache(appCtx.getPrefString(PreferKey.themeMode, "0"))
             }
 
             PreferKey.clickActionTL -> clickActionTL =
@@ -186,22 +187,18 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
                 ?.getOrNull()
         }
 
-    var isNightTheme: Boolean
+    val isNightTheme: Boolean
         get() = when (themeMode) {
             "1" -> false
             "2" -> true
             "3" -> false
             else -> sysConfiguration.isNightMode
         }
-        set(value) {
-            if (isNightTheme != value) {
-                if (value) {
-                    appCtx.putPrefString(PreferKey.themeMode, "2")
-                } else {
-                    appCtx.putPrefString(PreferKey.themeMode, "1")
-                }
-            }
-        }
+
+    internal fun updateThemeModeCache(mode: String) {
+        themeMode = mode
+        isEInkMode = mode == "3"
+    }
     var showBookname: Int
         get() = appCtx.getPrefInt(PreferKey.showBooknameLayout, 0)
         set(value) {

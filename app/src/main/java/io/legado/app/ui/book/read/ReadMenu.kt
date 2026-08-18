@@ -716,8 +716,7 @@ class ReadMenu @JvmOverloads constructor(
 
         //夜间模式
         llFabNightTheme.setOnClickListener {
-            AppConfig.isNightTheme = !AppConfig.isNightTheme
-            ThemeConfig.applyDayNight(context)
+            ThemeConfig.toggleLightDarkTheme(context)
         }
 
         //上一章

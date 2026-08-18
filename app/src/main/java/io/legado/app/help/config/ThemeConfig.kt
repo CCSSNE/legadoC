@@ -52,6 +52,24 @@ import java.util.Locale
 @Keep
 object ThemeConfig {
 
+    /**
+     * The persisted application theme mode. Every user-facing selector must
+     * switch this state through [switchThemeMode] so the UI and reader cannot
+     * update different theme sources.
+     */
+    enum class ThemeMode(val preferenceValue: String) {
+        AUTO("0"),
+        LIGHT("1"),
+        DARK("2"),
+        EINK("3");
+
+        companion object {
+            fun fromPreference(value: Any?): ThemeMode? {
+                return entries.firstOrNull { it.preferenceValue == value }
+            }
+        }
+    }
+
     private const val DEFAULT_BACKGROUND_ASSET = "defaultData/pre_default_background.png"
     private const val DEFAULT_BACKGROUND_FILE = "pre_default_background.png"
     private const val MISAPPLIED_READER_DAY_BACKGROUND_FILE = "护眼漫绿.jpg"
@@ -117,6 +135,53 @@ object ThemeConfig {
         AppConfig.isEInkMode -> Theme.EInk
         AppConfig.isNightTheme -> Theme.Dark
         else -> Theme.Light
+    }
+
+    fun currentThemeMode(): ThemeMode {
+        return ThemeMode.fromPreference(AppConfig.themeMode) ?: ThemeMode.AUTO
+    }
+
+    fun currentVisualThemeMode(): ThemeMode {
+        return when (val mode = currentThemeMode()) {
+            ThemeMode.AUTO -> if (AppConfig.isNightTheme) ThemeMode.DARK else ThemeMode.LIGHT
+            else -> mode
+        }
+    }
+
+    /**
+     * The only state transition for application theme selection. Callers may
+     * choose whether their host needs recreation, but they never write the
+     * preference or the AppConfig cache themselves.
+     */
+    fun switchThemeMode(
+        context: Context,
+        mode: ThemeMode,
+        recreate: Boolean = true,
+        forceApply: Boolean = false,
+    ): Boolean {
+        val changed = setThemeModeState(context, mode)
+        if (changed || forceApply) {
+            if (recreate) {
+                applyDayNight(context)
+            } else {
+                applyDayNightNoRecreate(context)
+            }
+        }
+        return changed
+    }
+
+    fun toggleLightDarkTheme(context: Context, recreate: Boolean = true): Boolean {
+        val target = if (AppConfig.isNightTheme) ThemeMode.LIGHT else ThemeMode.DARK
+        return switchThemeMode(context, target, recreate)
+    }
+
+    private fun setThemeModeState(context: Context, mode: ThemeMode): Boolean {
+        val changed = AppConfig.themeMode != mode.preferenceValue ||
+            AppConfig.isEInkMode != (mode == ThemeMode.EINK)
+        if (!changed) return false
+        context.putPrefString(PreferKey.themeMode, mode.preferenceValue)
+        AppConfig.updateThemeModeCache(mode.preferenceValue)
+        return true
     }
 
     fun isDarkTheme(): Boolean {
@@ -461,18 +526,20 @@ object ThemeConfig {
                 context.putPrefInt(PreferKey.bookInfoBgImageBlurring, bookInfoBackgroundBlur)
             }
             if (switchNightMode) {
-                AppConfig.isNightTheme = isNightTheme
+                switchThemeMode(
+                    context = context,
+                    mode = if (isNightTheme) ThemeMode.DARK else ThemeMode.LIGHT,
+                    recreate = notify,
+                    forceApply = notify,
+                )
+                return
             }
             if (!notify) {
                 return
             }
-            if (switchNightMode) {
-                applyDayNight(context)
-            } else {
-                applyTheme(context)
-                BookCover.upDefaultCover()
-                postEvent(EventBus.RECREATE, "")
-            }
+            applyTheme(context)
+            BookCover.upDefaultCover()
+            postEvent(EventBus.RECREATE, "")
         } catch (e: Exception) {
             AppLog.put("设置主题出错\n$e", e, true)
         }

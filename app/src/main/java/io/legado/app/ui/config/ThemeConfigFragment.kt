@@ -180,8 +180,7 @@ class ThemeConfigFragment : PreferenceFragment(),
     override fun onMenuItemSelected(menuItem: MenuItem): Boolean {
         when (menuItem.itemId) {
             R.id.menu_theme_mode -> {
-                AppConfig.isNightTheme = !AppConfig.isNightTheme
-                ThemeConfig.applyDayNight(requireContext())
+                ThemeConfig.toggleLightDarkTheme(requireContext())
                 return true
             }
         }
