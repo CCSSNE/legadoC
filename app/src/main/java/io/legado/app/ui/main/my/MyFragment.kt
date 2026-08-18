@@ -208,9 +208,11 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
                 }
             }
             findPreference<NameListPreference>(PreferKey.themeMode)?.let {
-                it.setOnPreferenceChangeListener { _, _ ->
-                    view?.post { ThemeConfig.applyDayNight(requireContext()) }
-                    true
+                it.setOnPreferenceChangeListener { _, value ->
+                    val mode = ThemeConfig.ThemeMode.fromPreference(value)
+                        ?: return@setOnPreferenceChangeListener false
+                    ThemeConfig.switchThemeMode(requireContext(), mode)
+                    false
                 }
             }
             findPreference<EditTextPreference>(PreferKey.updateAcceleratorCustom)?.isVisible =

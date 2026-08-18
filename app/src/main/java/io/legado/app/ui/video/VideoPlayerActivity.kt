@@ -1058,8 +1058,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
                 VideoPlay.rssStar?.let { showDialogFragment(RssFavoritesDialog(it)) }
             }
             R.id.menu_theme_mode -> {
-                AppConfig.isNightTheme = !AppConfig.isNightTheme
-                ThemeConfig.applyDayNight(this)
+                ThemeConfig.toggleLightDarkTheme(this)
                 return true
             }
             R.id.menu_float_window -> startFloatingWindow()

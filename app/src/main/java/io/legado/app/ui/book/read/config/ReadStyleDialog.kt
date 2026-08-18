@@ -29,7 +29,6 @@ import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PageAnim
-import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.databinding.DialogReadBookStyleBinding
 import io.legado.app.databinding.ItemBgImageBinding
@@ -89,7 +88,6 @@ import io.legado.app.utils.outputStream
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.printOnDebug
-import io.legado.app.utils.putPrefString
 import io.legado.app.utils.readBytes
 import io.legado.app.utils.readUri
 import io.legado.app.utils.setSelectionSafely
@@ -296,9 +294,9 @@ class ReadStyleDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_book_
                     postEvent(EventBus.UP_CONFIG, arrayListOf(3))
                 }
         }
-        btnThemeLight.setOnClickListener { switchReadThemeMode(StyleThemeMode.LIGHT) }
-        btnThemeDark.setOnClickListener { switchReadThemeMode(StyleThemeMode.DARK) }
-        btnThemeEink.setOnClickListener { switchReadThemeMode(StyleThemeMode.EINK) }
+        btnThemeLight.setOnClickListener { switchReadThemeMode(ThemeConfig.ThemeMode.LIGHT) }
+        btnThemeDark.setOnClickListener { switchReadThemeMode(ThemeConfig.ThemeMode.DARK) }
+        btnThemeEink.setOnClickListener { switchReadThemeMode(ThemeConfig.ThemeMode.EINK) }
         chineseConverter.onChanged {
             ChineseUtils.unLoad(*TransType.entries.toTypedArray())
             updateTextRows()
@@ -634,9 +632,10 @@ class ReadStyleDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_book_
             track = themeModeEditBar,
             items = tabs,
             selectedIndex = when (currentMode) {
-                StyleThemeMode.LIGHT -> 0
-                StyleThemeMode.DARK -> 1
-                StyleThemeMode.EINK -> 2
+                ThemeConfig.ThemeMode.LIGHT -> 0
+                ThemeConfig.ThemeMode.DARK -> 1
+                ThemeConfig.ThemeMode.EINK -> 2
+                ThemeConfig.ThemeMode.AUTO -> error("Reader theme tabs do not expose automatic mode")
             },
             palette = readerSegmentedControlPalette()
         )
@@ -755,22 +754,14 @@ class ReadStyleDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_book_
         }
     }
 
-    private fun currentReadThemeMode(): StyleThemeMode {
-        return when {
-            AppConfig.isEInkMode -> StyleThemeMode.EINK
-            AppConfig.isNightTheme -> StyleThemeMode.DARK
-            else -> StyleThemeMode.LIGHT
-        }
+    private fun currentReadThemeMode(): ThemeConfig.ThemeMode {
+        return ThemeConfig.currentVisualThemeMode()
     }
 
-    private fun switchReadThemeMode(mode: StyleThemeMode) {
-        if (currentReadThemeMode() == mode) {
+    private fun switchReadThemeMode(mode: ThemeConfig.ThemeMode) {
+        if (!ThemeConfig.switchThemeMode(requireContext(), mode, recreate = false)) {
             return
         }
-        requireContext().putPrefString(PreferKey.themeMode, mode.preferenceValue)
-        AppConfig.themeMode = mode.preferenceValue
-        AppConfig.isEInkMode = mode == StyleThemeMode.EINK
-        ThemeConfig.applyDayNightNoRecreate(requireContext())
         upView()
         callBack?.upSystemUiVisibility()
         postEvent(EventBus.UP_CONFIG, arrayListOf(1, 2, 5))
@@ -1450,11 +1441,5 @@ class ReadStyleDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_book_
 
     private enum class StyleTab {
         TEXT, PAGE, STYLE
-    }
-
-    private enum class StyleThemeMode(val preferenceValue: String) {
-        LIGHT("1"),
-        DARK("2"),
-        EINK("3")
     }
 }
