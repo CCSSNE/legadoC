@@ -291,6 +291,7 @@ object PreferKey {
     const val readAloudCoverRotationDuration = "readAloudCoverRotationDuration"
     const val readAloudHideFloatingWindow = "readAloudHideFloatingWindow"
     const val readAloudHidePlaybackPanel = "readAloudHidePlaybackPanel"
+    const val readAloudPlaybackPanelDuration = "readAloudPlaybackPanelDuration"
     const val readAloudHidePagePanel = "readAloudHidePagePanel"
     const val readAloudPanelOnPageFooter = "readAloudPanelOnPageFooter"
     const val readAloudFloatOnDesktop = "readAloudFloatOnDesktop"

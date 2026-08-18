@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.LayerDrawable
@@ -73,6 +74,9 @@ class PageView(context: Context) : FrameLayout(context) {
     private var tvTimeBatteryP: BatteryView? = null
     private var isMainView = false
     private var currentTextPage: TextPage? = null
+    private var footerCenterActionText: CharSequence? = null
+    private var footerCenterAction: (() -> Unit)? = null
+    private val footerCenterActionHitRect = Rect()
     private var advancedTitleLottieKey: String? = null
     private val lottieImageCache = object : LinkedHashMap<String, android.graphics.Bitmap>(8, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, android.graphics.Bitmap>?): Boolean {
@@ -218,6 +222,8 @@ class PageView(context: Context) : FrameLayout(context) {
         tvFooterLeft.tag = null
         tvFooterMiddle.tag = null
         tvFooterRight.tag = null
+        tvFooterMiddle.setOnClickListener(null)
+        tvFooterMiddle.isClickable = false
         llHeader.isGone = if (isEpub) {
             true
         } else {
@@ -308,6 +314,48 @@ class PageView(context: Context) : FrameLayout(context) {
             typeface = ChapterProvider.typeface
             textSize = 12f
         }
+        applyFooterCenterAction()
+    }
+
+    fun setFooterCenterAction(text: CharSequence?, action: (() -> Unit)?) {
+        require((text == null) == (action == null)) {
+            "Footer center action text and callback must be set or cleared together"
+        }
+        if (text == null && footerCenterActionText == null) return
+        footerCenterActionText = text
+        footerCenterAction = action
+        if (text == null) {
+            upTipStyle()
+            currentTextPage?.let(::setProgress)
+            upTime()
+            upBattery(battery)
+        } else {
+            applyFooterCenterAction()
+        }
+    }
+
+    private fun applyFooterCenterAction() = binding.run {
+        val actionText = footerCenterActionText ?: return@run
+        llFooter.isGone = false
+        tvFooterMiddle.isGone = false
+        tvFooterMiddle.isBattery = false
+        tvFooterMiddle.typeface = ChapterProvider.typeface
+        tvFooterMiddle.textSize = 12f
+        tvFooterMiddle.text = actionText
+        tvFooterMiddle.setOnClickListener { footerCenterAction?.invoke() }
+    }
+
+    fun isFooterCenterActionAt(x: Float, y: Float): Boolean {
+        if (footerCenterAction == null || !binding.tvFooterMiddle.isShown) return false
+        binding.tvFooterMiddle.getDrawingRect(footerCenterActionHitRect)
+        offsetDescendantRectToMyCoords(binding.tvFooterMiddle, footerCenterActionHitRect)
+        return footerCenterActionHitRect.contains(x.toInt(), y.toInt())
+    }
+
+    fun performFooterCenterAction(): Boolean {
+        val action = footerCenterAction ?: return false
+        action()
+        return true
     }
 
     /**
@@ -376,6 +424,7 @@ class PageView(context: Context) : FrameLayout(context) {
     fun upTime() {
         tvTime?.text = timeFormat.format(Date(System.currentTimeMillis()))
         upTimeBattery()
+        applyFooterCenterAction()
     }
 
     /**
@@ -387,6 +436,7 @@ class PageView(context: Context) : FrameLayout(context) {
         tvBattery?.setBattery(battery)
         tvBatteryP?.text = "$battery%"
         upTimeBattery()
+        applyFooterCenterAction()
     }
 
     /**
@@ -460,6 +510,7 @@ class PageView(context: Context) : FrameLayout(context) {
             tvPageAndTotal?.setTextIfNotEqual("${index.plus(1)}/$pageSize  $readProgress")
             tvPage?.setTextIfNotEqual("${index.plus(1)}/$pageSize")
         }
+        applyFooterCenterAction()
     }
 
     fun setAutoPager(autoPager: AutoPager?) {

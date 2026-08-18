@@ -207,7 +207,10 @@
     <string name="decimal_input_range_hint">%1$s-%2$s</string>
     <string name="decimal_input_range_invalid">Enter a number from %1$s to %2$s.</string>
     <string name="read_aloud_hide_playback_panel">Hide current-page read-aloud panel</string>
-    <string name="read_aloud_hide_playback_panel_summary">Hide the pause/resume panel shown after the read-aloud menu is closed.</string>
+    <string name="read_aloud_hide_playback_panel_summary">Skip the temporary pause/resume floating panel and show the action directly in the center of the page footer.</string>
+    <string name="read_aloud_playback_panel_duration">Current-page panel display time</string>
+    <string name="read_aloud_playback_panel_duration_summary">Move the pause/resume action to the center of the page footer after %s seconds.</string>
+    <string name="read_aloud_playback_panel_duration_dialog_title">Current-page panel display time (seconds)</string>
     <string name="read_aloud_hide_page_panel">Hide cross-page read-aloud panel</string>
     <string name="read_aloud_hide_page_panel_summary">Hide the original-position/from-page panel shown after turning pages while reading aloud.</string>
     <string name="read_aloud_panel_on_page_footer">Place compact read-aloud panels on page footer</string>

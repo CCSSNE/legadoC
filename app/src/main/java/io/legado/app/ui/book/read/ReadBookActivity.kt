@@ -289,7 +289,27 @@ class ReadBookActivity : BaseReadBookActivity(),
     private var lastReadAloudChapterIndex: Int? = null
     private var finishReadAloudBackstage = false
     private val readAloudPanelFadeDuration = 140L
+    private enum class ReadAloudPlaybackPresentation {
+        HIDDEN,
+        PANEL,
+        FOOTER,
+    }
+    private var readAloudPlaybackPresentation = ReadAloudPlaybackPresentation.HIDDEN
     private val handler by lazy { buildMainHandler() }
+    private val collapseReadAloudPlaybackPanel = Runnable {
+        if (
+            readAloudPlaybackPresentation == ReadAloudPlaybackPresentation.PANEL &&
+            !AppConfig.readAloudHidePlaybackPanel &&
+            ReadAloudUiState.readerPanelMode(
+                BaseReadAloudService.isRun,
+                ReadBook.readAloudPageDetached,
+            ) == ReadAloudUiState.ReaderPanelMode.PLAYBACK
+        ) {
+            readAloudPlaybackPresentation = ReadAloudPlaybackPresentation.FOOTER
+            hideReadAloudPlaybackPanelView()
+            showReadAloudPlaybackInFooter()
+        }
+    }
     private val readAloudAvoidanceGenerations = mutableMapOf<String, Long>()
     private val screenOffRunnable by lazy { Runnable { keepScreenOn(false) } }
     private val executor = ReadBook.executor
@@ -324,13 +344,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         binding.btnReadAloudFromCurrentPage.setOnClickListener {
             readAloudFromCurrentPage()
         }
-        binding.btnReadAloudPlayback.setOnClickListener {
-            if (BaseReadAloudService.pause) {
-                ReadAloud.resume(this)
-            } else {
-                ReadAloud.pause(this)
-            }
-        }
+        binding.btnReadAloudPlayback.setOnClickListener { toggleReadAloudPlayback() }
         binding.readAloudDialogOutsideTap.setOnClickListener {
             postEvent(EventBus.CLOSE_READ_ALOUD_DIALOG, true)
         }
@@ -1593,18 +1607,18 @@ class ReadBookActivity : BaseReadBookActivity(),
         ) {
             ReadAloudUiState.ReaderPanelMode.HIDDEN -> {
                 hideReadAloudPagePanel()
-                hideReadAloudPlaybackPanel()
+                resetReadAloudPlaybackPresentation()
             }
             ReadAloudUiState.ReaderPanelMode.PLAYBACK -> {
                 hideReadAloudPagePanel()
                 if (AppConfig.readAloudHidePlaybackPanel) {
-                    hideReadAloudPlaybackPanel()
+                    showReadAloudPlaybackInFooterOnly()
                 } else {
-                    showReadAloudPlaybackPanel()
+                    updateReadAloudPlaybackPresentation()
                 }
             }
             ReadAloudUiState.ReaderPanelMode.PAGE_ACTION -> {
-                hideReadAloudPlaybackPanel()
+                resetReadAloudPlaybackPresentation()
                 if (AppConfig.readAloudHidePagePanel) {
                     hideReadAloudPagePanel()
                 } else {
@@ -1614,10 +1628,31 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
     }
 
+    private fun updateReadAloudPlaybackPresentation() {
+        when (readAloudPlaybackPresentation) {
+            ReadAloudPlaybackPresentation.HIDDEN -> {
+                readAloudPlaybackPresentation = ReadAloudPlaybackPresentation.PANEL
+                clearReadAloudPlaybackInFooter()
+                showReadAloudPlaybackPanel()
+                handler.postDelayed(
+                    collapseReadAloudPlaybackPanel,
+                    AppConfig.readAloudPlaybackPanelDuration * 1_000L
+                )
+            }
+            ReadAloudPlaybackPresentation.PANEL -> showReadAloudPlaybackPanel()
+            ReadAloudPlaybackPresentation.FOOTER -> {
+                hideReadAloudPlaybackPanelView()
+                showReadAloudPlaybackInFooter()
+            }
+        }
+    }
+
     private fun showReadAloudPlaybackPanel() {
         if (!BaseReadAloudService.isRun) return
         binding.readAloudPlaybackPanel.post {
             if (
+                readAloudPlaybackPresentation != ReadAloudPlaybackPresentation.PANEL ||
+                AppConfig.readAloudHidePlaybackPanel ||
                 ReadAloudUiState.readerPanelMode(
                     BaseReadAloudService.isRun,
                     ReadBook.readAloudPageDetached,
@@ -1647,9 +1682,46 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
     }
 
-    private fun hideReadAloudPlaybackPanel(immediate: Boolean = false) {
+    private fun hideReadAloudPlaybackPanelView(immediate: Boolean = false) {
         fadeReadAloudPanel(binding.readAloudPlaybackPanel, false, immediate)
         clearReadAloudFloatingAvoidance(EventBus.FLOATING_AVOID_SOURCE_READ_ALOUD_PLAYBACK_PANEL)
+    }
+
+    private fun resetReadAloudPlaybackPresentation(immediate: Boolean = false) {
+        handler.removeCallbacks(collapseReadAloudPlaybackPanel)
+        readAloudPlaybackPresentation = ReadAloudPlaybackPresentation.HIDDEN
+        hideReadAloudPlaybackPanelView(immediate)
+        clearReadAloudPlaybackInFooter()
+    }
+
+    private fun showReadAloudPlaybackInFooterOnly() {
+        handler.removeCallbacks(collapseReadAloudPlaybackPanel)
+        readAloudPlaybackPresentation = ReadAloudPlaybackPresentation.FOOTER
+        hideReadAloudPlaybackPanelView()
+        showReadAloudPlaybackInFooter()
+    }
+
+    private fun showReadAloudPlaybackInFooter() {
+        val text = getText(
+            if (BaseReadAloudService.pause) {
+                R.string.read_aloud_resume_playback
+            } else {
+                R.string.read_aloud_pause_playback
+            }
+        )
+        binding.readView.setFooterCenterAction(text, ::toggleReadAloudPlayback)
+    }
+
+    private fun clearReadAloudPlaybackInFooter() {
+        binding.readView.setFooterCenterAction(null, null)
+    }
+
+    private fun toggleReadAloudPlayback() {
+        if (BaseReadAloudService.pause) {
+            ReadAloud.resume(this)
+        } else {
+            ReadAloud.pause(this)
+        }
     }
 
     private fun showReadAloudPagePanel() {
@@ -2848,6 +2920,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         postEvent(EventBus.READ_BOOK_ACTIVITY_ACTIVE, false)
         textActionMenu.dismiss()
         popupAction.dismiss()
+        resetReadAloudPlaybackPresentation(immediate = true)
         binding.readView.onDestroy()
         ReadBook.unregister(this)
         // 退出阅读停止内嵌音频块播放（配图音频不是听书）
@@ -2932,7 +3005,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         observeEvent<Boolean>(EventBus.READ_ALOUD_FLOATING_VISIBILITY) { visible ->
             if (visible) {
                 hideReadAloudPagePanel(immediate = true)
-                hideReadAloudPlaybackPanel(immediate = true)
+                resetReadAloudPlaybackPresentation(immediate = true)
             } else {
                 updateReadAloudPanels()
             }
@@ -2971,6 +3044,11 @@ class ReadBookActivity : BaseReadBookActivity(),
             updateReadAloudPageFloating()
         }
         observeEvent<String>(PreferKey.readAloudHidePlaybackPanel) {
+            resetReadAloudPlaybackPresentation()
+            updateReadAloudPanels()
+        }
+        observeEvent<String>(PreferKey.readAloudPlaybackPanelDuration) {
+            resetReadAloudPlaybackPresentation()
             updateReadAloudPanels()
         }
         observeEvent<String>(PreferKey.readAloudHidePagePanel) {
