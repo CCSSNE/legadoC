@@ -106,7 +106,7 @@
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.SwitchPreference
-            android:defaultValue="false"
+            android:defaultValue="true"
             android:key="readAloudPanelOnPageFooter"
             android:summary="@string/read_aloud_panel_on_page_footer_summary"
             android:title="@string/read_aloud_panel_on_page_footer"
