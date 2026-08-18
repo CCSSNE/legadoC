@@ -27,6 +27,7 @@ import io.legado.app.model.ReadBook
 import io.legado.app.model.ReadAloudUiState
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.service.ReadAloudEngineType
+import io.legado.app.service.ReadAloudFloatingHost
 import io.legado.app.service.ReadAloudProgress
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
@@ -65,10 +66,21 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
             attributes = attr
             setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
+        publishFloatingHost()
         binding.rootView.removeOnLayoutChangeListener(menuLayoutChangeListener)
         binding.rootView.addOnLayoutChangeListener(menuLayoutChangeListener)
         binding.rootView.doOnLayout(::publishMenuTopOnScreen)
         publishDialogVisibilityAfterFirstDraw()
+    }
+
+    private fun publishFloatingHost() {
+        val window = dialog?.window ?: error("ReadAloudDialog window is unavailable")
+        val token = window.decorView.windowToken
+            ?: error("ReadAloudDialog window token is unavailable")
+        postEvent(
+            EventBus.READ_ALOUD_DIALOG_FLOATING_HOST,
+            ReadAloudFloatingHost(window.windowManager, token),
+        )
     }
 
     private fun publishMenuTopOnScreen(view: View) {
