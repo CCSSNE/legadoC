@@ -80,7 +80,6 @@ class PageView(context: Context) : FrameLayout(context) {
     private var isMainView = false
     private var currentTextPage: TextPage? = null
     private var footerCenterActions = emptyList<FooterCenterAction>()
-    private var footerCenterActionRanges = emptyList<IntRange>()
     private val footerCenterActionHitRect = Rect()
     private var advancedTitleLottieKey: String? = null
     private val lottieImageCache = object : LinkedHashMap<String, android.graphics.Bitmap>(8, 0.75f, true) {
@@ -159,12 +158,15 @@ class PageView(context: Context) : FrameLayout(context) {
             tvHeaderRight.setColor(tipColor)
             tvFooterLeft.setColor(tipColor)
             tvFooterMiddle.setColor(tipColor)
+            tvFooterActionPrimary.setColor(tipColor)
+            tvFooterActionSecondary.setColor(tipColor)
             tvFooterRight.setColor(tipColor)
             advancedTitleFallback.setTextColor(textColor)
             advancedTitleFallback.textSize = advancedTitleTextSizeSp()
             advancedTitleFallback.typeface = ChapterProvider.titlePaint.typeface ?: ChapterProvider.typeface
             vwTopDivider.backgroundColor = tipDividerColor
             vwBottomDivider.backgroundColor = tipDividerColor
+            vwFooterActionDivider.backgroundColor = tipDividerColor
             upStatusBar()
             upNavigationBar()
             upPaddingDisplayCutouts()
@@ -236,6 +238,12 @@ class PageView(context: Context) : FrameLayout(context) {
         tvFooterRight.tag = null
         tvFooterMiddle.setOnClickListener(null)
         tvFooterMiddle.isClickable = false
+        footerCenterActionGroup.isGone = true
+        footerCenterActionViews.forEach {
+            it.setOnClickListener(null)
+            it.isClickable = false
+            it.isGone = true
+        }
         llHeader.isGone = if (isEpub) {
             true
         } else {
@@ -343,9 +351,11 @@ class PageView(context: Context) : FrameLayout(context) {
         nextActions.forEach {
             require(it.text.isNotBlank()) { "Footer center action text must not be blank" }
         }
+        require(nextActions.size <= footerCenterActionViews.size) {
+            "Footer center action count exceeds available views: ${nextActions.size}"
+        }
         if (nextActions.isEmpty() && footerCenterActions.isEmpty()) return
         footerCenterActions = nextActions
-        footerCenterActionRanges = buildFooterCenterActionRanges(nextActions)
         if (nextActions.isEmpty()) {
             upTipStyle()
             currentTextPage?.let(::setProgress)
@@ -363,29 +373,40 @@ class PageView(context: Context) : FrameLayout(context) {
         tvFooterMiddle.isBattery = false
         tvFooterMiddle.typeface = ChapterProvider.typeface
         tvFooterMiddle.textSize = 12f
-        tvFooterMiddle.text = footerCenterActions.joinToString(FOOTER_CENTER_ACTION_SEPARATOR) { it.text }
         if (footerCenterActions.size == 1) {
+            footerCenterActionGroup.isGone = true
+            tvFooterMiddle.text = footerCenterActions.single().text
             tvFooterMiddle.setOnClickListener { footerCenterActions.single().action() }
         } else {
-            tvFooterMiddle.setOnClickListener(null)
-            tvFooterMiddle.isClickable = false
+            tvFooterMiddle.isGone = true
+            footerCenterActionGroup.isGone = false
+            footerCenterActionViews.forEachIndexed { index, view ->
+                val action = footerCenterActions.getOrNull(index)
+                view.isGone = action == null
+                if (action != null) {
+                    view.isBattery = false
+                    view.typeface = ChapterProvider.typeface
+                    view.textSize = 12f
+                    view.text = action.text
+                    view.setOnClickListener { action.action() }
+                } else {
+                    view.setOnClickListener(null)
+                    view.isClickable = false
+                }
+            }
         }
     }
 
     fun footerCenterActionIndexAt(x: Float, y: Float): Int? {
-        if (footerCenterActions.isEmpty() || !binding.tvFooterMiddle.isShown) return null
-        binding.tvFooterMiddle.getDrawingRect(footerCenterActionHitRect)
-        offsetDescendantRectToMyCoords(binding.tvFooterMiddle, footerCenterActionHitRect)
-        if (!footerCenterActionHitRect.contains(x.toInt(), y.toInt())) return null
-        val textView = binding.tvFooterMiddle
-        val layout = textView.layout ?: return null
-        val localX = x - footerCenterActionHitRect.left - textView.totalPaddingLeft
-        val localY = y - footerCenterActionHitRect.top - textView.totalPaddingTop
-        if (localX < 0f || localY < 0f) return null
-        val line = layout.getLineForVertical(localY.toInt())
-        val offset = layout.getOffsetForHorizontal(line, localX)
-        return footerCenterActionRanges.indexOfFirst { offset in it }
-            .takeIf { it >= 0 }
+        if (footerCenterActions.isEmpty()) return null
+        val actionViews = if (footerCenterActions.size == 1) {
+            listOf(binding.tvFooterMiddle)
+        } else {
+            footerCenterActionViews
+        }
+        return actionViews.indexOfFirst { view ->
+            view.isShown && view.containsFooterCenterActionPoint(x, y)
+        }.takeIf { it >= 0 && it < footerCenterActions.size }
     }
 
     fun performFooterCenterAction(index: Int): Boolean {
@@ -394,17 +415,14 @@ class PageView(context: Context) : FrameLayout(context) {
         return true
     }
 
-    private fun buildFooterCenterActionRanges(actions: List<FooterCenterAction>): List<IntRange> {
-        val ranges = ArrayList<IntRange>(actions.size)
-        var start = 0
-        actions.forEachIndexed { index, action ->
-            val end = start + action.text.length
-            ranges += start until end
-            start = end
-            if (index < actions.lastIndex) start += FOOTER_CENTER_ACTION_SEPARATOR.length
-        }
-        return ranges
+    private fun BatteryView.containsFooterCenterActionPoint(x: Float, y: Float): Boolean {
+        getDrawingRect(footerCenterActionHitRect)
+        offsetDescendantRectToMyCoords(this, footerCenterActionHitRect)
+        return footerCenterActionHitRect.contains(x.toInt(), y.toInt())
     }
+
+    private val footerCenterActionViews
+        get() = listOf(binding.tvFooterActionPrimary, binding.tvFooterActionSecondary)
 
     /**
      * 获取信息视图
@@ -962,7 +980,6 @@ class PageView(context: Context) : FrameLayout(context) {
     val selectEndPos get() = binding.contentTextView.selectEndPos
 
     private companion object {
-        const val FOOTER_CENTER_ACTION_SEPARATOR = " / "
         const val ADVANCED_TITLE_SIZE_FACTOR = 1.25f
         const val MAX_STYLED_LOTTIE_CACHE_SIZE = 6
         const val MAX_LOTTIE_IMAGE_CACHE_SIZE = 4
