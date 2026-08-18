@@ -56,7 +56,7 @@
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
-            android:defaultValue="2400"
+            android:defaultValue="4000"
             android:dependency="readAloudCoverRotation"
             android:key="readAloudCoverRotationDuration"
             android:summary="@string/read_aloud_cover_rotation_duration_summary"
