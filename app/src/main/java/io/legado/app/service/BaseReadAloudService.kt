@@ -395,12 +395,10 @@ abstract class BaseReadAloudService : BaseService(),
         floatingHostMode = FloatingHostMode.NONE
     }
 
-    private fun promoteAppReadAloudFloatingWindow(activity: ReadBookActivity) {
+    private fun promoteAppReadAloudFloatingWindow(activity: ReadBookActivity, token: IBinder) {
         if (isDesktopFloating) return
         val view = floatingView ?: return
         runCatching {
-            val token = activity.window?.decorView?.windowToken
-                ?: error("ReadBookActivity window token is unavailable while promoting the read-aloud panel")
             detachFloatingView(view)
             addAppReadAloudFloatingWindow(activity, view, token)
             onReadAloudFloatingAttached(view)
@@ -790,6 +788,13 @@ abstract class BaseReadAloudService : BaseService(),
             val y = it.getInt("y")
             onReadAloudFloatingAvoidance(source, y)
         }
+        observeEvent<Bundle>(EventBus.READ_ALOUD_FLOATING_HOST) { host ->
+            val activity = ReadBookActivity.activeActivity()
+                ?: error("ReadBookActivity is unavailable while switching the read-aloud floating host")
+            val token = host.getBinder("token")
+                ?: error("Read-aloud floating host token is missing")
+            promoteAppReadAloudFloatingWindow(activity, token)
+        }
         observeEvent<Boolean>(EventBus.READ_BOOK_ACTIVITY_ACTIVE) {
             if (it) {
                 appFloatingActivity = ReadBookActivity.activeActivity() ?: appFloatingActivity
@@ -801,14 +806,15 @@ abstract class BaseReadAloudService : BaseService(),
             }
         }
         observeEvent<Boolean>(EventBus.READ_ALOUD_DIALOG_VISIBILITY) { visible ->
-            if (visible) {
-                ReadBookActivity.activeActivity()?.let(::promoteAppReadAloudFloatingWindow)
-            }
             showReadAloudFloatingWindow()
         }
         observeEvent<Boolean>(EventBus.READ_MAIN_MENU_VISIBILITY) { visible ->
             if (visible) {
-                ReadBookActivity.activeActivity()?.let(::promoteAppReadAloudFloatingWindow)
+                ReadBookActivity.activeActivity()?.let { activity ->
+                    val token = activity.window?.decorView?.windowToken
+                        ?: error("ReadBookActivity window token is unavailable for the main menu floating host")
+                    promoteAppReadAloudFloatingWindow(activity, token)
+                }
             }
             showReadAloudFloatingWindow()
         }
