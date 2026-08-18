@@ -1500,7 +1500,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val readAloudCoverRotation
         get() = appCtx.getPrefBoolean(PreferKey.readAloudCoverRotation, true)
 
-    const val DEFAULT_READ_ALOUD_COVER_ROTATION_DURATION = 4000
+    const val DEFAULT_READ_ALOUD_COVER_ROTATION_DURATION = 10000
     const val MIN_READ_ALOUD_COVER_ROTATION_DURATION = 100
     const val MAX_READ_ALOUD_COVER_ROTATION_DURATION = 60000
 
