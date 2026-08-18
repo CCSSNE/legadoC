@@ -1,6 +1,6 @@
 package io.legado.app.help
 
-import io.legado.app.constant.AppConst
+import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.DictRule
 import io.legado.app.data.entities.HttpTTS
@@ -13,34 +13,63 @@ import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.BookCover
 import io.legado.app.utils.GSON
+import io.legado.app.utils.LogUtils
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
-import io.legado.app.utils.printOnDebug
 import splitties.init.appCtx
 import java.io.File
 
 object DefaultData {
 
     private const val REMOVED_DEFAULT_RSS_SOURCE_URL = "https://loyc.xyz/b/daoru"
+    private const val HTTP_TTS_VERSION_KEY = "httpTtsVersion"
+    private const val HTTP_TTS_VERSION = 6
+    private const val TXT_TOC_RULE_VERSION_KEY = "txtTocRuleVersion"
+    private const val TXT_TOC_RULE_VERSION = 3
+    private const val RSS_SOURCE_VERSION_KEY = "rssSourceVersion"
+    private const val RSS_SOURCE_VERSION = 8
+    private const val DICT_RULE_VERSION_KEY = "needUpDictRule"
+    private const val DICT_RULE_VERSION = 2
 
     fun upVersion() {
-        if (LocalConfig.versionCode < AppConst.appInfo.versionCode) {
-            Coroutine.async {
-                if (LocalConfig.needUpHttpTTS) {
-                    importDefaultHttpTTS()
-                }
-                if (LocalConfig.needUpTxtTocRule) {
-                    importDefaultTocRules()
-                }
-                if (LocalConfig.needUpRssSources) {
-                    importDefaultRssSources()
-                }
-                if (LocalConfig.needUpDictRule) {
-                    importDefaultDictRules()
-                }
-            }.onError {
-                it.printOnDebug()
+        Coroutine.async {
+            migrateDefaultData("HTTP TTS", HTTP_TTS_VERSION_KEY, HTTP_TTS_VERSION) {
+                importDefaultHttpTTS()
             }
+            migrateDefaultData("TXT 目录规则", TXT_TOC_RULE_VERSION_KEY, TXT_TOC_RULE_VERSION) {
+                importDefaultTocRules()
+            }
+            migrateDefaultData("订阅源", RSS_SOURCE_VERSION_KEY, RSS_SOURCE_VERSION) {
+                importDefaultRssSources()
+            }
+            migrateDefaultData("字典规则", DICT_RULE_VERSION_KEY, DICT_RULE_VERSION) {
+                importDefaultDictRules()
+            }
+        }.onError {
+            AppLog.put("启动默认数据升级任务失败\n${it.localizedMessage}", it)
+        }
+    }
+
+    private inline fun migrateDefaultData(
+        name: String,
+        versionKey: String,
+        targetVersion: Int,
+        migration: () -> Unit,
+    ) {
+        val currentVersion = LocalConfig.defaultDataVersion(versionKey)
+        if (currentVersion >= targetVersion) return
+        LogUtils.d(
+            "DefaultData",
+            "开始升级$name：$currentVersion -> $targetVersion"
+        )
+        runCatching(migration).onSuccess {
+            LocalConfig.markDefaultDataVersion(versionKey, targetVersion)
+            LogUtils.d("DefaultData", "$name 升级完成：$targetVersion")
+        }.onFailure {
+            AppLog.put(
+                "$name 升级失败：$currentVersion -> $targetVersion\n${it.localizedMessage}",
+                it,
+            )
         }
     }
 
@@ -85,7 +114,7 @@ object DefaultData {
             appCtx.assets.open("defaultData${File.separator}rssSources.json")
                 .readBytes()
         )
-        GSON.fromJsonArray<RssSource>(json).getOrDefault(emptyList())
+        GSON.fromJsonArray<RssSource>(json).getOrThrow()
     }
 
     val coverRule: BookCover.CoverRule by lazy {
@@ -123,9 +152,11 @@ object DefaultData {
     }
 
     fun importDefaultRssSources() {
-        appDb.rssSourceDao.delete(REMOVED_DEFAULT_RSS_SOURCE_URL)
-        appDb.rssSourceDao.deleteDefault()
-        appDb.rssSourceDao.insert(*rssSources.toTypedArray())
+        appDb.runInTransaction {
+            appDb.rssSourceDao.delete(REMOVED_DEFAULT_RSS_SOURCE_URL)
+            appDb.rssSourceDao.deleteDefault()
+            appDb.rssSourceDao.insert(*rssSources.toTypedArray())
+        }
     }
 
     fun importDefaultDictRules() {
