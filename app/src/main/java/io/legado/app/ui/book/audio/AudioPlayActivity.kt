@@ -15,6 +15,7 @@ import android.widget.TextView
 import android.widget.SeekBar
 import androidx.activity.addCallback
 import androidx.activity.viewModels
+import androidx.core.view.doOnLayout
 import androidx.lifecycle.lifecycleScope
 import com.dirror.lyricviewx.OnPlayClickListener
 import io.legado.app.R
@@ -82,7 +83,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     private var displayedProgress: ReadAloudProgress? = null
     private var trackingProgress = false
     private var loadedLyric: String? = null
-    private val ttsParagraphViews = arrayListOf<TextView>()
+    private val ttsParagraphRows = arrayListOf<TtsParagraphRow>()
     private var ttsTextChapterIndex = -1
     private var ttsScrollTouching = false
     private var ttsScrollFollowBlockedUntil = 0L
@@ -295,9 +296,9 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         binding.run {
             val paragraphs = chapter.getParagraphs(false)
             val canReuseViews = ttsTextChapterIndex == chapter.chapter.index &&
-                    ttsParagraphViews.size == paragraphs.size &&
+                    ttsParagraphRows.size == paragraphs.size &&
                     paragraphs.indices.all { index ->
-                        ttsParagraphViews[index].text.toString() == paragraphs[index].text
+                        ttsParagraphRows[index].view.text.toString() == paragraphs[index].text
                     }
             if (canReuseViews) {
                 ttsContentScroll.visible(paragraphs.isNotEmpty())
@@ -306,13 +307,19 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             }
             ttsTextChapterIndex = chapter.chapter.index
             ttsContent.removeAllViews()
-            ttsParagraphViews.clear()
+            ttsParagraphRows.clear()
             paragraphs.forEach { paragraph ->
+                val normalTextSizeSp = if (paragraph.isTitle) {
+                    TTS_TITLE_TEXT_SIZE_SP
+                } else {
+                    TTS_BODY_TEXT_SIZE_SP
+                }
+                val normalAlpha = if (paragraph.isTitle) 1f else TTS_BODY_TEXT_ALPHA
                 val view = TextView(this@AudioPlayActivity).apply {
                     text = paragraph.text
-                    textSize = if (paragraph.isTitle) 22f else 19f
+                    textSize = normalTextSizeSp
                     setTextColor(Color.WHITE)
-                    alpha = if (paragraph.isTitle) 1f else 0.9f
+                    alpha = normalAlpha
                     setLineSpacing(0f, 1.12f)
                     setPadding(0, 8.dpToPx(), 0, 8.dpToPx())
                     isClickable = true
@@ -324,7 +331,11 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
                         )
                     }
                 }
-                ttsParagraphViews += view
+                ttsParagraphRows += TtsParagraphRow(
+                    view = view,
+                    normalTextSizeSp = normalTextSizeSp,
+                    normalAlpha = normalAlpha,
+                )
                 ttsContent.addView(
                     view,
                     LinearLayout.LayoutParams(
@@ -356,7 +367,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         val selectedIndex = chapter.getParagraphs(false).indexOfFirst {
             serviceParagraph.chapterPosition in it.chapterIndices
         }
-        applyTtsParagraphHighlight(selectedIndex.takeIf { it in ttsParagraphViews.indices })
+        applyTtsParagraphHighlight(selectedIndex.takeIf { it in ttsParagraphRows.indices })
     }
 
     private fun updateTtsParagraphHighlightAt(chapterIndex: Int, chapterPosition: Int) {
@@ -368,19 +379,23 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         val selectedIndex = chapter.getParagraphs(false).indexOfFirst {
             chapterPosition in it.chapterIndices
         }
-        applyTtsParagraphHighlight(selectedIndex.takeIf { it in ttsParagraphViews.indices })
+        applyTtsParagraphHighlight(selectedIndex.takeIf { it in ttsParagraphRows.indices })
     }
 
     private fun applyTtsParagraphHighlight(selectedIndex: Int?) {
         pendingTtsHighlightIndex = selectedIndex
-        ttsParagraphViews.forEachIndexed { index, view ->
-            if (selectedIndex == null) {
-                view.setTextColor(Color.WHITE)
-                view.alpha = if (view.textSize >= 21.dpToPx().toFloat()) 1f else 0.9f
+        ttsParagraphRows.forEachIndexed { index, row ->
+            val selected = index == selectedIndex
+            row.view.textSize = if (selected) {
+                row.normalTextSizeSp * TTS_CURRENT_TEXT_SIZE_SCALE
             } else {
-                val selected = index == selectedIndex
-                view.setTextColor(if (selected) accentColor else Color.WHITE)
-                view.alpha = if (selected) 1f else 0.42f
+                row.normalTextSizeSp
+            }
+            row.view.setTextColor(Color.WHITE)
+            row.view.alpha = when {
+                selected -> 1f
+                selectedIndex == null -> row.normalAlpha
+                else -> TTS_INACTIVE_TEXT_ALPHA
             }
         }
         if (selectedIndex == null) {
@@ -412,16 +427,19 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     }
 
     private fun centerTtsParagraph(index: Int) {
-        binding.ttsContentScroll.post {
-            if (ttsScrollTouching || pendingTtsHighlightIndex != index) return@post
-            val selected = ttsParagraphViews.getOrNull(index) ?: return@post
-            val viewportHeight = binding.ttsContentScroll.height
-            if (viewportHeight <= 0) return@post
-            val maxScroll = (binding.ttsContent.height - viewportHeight).coerceAtLeast(0)
-            val target = (selected.top - (viewportHeight - selected.height) / 2)
-                .coerceIn(0, maxScroll)
-            if (kotlin.math.abs(binding.ttsContentScroll.scrollY - target) > 4) {
-                binding.ttsContentScroll.smoothScrollTo(0, target)
+        val selected = ttsParagraphRows.getOrNull(index)?.view ?: return
+        selected.doOnLayout {
+            binding.ttsContentScroll.post {
+                if (ttsScrollTouching || pendingTtsHighlightIndex != index) return@post
+                if (ttsParagraphRows.getOrNull(index)?.view !== selected) return@post
+                val viewportHeight = binding.ttsContentScroll.height
+                if (viewportHeight <= 0) return@post
+                val maxScroll = (binding.ttsContent.height - viewportHeight).coerceAtLeast(0)
+                val target = (selected.top - (viewportHeight - selected.height) / 2)
+                    .coerceIn(0, maxScroll)
+                if (kotlin.math.abs(binding.ttsContentScroll.scrollY - target) > 4) {
+                    binding.ttsContentScroll.smoothScrollTo(0, target)
+                }
             }
         }
     }
@@ -618,5 +636,19 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             }
         }
         observeEvent<Boolean>(EventBus.MEDIA_BUTTON) { updatePlayState() }
+    }
+
+    private data class TtsParagraphRow(
+        val view: TextView,
+        val normalTextSizeSp: Float,
+        val normalAlpha: Float,
+    )
+
+    private companion object {
+        const val TTS_BODY_TEXT_SIZE_SP = 19f
+        const val TTS_TITLE_TEXT_SIZE_SP = 22f
+        const val TTS_BODY_TEXT_ALPHA = 0.9f
+        const val TTS_INACTIVE_TEXT_ALPHA = 0.42f
+        const val TTS_CURRENT_TEXT_SIZE_SCALE = 1.2f
     }
 }
