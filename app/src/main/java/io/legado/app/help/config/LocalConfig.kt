@@ -59,17 +59,11 @@ by appCtx.getSharedPreferences("local", Context.MODE_PRIVATE) {
     val ruleHelpVersionIsLast: Boolean
         get() = isLastVersion(1, "ruleHelpVersion")
 
-    val needUpHttpTTS: Boolean
-        get() = !isLastVersion(6, "httpTtsVersion")
+    fun defaultDataVersion(versionKey: String): Int = getInt(versionKey, 0)
 
-    val needUpTxtTocRule: Boolean
-        get() = !isLastVersion(3, "txtTocRuleVersion")
-
-    val needUpRssSources: Boolean
-        get() = !isLastVersion(7, "rssSourceVersion")
-
-    val needUpDictRule: Boolean
-        get() = !isLastVersion(2, "needUpDictRule")
+    fun markDefaultDataVersion(versionKey: String, version: Int) {
+        edit { putInt(versionKey, version) }
+    }
 
     var versionCode
         get() = getLong(versionCodeKey, 0)
