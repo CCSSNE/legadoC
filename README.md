@@ -15,8 +15,13 @@
     <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/9.png" width="100%" alt="界面截图 9" /></td>
   </tr>
   <tr>
-    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/10.jpg" width="100%" alt="界面截图 10" /></td>
-    <td align="center"></td>
+    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/10.png" width="100%" alt="界面截图 10" /></td>
+    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/11.png" width="100%" alt="界面截图 11" /></td>
+    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/12.png" width="100%" alt="界面截图 12" /></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/13.png" width="100%" alt="界面截图 13" /></td>
+    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/14.png" width="100%" alt="界面截图 14" /></td>
     <td align="center"></td>
   </tr>
 </table>
@@ -53,11 +58,18 @@
 
 - 新增"旋转朗读封面"开关（默认开）与"封面旋转一圈用时"设置（默认 10 秒）：播放时朗读悬浮窗与听书页封面同步旋转，并统一两处封面的播放旋转状态。
 
+**墨水屏与主题模式**
+
+- 统一主题模式切换入口：自动 / 日间 / 夜间 / 墨水屏模式的切换统一走单一入口，界面设置与阅读器不再各自更新不同的主题状态源，避免切换后主题不一致。
+- 墨水屏模式下弹窗表面统一不透明：墨水屏弹窗面板改走统一应用表面并叠加墨水屏边框背景，弹窗透明度设置在墨水屏模式下不再生效，画面对比更稳定；修复墨水屏状态下 Alert 弹窗透明背景的问题。
+
 **听书页**
 
 - 统一听书页文本渲染与点句跳转：移除第三方歌词视图依赖，恢复听书文本字号与居中样式，统一 TTS 当前段样式。
 - 修复听书页空会话与朗读未运行状态下的播放按钮；修复听书页 Activity 启动任务标志。
 - 新增"朗读跟随延迟"（默认 3000ms）与"朗读进度轮询间隔"（默认 500ms）设置。
+- 修复听书正文居中偏移：展示前去掉段落首尾空白，避免正文整体偏移。
+- 听书正文首行缩进按段落行数控制：正文段落实际占满 3 行及以上才加首行缩进，标题与短段落不缩进，窗口宽度变化时重新计算。
 
 **通知与订阅**
 
@@ -69,6 +81,7 @@
 - 收拢 AI 日志、应用日志、崩溃日志对话框的公共逻辑到 `BaseLogDialogFragment`。
 - 修复 Markdown 图片拖动误触发文本选择。
 - 移除"我的"页面的退出应用入口。
+- 清理根目录一次性构建脚本与日志，删除失效的融合计划遗留文档与未引用的 static 目录。
 
 ### 2026-08-17
 
