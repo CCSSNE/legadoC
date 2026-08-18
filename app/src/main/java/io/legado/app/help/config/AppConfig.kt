@@ -1557,7 +1557,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         get() = appCtx.getPrefBoolean(PreferKey.readAloudHidePagePanel, false)
 
     val readAloudPanelOnPageFooter
-        get() = appCtx.getPrefBoolean(PreferKey.readAloudPanelOnPageFooter, false)
+        get() = appCtx.getPrefBoolean(PreferKey.readAloudPanelOnPageFooter, true)
 
     val replaceEnableDefault get() = appCtx.getPrefBoolean(PreferKey.replaceEnableDefault, true)
 
