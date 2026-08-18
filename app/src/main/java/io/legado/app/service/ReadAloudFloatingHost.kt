@@ -7,3 +7,8 @@ data class ReadAloudFloatingHost(
     val windowManager: WindowManager,
     val token: IBinder,
 )
+
+/** The one state transition that moves the floating window into or out of the dialog layer. */
+data class ReadAloudDialogFloatingPresentation(
+    val host: ReadAloudFloatingHost?,
+)
