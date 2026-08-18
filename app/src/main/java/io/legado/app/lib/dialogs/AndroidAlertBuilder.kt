@@ -178,11 +178,9 @@ internal class AndroidAlertBuilder(override val ctx: Context) : AlertBuilder<Ale
                 attr.dimAmount = 0f
                 attr.windowAnimations = 0
                 attributes = attr
-                setBackgroundDrawableResource(R.drawable.bg_eink_border_dialog)
-            } else {
-                setBackgroundDrawableResource(android.R.color.transparent)
             }
+            setBackgroundDrawableResource(android.R.color.transparent)
         }
-        if (!AppConfig.isEInkMode) applyAlertSurface()
+        applyAlertSurface()
     }
 }

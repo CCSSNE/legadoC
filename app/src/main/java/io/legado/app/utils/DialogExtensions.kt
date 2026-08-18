@@ -72,6 +72,12 @@ fun AlertDialog.applyAlertSurface() {
         panel.findViewById<View>(id)?.background = null
     }
     moveAlertTitleIntoBody(panel)
+    if (AppConfig.isEInkMode) {
+        // The window is transparent so parentPanel must remain the sole visible surface.
+        applyDialogSurfaceBlur(panel)
+        panel.setBackgroundResource(R.drawable.bg_eink_border_dialog)
+        return
+    }
     applyDialogSurfaceBlur(panel)
 }
 
