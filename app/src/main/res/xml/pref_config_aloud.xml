@@ -48,6 +48,20 @@
             android:key="streamReadAloudAudio"
             app:iconSpaceReserved="false" />
 
+        <io.legado.app.lib.prefs.Preference
+            android:defaultValue="3000"
+            android:key="readAloudScrollFollowTimeout"
+            android:summary="@string/read_aloud_scroll_follow_timeout_summary"
+            android:title="@string/read_aloud_scroll_follow_timeout_title"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:defaultValue="500"
+            android:key="readAloudProgressPollInterval"
+            android:summary="@string/read_aloud_progress_poll_interval_summary"
+            android:title="@string/read_aloud_progress_poll_interval_title"
+            app:iconSpaceReserved="false" />
+
         <io.legado.app.lib.prefs.SwitchPreference
             android:defaultValue="true"
             android:key="readAloudHideFloatingWindow"

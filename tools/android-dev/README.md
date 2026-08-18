@@ -15,7 +15,7 @@ Verify the explicit LDPlayer target and Python tools:
 Use uiautomator2 for UI state and the managed Frida probe for runtime objects. Every entry point rejects targets other than the explicit LDPlayer transport:
 
 ```powershell
-.\.android-dev-venv\Scripts\python.exe .\tools\android-dev\uiauto_probe.py --serial emulator-5554
+.\.android-dev-venv\Scripts\python.exe .\tools\android-dev\uiauto_probe.py --serial 127.0.0.1:5557
 .\tools\android-dev\run-frida-probe.ps1
 .\tools\android-dev\run-frida-probe.ps1 -ClassName io.legado.app.utils.SurfaceBackdrop
 .\tools\android-dev\run-frida-probe.ps1 -ClassName io.legado.app.utils.SurfaceBackdrop -MethodName apply

@@ -22,8 +22,8 @@ import io.legado.app.utils.writeText
 class TocViewModel(application: Application) : BaseViewModel(application) {
     var bookUrl: String = ""
     var bookData = MutableLiveData<Book>()
-    var chapterListCallBack: ChapterListCallBack? = null
-    var bookMarkCallBack: BookmarkCallBack? = null
+    private var chapterListCallBack: ChapterListCallBack? = null
+    private var bookMarkCallBack: BookmarkCallBack? = null
     var searchKey: String? = null
     var isTocDisplayReversed = false
 
@@ -74,8 +74,32 @@ class TocViewModel(application: Application) : BaseViewModel(application) {
         return isTocDisplayReversed
     }
 
+    fun registerChapterListCallBack(callBack: ChapterListCallBack) {
+        chapterListCallBack = callBack
+    }
+
+    fun unregisterChapterListCallBack(callBack: ChapterListCallBack) {
+        if (chapterListCallBack === callBack) {
+            chapterListCallBack = null
+        }
+    }
+
+    fun registerBookmarkCallBack(callBack: BookmarkCallBack) {
+        bookMarkCallBack = callBack
+    }
+
+    fun unregisterBookmarkCallBack(callBack: BookmarkCallBack) {
+        if (bookMarkCallBack === callBack) {
+            bookMarkCallBack = null
+        }
+    }
+
     fun startChapterListSearch(newText: String?) {
         chapterListCallBack?.upChapterList(newText)
+    }
+
+    fun clearChapterListDisplayTitle() {
+        chapterListCallBack?.clearDisplayTitle()
     }
 
     fun startBookmarkSearch(newText: String?) {

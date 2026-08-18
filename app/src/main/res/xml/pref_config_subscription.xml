@@ -14,7 +14,7 @@
         android:visible="false" />
 
     <io.legado.app.lib.prefs.NameListPreference
-        android:defaultValue="modern"
+        android:defaultValue="legacy"
         android:key="modernRssMode"
         android:summary="@string/modern_rss_page_summary"
         android:title="@string/modern_rss_page"

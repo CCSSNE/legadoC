@@ -76,6 +76,7 @@ class SurfacePopupMenu(
     private var dismissGeneration = 0
     private var dismissAnimator: ObjectAnimator? = null
     private var dismissAction: (() -> Unit)? = null
+    private var dismissListener: (() -> Unit)? = null
     private var immediateDismiss = false
     private val popupWindow: PopupWindow = object : PopupWindow(
         surface,
@@ -102,6 +103,7 @@ class SurfacePopupMenu(
             cancelDismissFade()
             SurfaceBackdrop.clear(surface)
             surface.alpha = 1f
+            dismissListener?.invoke()
         }
     }
 
@@ -122,8 +124,17 @@ class SurfacePopupMenu(
         itemClickListener = listener
     }
 
+    fun setOnDismissListener(listener: (() -> Unit)?) {
+        dismissListener = listener
+    }
+
     fun show() {
         show(menu, menu.visibleItemsForSurface())
+    }
+
+    /** Shows an existing menu (for example a toolbar item's submenu) in this surface. */
+    fun show(sourceMenu: Menu) {
+        show(sourceMenu, sourceMenu.visibleItemsForSurface())
     }
 
     fun show(sourceMenu: Menu, rootItems: List<MenuItem>) {

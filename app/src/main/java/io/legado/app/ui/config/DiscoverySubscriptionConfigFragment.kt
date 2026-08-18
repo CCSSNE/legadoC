@@ -33,7 +33,7 @@ class DiscoverySubscriptionConfigFragment : PreferenceFragment(),
         bindModePreference(
             preference = rssModePref,
             booleanKey = PreferKey.modernRssPage,
-            defaultValue = true
+            defaultValue = false
         )
     }
 

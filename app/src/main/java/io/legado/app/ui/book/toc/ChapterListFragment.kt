@@ -50,7 +50,7 @@ class ChapterListFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_chapt
     private var suppressNextListScroll = false
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) = binding.run {
-        viewModel.chapterListCallBack = this@ChapterListFragment
+        viewModel.registerChapterListCallBack(this@ChapterListFragment)
         val bbg = bottomBackground
         val btc = requireContext().getPrimaryTextColor(ColorUtils.isColorLight(bbg))
         llChapterBaseInfo.setBackgroundColor(
@@ -61,9 +61,17 @@ class ChapterListFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_chapt
         ivChapterBottom.setColorFilter(btc, PorterDuff.Mode.SRC_IN)
         initRecyclerView()
         initView()
-        viewModel.bookData.observe(this@ChapterListFragment) {
+        viewModel.bookData.observe(viewLifecycleOwner) {
             initBook(it)
         }
+    }
+
+    override fun onDestroyView() {
+        viewModel.unregisterChapterListCallBack(this)
+        adapter.clearDisplayTitle()
+        binding.recyclerView.adapter = null
+        mLayoutManager = null
+        super.onDestroyView()
     }
 
     private fun initRecyclerView() {
@@ -92,7 +100,7 @@ class ChapterListFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_chapt
 
     @SuppressLint("SetTextI18n")
     private fun initBook(book: Book) {
-        lifecycleScope.launch {
+        viewLifecycleOwner.lifecycleScope.launch {
             durChapterIndex = book.durChapterIndex
             upChapterList(null)
             binding.tvCurrentChapterInfo.text =
@@ -102,7 +110,7 @@ class ChapterListFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_chapt
     }
 
     private fun initCacheFileNames(book: Book) {
-        lifecycleScope.launch(IO) {
+        viewLifecycleOwner.lifecycleScope.launch(IO) {
             adapter.cacheFileNames.addAll(BookHelp.getChapterFiles(book))
             withContext(Main) {
                 adapter.notifyItemRangeChanged(0, adapter.itemCount, true)
@@ -112,6 +120,7 @@ class ChapterListFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_chapt
 
     override fun observeLiveBus() {
         observeEvent<Pair<Book, BookChapter>>(EventBus.SAVE_CONTENT) { (book, chapter) ->
+            if (view == null) return@observeEvent
             viewModel.bookData.value?.bookUrl?.let { bookUrl ->
                 if (book.bookUrl == bookUrl) {
                     adapter.cacheFileNames.addAll(BookHelp.getChapterCacheFileNames(book, chapter))
@@ -133,7 +142,7 @@ class ChapterListFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_chapt
     }
 
     override fun upChapterList(searchKey: String?) {
-        lifecycleScope.launch {
+        viewLifecycleOwner.lifecycleScope.launch {
             withContext(IO) {
                 val end = (book?.simulatedTotalChapterNum() ?: Int.MAX_VALUE) - 1
                 when {
@@ -160,6 +169,7 @@ class ChapterListFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_chapt
     }
 
     override fun onListChanged() {
+        val viewOwner = viewLifecycleOwnerLiveData.value ?: return
         if (suppressNextListScroll) {
             suppressNextListScroll = false
             adapter.upDisplayTitles(
@@ -167,10 +177,12 @@ class ChapterListFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_chapt
             )
             return
         }
-        lifecycleScope.launch {
+        viewOwner.lifecycleScope.launch {
             val scrollPos = visiblePositionOf(durChapterIndex)
-            binding.recyclerView.post {
-                val centerOffset = (binding.recyclerView.height / 2).coerceAtLeast(0)
+            val recyclerView = binding.recyclerView
+            recyclerView.post {
+                if (viewLifecycleOwnerLiveData.value == null) return@post
+                val centerOffset = (recyclerView.height / 2).coerceAtLeast(0)
                 mLayoutManager?.scrollToPositionWithOffset(scrollPos, centerOffset)
                 adapter.upDisplayTitles(scrollPos)
             }
@@ -187,7 +199,7 @@ class ChapterListFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_chapt
     }
 
     override val scope: CoroutineScope
-        get() = lifecycleScope
+        get() = viewLifecycleOwner.lifecycleScope
 
     override val book: Book?
         get() = viewModel.bookData.value

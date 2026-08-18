@@ -5,11 +5,11 @@ $env:JAVA_HOME = 'C:\Program Files\Eclipse Adoptium\jdk-17.0.19.10-hotspot'
 $env:ANDROID_HOME = 'D:\AI\audio\android-sdk'
 $env:ANDROID_SDK_ROOT = $env:ANDROID_HOME
 $env:GRADLE_USER_HOME = 'D:\AI\audio\android-gradle-user-home'
-$env:LEIDIAN_SERIAL = 'emulator-5554'
+$env:LEIDIAN_SERIAL = '127.0.0.1:5557'
 $env:LEIDIAN_HOME = 'F:\leidian\LDPlayer14'
 
 function Assert-LDPlayerTarget {
-    if ($env:LEIDIAN_SERIAL -ne 'emulator-5554') {
+    if ($env:LEIDIAN_SERIAL -ne '127.0.0.1:5557') {
         throw "Refusing non-LDPlayer serial: $env:LEIDIAN_SERIAL"
     }
     $ldconsole = Join-Path $env:LEIDIAN_HOME 'ldconsole.exe'

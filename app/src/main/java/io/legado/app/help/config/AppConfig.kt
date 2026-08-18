@@ -335,7 +335,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         get() = appCtx.getPrefBoolean(PreferKey.modernDiscoveryPage, true)
 
     val modernRssPage: Boolean
-        get() = appCtx.getPrefBoolean(PreferKey.modernRssPage, true)
+        get() = appCtx.getPrefBoolean(PreferKey.modernRssPage, false)
 
     val mergeDiscoveryRss: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.mergeDiscoveryRss, false)
@@ -370,6 +370,9 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
     val showRSS: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.showRss, false)
+
+    val showRssPageInSettings: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.showRssPageInSettings, true)
 
     val showReadRecord: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.showReadRecord, true)
@@ -1594,6 +1597,18 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         get() = appCtx.getPrefInt(PreferKey.readAloudDoubleTapTimeout, 200).coerceIn(120, 600)
         set(value) {
             appCtx.putPrefInt(PreferKey.readAloudDoubleTapTimeout, value.coerceIn(120, 600))
+        }
+
+    var readAloudScrollFollowTimeout: Int
+        get() = appCtx.getPrefInt(PreferKey.readAloudScrollFollowTimeout, 3000).coerceIn(0, 10000)
+        set(value) {
+            appCtx.putPrefInt(PreferKey.readAloudScrollFollowTimeout, value.coerceIn(0, 10000))
+        }
+
+    var readAloudProgressPollInterval: Int
+        get() = appCtx.getPrefInt(PreferKey.readAloudProgressPollInterval, 500).coerceIn(100, 5000)
+        set(value) {
+            appCtx.putPrefInt(PreferKey.readAloudProgressPollInterval, value.coerceIn(100, 5000))
         }
 
     var bookshelfSort: Int

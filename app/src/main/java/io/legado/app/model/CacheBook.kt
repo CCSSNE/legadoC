@@ -1,6 +1,7 @@
 package io.legado.app.model
 
 import android.content.Context
+import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.IntentAction
@@ -15,11 +16,13 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.CompositeCoroutine
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.lib.permission.NotificationPermission
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.service.CacheBookService
 import io.legado.app.utils.onEachParallel
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.startService
+import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -89,14 +92,21 @@ object CacheBook {
     }
 
     fun start(context: Context, book: Book, start: Int, end: Int) {
-        if (!book.isLocal) {
-            context.startService<CacheBookService> {
-                action = IntentAction.start
-                putExtra("bookUrl", book.bookUrl)
-                putExtra("start", start)
-                putExtra("end", end)
+        if (book.isLocal) return
+        NotificationPermission.ensure(
+            context,
+            onGranted = {
+                context.startService<CacheBookService> {
+                    action = IntentAction.start
+                    putExtra("bookUrl", book.bookUrl)
+                    putExtra("start", start)
+                    putExtra("end", end)
+                }
+            },
+            onDenied = {
+                context.toastOnUi(R.string.notification_permission_required_for_download)
             }
-        }
+        )
     }
 
     fun remove(context: Context, bookUrl: String) {

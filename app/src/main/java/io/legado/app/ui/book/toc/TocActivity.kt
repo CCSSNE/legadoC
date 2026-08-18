@@ -42,11 +42,18 @@ import io.legado.app.utils.visible
 class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
     TxtTocRuleDialog.CallBack {
 
+    private companion object {
+        const val PAGE_TOC = 0
+        const val PAGE_BOOKMARK = 1
+        const val PAGE_ILLUSTRATION = 2
+    }
+
     override val binding by viewBinding(ActivityChapterListBinding::inflate)
     override val viewModel by viewModels<TocViewModel>()
 
     private lateinit var tabLayout: TabLayout
     private var menu: Menu? = null
+    private var searchMenuItem: MenuItem? = null
     private var searchView: SearchView? = null
     private val waitDialog by lazy { WaitDialog(this) }
     private val exportDir = registerForActivityResult(HandleFileContract()) {
@@ -64,6 +71,15 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
         tabLayout.setSelectedTabIndicatorColor(accentColor)
         binding.viewPager.adapter = TabFragmentPageAdapter()
         tabLayout.setupWithViewPager(binding.viewPager)
+        tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
+            override fun onTabSelected(tab: TabLayout.Tab) {
+                updatePageActions(tab.position)
+            }
+
+            override fun onTabUnselected(tab: TabLayout.Tab) = Unit
+
+            override fun onTabReselected(tab: TabLayout.Tab) = Unit
+        })
         tabLayout.tabGravity = TabLayout.GRAVITY_CENTER
         setupCenteredTabs()
         tabLayout.applyUiTabTypeface(this)
@@ -78,8 +94,8 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
     private fun setupCenteredTabs() {
         for (index in 0 until tabLayout.tabCount) {
             val title = when (index) {
-                1 -> getString(R.string.bookmark)
-                2 -> getString(R.string.menu_illustration)
+                PAGE_BOOKMARK -> getString(R.string.bookmark)
+                PAGE_ILLUSTRATION -> getString(R.string.menu_illustration)
                 else -> getString(R.string.chapter_list)
             }
             tabLayout.getTabAt(index)?.customView = TextView(this).apply {
@@ -99,6 +115,7 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
         menuInflater.inflate(R.menu.book_toc, menu)
         this.menu = menu
         val search = menu.findItem(R.id.menu_search)
+        searchMenuItem = search
         searchView = (search.actionView as SearchView).apply {
             applyUiSearchTypeface(this@TocActivity)
             applyTint(primaryTextColor)
@@ -117,10 +134,9 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
 
                 override fun onQueryTextChange(newText: String): Boolean {
                     viewModel.searchKey = newText
-                    if (tabLayout.selectedTabPosition == 1) {
-                        viewModel.startBookmarkSearch(newText)
-                    } else {
-                        viewModel.startChapterListSearch(newText)
+                    when (tabLayout.selectedTabPosition) {
+                        PAGE_TOC -> viewModel.startChapterListSearch(newText)
+                        PAGE_BOOKMARK -> viewModel.startBookmarkSearch(newText)
                     }
                     return false
                 }
@@ -131,18 +147,34 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
                 }
             }
         }
+        updatePageActions(tabLayout.selectedTabPosition)
         return super.onCompatCreateOptionsMenu(menu)
     }
 
     override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
-        if (tabLayout.selectedTabPosition == 1) {
-            menu.setGroupVisible(R.id.menu_group_bookmark, true)
-            menu.setGroupVisible(R.id.menu_group_toc, false)
-            menu.setGroupVisible(R.id.menu_group_text, false)
-        } else {
-            menu.setGroupVisible(R.id.menu_group_bookmark, false)
-            menu.setGroupVisible(R.id.menu_group_toc, true)
-            menu.setGroupVisible(R.id.menu_group_text, viewModel.bookData.value?.isLocalTxt == true)
+        when (tabLayout.selectedTabPosition) {
+            PAGE_TOC -> {
+                menu.setGroupVisible(R.id.menu_group_bookmark, false)
+                menu.setGroupVisible(R.id.menu_group_toc, true)
+                menu.setGroupVisible(
+                    R.id.menu_group_text,
+                    viewModel.bookData.value?.isLocalTxt == true
+                )
+            }
+
+            PAGE_BOOKMARK -> {
+                menu.setGroupVisible(R.id.menu_group_bookmark, true)
+                menu.setGroupVisible(R.id.menu_group_toc, false)
+                menu.setGroupVisible(R.id.menu_group_text, false)
+            }
+
+            PAGE_ILLUSTRATION -> {
+                menu.setGroupVisible(R.id.menu_group_bookmark, false)
+                menu.setGroupVisible(R.id.menu_group_toc, false)
+                menu.setGroupVisible(R.id.menu_group_text, false)
+            }
+
+            else -> error("Unsupported TOC page position: ${tabLayout.selectedTabPosition}")
         }
         menu.findItem(R.id.menu_use_replace)?.isChecked =
             AppConfig.tocUiUseReplace
@@ -152,6 +184,15 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
             viewModel.bookData.value?.getSplitLongChapter() == true
         menu.findItem(R.id.menu_reverse_toc_display)?.isChecked = viewModel.isTocDisplayReversed
         return super.onMenuOpened(featureId, menu)
+    }
+
+    private fun updatePageActions(position: Int) {
+        val supportsSearch = position == PAGE_TOC || position == PAGE_BOOKMARK
+        searchMenuItem?.isVisible = supportsSearch
+        if (!supportsSearch) {
+            searchMenuItem?.collapseActionView()
+            tabLayout.visible()
+        }
     }
 
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
@@ -169,7 +210,7 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
             }
 
             R.id.menu_reverse_toc -> viewModel.reverseToc {
-                viewModel.chapterListCallBack?.upChapterList(searchView?.query?.toString())
+                viewModel.startChapterListSearch(searchView?.query?.toString())
                 setResult(RESULT_OK, Intent().apply {
                     putExtra("index", it.durChapterIndex)
                     putExtra("chapterPos", 0)
@@ -178,13 +219,13 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
 
             R.id.menu_reverse_toc_display -> {
                 item.isChecked = viewModel.toggleTocDisplayOrder()
-                viewModel.chapterListCallBack?.upChapterList(searchView?.query?.toString())
+                viewModel.startChapterListSearch(searchView?.query?.toString())
             }
 
             R.id.menu_use_replace -> {
                 AppConfig.tocUiUseReplace = !item.isChecked
-                viewModel.chapterListCallBack?.clearDisplayTitle()
-                viewModel.chapterListCallBack?.upChapterList(searchView?.query?.toString())
+                viewModel.clearChapterListDisplayTitle()
+                viewModel.startChapterListSearch(searchView?.query?.toString())
             }
 
             R.id.menu_load_word_count -> {
@@ -232,8 +273,8 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
 
         override fun getItem(position: Int): Fragment {
             return when (position) {
-                1 -> BookmarkFragment()
-                2 -> IllustrationFragment()
+                PAGE_BOOKMARK -> BookmarkFragment()
+                PAGE_ILLUSTRATION -> IllustrationFragment()
                 else -> ChapterListFragment()
             }
         }
@@ -244,8 +285,8 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
 
         override fun getPageTitle(position: Int): CharSequence {
             return when (position) {
-                1 -> getString(R.string.bookmark)
-                2 -> getString(R.string.menu_illustration)
+                PAGE_BOOKMARK -> getString(R.string.bookmark)
+                PAGE_ILLUSTRATION -> getString(R.string.menu_illustration)
                 else -> getString(R.string.chapter_list)
             }
         }

@@ -202,6 +202,16 @@
     <string name="read_aloud_hide_playback_panel_summary">朗读菜单收起后，不显示暂停播放/继续播放的小悬浮窗。</string>
     <string name="read_aloud_hide_page_panel">隐藏跨页小悬浮窗</string>
     <string name="read_aloud_hide_page_panel_summary">朗读过程中翻页后，不显示原进度/从本页听的小悬浮窗。</string>
+    <string name="read_aloud_scroll_follow_timeout_title">朗读跟随延迟</string>
+    <string name="read_aloud_scroll_follow_timeout_summary">滑动听书正文或歌词后，等待这段时间再恢复自动居中。</string>
+    <string name="read_aloud_scroll_follow_timeout_dialog_title">朗读跟随延迟（毫秒）</string>
+    <string name="read_aloud_scroll_follow_timeout_value">%sms</string>
+    <string name="read_aloud_progress_poll_interval_title">朗读进度轮询间隔</string>
+    <string name="read_aloud_progress_poll_interval_summary">控制有声书播放位置和正文跟随的更新频率，数值越小跟得越紧。</string>
+    <string name="read_aloud_progress_poll_interval_dialog_title">朗读进度轮询间隔（毫秒）</string>
+    <string name="read_aloud_progress_poll_interval_value">%sms</string>
+    <string name="integer_input_range_hint">%1$d-%2$d</string>
+    <string name="integer_input_range_invalid">请输入 %1$d 到 %2$d 之间的整数。</string>
     <string name="read_aloud_original_progress">原进度</string>
     <string name="read_aloud_from_current_page">从本页听</string>
     <string name="read_aloud_pause_playback">暂停播放</string>
@@ -1050,6 +1060,9 @@
     <string name="discovery_settings_summary">配置发现页入口与页面样式</string>
     <string name="subscription_settings_title">订阅页管理</string>
     <string name="subscription_settings_summary">配置订阅页入口与页面样式</string>
+    <string name="enter_rss_page">进入订阅页面</string>
+    <string name="enter_rss_page_summary">打开订阅内容页面</string>
+    <string name="show_rss_page_in_settings">在设置中显示订阅页面</string>
     <string name="discovery_subscription_settings_title">发现与订阅</string>
     <string name="discovery_subscription_settings_summary">管理发现页和订阅页入口与页面样式</string>
     <string name="discovery_page_mode_modern">新版发现</string>
@@ -1299,6 +1312,7 @@
     <string name="same_title_removed">移除重复标题</string>
     <string name="update_book_fail">更新失败</string>
     <string name="notification_permission_rationale">阅读需要发送通知来显示朗读控制和下载进度</string>
+    <string name="notification_permission_required_for_download">需要开启通知权限才能显示下载进度。</string>
     <string name="webdav_after_local_restore_confirm">webDav书源比本地新,是否恢复</string>
     <string name="c_whitelist">白名单(contentWhitelist)</string>
     <string name="c_blacklist">黑名单(contentBlacklist)</string>

@@ -11,6 +11,7 @@ object EventBus {
     const val READ_ALOUD_DS = "readAloudDs"
     const val READ_ALOUD_PROGRESS = "readAloudProgress" // 融合第一阶段：朗读进度更新
     const val READ_ALOUD_ENGINE_CHANGED = "readAloudEngineChanged"
+    const val READ_MAIN_MENU_VISIBILITY = "readMainMenuVisibility"
     const val READ_ALOUD_DIALOG_VISIBILITY = "readAloudDialogVisibility"
     const val BATTERY_CHANGED = "batteryChanged"
     const val TIME_CHANGED = "timeChanged"

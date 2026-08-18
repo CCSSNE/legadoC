@@ -24,7 +24,7 @@ class SubscriptionConfigFragment : PreferenceFragment(),
         addPreferencesFromResource(R.xml.pref_config_subscription)
         rssModePref = findPreference(KEY_RSS_MODE)
         val useModern = preferenceManager.sharedPreferences
-            ?.getBoolean(PreferKey.modernRssPage, true) ?: true
+            ?.getBoolean(PreferKey.modernRssPage, false) ?: false
         rssModePref?.value = if (useModern) PAGE_MODE_MODERN else PAGE_MODE_LEGACY
         updateModeSummary(rssModePref)
         rssModePref?.setOnPreferenceChangeListener { _, newValue ->

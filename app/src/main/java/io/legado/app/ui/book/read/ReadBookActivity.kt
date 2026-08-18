@@ -288,6 +288,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     private var lastReadAloudChapterPos: Int? = null
     private var lastReadAloudChapterIndex: Int? = null
     private var finishReadAloudBackstage = false
+    private val readAloudPanelFadeDuration = 140L
     private val handler by lazy { buildMainHandler() }
     private val screenOffRunnable by lazy { Runnable { keepScreenOn(false) } }
     private val executor = ReadBook.executor
@@ -328,6 +329,9 @@ class ReadBookActivity : BaseReadBookActivity(),
             } else {
                 ReadAloud.pause(this)
             }
+        }
+        binding.readAloudDialogOutsideTap.setOnClickListener {
+            postEvent(EventBus.CLOSE_READ_ALOUD_DIALOG, true)
         }
         window.setBackgroundDrawable(null)
         upScreenTimeOut()
@@ -423,6 +427,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         upSystemUiVisibility()
         registerReceiver(timeBatteryReceiver, timeBatteryReceiver.filter)
         binding.readView.upTime()
+        updateReadAloudMainMenuVisibility(binding.readMenu.isVisible)
         updateReadAloudPageFloating()
         if (ReadAloudUiState.consumeAudioPlayerReturn()) {
             handler.post { restoreReadAloudPlayerPosition() }
@@ -469,6 +474,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         if (activeActivityRef?.get() === this) {
             activeActivityRef = null
         }
+        updateReadAloudMainMenuVisibility(false)
         postEvent(EventBus.READ_BOOK_ACTIVITY_ACTIVE, false)
     }
 
@@ -1562,6 +1568,12 @@ class ReadBookActivity : BaseReadBookActivity(),
         postEvent(EventBus.READ_BOOK_ACTIVITY_ACTIVE, true)
     }
 
+    private fun updateReadAloudMainMenuVisibility(visible: Boolean) {
+        ReadAloudUiState.setMainMenuVisible(visible)
+        postEvent(EventBus.READ_MAIN_MENU_VISIBILITY, visible)
+        updateReadAloudPanels()
+    }
+
     private fun showReadAloudDialogFromFloating() {
         if (binding.readMenu.isVisible) {
             binding.readMenu.runMenuOut {
@@ -1627,8 +1639,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                     R.string.read_aloud_pause_playback
                 }
             )
-            binding.readAloudPlaybackPanel.visible()
-            binding.readAloudPlaybackPanel.bringToFront()
+            fadeReadAloudPanel(binding.readAloudPlaybackPanel, true)
             postReadAloudFloatingAvoidanceForView(
                 EventBus.FLOATING_AVOID_SOURCE_READ_ALOUD_PLAYBACK_PANEL,
                 binding.readAloudPlaybackPanel,
@@ -1637,13 +1648,12 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     private fun hideReadAloudPlaybackPanel() {
-        binding.readAloudPlaybackPanel.gone()
+        fadeReadAloudPanel(binding.readAloudPlaybackPanel, false)
         clearReadAloudFloatingAvoidance(EventBus.FLOATING_AVOID_SOURCE_READ_ALOUD_PLAYBACK_PANEL)
     }
 
     private fun showReadAloudPagePanel() {
         if (!BaseReadAloudService.isRun) return
-        hideReadAloudPlaybackPanel()
         binding.readAloudPagePanel.post {
             if (
                 ReadAloudUiState.readerPanelMode(
@@ -1660,8 +1670,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                 params.bottomMargin = bottomMargin
                 binding.readAloudPagePanel.layoutParams = params
             }
-            binding.readAloudPagePanel.visible()
-            binding.readAloudPagePanel.bringToFront()
+            fadeReadAloudPanel(binding.readAloudPagePanel, true)
             postReadAloudFloatingAvoidanceForView(
                 EventBus.FLOATING_AVOID_SOURCE_READ_ALOUD_PAGE_PANEL,
                 binding.readAloudPagePanel
@@ -1670,8 +1679,35 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     private fun hideReadAloudPagePanel() {
-        binding.readAloudPagePanel.gone()
+        fadeReadAloudPanel(binding.readAloudPagePanel, false)
         clearReadAloudFloatingAvoidance(EventBus.FLOATING_AVOID_SOURCE_READ_ALOUD_PAGE_PANEL)
+    }
+
+    private fun fadeReadAloudPanel(view: View, show: Boolean) {
+        view.animate().cancel()
+        val generation = ((view.getTag(R.id.tag1) as? Long) ?: 0L) + 1L
+        view.setTag(R.id.tag1, generation)
+        if (show) {
+            val wasVisible = view.visibility == View.VISIBLE
+            view.visible()
+            if (!wasVisible) view.alpha = 0f
+            view.animate()
+                .alpha(1f)
+                .setDuration(readAloudPanelFadeDuration)
+                .start()
+        } else if (view.visibility == View.VISIBLE) {
+            view.animate()
+                .alpha(0f)
+                .setDuration(readAloudPanelFadeDuration)
+                .withEndAction {
+                    if (view.getTag(R.id.tag1) == generation) {
+                        view.gone()
+                    }
+                }
+                .start()
+        } else {
+            view.alpha = 0f
+        }
     }
 
     private fun restoreReadAloudPlayerPosition() {
@@ -2339,6 +2375,7 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun onMenuShow() {
         binding.readView.autoPager.pause()
+        updateReadAloudMainMenuVisibility(true)
     }
 
     override fun onMenuHide() {
@@ -2351,6 +2388,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             postReadAloudFloatingAvoidance(EventBus.FLOATING_AVOID_SOURCE_READ_MENU, y)
         } else {
             clearReadAloudFloatingAvoidance(EventBus.FLOATING_AVOID_SOURCE_READ_MENU)
+            updateReadAloudMainMenuVisibility(false)
         }
     }
 
@@ -2870,7 +2908,12 @@ class ReadBookActivity : BaseReadBookActivity(),
             }
             updateReadAloudPanels()
         }
-        observeEvent<Boolean>(EventBus.READ_ALOUD_DIALOG_VISIBILITY) {
+        observeEvent<Boolean>(EventBus.READ_ALOUD_DIALOG_VISIBILITY) { visible ->
+            if (visible) {
+                binding.readAloudDialogOutsideTap.visible()
+            } else {
+                binding.readAloudDialogOutsideTap.gone()
+            }
             updateReadAloudPanels()
         }
         observeEventSticky<Bundle>(EventBus.TTS_PROGRESS) { progress ->

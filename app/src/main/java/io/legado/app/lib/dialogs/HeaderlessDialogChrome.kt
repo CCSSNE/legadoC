@@ -1,15 +1,21 @@
 package io.legado.app.lib.dialogs
 
-import android.view.Gravity
+import android.text.TextUtils
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageButton
 import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.appcompat.widget.Toolbar
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.constraintlayout.widget.ConstraintSet
 import androidx.core.view.children
+import com.google.android.flexbox.AlignItems
+import com.google.android.flexbox.FlexWrap
+import com.google.android.flexbox.FlexboxLayout
+import com.google.android.flexbox.JustifyContent
 import io.legado.app.lib.theme.applyUiBodyTypeface
+import io.legado.app.ui.widget.menu.SurfacePopupMenu
 import io.legado.app.ui.widget.text.AccentTextView
 import io.legado.app.utils.dpToPx
 
@@ -47,35 +53,68 @@ private fun moveToolbarActionsToBottom(toolbar: Toolbar) {
         toolbar.visibility = View.GONE
         return
     }
-    val actions = mutableListOf<Pair<CharSequence, () -> Unit>>()
+    val actions = mutableListOf<Pair<CharSequence, (View) -> Unit>>()
     toolbar.children.filterIsInstance<ImageButton>().firstOrNull()?.let { navigation ->
         val label = toolbar.navigationContentDescription?.takeIf { it.isNotBlank() }
             ?: toolbar.context.getString(android.R.string.cancel)
-        actions += label to { navigation.performClick() }
+        actions += label to { _ -> navigation.performClick() }
     }
     toolbar.menu.let { menu ->
         repeat(menu.size()) { index ->
             val item = menu.getItem(index)
             val label = item.title?.takeIf { it.isNotBlank() }
             if (item.isVisible && item.isEnabled && label != null) {
-                actions += label to { menu.performIdentifierAction(item.itemId, 0) }
+                val subMenu = item.subMenu
+                if (subMenu == null) {
+                    actions += label to { _ -> menu.performIdentifierAction(item.itemId, 0) }
+                } else {
+                    actions += label to { anchor ->
+                        SurfacePopupMenu(anchor.context, anchor).apply {
+                            setOnMenuItemClickListener { child ->
+                                menu.performIdentifierAction(child.itemId, 0)
+                            }
+                            show(subMenu)
+                        }
+                    }
+                }
             }
         }
     }
     toolbar.visibility = View.GONE
     if (actions.isEmpty()) return
 
-    val actionRow = LinearLayout(host.context).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.END or Gravity.CENTER_VERTICAL
+    val actionRow = FlexboxLayout(host.context).apply {
+        flexWrap = FlexWrap.WRAP
+        justifyContent = JustifyContent.FLEX_END
+        alignItems = AlignItems.CENTER
         setPadding(12.dpToPx(), 0, 12.dpToPx(), 0)
         actions.forEach { (label, action) ->
-            addView(AccentTextView(context, null).apply {
+            val actionView = AccentTextView(context, null).apply {
                 text = label
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+                minHeight = 48.dpToPx()
                 setPadding(12.dpToPx(), 12.dpToPx(), 12.dpToPx(), 12.dpToPx())
                 applyUiBodyTypeface(context)
-                setOnClickListener { action() }
-            })
+                setOnClickListener { action(this) }
+            }
+            addView(
+                actionView,
+                FlexboxLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    flexShrink = 0f
+                }
+            )
+        }
+        addOnLayoutChangeListener { view, left, _, right, _, _, _, _, _ ->
+            val availableWidth = (
+                right - left - view.paddingLeft - view.paddingRight
+            ).coerceAtLeast(1)
+            (view as? ViewGroup)?.children?.filterIsInstance<TextView>()?.forEach { child ->
+                if (child.maxWidth != availableWidth) child.maxWidth = availableWidth
+            }
         }
     }
     host.addBottomActionRow(actionRow)

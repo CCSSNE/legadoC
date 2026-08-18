@@ -38,8 +38,14 @@
             android:title="@string/show_rss"
             app:iconSpaceReserved="false" />
 
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="true"
+            android:key="showRssPageInSettings"
+            android:title="@string/show_rss_page_in_settings"
+            app:iconSpaceReserved="false" />
+
         <io.legado.app.lib.prefs.NameListPreference
-            android:defaultValue="modern"
+            android:defaultValue="legacy"
             android:key="modernRssMode"
             android:title="@string/modern_rss_page"
             app:entries="@array/rss_page_mode_entries"

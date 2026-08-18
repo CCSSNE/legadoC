@@ -135,6 +135,8 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         get() = BuildConfig.BUILD_TYPE == "c"
     private var exploreReselected: Long = 0
     private var pagePosition = 0
+    private var transientRssPage = false
+    private var pendingMainPageId: Int? = null
     private var sidebarDownX = 0f
     private var sidebarDownY = 0f
     private var sidebarGestureHandled = false
@@ -333,6 +335,23 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
     override fun onNavigationItemSelected(item: MenuItem): Boolean {
         return handleNavigationItemSelected(item, closeSidebar = true)
+    }
+
+    /** Opens RSS content from settings even when its bottom navigation item is hidden. */
+    fun openRssPageFromSettings() {
+        pendingMainPageId = idRss
+        try {
+            transientRssPage = true
+            val pageIds = upBottomMenu()
+            val rssPosition = pageIds.indexOf(idRss)
+            check(rssPosition >= 0) {
+                "RSS page is not available: pages=$pageIds, " +
+                        "showRss=${AppConfig.showRSS}, transient=$transientRssPage"
+            }
+            binding.viewPagerMain.setCurrentItem(rssPosition, false)
+        } finally {
+            pendingMainPageId = null
+        }
     }
 
     private fun handleNavigationItemSelected(item: MenuItem, closeSidebar: Boolean): Boolean = binding.run {
@@ -1566,10 +1585,17 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     private fun updateBottomNavigationIndicator(animate: Boolean): Boolean {
         if (isSidebarMode()) return true
         if (AppConfig.isEInkMode) return true
+        val indicator = binding.bottomNavigationIndicatorContainer
+        if (transientRssPage && realPositions[pagePosition] == idRss) {
+            bottomIndicatorAnimator.cancel()
+            indicator.removeCallbacks(hideBottomIndicatorRunnable)
+            indicator.animate().cancel()
+            indicator.isVisible = false
+            return true
+        }
         val menuView = binding.bottomNavigationView.getChildAt(0) as? ViewGroup ?: return true
         val itemView = findBottomNavigationItemView(menuView, getBottomNavigationItemId(pagePosition))
             ?: return true
-        val indicator = binding.bottomNavigationIndicatorContainer
         val targetWidth = minOf(
             bottomIndicatorWidth,
             (itemView.width - 16.dpToPx()).coerceAtLeast(42.dpToPx())
@@ -1687,8 +1713,8 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         if (!(AppConfig.mergeDiscoveryRss && AppConfig.showDiscovery && AppConfig.showRSS)) return
         AppConfig.mergedDiscoveryRssTarget =
             if (resolveDiscoveryNavTarget() == idRss) "explore" else "rss"
-        upBottomMenu()
-        val targetPosition = realPositions.indexOf(resolveDiscoveryNavTarget())
+        val pageIds = upBottomMenu()
+        val targetPosition = pageIds.indexOf(resolveDiscoveryNavTarget())
         if (targetPosition >= 0) {
             binding.viewPagerMain.setCurrentItem(targetPosition, true)
         }
@@ -1902,9 +1928,14 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         }
     }
 
-    private fun upBottomMenu() {
+    private fun upBottomMenu(): List<Int> {
         val showDiscovery = AppConfig.showDiscovery
-        val showRss = AppConfig.showRSS && binding.bottomNavigationView.menu.findItem(R.id.menu_rss) != null
+        val showRss = AppConfig.showRSS &&
+            binding.bottomNavigationView.menu.findItem(R.id.menu_rss) != null
+        if (showRss) {
+            transientRssPage = false
+        }
+        val includeRssPage = showRss || transientRssPage
         val showReadRecord = AppConfig.showReadRecord
         val mergedDiscovery = AppConfig.mergeDiscoveryRss && showDiscovery && showRss
         binding.bottomNavigationView.menu.let { menu ->
@@ -1924,23 +1955,17 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 menu.findItem(R.id.menu_discovery).setTitle(R.string.discovery)
             }
         }
-        var index = 0
-        realPositions[index] = idBookshelf
-        if (showDiscovery) {
-            index++
-            realPositions[index] = idExplore
+        val pageIds = buildList(realPositions.size) {
+            add(idBookshelf)
+            if (showDiscovery) add(idExplore)
+            if (includeRssPage) add(idRss)
+            if (showReadRecord) add(idReadRecord)
+            add(idMy)
         }
-        if (showRss) {
-            index++
-            realPositions[index] = idRss
+        pageIds.forEachIndexed { index, pageId ->
+            realPositions[index] = pageId
         }
-        if (showReadRecord) {
-            index++
-            realPositions[index] = idReadRecord
-        }
-        index++
-        realPositions[index] = idMy
-        bottomMenuCount = index + 1
+        bottomMenuCount = pageIds.size
         pagePosition = pagePosition.coerceIn(0, bottomMenuCount - 1)
         adapter.notifyDataSetChanged()
         applyBottomNavigationIcons()
@@ -1950,6 +1975,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             updateSideNavigationItems()
             updateBottomNavigationIndicator(animate = false)
         }
+        return pageIds
     }
 
     private fun applyMergedDiscoveryIcon() {
@@ -2000,6 +2026,18 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
         override fun onPageSelected(position: Int) {
             pagePosition = position
+            val selectedPageId = realPositions[position]
+            if (transientRssPage && pendingMainPageId != idRss && selectedPageId != idRss) {
+                transientRssPage = false
+                binding.viewPagerMain.post {
+                    val pageIds = upBottomMenu()
+                    val restoredPosition = pageIds.indexOf(selectedPageId)
+                    check(restoredPosition >= 0) {
+                        "Selected page $selectedPageId disappeared after closing transient RSS page"
+                    }
+                    binding.viewPagerMain.setCurrentItem(restoredPosition, false)
+                }
+            }
             if (position != 0) {
                 setBookshelfActionMode(false)
             }

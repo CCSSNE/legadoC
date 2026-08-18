@@ -14,14 +14,25 @@ object ReadAloudUiState {
         private set
 
     @Volatile
+    var mainMenuVisible: Boolean = false
+        private set
+
+    val readerMenuVisible: Boolean
+        get() = mainMenuVisible || readAloudDialogVisible
+
+    @Volatile
     private var audioPlayerReturnPending = false
 
     fun setReadAloudDialogVisible(visible: Boolean) {
         readAloudDialogVisible = visible
     }
 
+    fun setMainMenuVisible(visible: Boolean) {
+        mainMenuVisible = visible
+    }
+
     fun readerPanelMode(isRunning: Boolean, pageDetached: Boolean): ReaderPanelMode {
-        if (!isRunning || readAloudDialogVisible) return ReaderPanelMode.HIDDEN
+        if (!isRunning || readerMenuVisible) return ReaderPanelMode.HIDDEN
         return if (pageDetached) ReaderPanelMode.PAGE_ACTION else ReaderPanelMode.PLAYBACK
     }
 

@@ -25,6 +25,7 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.showIntegerInputDialog
 import io.legado.app.lib.prefs.ColorPreference
 import io.legado.app.lib.prefs.fragment.PreferenceFragment
 import io.legado.app.lib.theme.accentColor
@@ -34,7 +35,6 @@ import io.legado.app.lib.theme.view.ThemeSeekBar
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.read.page.provider.ChapterProvider
-import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.utils.canvasrecorder.CanvasRecorderFactory
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.getCompatColor
@@ -249,93 +249,70 @@ class MoreConfigDialog : BaseReaderSheetPrefDialogFragment() {
                     ContentSelectMenuConfigDialog().show(parentFragmentManager, "contentSelectMenuConfig")
                 }
                 PreferKey.pageTouchSlop -> {
-                    NumberPickerDialog(requireContext())
-                        .setTitle(getString(R.string.page_touch_slop_dialog_title))
-                        .setMaxValue(9999)
-                        .setMinValue(0)
-                        .setValue(AppConfig.pageTouchSlop)
-                        .show {
-                            AppConfig.pageTouchSlop = it
-                            postEvent(EventBus.UP_CONFIG, arrayListOf(4))
-                        }
+                    showIntegerInputDialog(
+                        title = R.string.page_touch_slop_dialog_title,
+                        currentValue = AppConfig.pageTouchSlop,
+                        validRange = 0..9999
+                    ) {
+                        AppConfig.pageTouchSlop = it
+                        postEvent(EventBus.UP_CONFIG, arrayListOf(4))
+                    }
                 }
 
                 PreferKey.pageTouchClick -> {
-                    NumberPickerDialog(requireContext())
-                        .setTitle(getString(R.string.page_touch_click_dialog_title))
-                        .setMaxValue(399)
-                        .setMinValue(0)
-                        .setValue(AppConfig.pageTouchClick)
-                        .show {
-                            AppConfig.pageTouchClick = it
-                            postEvent(EventBus.UP_CONFIG, arrayListOf(12))
-                        }
+                    showIntegerInputDialog(
+                        title = R.string.page_touch_click_dialog_title,
+                        currentValue = AppConfig.pageTouchClick,
+                        validRange = 0..399
+                    ) {
+                        AppConfig.pageTouchClick = it
+                        postEvent(EventBus.UP_CONFIG, arrayListOf(12))
+                    }
                 }
 
                 PreferKey.readAloudDoubleTapTimeout -> {
-                    NumberPickerDialog(requireContext())
-                        .setTitle(getString(R.string.read_aloud_double_tap_timeout_dialog_title))
-                        .setMaxValue(600)
-                        .setMinValue(120)
-                        .setValue(AppConfig.readAloudDoubleTapTimeout)
-                        .setCustomButton(R.string.btn_default_s) {
-                            AppConfig.readAloudDoubleTapTimeout = 200
-                            upPreferenceSummary(
-                                PreferKey.readAloudDoubleTapTimeout,
-                                AppConfig.readAloudDoubleTapTimeout.toString()
-                            )
-                        }
-                        .show {
-                            AppConfig.readAloudDoubleTapTimeout = it
-                            upPreferenceSummary(
-                                PreferKey.readAloudDoubleTapTimeout,
-                                AppConfig.readAloudDoubleTapTimeout.toString()
-                            )
-                        }
+                    showIntegerInputDialog(
+                        title = R.string.read_aloud_double_tap_timeout_dialog_title,
+                        currentValue = AppConfig.readAloudDoubleTapTimeout,
+                        validRange = 120..600,
+                        defaultValue = 200
+                    ) {
+                        AppConfig.readAloudDoubleTapTimeout = it
+                        upPreferenceSummary(
+                            PreferKey.readAloudDoubleTapTimeout,
+                            AppConfig.readAloudDoubleTapTimeout.toString()
+                        )
+                    }
                 }
 
                 PreferKey.pageAnimationSpeed -> {
-                    NumberPickerDialog(requireContext())
-                        .setTitle(getString(R.string.page_animation_speed_dialog_title))
-                        .setMaxValue(2000)
-                        .setMinValue(0)
-                        .setValue(AppConfig.pageAnimationSpeed)
-                        .setCustomButton(R.string.btn_default_s) {
-                            AppConfig.pageAnimationSpeed = 300
-                            upPreferenceSummary(
-                                PreferKey.pageAnimationSpeed,
-                                AppConfig.pageAnimationSpeed.toString()
-                            )
-                        }
-                        .show {
-                            AppConfig.pageAnimationSpeed = it
-                            upPreferenceSummary(
-                                PreferKey.pageAnimationSpeed,
-                                AppConfig.pageAnimationSpeed.toString()
-                            )
-                        }
+                    showIntegerInputDialog(
+                        title = R.string.page_animation_speed_dialog_title,
+                        currentValue = AppConfig.pageAnimationSpeed,
+                        validRange = 0..2000,
+                        defaultValue = 300
+                    ) {
+                        AppConfig.pageAnimationSpeed = it
+                        upPreferenceSummary(
+                            PreferKey.pageAnimationSpeed,
+                            AppConfig.pageAnimationSpeed.toString()
+                        )
+                    }
                 }
 
                 PreferKey.keyPageAnimationSpeed -> {
-                    NumberPickerDialog(requireContext())
-                        .setTitle(getString(R.string.key_page_animation_speed_dialog_title))
-                        .setMaxValue(2000)
-                        .setMinValue(0)
-                        .setValue(AppConfig.keyPageAnimationSpeed)
-                        .setCustomButton(R.string.btn_default_s) {
-                            AppConfig.keyPageAnimationSpeed = 100
-                            upPreferenceSummary(
-                                PreferKey.keyPageAnimationSpeed,
-                                AppConfig.keyPageAnimationSpeed.toString()
-                            )
-                        }
-                        .show {
-                            AppConfig.keyPageAnimationSpeed = it
-                            upPreferenceSummary(
-                                PreferKey.keyPageAnimationSpeed,
-                                AppConfig.keyPageAnimationSpeed.toString()
-                            )
-                        }
+                    showIntegerInputDialog(
+                        title = R.string.key_page_animation_speed_dialog_title,
+                        currentValue = AppConfig.keyPageAnimationSpeed,
+                        validRange = 0..2000,
+                        defaultValue = 100
+                    ) {
+                        AppConfig.keyPageAnimationSpeed = it
+                        upPreferenceSummary(
+                            PreferKey.keyPageAnimationSpeed,
+                            AppConfig.keyPageAnimationSpeed.toString()
+                        )
+                    }
                 }
 
                 PreferKey.bookmarkNoteBubbleBgAlpha -> showBubbleBgAlphaDialog()
