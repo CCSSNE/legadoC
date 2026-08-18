@@ -490,7 +490,7 @@ abstract class BaseReadAloudService : BaseService(),
 
     private fun updateFloatingCoverAnimation() {
         val view = floatingCoverView ?: return
-        if (isPlay() && !loading) {
+        if (AppConfig.readAloudCoverRotation && isPlay() && !loading) {
             if (floatingCoverAnimator?.isStarted == true) return
             floatingCoverAnimator?.cancel()
             floatingCoverAnimator = ObjectAnimator.ofFloat(view, View.ROTATION, 0f, 360f).apply {
@@ -776,6 +776,10 @@ abstract class BaseReadAloudService : BaseService(),
                     rebuildReadAloudFloatingWindow()
                     upReadAloudNotification()
                     postEvent(PreferKey.readAloudHideFloatingWindow, "")
+                }
+                PreferKey.readAloudCoverRotation -> {
+                    updateFloatingCoverAnimation()
+                    postEvent(PreferKey.readAloudCoverRotation, "")
                 }
             }
         }

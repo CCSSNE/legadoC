@@ -287,6 +287,7 @@ object PreferKey {
     const val webServiceWakeLock = "webServiceWakeLock"
     const val audioPlayWakeLock = "audioPlayWakeLock"
     const val readAloudWakeLock = "readAloudWakeLock"
+    const val readAloudCoverRotation = "readAloudCoverRotation"
     const val readAloudHideFloatingWindow = "readAloudHideFloatingWindow"
     const val readAloudHidePlaybackPanel = "readAloudHidePlaybackPanel"
     const val readAloudHidePagePanel = "readAloudHidePagePanel"

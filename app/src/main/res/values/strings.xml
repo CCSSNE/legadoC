@@ -199,6 +199,8 @@
     <string name="read_aloud_float_on_desktop_summary">Show the speech controller outside this app. Requires floating window permission; off means it only floats in the reading page.</string>
     <string name="read_aloud_hide_floating_window">Hide read aloud floating window</string>
     <string name="read_aloud_hide_floating_window_summary">Do not show the read aloud floating controls. Keep notification controls and the foreground-service notification alive instead.</string>
+    <string name="read_aloud_cover_rotation">Rotate read-aloud cover</string>
+    <string name="read_aloud_cover_rotation_summary">Rotate the cover while playing in the floating controller and listening page.</string>
     <string name="read_aloud_hide_playback_panel">Hide current-page read-aloud panel</string>
     <string name="read_aloud_hide_playback_panel_summary">Hide the pause/resume panel shown after the read-aloud menu is closed.</string>
     <string name="read_aloud_hide_page_panel">Hide cross-page read-aloud panel</string>
