@@ -5,6 +5,7 @@ import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.os.SystemClock
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
@@ -310,17 +311,13 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         listeningTextContent.removeAllViews()
         listeningTextRows.clear()
         items.forEach { item ->
-            val normalTextSizeSp = if (item.isTitle) {
-                TITLE_TEXT_SIZE_SP
-            } else {
-                BODY_TEXT_SIZE_SP
-            }
             val normalAlpha = if (item.isTitle) 1f else BODY_TEXT_ALPHA
             val view = TextView(this@AudioPlayActivity).apply {
                 text = item.text
-                textSize = normalTextSizeSp
+                setTextSize(TypedValue.COMPLEX_UNIT_PX, NORMAL_TEXT_SIZE_PX)
                 setTextColor(Color.WHITE)
                 alpha = normalAlpha
+                gravity = Gravity.CENTER_HORIZONTAL
                 setLineSpacing(0f, 1.12f)
                 setPadding(0, 8.dpToPx(), 0, 8.dpToPx())
                 isClickable = true
@@ -330,7 +327,6 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             }
             listeningTextRows += ListeningTextRow(
                 view = view,
-                normalTextSizeSp = normalTextSizeSp,
                 normalAlpha = normalAlpha,
             )
             listeningTextContent.addView(
@@ -399,11 +395,10 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         pendingListeningTextHighlightIndex = selectedIndex
         listeningTextRows.forEachIndexed { index, row ->
             val selected = index == selectedIndex
-            row.view.textSize = if (selected) {
-                row.normalTextSizeSp * CURRENT_TEXT_SIZE_SCALE
-            } else {
-                row.normalTextSizeSp
-            }
+            row.view.setTextSize(
+                TypedValue.COMPLEX_UNIT_PX,
+                if (selected) CURRENT_TEXT_SIZE_PX else NORMAL_TEXT_SIZE_PX,
+            )
             row.view.setTextColor(Color.WHITE)
             row.view.alpha = when {
                 selected -> 1f
@@ -687,15 +682,13 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
 
     private data class ListeningTextRow(
         val view: TextView,
-        val normalTextSizeSp: Float,
         val normalAlpha: Float,
     )
 
     private companion object {
-        const val BODY_TEXT_SIZE_SP = 19f
-        const val TITLE_TEXT_SIZE_SP = 22f
+        const val NORMAL_TEXT_SIZE_PX = 50f
+        const val CURRENT_TEXT_SIZE_PX = 60f
         const val BODY_TEXT_ALPHA = 0.9f
         const val INACTIVE_TEXT_ALPHA = 0.42f
-        const val CURRENT_TEXT_SIZE_SCALE = 1.2f
     }
 }
