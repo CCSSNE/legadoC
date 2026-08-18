@@ -7,11 +7,9 @@ import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.view.ViewTreeObserver
 import android.view.WindowManager
 import android.view.animation.LinearInterpolator
 import android.widget.SeekBar
-import androidx.core.view.doOnLayout
 import io.legado.app.R
 import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
@@ -71,25 +69,9 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
 
     private fun publishDialogVisibilityAfterFirstDraw() {
         val root = binding.rootView
-        root.doOnLayout {
-            if (!ownsDialogVisibility || dialogPresentationReady) return@doOnLayout
-            val observer = root.viewTreeObserver
-            val listener = object : ViewTreeObserver.OnDrawListener {
-                private var callbackPosted = false
-
-                override fun onDraw() {
-                    if (callbackPosted) return
-                    callbackPosted = true
-                    root.post {
-                        if (observer.isAlive) {
-                            observer.removeOnDrawListener(this)
-                        }
-                        updateDialogVisibility(true)
-                    }
-                }
-            }
-            observer.addOnDrawListener(listener)
-            root.invalidate()
+        root.doAfterFirstDraw {
+            if (!ownsDialogVisibility || dialogPresentationReady) return@doAfterFirstDraw
+            updateDialogVisibility(true)
         }
     }
 
