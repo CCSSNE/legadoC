@@ -19,6 +19,7 @@ import androidx.lifecycle.lifecycleScope
 import com.dirror.lyricviewx.OnPlayClickListener
 import io.legado.app.R
 import io.legado.app.base.BaseActivity
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Status
@@ -109,9 +110,15 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         binding.titleBar.setBackgroundResource(R.color.transparent)
         val book = ReadBook.book
-        if (!BaseReadAloudService.isRun || book == null) {
+        if (book == null) {
+            AppLog.put(
+                "AudioPlayActivity cannot open: ReadBook.book is null, " +
+                    "bookUrl=${intent.getStringExtra("bookUrl")}"
+            )
             toastOnUi("当前没有可控制的听书会话")
-            finish()
+            binding.root.post {
+                if (!isFinishing && !isDestroyed) finish()
+            }
             return
         }
         binding.titleBar.title = book.name
@@ -478,10 +485,15 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     }
 
     private fun updatePlayState() = binding.run {
-        progressLoading.visible(BaseReadAloudService.loading)
-        fabPlayStop.isEnabled = !BaseReadAloudService.loading
+        val running = BaseReadAloudService.isRun
+        progressLoading.visible(running && BaseReadAloudService.loading)
+        fabPlayStop.isEnabled = !running || !BaseReadAloudService.loading
         fabPlayStop.setImageResource(
-            if (BaseReadAloudService.pause) R.drawable.ic_play_24dp else R.drawable.ic_pause_24dp
+            if (!running || BaseReadAloudService.pause) {
+                R.drawable.ic_play_24dp
+            } else {
+                R.drawable.ic_pause_24dp
+            }
         )
     }
 
