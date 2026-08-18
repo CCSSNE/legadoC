@@ -279,13 +279,18 @@ abstract class BaseReadAloudService : BaseService(),
             upReadAloudNotification()
             return
         }
-        val reader = appFloatingActivity as? ReadBookActivity
-        if (reader != null && !ReadAloudUiState.readerMenuVisible) {
+        val activeReader = ReadBookActivity.activeActivity()
+        val reader = appFloatingActivity as? ReadBookActivity ?: activeReader
+        if (activeReader != null && !ReadAloudUiState.readerMenuVisible) {
             removeReadAloudFloatingWindow()
             upReadAloudNotification()
             return
         }
         if (floatingView != null) {
+            if (!isDesktopFloating && reader == null) {
+                removeReadAloudFloatingWindow()
+                upReadAloudNotification()
+            }
             return
         }
         if (canDrawFloatingWindow()) {

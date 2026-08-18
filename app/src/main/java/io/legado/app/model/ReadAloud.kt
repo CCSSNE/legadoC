@@ -1,5 +1,6 @@
 package io.legado.app.model
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -226,11 +227,9 @@ object ReadAloud {
         ReadBook.saveRead()
         context.startActivity(
             Intent(context, AudioPlayActivity::class.java).apply {
-                addFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                            Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                            Intent.FLAG_ACTIVITY_SINGLE_TOP
-                )
+                if (context !is Activity) {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
                 putExtra("bookUrl", book.bookUrl)
                 putExtra("readAloudSession", true)
                 putExtra("returnToReader", returnToReader)
