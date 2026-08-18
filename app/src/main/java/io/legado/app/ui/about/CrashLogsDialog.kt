@@ -3,16 +3,13 @@ package io.legado.app.ui.about
 import android.app.Application
 import android.net.Uri
 import android.os.Bundle
-import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
-import androidx.appcompat.widget.Toolbar
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
 import io.legado.app.base.BaseViewModel
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
@@ -28,24 +25,17 @@ import io.legado.app.utils.find
 import io.legado.app.utils.getFile
 import io.legado.app.utils.list
 import io.legado.app.utils.sendToClip
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.isActive
 import java.io.FileFilter
 
-class CrashLogsDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
-    Toolbar.OnMenuItemClickListener {
+class CrashLogsDialog : BaseLogDialogFragment() {
 
     private val binding by viewBinding(DialogRecyclerViewBinding::bind)
     private val viewModel by viewModels<CrashViewModel>()
     private val adapter by lazy { LogAdapter() }
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(0.9f, ViewGroup.LayoutParams.WRAP_CONTENT)
-    }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.toolBar.setBackgroundColor(primaryColor)
@@ -60,12 +50,12 @@ class CrashLogsDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
         viewModel.initData()
     }
 
-    override fun onMenuItemClick(item: MenuItem): Boolean {
-        when (item.itemId) {
-            R.id.menu_clear -> viewModel.clearCrashLog()
-            R.id.menu_copy_all -> viewModel.copyAllLogs(adapter.getItems())
-        }
-        return true
+    override fun clearLogs(onCleared: () -> Unit) {
+        viewModel.clearCrashLog(onCleared)
+    }
+
+    override fun copyAllLogs() {
+        viewModel.copyAllLogs(adapter.getItems())
     }
 
     private fun showLogFile(fileDoc: FileDoc) {
@@ -142,8 +132,8 @@ class CrashLogsDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
             }
         }
 
-        fun clearCrashLog() {
-            execute {
+        fun clearCrashLog(onCleared: () -> Unit) {
+            executeLazy {
                 context.externalCacheDir
                     ?.getFile("crash")
                     ?.let {
@@ -156,11 +146,12 @@ class CrashLogsDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
                         .find("crash")
                         ?.delete()
                 }
+            }.onSuccess {
+                onCleared()
             }.onError {
                 context.toastOnUi(it.localizedMessage)
-            }.onFinally {
                 initData()
-            }
+            }.start()
         }
 
         fun copyAllLogs(logs: List<FileDoc>) {
