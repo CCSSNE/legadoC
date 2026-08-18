@@ -1534,6 +1534,9 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val readAloudHidePagePanel
         get() = appCtx.getPrefBoolean(PreferKey.readAloudHidePagePanel, false)
 
+    val readAloudPanelOnPageFooter
+        get() = appCtx.getPrefBoolean(PreferKey.readAloudPanelOnPageFooter, false)
+
     val replaceEnableDefault get() = appCtx.getPrefBoolean(PreferKey.replaceEnableDefault, true)
 
     val webDavDir get() = appCtx.getPrefString(PreferKey.webDavDir, "legado")

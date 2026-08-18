@@ -210,6 +210,8 @@
     <string name="read_aloud_hide_playback_panel_summary">Hide the pause/resume panel shown after the read-aloud menu is closed.</string>
     <string name="read_aloud_hide_page_panel">Hide cross-page read-aloud panel</string>
     <string name="read_aloud_hide_page_panel_summary">Hide the original-position/from-page panel shown after turning pages while reading aloud.</string>
+    <string name="read_aloud_panel_on_page_footer">Place compact read-aloud panels on page footer</string>
+    <string name="read_aloud_panel_on_page_footer_summary">Overlay the compact pause/resume and page-action panels on the reading page footer instead of above it.</string>
     <string name="read_aloud_scroll_follow_timeout_title">Reading follow delay</string>
     <string name="read_aloud_scroll_follow_timeout_summary">After you scroll the listening text or lyrics, wait this long before automatic centering resumes.</string>
     <string name="read_aloud_scroll_follow_timeout_dialog_title">Reading follow delay (ms)</string>

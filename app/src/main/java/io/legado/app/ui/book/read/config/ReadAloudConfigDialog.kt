@@ -212,7 +212,8 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 }
 
                 PreferKey.readAloudHidePlaybackPanel,
-                PreferKey.readAloudHidePagePanel -> {
+                PreferKey.readAloudHidePagePanel,
+                PreferKey.readAloudPanelOnPageFooter -> {
                     postEvent(key, "")
                 }
 

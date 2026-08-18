@@ -100,6 +100,13 @@
 
         <io.legado.app.lib.prefs.SwitchPreference
             android:defaultValue="false"
+            android:key="readAloudPanelOnPageFooter"
+            android:summary="@string/read_aloud_panel_on_page_footer_summary"
+            android:title="@string/read_aloud_panel_on_page_footer"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="false"
             android:key="readAloudFloatOnDesktop"
             android:summary="@string/read_aloud_float_on_desktop_summary"
             android:title="@string/read_aloud_float_on_desktop"

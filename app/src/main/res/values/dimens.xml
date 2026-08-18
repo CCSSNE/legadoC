@@ -108,6 +108,20 @@
     <dimen name="ui_action_radius">9dp</dimen>
     <dimen name="popup_surface_corner_radius">4dp</dimen>
 
+    <!-- Reading-page compact read-aloud panels -->
+    <dimen name="read_aloud_compact_panel_height">24dp</dimen>
+    <dimen name="read_aloud_compact_panel_radius">12dp</dimen>
+    <dimen name="read_aloud_compact_panel_footer_clearance">28dp</dimen>
+    <dimen name="read_aloud_compact_panel_padding_horizontal">4dp</dimen>
+    <dimen name="read_aloud_compact_panel_button_padding_horizontal">4dp</dimen>
+    <dimen name="read_aloud_compact_panel_text_size">12sp</dimen>
+    <dimen name="read_aloud_compact_panel_icon_size">12dp</dimen>
+    <dimen name="read_aloud_compact_panel_icon_padding">3dp</dimen>
+    <dimen name="read_aloud_compact_panel_playback_min_width">64dp</dimen>
+    <dimen name="read_aloud_compact_panel_original_min_width">60dp</dimen>
+    <dimen name="read_aloud_compact_panel_from_page_min_width">72dp</dimen>
+    <dimen name="read_aloud_compact_panel_divider_height">12dp</dimen>
+
     <!-- Bookshelf collection cover -->
     <dimen name="book_collection_cover_corner_radius">4dp</dimen>
 
