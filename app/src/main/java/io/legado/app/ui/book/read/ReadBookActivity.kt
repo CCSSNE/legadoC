@@ -1662,7 +1662,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             }
             val params = binding.readAloudPlaybackPanel.layoutParams as? FrameLayout.LayoutParams
                 ?: return@post
-            val bottomMargin = readAloudPanelBottomMargin()
+            val bottomMargin = readAloudPanelBottomMargin(binding.readAloudPlaybackPanel.height)
             if (params.bottomMargin != bottomMargin) {
                 params.bottomMargin = bottomMargin
                 binding.readAloudPlaybackPanel.layoutParams = params
@@ -1737,7 +1737,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             }
             val params = binding.readAloudPagePanel.layoutParams as? FrameLayout.LayoutParams
                 ?: return@post
-            val bottomMargin = readAloudPanelBottomMargin()
+            val bottomMargin = readAloudPanelBottomMargin(binding.readAloudPagePanel.height)
             if (params.bottomMargin != bottomMargin) {
                 params.bottomMargin = bottomMargin
                 binding.readAloudPagePanel.layoutParams = params
@@ -1755,13 +1755,15 @@ class ReadBookActivity : BaseReadBookActivity(),
         clearReadAloudFloatingAvoidance(EventBus.FLOATING_AVOID_SOURCE_READ_ALOUD_PAGE_PANEL)
     }
 
-    private fun readAloudPanelBottomMargin(): Int {
-        val footerClearance = if (AppConfig.readAloudPanelOnPageFooter) {
-            0
+    private fun readAloudPanelBottomMargin(panelHeight: Int): Int {
+        check(panelHeight > 0) { "Read-aloud panel has no measurable height" }
+        val footerBounds = binding.readView.footerBounds
+        val panelBottom = if (AppConfig.readAloudPanelOnPageFooter) {
+            (footerBounds.first + footerBounds.last + panelHeight) / 2
         } else {
-            resources.getDimensionPixelSize(R.dimen.read_aloud_compact_panel_footer_clearance)
+            footerBounds.first
         }
-        return binding.navigationBar.height + footerClearance
+        return binding.readView.height - panelBottom
     }
 
     private fun fadeReadAloudPanel(view: View, show: Boolean, immediate: Boolean = false) {
