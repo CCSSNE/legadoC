@@ -8,7 +8,7 @@ $ErrorActionPreference = 'Stop'
 if ($DurationSeconds -lt 1 -or $DurationSeconds -gt 30) { throw 'DurationSeconds must be between 1 and 30' }
 $adb = Join-Path $env:LEIDIAN_HOME 'adb.exe'
 Assert-LDPlayerTarget
-& $adb connect $env:LEIDIAN_SERIAL | Out-Null
+& $adb -s $env:LEIDIAN_SERIAL connect $env:LEIDIAN_SERIAL | Out-Null
 if ((& $adb -s $env:LEIDIAN_SERIAL get-state).Trim() -ne 'device') { throw 'LDPlayer transport is not ready' }
 
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {

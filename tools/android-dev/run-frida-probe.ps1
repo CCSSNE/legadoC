@@ -29,7 +29,7 @@ $remoteServer = '/data/local/tmp/legadoc-frida-server'
 if (-not (Test-Path $server)) { throw "Frida server not found: $server" }
 $serverPid = $null
 
-& $adb connect $env:LEIDIAN_SERIAL | Out-Null
+& $adb -s $env:LEIDIAN_SERIAL connect $env:LEIDIAN_SERIAL | Out-Null
 if ((& $adb -s $env:LEIDIAN_SERIAL get-state).Trim() -ne 'device') {
     throw 'LDPlayer transport is not ready'
 }

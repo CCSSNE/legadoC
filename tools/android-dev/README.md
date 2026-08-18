@@ -12,10 +12,10 @@ Verify the explicit LDPlayer target and Python tools:
 .\tools\android-dev\verify-env.ps1
 ```
 
-Use uiautomator2 for UI state and the managed Frida probe for runtime objects. Every entry point rejects targets other than the explicit LDPlayer transport:
+The sole tool target is maintained in `target.json`. Every PowerShell and Python entry point validates its loopback ADB transport against the boot serial of the running LDPlayer instance 0 before it can operate. Use uiautomator2 for UI state and the managed Frida probe for runtime objects:
 
 ```powershell
-.\.android-dev-venv\Scripts\python.exe .\tools\android-dev\uiauto_probe.py --serial 127.0.0.1:5557
+.\.android-dev-venv\Scripts\python.exe .\tools\android-dev\uiauto_probe.py
 .\tools\android-dev\run-frida-probe.ps1
 .\tools\android-dev\run-frida-probe.ps1 -ClassName io.legado.app.utils.SurfaceBackdrop
 .\tools\android-dev\run-frida-probe.ps1 -ClassName io.legado.app.utils.SurfaceBackdrop -MethodName apply
