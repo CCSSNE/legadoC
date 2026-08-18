@@ -206,7 +206,10 @@
     <string name="decimal_input_range_hint">%1$s-%2$s</string>
     <string name="decimal_input_range_invalid">请输入 %1$s 到 %2$s 之间的数字。</string>
     <string name="read_aloud_hide_playback_panel">隐藏当页小悬浮窗</string>
-    <string name="read_aloud_hide_playback_panel_summary">朗读菜单收起后，不显示暂停播放/继续播放的小悬浮窗。</string>
+    <string name="read_aloud_hide_playback_panel_summary">不显示临时的暂停/继续播放小悬浮窗，直接在页底中央显示操作。</string>
+    <string name="read_aloud_playback_panel_duration">当页小悬浮窗停留时长</string>
+    <string name="read_aloud_playback_panel_duration_summary">%s 秒后将暂停/继续播放收进页底中央。</string>
+    <string name="read_aloud_playback_panel_duration_dialog_title">当页小悬浮窗停留时长（秒）</string>
     <string name="read_aloud_hide_page_panel">隐藏跨页小悬浮窗</string>
     <string name="read_aloud_hide_page_panel_summary">朗读过程中翻页后，不显示原进度/从本页听的小悬浮窗。</string>
     <string name="read_aloud_panel_on_page_footer">小悬浮窗放在页底上</string>

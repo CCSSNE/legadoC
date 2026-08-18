@@ -98,6 +98,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
             upCoverRotationDurationSummary()
             upScrollFollowTimeoutSummary()
             upProgressPollIntervalSummary()
+            upPlaybackPanelDurationSummary()
         }
 
         override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -124,6 +125,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 PreferKey.readAloudCoverRotationDuration -> showCoverRotationDurationDialog()
                 PreferKey.readAloudScrollFollowTimeout -> showScrollFollowTimeoutDialog()
                 PreferKey.readAloudProgressPollInterval -> showProgressPollIntervalDialog()
+                PreferKey.readAloudPlaybackPanelDuration -> showPlaybackPanelDurationDialog()
             }
             return super.onPreferenceTreeClick(preference)
         }
@@ -165,6 +167,28 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 getString(
                     R.string.read_aloud_progress_poll_interval_value,
                     AppConfig.readAloudProgressPollInterval
+                )
+        }
+
+        private fun showPlaybackPanelDurationDialog() {
+            showIntegerInputDialog(
+                title = R.string.read_aloud_playback_panel_duration_dialog_title,
+                currentValue = AppConfig.readAloudPlaybackPanelDuration,
+                validRange =
+                    AppConfig.MIN_READ_ALOUD_PLAYBACK_PANEL_DURATION..
+                            AppConfig.MAX_READ_ALOUD_PLAYBACK_PANEL_DURATION,
+                defaultValue = AppConfig.DEFAULT_READ_ALOUD_PLAYBACK_PANEL_DURATION
+            ) {
+                AppConfig.readAloudPlaybackPanelDuration = it
+                upPlaybackPanelDurationSummary()
+            }
+        }
+
+        private fun upPlaybackPanelDurationSummary() {
+            findPreference<Preference>(PreferKey.readAloudPlaybackPanelDuration)?.summary =
+                getString(
+                    R.string.read_aloud_playback_panel_duration_summary,
+                    AppConfig.readAloudPlaybackPanelDuration
                 )
         }
 
@@ -219,6 +243,10 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
 
                 PreferKey.readAloudScrollFollowTimeout -> upScrollFollowTimeoutSummary()
                 PreferKey.readAloudProgressPollInterval -> upProgressPollIntervalSummary()
+                PreferKey.readAloudPlaybackPanelDuration -> {
+                    upPlaybackPanelDurationSummary()
+                    postEvent(key, "")
+                }
                 PreferKey.readAloudCoverRotationDuration -> upCoverRotationDurationSummary()
 
                 PreferKey.ignoreAudioFocus -> {

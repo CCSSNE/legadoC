@@ -91,6 +91,13 @@
             android:title="@string/read_aloud_hide_playback_panel"
             app:iconSpaceReserved="false" />
 
+        <io.legado.app.lib.prefs.Preference
+            android:defaultValue="10"
+            android:key="readAloudPlaybackPanelDuration"
+            android:summary="@string/read_aloud_playback_panel_duration_summary"
+            android:title="@string/read_aloud_playback_panel_duration"
+            app:iconSpaceReserved="false" />
+
         <io.legado.app.lib.prefs.SwitchPreference
             android:defaultValue="false"
             android:key="readAloudHidePagePanel"
