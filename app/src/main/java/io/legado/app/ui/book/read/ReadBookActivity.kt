@@ -88,6 +88,7 @@ import io.legado.app.model.localBook.MobiFile
 import io.legado.app.receiver.NetworkChangedListener
 import io.legado.app.receiver.TimeBatteryReceiver
 import io.legado.app.service.BaseReadAloudService
+import io.legado.app.service.ReadAloudFloatingObstruction
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.book.changesource.ChangeBookSourceDialog
@@ -1966,11 +1967,26 @@ class ReadBookActivity : BaseReadBookActivity(),
         ReadBook.readAloud()
     }
 
-    private fun postReadAloudFloatingAvoidance(source: String, y: Int) {
-        postEvent(EventBus.READ_ALOUD_FLOATING_AVOIDANCE, Bundle().apply {
-            putString("source", source)
-            putInt("y", y)
-        })
+    private fun postReadAloudFloatingAvoidance(
+        source: String,
+        topOnScreen: Int,
+        bottomOnScreen: Int = readAloudFloatingScreenBottom(),
+    ) {
+        check(topOnScreen >= 0 && bottomOnScreen > topOnScreen) {
+            "Read-aloud floating obstruction has invalid bounds: [$topOnScreen, $bottomOnScreen]"
+        }
+        postEvent(
+            EventBus.READ_ALOUD_FLOATING_AVOIDANCE,
+            ReadAloudFloatingObstruction(source, topOnScreen, bottomOnScreen),
+        )
+    }
+
+    private fun readAloudFloatingScreenBottom(): Int {
+        val decor = window.decorView
+        check(decor.height > 0) { "ReadBookActivity decor has no measurable height" }
+        val location = IntArray(2)
+        decor.getLocationOnScreen(location)
+        return location[1] + decor.height
     }
 
     fun postReadAloudFloatingAvoidanceForView(source: String, view: View?) {
@@ -1984,7 +2000,9 @@ class ReadBookActivity : BaseReadBookActivity(),
                 !target.getGlobalVisibleRect(rect) ||
                 rect.height() <= 0
             ) return
-            postReadAloudFloatingAvoidance(source, rect.top)
+            val location = IntArray(2)
+            target.getLocationOnScreen(location)
+            postReadAloudFloatingAvoidance(source, location[1])
         }
         view?.post { postForView() }
         view?.postDelayed({ postForView() }, 80L)
@@ -1994,19 +2012,23 @@ class ReadBookActivity : BaseReadBookActivity(),
         view?.postDelayed({ postForView() }, 500L)
     }
 
-    fun postReadAloudFloatingAvoidanceFromScreenTop(source: String, topOnScreen: Int) {
-        check(topOnScreen > 0) {
-            "Read-aloud floating obstruction has invalid screen top: $topOnScreen"
-        }
+    fun postReadAloudFloatingAvoidanceFromScreenBounds(
+        source: String,
+        topOnScreen: Int,
+        bottomOnScreen: Int,
+    ) {
         readAloudAvoidanceGenerations[source] =
             (readAloudAvoidanceGenerations[source] ?: 0L) + 1L
-        postReadAloudFloatingAvoidance(source, topOnScreen)
+        postReadAloudFloatingAvoidance(source, topOnScreen, bottomOnScreen)
     }
 
     fun clearReadAloudFloatingAvoidance(source: String) {
         readAloudAvoidanceGenerations[source] =
             (readAloudAvoidanceGenerations[source] ?: 0L) + 1L
-        postReadAloudFloatingAvoidance(source, 0)
+        postEvent(
+            EventBus.READ_ALOUD_FLOATING_AVOIDANCE,
+            ReadAloudFloatingObstruction.clear(source),
+        )
     }
 
     /**
@@ -2551,12 +2573,33 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun onReadMenuAvoidanceChanged(show: Boolean) {
         if (show) {
-            postReadAloudFloatingAvoidanceForView(
+            val topMenuBounds = Rect()
+            check(
+                binding.readMenu.titleBarView().getGlobalVisibleRect(topMenuBounds) &&
+                    topMenuBounds.height() > 0
+            ) {
+                "Read menu title bar has no visible bounds"
+            }
+            postReadAloudFloatingAvoidanceFromScreenBounds(
+                EventBus.FLOATING_AVOID_SOURCE_READ_MENU_TOP,
+                topMenuBounds.top,
+                topMenuBounds.bottom,
+            )
+            val bottomMenuBounds = Rect()
+            check(
+                binding.readMenu.bottomMenuView().getGlobalVisibleRect(bottomMenuBounds) &&
+                    bottomMenuBounds.height() > 0
+            ) {
+                "Read menu bottom panel has no visible bounds"
+            }
+            postReadAloudFloatingAvoidanceFromScreenBounds(
                 EventBus.FLOATING_AVOID_SOURCE_READ_MENU,
-                binding.readMenu.bottomMenuView()
+                bottomMenuBounds.top,
+                readAloudFloatingScreenBottom(),
             )
         } else {
             clearReadAloudFloatingAvoidance(EventBus.FLOATING_AVOID_SOURCE_READ_MENU)
+            clearReadAloudFloatingAvoidance(EventBus.FLOATING_AVOID_SOURCE_READ_MENU_TOP)
         }
         updateReadAloudMainMenuVisibility(show)
     }

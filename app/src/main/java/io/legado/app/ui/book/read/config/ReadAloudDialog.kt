@@ -87,9 +87,10 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
         check(view.height > 0) { "Read-aloud menu has no measurable height" }
         val location = IntArray(2)
         view.getLocationOnScreen(location)
-        (activity as? ReadBookActivity)?.postReadAloudFloatingAvoidanceFromScreenTop(
+        (activity as? ReadBookActivity)?.postReadAloudFloatingAvoidanceFromScreenBounds(
             EventBus.FLOATING_AVOID_SOURCE_READ_ALOUD_DIALOG,
             location[1],
+            location[1] + view.height,
         )
     }
 
