@@ -286,6 +286,8 @@ object PreferKey {
     const val webDavDeviceName = "webDavDeviceName"
     const val webServiceWakeLock = "webServiceWakeLock"
     const val audioPlayWakeLock = "audioPlayWakeLock"
+    const val audioPlayTopTitleMode = "audioPlayTopTitleMode"
+    const val audioPlayShowChapterTitle = "audioPlayShowChapterTitle"
     const val readAloudWakeLock = "readAloudWakeLock"
     const val readAloudCoverRotation = "readAloudCoverRotation"
     const val readAloudCoverRotationDuration = "readAloudCoverRotationDuration"

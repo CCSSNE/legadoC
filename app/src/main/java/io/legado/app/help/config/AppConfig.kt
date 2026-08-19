@@ -1497,6 +1497,25 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val readAloudCoverRotation
         get() = appCtx.getPrefBoolean(PreferKey.readAloudCoverRotation, true)
 
+    // 听书播放页（AudioPlayActivity）顶部标题显示，文字书 TTS 与书源音频共用
+    const val AUDIO_PLAY_TOP_TITLE_BOOK = 0
+    const val AUDIO_PLAY_TOP_TITLE_CHAPTER = 1
+
+    var audioPlayTopTitleMode: Int
+        get() = appCtx.getPrefInt(
+            PreferKey.audioPlayTopTitleMode,
+            AUDIO_PLAY_TOP_TITLE_BOOK
+        ).let { if (it == AUDIO_PLAY_TOP_TITLE_CHAPTER) it else AUDIO_PLAY_TOP_TITLE_BOOK }
+        set(value) = appCtx.putPrefInt(
+            PreferKey.audioPlayTopTitleMode,
+            if (value == AUDIO_PLAY_TOP_TITLE_CHAPTER) value else AUDIO_PLAY_TOP_TITLE_BOOK
+        )
+
+    // 听书播放页下方章节名是否显示，默认开启
+    var audioPlayShowChapterTitle: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.audioPlayShowChapterTitle, true)
+        set(value) = appCtx.putPrefBoolean(PreferKey.audioPlayShowChapterTitle, value)
+
     const val DEFAULT_READ_ALOUD_COVER_ROTATION_DURATION = 10000
     const val MIN_READ_ALOUD_COVER_ROTATION_DURATION = 100
     const val MAX_READ_ALOUD_COVER_ROTATION_DURATION = 60000
