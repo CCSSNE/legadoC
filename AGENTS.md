@@ -265,6 +265,6 @@ uiautomator2 / ADB
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- `3.26.081916c` / `10696`，2026-08-19（UTC），`own` 主线（代码提交 `984a38a`）。书源音频（SourceAudio）启动与自动切章解耦正文 TextChapter：会话章节身份一律以统一阅读目标 `ReadBook.durChapterIndex` 确定，TextChapter 仅在 index 匹配时参与段落/LRC 准备；`newReadAloud` 在正文未加载/未完成排版/无正文时直达 `play()`；detached 与 attached 模式的上一章/下一章/上一段均以 `BookChapter.index` 推进不等待正文；字幕/LRC 绑定失败、段落映射越界、无时间映射定位均降级为日志，只影响正文同步/高亮/指哪读哪，不再停止正常播放。已通过正式后台 `:app:assembleAppC` 冷编译（`--no-daemon --max-workers=1` 关增量），退出码为 0；`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.081916c` / `10696`、中文名 `阅读 C`、架构 `arm64-v8a`，`apksigner` 退出码为 0。源码已推送至 `origin/own`。本次未安装模拟器、未发布 Release（用户仅要求编译）。
+- `3.26.081921c` / `10697`，2026-08-19（UTC），`own` 主线（代码提交 `c1f8b49`）。听书播放页章节名链路统一以朗读服务的 `chapterIndex`（`READ_ALOUD_PROGRESS` 事件）为准：新增 UI 显示身份 `displayedChapterIndex` 与目录章节名缓存，切章且与 UI 已显示 index 不同时刷新顶部标题与下方章节名；标题来源改为从书籍目录 `BookChapter` 查询（`appDb.bookChapterDao.getChapter`），不再依赖 `curTextChapter`，书源音频 TextChapter 未加载/无字幕时不再回退书名；顶部标题显示模式（默认章节名）与下方章节名开关（默认关闭）两项显示设置沿用上一版，TTS 与书源音频共用同一套逻辑，无 `bookType` 分支。已通过正式后台 `:app:assembleAppC` 冷编译（`--no-daemon --max-workers=1` 关增量），退出码为 0；`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.081921c` / `10697`、中文名 `阅读 C`、架构 `arm64-v8a`，`apksigner` 退出码为 0。源码已推送至 `origin/own`（`c1f8b49`）。本次未安装模拟器、未发布 Release（用户仅要求推送与编译）。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
