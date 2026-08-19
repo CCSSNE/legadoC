@@ -3,6 +3,7 @@ package io.legado.app.ui.book.audio
 import android.animation.ObjectAnimator
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -959,9 +960,9 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     }
 
     /**
-     * 命中测试：在气泡 span 的可见矩形内判断点击位置。
-     * 直接按气泡矩形的 [左,右] x [行top,行bottom] 判定，
-     * 避免 layout offset 惰性边界把气泡点击判成正文点击（或反之）。
+     * 命中测试：与 [ListeningReviewImageSpan] 绘制共用同一套图片几何
+     * （宽度＝字符单元宽，高度按位图比例在行盒内垂直居中），
+     * 只在真实可见气泡矩形内判定，行盒空白区不再被误判为气泡。
      */
     private fun reviewingSpanAt(view: TextView, event: MotionEvent): ListeningReviewClickableSpan? {
         val layout = view.layout ?: return null
@@ -970,16 +971,27 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         val py = event.y - view.totalPaddingTop + view.scrollY
         val slop = 4.dpToPx()
         return text.getSpans(0, text.length, ListeningReviewClickableSpan::class.java)
-            .firstOrNull { span ->
-                val start = text.getSpanStart(span)
-                if (start < 0) return@firstOrNull false
+            .firstOrNull { clickSpan ->
+                val start = text.getSpanStart(clickSpan)
+                if (start < 0 || start >= layout.text.length) return@firstOrNull false
+                val imageSpan = text
+                    .getSpans(start, start + 1, ListeningReviewImageSpan::class.java)
+                    .firstOrNull() ?: return@firstOrNull false
                 val line = layout.getLineForOffset(start)
-                val left = layout.getPrimaryHorizontal(start)
-                val right = left + layout.getPrimaryHorizontal(start + 1) - left
-                py >= layout.getLineTop(line) - slop &&
-                    py <= layout.getLineBottom(line) + slop &&
-                    px >= left - slop &&
-                    px <= right + slop
+                val lineHeight = (layout.getLineBottom(line) - layout.getLineTop(line)).coerceAtLeast(1)
+                val width = (view.paint.textSize * REVIEW_IMAGE_WIDTH_SCALE).roundToInt().coerceAtLeast(1)
+                val bitmap = imageSpan.resolveBitmap(width, lineHeight) ?: return@firstOrNull false
+                val rect = imageSpan.imageRect(
+                    width = width,
+                    height = lineHeight,
+                    bitmapWidth = bitmap.width,
+                    bitmapHeight = bitmap.height,
+                    x = layout.getPrimaryHorizontal(start),
+                    top = layout.getLineTop(line),
+                    bottom = layout.getLineBottom(line),
+                )
+                px >= rect.left - slop && px <= rect.right + slop &&
+                    py >= rect.top - slop && py <= rect.bottom + slop
             }
     }
 
@@ -1017,6 +1029,8 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     /**
      * 评论按钮原图 span：复用书源 src 图片（保留原样式与评论数量），
      * 与阅读页 ImageColumn 一致——宽度固定为字符宽，高度按原图比例垂直居中。
+     * 绘制（draw）与命中测试（[reviewingSpanAt]）共用
+     * [resolveBitmap] + [imageRect] 同一套取图与几何计算。
      */
     private class ListeningReviewImageSpan(
         private val src: String,
@@ -1047,7 +1061,18 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             val book = ReadBook.book ?: return
             val height = (bottom - top).coerceAtLeast(1)
             val width = (paint.textSize * REVIEW_IMAGE_WIDTH_SCALE).roundToInt().coerceAtLeast(1)
-            val bitmap = if (!ImageProvider.isImageExist(book, src)) {
+            val bitmap = resolveBitmap(width, height) ?: return
+            val rect = imageRect(width, height, bitmap.width, bitmap.height, x, top, bottom)
+            canvas.drawBitmap(bitmap, null, rect, paint)
+        }
+
+        /**
+         * 与绘制共用：按与 draw() 完全相同的规则取图。
+         * 未缓存时先异步缓存并回占位图；绘制与命中测试都用这张图计算几何，保证一致。
+         */
+        fun resolveBitmap(width: Int, height: Int): Bitmap? {
+            val book = ReadBook.book ?: return null
+            return if (!ImageProvider.isImageExist(book, src)) {
                 ImageProvider.cacheImageAsync(
                     book = book,
                     src = src,
@@ -1059,11 +1084,25 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             } else {
                 ImageProvider.getImage(book, src, width, height)
             }
-            // 宽度固定为字符宽；高度按原图比例计算并相对当前行坐标垂直居中
-            // （原实现漏加行 top，非首行气泡会整体上移；div 为负时允许高于行高）
-            val imgHeight = width.toFloat() / bitmap.width.coerceAtLeast(1) * bitmap.height
+        }
+
+        /**
+         * 图片像素矩形——命中测试与绘制共用同一套几何：
+         * 宽度固定为字符单元宽，高度按位图比例计算，
+         * 在行盒 [top, bottom] 内垂直居中（div 为负时允许高于行盒）。
+         */
+        fun imageRect(
+            width: Int,
+            height: Int,
+            bitmapWidth: Int,
+            bitmapHeight: Int,
+            x: Float,
+            top: Int,
+            bottom: Int,
+        ): RectF {
+            val imgHeight = width.toFloat() / bitmapWidth.coerceAtLeast(1) * bitmapHeight
             val div = (height - imgHeight) / 2f
-            canvas.drawBitmap(bitmap, null, RectF(x, top + div, x + width, bottom - div), paint)
+            return RectF(x, top + div, x + width, bottom - div)
         }
     }
 
