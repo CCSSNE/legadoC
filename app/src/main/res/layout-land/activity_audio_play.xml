@@ -73,6 +73,8 @@
             android:fillViewport="true"
             android:paddingStart="20dp"
             android:paddingEnd="20dp"
+            android:requiresFadingEdge="vertical"
+            android:fadingEdgeLength="21dp"
             android:visibility="gone">
 
         <LinearLayout

@@ -68,9 +68,12 @@
             android:id="@+id/listening_text_scroll"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
+            android:layout_marginTop="7dp"
             android:fillViewport="true"
             android:paddingStart="20dp"
             android:paddingEnd="20dp"
+            android:requiresFadingEdge="vertical"
+            android:fadingEdgeLength="21dp"
             android:visibility="gone">
 
         <LinearLayout
