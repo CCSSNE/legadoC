@@ -36,6 +36,7 @@
 
 - APK 安装、运行和调试只使用雷电模拟器（LDPlayer），路径为 `F:\leidian\LDPlayer14\dnplayer.exe`。未启动时可尝试启动；失败则请用户手动打开。
 - 所有 ADB 调试目标只能是雷电模拟器；执行前通过 `tools\android-dev\target.json` 的实例 0 校验确认目标确为模拟器；不确定时停止，禁止裸 `adb`。
+- 雷电模拟器（LDPlayer 实例 0）的 ADB serial 为 `127.0.0.1:5555`（见 `tools\android-dev\target.json`）。其 adb 特征：`ro.product.model` 常伪装成努比亚机型 `NX789S`（manufacturer `nubia`），这是雷电伪装真机的正常特征，不是真机；`ro.kernel.qemu = 1` 证实为 QEMU 模拟器。遇到 `127.0.0.1:5555` 直接视为雷电实例 0，不必因型号像真机而犹豫。若该端口当前不在 `adb devices` 中，用 `adb connect 127.0.0.1:5555` 连接即可。
 - 真实小说优先用于阅读功能验证。`C:\Users\user\Documents\leidian14\Pictures` 与模拟器 Pictures 目录互通，可作为导入素材。
 
 ### 验证闭环
