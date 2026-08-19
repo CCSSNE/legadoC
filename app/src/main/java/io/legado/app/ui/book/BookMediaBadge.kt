@@ -1,4 +1,4 @@
-package io.legado.app.ui.main.bookshelf
+package io.legado.app.ui.book
 
 import android.view.View
 import androidx.core.view.isVisible

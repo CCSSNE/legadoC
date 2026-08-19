@@ -16,7 +16,7 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.ui.main.bookshelf.BookCollectionShelfItem
-import io.legado.app.ui.main.bookshelf.bindBookMediaBadge
+import io.legado.app.ui.book.bindBookMediaBadge
 import io.legado.app.ui.main.bookshelf.loadCollectionCovers
 import io.legado.app.utils.gone
 import io.legado.app.utils.invisible
