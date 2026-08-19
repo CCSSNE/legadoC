@@ -119,7 +119,7 @@ class BooksAdapterGrid(context: Context, callBack: CallBack) :
                 tvName.text = item.name
             }
             ivCover.load(item, false)
-            root.bindBookMediaBadge(item)
+            root.bindBookMediaBadge(item.type)
             upRefresh(this, item)
         }
 
@@ -139,7 +139,7 @@ class BooksAdapterGrid(context: Context, callBack: CallBack) :
                             )
 
                             "refresh" -> upRefresh(this, item)
-                            "type" -> root.bindBookMediaBadge(item)
+                            "type" -> root.bindBookMediaBadge(item.type)
                         }
                     }
                 }
@@ -178,7 +178,7 @@ class BooksAdapterGrid(context: Context, callBack: CallBack) :
         fun onBind(item: Book, position: Int) = binding.run {
             tvName.text = item.name
             ivCover.load(item, false)
-            root.bindBookMediaBadge(item)
+            root.bindBookMediaBadge(item.type)
             upRefresh(this, item)
         }
 
@@ -198,7 +198,7 @@ class BooksAdapterGrid(context: Context, callBack: CallBack) :
                             )
 
                             "refresh" -> upRefresh(this, item)
-                            "type" -> root.bindBookMediaBadge(item)
+                            "type" -> root.bindBookMediaBadge(item.type)
                         }
                     }
                 }

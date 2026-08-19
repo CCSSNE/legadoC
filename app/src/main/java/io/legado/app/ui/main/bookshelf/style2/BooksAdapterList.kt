@@ -105,7 +105,7 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
             tvRead.text = item.durChapterTitle
             tvLast.text = item.latestChapterTitle
             ivCover.load(item, false)
-            root.bindBookMediaBadge(item)
+            root.bindBookMediaBadge(item.type)
             flHasNew.visible()
             ivAuthor.visible()
             ivLast.visible()
@@ -132,7 +132,7 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
                             )
 
                             "refresh" -> upRefresh(this, item)
-                            "type" -> root.bindBookMediaBadge(item)
+                            "type" -> root.bindBookMediaBadge(item.type)
                         }
                     }
                 }
@@ -177,7 +177,7 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
             tvRead.text = item.durChapterTitle
             tvLast.text = item.latestChapterTitle
             ivCover.load(item, false)
-            root.bindBookMediaBadge(item)
+            root.bindBookMediaBadge(item.type)
             flHasNew.visible()
             ivAuthor.visible()
             ivLast.visible()
@@ -203,7 +203,7 @@ class BooksAdapterList(context: Context, callBack: CallBack) :
                             )
 
                             "refresh" -> upRefresh(this, item)
-                            "type" -> root.bindBookMediaBadge(item)
+                            "type" -> root.bindBookMediaBadge(item.type)
                         }
                     }
                 }

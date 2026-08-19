@@ -31,6 +31,19 @@
             android:transitionName="img_cover"
             tools:ignore="UnusedAttribute" />
 
+        <androidx.appcompat.widget.AppCompatImageView
+            android:id="@+id/iv_audio"
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:layout_gravity="top|start"
+            android:layout_margin="6dp"
+            android:background="@drawable/bg_bookshelf_audio_badge"
+            android:contentDescription="@string/audio"
+            android:padding="4dp"
+            android:src="@drawable/ic_volume_up"
+            android:visibility="gone"
+            tools:visibility="visible" />
+
         <io.legado.app.ui.widget.image.CircleImageView
             android:id="@+id/iv_in_bookshelf"
             android:layout_width="8dp"
