@@ -100,6 +100,13 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     private var pendingListeningTextHighlightIndex: Int? = null
     private var preserveAfterEngineSwitch = false
     private var coverRotationAnimator: ObjectAnimator? = null
+    /**
+     * 当前 UI 已显示的朗读章节 index。章节名链路以朗读服务的 chapterIndex 为准
+     * （READ_ALOUD_PROGRESS 事件），书源音频 TextChapter 未加载也不受影响。
+     */
+    private var displayedChapterIndex = ReadBook.durChapterIndex
+    /** [displayedChapterIndex] 对应的目录章节名缓存，切章时清空重取 */
+    private var displayedChapterTitleCache: String? = null
 
     private val tocActivityResult = registerForActivityResult(TocActivityResult()) { result ->
         result ?: return@registerForActivityResult
@@ -110,6 +117,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         val opened = ReadBook.openChapter(chapterIndex, chapterPosition, false) {
             ReadBook.skipReadAloudSyncOnce = false
             ReadBook.readAloud()
+            syncDisplayedChapter(ReadBook.durChapterIndex)
             updateChapterUi()
         }
         if (!opened) {
@@ -263,6 +271,32 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     }
 
     /**
+     * 以朗读章节 index 建立章节名显示身份（文字书 TTS 与书源音频共用，不分引擎）。
+     * TextChapter 未加载/无正文时不依赖 curTextChapter，章节名直接查询目录 BookChapter。
+     */
+    private fun syncDisplayedChapter(chapterIndex: Int) {
+        if (displayedChapterIndex != chapterIndex) {
+            displayedChapterIndex = chapterIndex
+            displayedChapterTitleCache = null
+        }
+    }
+
+    /**
+     * 当前朗读章节的标题：优先取目录中对应 BookChapter 的章节名，
+     * 目录无此章节或章节名为空时回退书名。按章节缓存，切章才重新查询。
+     */
+    private fun currentChapterTitle(): String {
+        if (displayedChapterTitleCache == null) {
+            val book = ReadBook.book
+            val title = appDb.bookChapterDao
+                .getChapter(book?.bookUrl ?: "", displayedChapterIndex)
+                ?.title?.takeIf { it.isNotBlank() }
+            displayedChapterTitleCache = title ?: book?.name.orEmpty()
+        }
+        return displayedChapterTitleCache ?: ""
+    }
+
+    /**
      * 按“顶部标题显示”设置刷新标题栏。章节模式下随切章实时更新，
      * 当前章节名为空时回退显示书名。
      */
@@ -270,15 +304,14 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         binding.titleBar.title = if (
             AppConfig.audioPlayTopTitleMode == AppConfig.AUDIO_PLAY_TOP_TITLE_CHAPTER
         ) {
-            ReadBook.curTextChapter?.title?.takeIf { it.isNotBlank() }
-                ?: ReadBook.book?.name.orEmpty()
+            currentChapterTitle()
         } else {
             ReadBook.book?.name.orEmpty()
         }
     }
 
     private fun updateChapterUi() {
-        binding.tvSubTitle.text = ReadBook.curTextChapter?.title.orEmpty()
+        binding.tvSubTitle.text = currentChapterTitle()
         updateTopTitle()
         bindListeningText()
     }
@@ -593,7 +626,8 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         if (!trackingProgress) {
             playerProgress.progress = progress.position
         }
-        if (progress.chapterIndex != ReadBook.curTextChapter?.chapter?.index) {
+        if (progress.chapterIndex != displayedChapterIndex) {
+            syncDisplayedChapter(progress.chapterIndex)
             updateChapterUi()
         }
     }
