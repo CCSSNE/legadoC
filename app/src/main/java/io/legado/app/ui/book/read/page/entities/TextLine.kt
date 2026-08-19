@@ -40,6 +40,9 @@ data class TextLine(
     var isParagraphEnd: Boolean = false,
     var isImage: Boolean = false,
     var isHtml: Boolean = false,
+    // <usehtml>…</usehtml> 结构块渲染出的行：属于非音频正文结构，
+    // 不参与 AudioTextMapping 的正文段落 ↔ timeMs 编号
+    var isStructuralHtml: Boolean = false,
     var startX: Float = 0f,
     var indentSize: Int = 0,
     var extraLetterSpacing: Float = 0f,

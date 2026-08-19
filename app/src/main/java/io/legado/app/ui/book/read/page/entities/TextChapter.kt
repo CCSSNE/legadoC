@@ -223,7 +223,9 @@ data class TextChapter(
                 AudioTextMapping.LayoutParagraph(
                     index = index,
                     text = paragraph.text,
-                    isStructural = paragraph.isTitle,
+                    // 标题与 <usehtml>…</usehtml> 结构块都是非音频正文结构，
+                    // 不参与正文段落 ↔ timeMs 编号
+                    isStructural = paragraph.isTitle || paragraph.isStructuralHtml,
                 )
             }
         )
