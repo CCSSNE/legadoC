@@ -91,13 +91,16 @@ abstract class DiffRecyclerAdapter<ITEM, VB : ViewBinding>(protected val context
         recyclerView.adapter = this
     }
 
-    fun setItems(items: List<ITEM>?) {
+    fun setItems(items: List<ITEM>?, onCommitted: (() -> Unit)? = null) {
         kotlin.runCatching {
             fullReplacePending = false
             if (keepScrollPosition) {
                 layoutState = layoutManager?.onSaveInstanceState()
             }
-            asyncListDiffer.submitList(items?.toMutableList())
+            asyncListDiffer.submitList(
+                items?.toMutableList(),
+                onCommitted?.let { callback -> Runnable { callback() } }
+            )
         }
     }
 
