@@ -5,10 +5,14 @@ import io.legado.app.constant.AppPattern
 /**
  * 音频正文映射。
  *
- * “正文段落 ↔ timeMs”只统计音频正文段落；`<usehtml>…</usehtml>` 结构块
- * 属于非音频正文的完整显示结构，既不拆成普通正文段落，也不占用
- * paragraph/cue 索引，但仍通过 [displayParts]/[displayContents] 保留原序，
- * 使它们能进入 TextChapter → TextChapterLayout 的 HTML 渲染。
+ * “真实显示正文段 ↔ cue”是显式映射关系，两条序列各自独立：
+ * - [displayParts]（显示顺序）：按原始 lyric 顺序输出，`<usehtml>…</usehtml>`
+ *   结构块原位保留，不参与时间排序；
+ * - [paragraphs]/[cues]（时间顺序）：按 startMs 排序的音频正文段落。
+ *
+ * 不再隐含“第 N 个显示正文段 == 第 N 个按时间排序 cue”的假设；
+ * 每个显示正文段通过 [DisplayPart.Body.cueIndex] 指向对应 cue，
+ * 因此乱序时间戳、插入评论/图片、重复字幕文本都不会破坏绑定。
  */
 data class AudioTextMapping(
     val paragraphs: List<String>,
@@ -27,24 +31,36 @@ data class AudioTextMapping(
         return if (index >= 0) index else (-index - 2).coerceAtLeast(0)
     }
 
+    /**
+     * 把页面真实正文段落（不含标题与 usehtml 结构段）绑定到本映射。
+     *
+     * 逐段核对用的是显示顺序的正文段（displayParts 中的 Body），
+     * 与页面段落顺序天然一致；随后通过各 Body 携带的 cue 索引建立
+     * “layout body index → cue index”的显式映射。
+     */
     fun bindLayout(layoutParagraphs: List<LayoutParagraph>): LayoutBinding {
         require(layoutParagraphs.zipWithNext().all { (left, right) -> left.index < right.index }) {
             "正文段落索引必须严格递增"
         }
         val contentParagraphs = layoutParagraphs.filterNot(LayoutParagraph::isStructural)
-        require(paragraphs.size == contentParagraphs.size) {
-            "字幕与正文段落数量不一致：subtitle=${paragraphs.size}, layout=${contentParagraphs.size}"
+        val displayBodyTexts = displayParts.filterIsInstance<DisplayPart.Body>().map { it.text }
+        require(displayBodyTexts.size == contentParagraphs.size) {
+            "字幕与正文段落数量不一致：subtitle=${displayBodyTexts.size}, layout=${contentParagraphs.size}"
         }
-        paragraphs.indices.firstOrNull { index ->
-            normalizeParagraph(paragraphs[index]) != normalizeParagraph(contentParagraphs[index].text)
+        displayBodyTexts.indices.firstOrNull { index ->
+            normalizeParagraph(displayBodyTexts[index]) != normalizeParagraph(contentParagraphs[index].text)
         }?.let { index ->
             throw IllegalArgumentException(
                 "字幕与正文第 ${index + 1} 段内容不一致：" +
-                    "subtitle=${paragraphs[index].take(80)}, " +
+                    "subtitle=${displayBodyTexts[index].take(80)}, " +
                     "layout=${contentParagraphs[index].text.take(80)}"
             )
         }
-        return LayoutBinding(this, contentParagraphs.map(LayoutParagraph::index))
+        return LayoutBinding(
+            mapping = this,
+            layoutParagraphIndices = contentParagraphs.map(LayoutParagraph::index),
+            bodyCueIndices = displayParts.filterIsInstance<DisplayPart.Body>().map { it.cueIndex },
+        )
     }
 
     /**
@@ -67,8 +83,13 @@ data class AudioTextMapping(
      * `<usehtml>…</usehtml>` 显示结构。
      */
     sealed interface DisplayPart {
-        /** 音频正文段落文本 */
-        data class Body(val text: String) : DisplayPart
+        /**
+         * 音频正文段落文本。
+         *
+         * [cueIndex] 是该段落对应的按时间排序 cue 索引（无时间映射时为 -1）；
+         * 乱序时间戳时它不与显示位置同序，这就是绑定层的显式映射依据。
+         */
+        data class Body(val text: String, val cueIndex: Int = -1) : DisplayPart
 
         /** 完整的 `<usehtml>…</usehtml>` 原块，非音频正文结构 */
         data class HtmlBlock(val raw: String) : DisplayPart
@@ -88,19 +109,30 @@ data class AudioTextMapping(
     class LayoutBinding internal constructor(
         private val mapping: AudioTextMapping,
         private val layoutParagraphIndices: List<Int>,
+        // 第 i 个真实显示正文段（layoutParagraphIndices[i]）对应的时间排序 cue 索引
+        private val bodyCueIndices: List<Int>,
     ) {
         val paragraphCount: Int get() = layoutParagraphIndices.size
 
         fun timeForLayoutParagraph(layoutParagraphIndex: Int): Int? {
             if (!mapping.hasTimeMapping) return null
             val result = layoutParagraphIndices.binarySearch(layoutParagraphIndex)
-            val cueIndex = if (result >= 0) result else -result - 1
+            val cueIndex = if (result >= 0) {
+                // 精确命中真实正文段：走显式 body→cue 映射
+                bodyCueIndices.getOrNull(result) ?: return null
+            } else {
+                // 未命中（结构段或越界）：取其后的最近正文段时间
+                bodyCueIndices.getOrNull(-result - 1) ?: return null
+            }
+            if (cueIndex < 0) return null
             return mapping.timeForParagraph(cueIndex)
         }
 
         fun layoutParagraphAt(timeMs: Int): Int? {
             val cueIndex = mapping.paragraphAt(timeMs) ?: return null
-            return layoutParagraphIndices.getOrNull(cueIndex)
+            val bodyIndex = bodyCueIndices.indexOf(cueIndex)
+            if (bodyIndex < 0) return null
+            return layoutParagraphIndices.getOrNull(bodyIndex)
         }
     }
 
@@ -121,7 +153,11 @@ data class AudioTextMapping(
             // 其中的 [mm:ss] 样式文本或评论按钮/图片不会占用 paragraph/cue 索引。
             val stripped = AppPattern.useHtmlRegex.replace(rawText) { "\n" }
 
-            val timedCues = buildList {
+            data class Candidate(val id: Int, val startMs: Int, val text: String)
+
+            // 候选 cue：id 表示其在原文中的出现顺序（与显示遍历一致），
+            // 时间排序后据此找回每个显示段落对应的 cue。
+            val candidates = buildList {
                 stripped.lineSequence().forEach { rawLine ->
                     val matches = timeTag.findAll(rawLine).toList()
                     if (matches.isEmpty()) return@forEach
@@ -131,68 +167,72 @@ data class AudioTextMapping(
                         .trim()
                     if (text.isEmpty()) return@forEach
                     matches.forEach { match ->
-                        add(Cue(parseTimeMs(match), text))
+                        add(Candidate(id = size, startMs = parseTimeMs(match), text = text))
                     }
                 }
-            }.sortedBy(Cue::startMs)
+            }
+            val timed = candidates.isNotEmpty()
 
-            if (timedCues.isNotEmpty()) {
+            // 显示顺序遍历：usehtml 原序原位保留；timed 行每个标签对应一个
+            // 显示正文段，并记录其候选 id（作为排序后的 cueIndex 依据）。
+            val displayParts = mutableListOf<DisplayPart>()
+            var snippetStart = 0
+            var candidateCursor = 0
+            fun appendSnippet(snippet: String) {
+                snippet.lineSequence().forEach { rawLine ->
+                    val matches = timeTag.findAll(rawLine).toList()
+                    if (matches.isNotEmpty()) {
+                        val text = rawLine
+                            .replace(timeTag, "")
+                            .replace(inlineTimeTag, "")
+                            .trim()
+                        if (text.isEmpty()) return@forEach
+                        repeat(matches.size) {
+                            displayParts += DisplayPart.Body(text, cueIndex = candidateCursor)
+                            candidateCursor++
+                        }
+                    } else if (!timed) {
+                        val trimmed = rawLine.trim()
+                        if (trimmed.isNotEmpty() && !metadataTag.matches(trimmed)) {
+                            displayParts += DisplayPart.Body(trimmed)
+                        }
+                    }
+                }
+            }
+            AppPattern.useHtmlRegex.findAll(rawText).forEach { match ->
+                appendSnippet(rawText.substring(snippetStart, match.range.first))
+                displayParts += DisplayPart.HtmlBlock(match.value)
+                snippetStart = match.range.last + 1
+            }
+            appendSnippet(rawText.substring(snippetStart))
+
+            if (timed) {
+                // 按时间稳定排序（同时间戳保持原出现顺序），
+                // 建立 id → 排序索引 映射并回填每个显示正文段的 cue 索引。
+                val sorted = candidates.sortedBy { it.startMs }
+                val cueIndexById = sorted
+                    .mapIndexed { index, candidate -> candidate.id to index }
+                    .toMap()
+                val cues = sorted.map { Cue(it.startMs, it.text) }
+                val parts = displayParts.map { part ->
+                    if (part is DisplayPart.Body && part.cueIndex >= 0) {
+                        DisplayPart.Body(part.text, cueIndexById[part.cueIndex] ?: -1)
+                    } else {
+                        part
+                    }
+                }
                 return AudioTextMapping(
-                    paragraphs = timedCues.map(Cue::text),
-                    cues = timedCues,
-                    displayParts = buildDisplayParts(rawText, timed = true),
+                    paragraphs = cues.map(Cue::text),
+                    cues = cues,
+                    displayParts = parts,
                 )
             }
 
-            // 无时间标记的正文：段落与显示顺序一致，直接由 displayParts 推导，
-            // 保证“正文段落 ↔ timeMs”与页面显示的内容永远同序。
-            val displayParts = buildDisplayParts(rawText, timed = false)
             return AudioTextMapping(
                 paragraphs = displayParts.filterIsInstance<DisplayPart.Body>().map { it.text },
                 cues = emptyList(),
                 displayParts = displayParts,
             )
-        }
-
-        /**
-         * 按原始文本顺序生成显示内容：usehtml 结构块整块保留，
-         * 其余行按时间标记是否为音频正文行处理。
-         */
-        private fun buildDisplayParts(rawText: String, timed: Boolean): List<DisplayPart> {
-            val parts = mutableListOf<DisplayPart>()
-            var cursor = 0
-            AppPattern.useHtmlRegex.findAll(rawText).forEach { match ->
-                appendBodyParts(parts, rawText.substring(cursor, match.range.first), timed)
-                parts += DisplayPart.HtmlBlock(match.value)
-                cursor = match.range.last + 1
-            }
-            appendBodyParts(parts, rawText.substring(cursor), timed)
-            return parts
-        }
-
-        private fun appendBodyParts(
-            parts: MutableList<DisplayPart>,
-            snippet: String,
-            timed: Boolean,
-        ) {
-            snippet.lineSequence().forEach { rawLine ->
-                val matches = timeTag.findAll(rawLine).toList()
-                if (matches.isNotEmpty()) {
-                    val text = rawLine
-                        .replace(timeTag, "")
-                        .replace(inlineTimeTag, "")
-                        .trim()
-                    if (text.isEmpty()) return@forEach
-                    repeat(matches.size) {
-                        parts += DisplayPart.Body(text)
-                    }
-                } else if (!timed) {
-                    val trimmed = rawLine.trim()
-                    if (trimmed.isNotEmpty() && !metadataTag.matches(trimmed)) {
-                        parts += DisplayPart.Body(trimmed)
-                    }
-                }
-            }
         }
 
         private fun parseTimeMs(match: MatchResult): Int {
