@@ -1019,14 +1019,14 @@ abstract class BaseReadAloudService : BaseService(),
                 }
                 return@execute
             }
-            // 书源音频：会话章节身份不依赖正文 TextChapter。
-            // 正文可用时仍走 prepareReadAloudChapter 准备段落进度（供字幕时间映射），
-            // 正文未加载 / 未完成排版 / 无正文时以阅读器当前章节建立身份并直接播放。
-            currentChapterIndex = textChapter?.chapter?.index
-                ?.takeIf { it >= 0 }
-                ?: ReadBook.durChapterIndex
-            if (textChapter != null && textChapter.isCompleted && textChapter.pageSize > 0) {
-                if (!prepareReadAloudChapter(textChapter, pageIndex, startPos)) {
+            // 书源音频：会话章节身份先由统一阅读目标（ReadBook.durChapterIndex）确定，
+            // 正文 TextChapter 只在 index 与该目标相同时用于段落/LRC 准备，绝不反向决定当前章节。
+            currentChapterIndex = ReadBook.durChapterIndex
+            textChapter?.takeIf { tc ->
+                tc.chapter.index == currentChapterIndex &&
+                    tc.isCompleted && tc.pageSize > 0
+            }?.let { tc ->
+                if (!prepareReadAloudChapter(tc, pageIndex, startPos)) {
                     return@execute
                 }
             }
@@ -1342,12 +1342,7 @@ abstract class BaseReadAloudService : BaseService(),
             upTtsProgress(readAloudNumber + 1)
             play()
         } else {
-            toLast = true
-            if (ReadBook.readAloudPageDetached) {
-                switchDetachedReadAloudChapterByOffset(-1, toLast = true)
-            } else {
-                ReadBook.moveToPrevChapter(true, fromReadAloud = true)
-            }
+            advanceToPrevChapter(toLast = true)
         }
     }
 
@@ -1693,21 +1688,60 @@ abstract class BaseReadAloudService : BaseService(),
     abstract fun aloudServicePendingIntent(actionStr: String): PendingIntent?
 
     open fun prevChapter() {
-        toLast = false
         resumeReadAloudInternal()
-        if (ReadBook.readAloudPageDetached) {
-            switchDetachedReadAloudChapterByOffset(-1, toLast = false)
-        } else {
-            ReadBook.moveToPrevChapter(true, toLast = false, fromReadAloud = true)
-        }
+        advanceToPrevChapter(toLast = false)
     }
 
     open fun nextChapter() {
         ReadBook.upReadTime()
         AppLog.putDebug("${currentReadAloudChapterTitle()} 朗读结束跳转下一章并朗读")
         resumeReadAloudInternal()
+        advanceToNextChapter()
+    }
+
+    /**
+     * 统一推进到上一章。
+     * 书源音频（sessionChapterCanStartWithoutText）：以 BookChapter.index 立即推进，不等待正文 TextChapter。
+     * 上一章正文已预加载完成时，moveToPrevChapter 的正文链路会经 curPageChanged 接管启动（附带段落进度）；
+     * 预加载未完成时正文链路不会启动，音频必须立即以统一阅读目标（ReadBook.durChapterIndex）推进并播放，
+     * 阅读页正文有则随后同步，无则音频继续。TTS / HTTP TTS 保持原有正文前置逻辑。
+     */
+    private fun advanceToPrevChapter(toLast: Boolean) {
+        this.toLast = toLast
+        if (ReadBook.readAloudPageDetached) {
+            switchDetachedReadAloudChapterByOffset(-1, toLast)
+        } else if (sessionChapterCanStartWithoutText) {
+            val prevTextReady = ReadBook.prevTextChapter?.isCompleted == true
+            if (!ReadBook.moveToPrevChapter(true, toLast = toLast, fromReadAloud = true)) {
+                return
+            }
+            if (!prevTextReady) {
+                currentChapterIndex = ReadBook.durChapterIndex
+                nowSpeak = 0
+                play()
+            }
+        } else {
+            ReadBook.moveToPrevChapter(true, toLast = toLast, fromReadAloud = true)
+        }
+    }
+
+    /**
+     * 统一推进到下一章，语义同 [advanceToPrevChapter]。
+     */
+    private fun advanceToNextChapter() {
         if (ReadBook.readAloudPageDetached) {
             switchDetachedReadAloudChapterByOffset(1, toLast = false)
+        } else if (sessionChapterCanStartWithoutText) {
+            val nextTextReady = ReadBook.nextTextChapter?.isCompleted == true
+            if (!ReadBook.moveToNextChapter(true, fromReadAloud = true)) {
+                stopSelf()
+                return
+            }
+            if (!nextTextReady) {
+                currentChapterIndex = ReadBook.durChapterIndex
+                nowSpeak = 0
+                play()
+            }
         } else {
             if (!ReadBook.moveToNextChapter(true, fromReadAloud = true)) {
                 stopSelf()
