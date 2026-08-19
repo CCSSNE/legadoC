@@ -14,5 +14,6 @@ data class TextParagraph(
     val realNum: Int get() = firstLine.paragraphNum
     val isParagraphEnd: Boolean get() = lastLine.isParagraphEnd
     val isTitle: Boolean get() = textLines.isNotEmpty() && textLines.all { it.isTitle }
+    val isStructuralHtml: Boolean get() = textLines.isNotEmpty() && textLines.all { it.isStructuralHtml }
 
 }

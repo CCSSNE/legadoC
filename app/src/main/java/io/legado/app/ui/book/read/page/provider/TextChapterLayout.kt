@@ -150,6 +150,8 @@ class TextChapterLayout(
     private var activeEpubBlockDecoration: ActiveEpubBlockDecoration? = null
 
     private var isCompleted = false
+    // <usehtml>…</usehtml> 结构块渲染期间为 true：其产生的行属于非音频正文结构
+    private var renderingStructuralHtml = false
     private val job: Coroutine<*>
 
     private val chapterBookmarks: List<Bookmark> by lazy {
@@ -460,7 +462,14 @@ class TextChapterLayout(
                     val contentStart = text.indexOf('>')
                     val contentEnd = text.lastIndexOf("<")
                     if (contentStart >= 0 && contentEnd > contentStart) {
-                        setTypeHtml(imageStyle, book, text.substring(contentStart + 1, contentEnd))
+                        renderingStructuralHtml = true
+                        try {
+                            setTypeHtml(imageStyle, book, text.substring(contentStart + 1, contentEnd))
+                        } finally {
+                            renderingStructuralHtml = false
+                        }
+                        // 结构块是独立显示单元：结束其段落，避免与后续正文段粘连
+                        pendingTextPage.lines.lastOrNull()?.isParagraphEnd = true
                         return@forEachIndexed
                     }
                 }
@@ -714,7 +723,7 @@ class TextChapterLayout(
                     prepareNextPageIfNeed(durY + height)
                 }
             }
-            val textLine = TextLine(isImage = true)
+            val textLine = TextLine(isImage = true, isStructuralHtml = renderingStructuralHtml)
             textLine.text = " "
             textLine.lineTop = durY + paddingTop
             durY += height
@@ -905,7 +914,7 @@ class TextChapterLayout(
         }
         val rowWidth = cellWidth * n + gap * (n - 1)
         val startX = (visibleWidth - rowWidth) / 2f
-        val textLine = TextLine(isImage = true)
+        val textLine = TextLine(isImage = true, isStructuralHtml = renderingStructuralHtml)
         textLine.text = " "
         textLine.lineTop = durY + paddingTop
         durY += rowHeight
@@ -962,7 +971,7 @@ class TextChapterLayout(
         }
         rows.forEachIndexed { rowIndex, row ->
             val rowHeight = rowHeights[rowIndex] * scale
-            val textLine = TextLine(isImage = true)
+            val textLine = TextLine(isImage = true, isStructuralHtml = renderingStructuralHtml)
             textLine.text = " "
             textLine.lineTop = durY + paddingTop
             durY += rowHeight
@@ -1981,7 +1990,7 @@ class TextChapterLayout(
             if (lineStart == lineEnd) { //这一行没有内容，跳过
                 continue
             }
-            val textLine = TextLine(isHtml = true)
+            val textLine = TextLine(isHtml = true, isStructuralHtml = renderingStructuralHtml)
             val lineText = StringBuilder()
             val lineLeft = staticLayout.getLineLeft(lineIndex)
             textLine.startX = lineAbsStartX + lineLeft //x坐标
@@ -2377,7 +2386,7 @@ class TextChapterLayout(
             else -> durY
         }
         for (lineIndex in 0 until layout.lineCount) {
-            val textLine = TextLine(isTitle = isTitle)
+            val textLine = TextLine(isTitle = isTitle, isStructuralHtml = renderingStructuralHtml)
             prepareNextPageIfNeed(durY + textHeight)
             val lineStart = layout.getLineStart(lineIndex)
             val lineEnd = layout.getLineEnd(lineIndex)
