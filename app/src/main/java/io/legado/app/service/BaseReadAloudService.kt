@@ -174,6 +174,14 @@ abstract class BaseReadAloudService : BaseService(),
      * 不再决定音频当前正在播放哪一章。
      */
     internal var currentChapterIndex: Int = -1
+
+    /**
+     * 会话章节身份是否可以在正文 TextChapter 未就绪时建立。
+     * 书源音频（SourceAudio）覆盖为 true：当前章节只认 BookChapter.index，
+     * 正文未加载 / 未完成排版 / 无正文时也能启动播放；
+     * TTS / HTTP TTS 必须等正文排版完成才能朗读，保持原前置条件。
+     */
+    protected open val sessionChapterCanStartWithoutText: Boolean get() = false
     private var needResumeOnAudioFocusGain = false
     private var needResumeOnCallStateIdle = false
     private var registeredPhoneStateListener = false
@@ -1000,9 +1008,27 @@ abstract class BaseReadAloudService : BaseService(),
 
     private fun newReadAloud(play: Boolean, pageIndex: Int, startPos: Int) {
         execute(executeContext = IO) {
-            val chapter = ReadBook.curTextChapter ?: return@execute
-            if (!prepareReadAloudChapter(chapter, pageIndex, startPos)) {
+            val textChapter = ReadBook.curTextChapter
+            if (!sessionChapterCanStartWithoutText) {
+                val chapter = textChapter ?: return@execute
+                if (!prepareReadAloudChapter(chapter, pageIndex, startPos)) {
+                    return@execute
+                }
+                launch(Main) {
+                    if (play) play() else pageChanged = true
+                }
                 return@execute
+            }
+            // 书源音频：会话章节身份不依赖正文 TextChapter。
+            // 正文可用时仍走 prepareReadAloudChapter 准备段落进度（供字幕时间映射），
+            // 正文未加载 / 未完成排版 / 无正文时以阅读器当前章节建立身份并直接播放。
+            currentChapterIndex = textChapter?.chapter?.index
+                ?.takeIf { it >= 0 }
+                ?: ReadBook.durChapterIndex
+            if (textChapter != null && textChapter.isCompleted && textChapter.pageSize > 0) {
+                if (!prepareReadAloudChapter(textChapter, pageIndex, startPos)) {
+                    return@execute
+                }
             }
             launch(Main) {
                 if (play) play() else pageChanged = true
@@ -1709,6 +1735,17 @@ abstract class BaseReadAloudService : BaseService(),
         }
         playStop()
         upReadAloudLoading(true)
+        if (sessionChapterCanStartWithoutText) {
+            // 书源音频：切章只认 BookChapter.index，不依赖正文 TextChapter，
+            // 直接以目标章节建立会话身份并播放；段落进度随之复位，避免旧章节映射串位。
+            currentChapterIndex = targetIndex
+            this@BaseReadAloudService.toLast = toLast
+            nowSpeak = 0
+            launch(Main) {
+                play()
+            }
+            return
+        }
         execute(executeContext = IO) {
             val chapter = ReadBook.loadTextChapterForReadAloud(targetIndex, lifecycleScope)
                 ?: run {

@@ -51,6 +51,9 @@ class SourceAudioReadAloudService : BaseReadAloudService(), Player.Listener {
      */
     private var currentChapter: BookChapter? = null
 
+    // 书源音频的章节身份建立在 BookChapter.index 上，正文 TextChapter 未就绪也能启动
+    override val sessionChapterCanStartWithoutText: Boolean get() = true
+
     override fun play() {
         super.play()
         if (!requestFocus()) {
@@ -83,9 +86,18 @@ class SourceAudioReadAloudService : BaseReadAloudService(), Player.Listener {
             }
             runCatching {
                 val resolvedMapping = resolved.mapping
-                val resolvedBinding = bindMappingToLayout(resolvedMapping)
                 mapping = resolvedMapping
-                layoutBinding = resolvedBinding
+                layoutBinding = null
+                lastMappedParagraph = -1
+                // 字幕/LRC 绑定失败只影响正文同步与高亮，不阻断已解析成功的音频播放
+                layoutBinding = runCatching {
+                    bindMappingToLayout(resolvedMapping)
+                }.onFailure {
+                    AppLog.put(
+                        "书源音频字幕绑定失败，仅影响正文同步/高亮：${it.localizedMessage}",
+                        it
+                    )
+                }.getOrNull()
                 currentMediaUrl = resolved.request.url
                 val mediaSource = if (resolved.request.url.isJsonArray()) {
                     requireNotNull(
@@ -103,7 +115,6 @@ class SourceAudioReadAloudService : BaseReadAloudService(), Player.Listener {
                         book,
                     )
                 }
-                lastMappedParagraph = -1
                 player.setMediaSource(mediaSource)
                 player.setPlaybackSpeed(book.getPlaySpeed().coerceIn(0.5f, 3.0f))
                 player.playWhenReady = true
@@ -156,7 +167,11 @@ class SourceAudioReadAloudService : BaseReadAloudService(), Player.Listener {
             }
         }
         if (nowSpeak > 0) {
-            error("当前字幕没有时间映射，无法从第 ${nowSpeak + 1} 段定位书源音频")
+            // 字幕无时间映射时无法从段落定位音频：只影响“指哪读哪”，
+            // 回退到已存进度/章节起始，不能阻断正常播放
+            AppLog.putDebug(
+                "书源音频当前字幕无时间映射，无法从第 ${nowSpeak + 1} 段定位，回退到已存进度"
+            )
         }
         return if (book.getSourceAudioChapterIndex() == chapterIndex) {
             book.getSourceAudioPosition()
@@ -310,10 +325,13 @@ class SourceAudioReadAloudService : BaseReadAloudService(), Player.Listener {
         val paragraphIndex = layoutBinding?.layoutParagraphAt(position) ?: return
         if (paragraphIndex == lastMappedParagraph) return
         val paragraphs = chapter.getParagraphs(false)
-        val paragraph = paragraphs.getOrNull(paragraphIndex)
-            ?: return failPlayback(
-                "字幕正文映射越界：paragraph=$paragraphIndex, layout=${paragraphs.size}"
+        val paragraph = paragraphs.getOrNull(paragraphIndex) ?: run {
+            // 字幕映射异常只影响正文同步与高亮，不能停止正常播放的音频
+            AppLog.putDebug(
+                "书源音频字幕映射越界，跳过正文同步：paragraph=$paragraphIndex, layout=${paragraphs.size}"
             )
+            return
+        }
         lastMappedParagraph = paragraphIndex
         nowSpeak = paragraphIndex
         readAloudNumber = paragraph.chapterPosition
