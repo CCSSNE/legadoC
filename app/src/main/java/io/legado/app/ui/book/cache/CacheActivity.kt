@@ -409,7 +409,6 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
             fun upTypeView() {
                 val isEpub = exportType == "epub"
                 val isTxtZip = exportType == "txt_zip"
-                val isPdf = exportType == "pdf"
                 tabExportBar.visibility = if (isEpub) View.VISIBLE else View.GONE
                 // txt_zip 正文直接复制原始文件，编码/多线程/章节名/图片文件选项不生效，隐藏；
                 // 替换净化有效（规则作为外挂数据导出，导入时同步还原）
@@ -417,11 +416,11 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
                 rowUseReplace.visibility = if (isEpub) View.GONE else View.VISIBLE
                 rowParallelExport.visibility = if (isEpub || isTxtZip) View.GONE else View.VISIBLE
                 rowNoChapterName.visibility = if (isEpub || isTxtZip) View.GONE else View.VISIBLE
-                // PDF 已回退为纯文本导出：图片文件与书签选项不生效，隐藏
-                rowExportPicsFile.visibility =
-                    if (isEpub || isTxtZip || isPdf) View.GONE else View.VISIBLE
-                rowExportBookmarks.visibility =
-                    if (isEpub || isPdf) View.GONE else View.VISIBLE
+                // 图片文件与书签是 txt_zip 压缩包导出的能力（配图/书签 sidecar），
+                // 纯 TXT 导出不实现这两项：图片选项对任意类型都不显示，
+                // 书签选项仅在 txt_zip 显示
+                rowExportPicsFile.visibility = View.GONE
+                rowExportBookmarks.visibility = if (isTxtZip) View.VISIBLE else View.GONE
                 rowCustomExport.visibility = View.GONE
                 showExportConfigTab(ExportConfigTab.BASE, isEpub)
                 llCustomExport.visibility = View.GONE
