@@ -104,7 +104,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     }
     private var displayedProgress: ReadAloudProgress? = null
     private var trackingProgress = false
-    private var sourceAudioTextMapping: AudioTextMapping? = null
+    private var sourceAudioLayoutBinding: AudioTextMapping.LayoutBinding? = null
     private var boundListeningTextItems = emptyList<ListeningTextItem>()
     private val listeningTextRows = arrayListOf<ListeningTextRow>()
     private var listeningTextChapterIndex = -1
@@ -358,6 +358,12 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         }
     }
 
+    /**
+     * 书源音频正文渲染：与 TTS 引擎同一数据源——TextChapter 结构化段落 +
+     * [AudioTextMapping.bindLayout] 显式布局绑定（与 SourceAudioReadAloudService 同一路径），
+     * `<usehtml>` 结构块（含评论节点）按显示顺序原位渲染，两种引擎沉浸页完全一致。
+     * 段落目标时间是绑定层给出的音频时间；结构段（标题/usehtml）取最近正文段时间。
+     */
     private fun bindSourceAudioText() {
         val chapter = ReadBook.curTextChapter ?: run {
             clearListeningText()
@@ -368,14 +374,35 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             clearListeningText()
             return
         }
-        sourceAudioTextMapping = mapping
+        val layoutBinding = try {
+            chapter.bindAudioTextMapping(mapping)
+        } catch (e: Exception) {
+            // 字幕与正文段落不一致属数据问题（服务端同一绑定会 failPlayback）；
+            // 沉浸页同样不渲染并记录原因，直接暴露，不做静默兜底。
+            AppLog.put("源音频正文映射失败：${e.message}", e)
+            clearListeningText()
+            return
+        }
+        sourceAudioLayoutBinding = layoutBinding
+        val paragraphs = chapter.getParagraphs(false)
         bindListeningTextItems(
             chapterIndex = chapter.chapter.index,
-            items = mapping.cues.map { cue ->
+            items = paragraphs.mapIndexed { layoutIndex, paragraph ->
+                val timeMs = layoutBinding.timeForLayoutParagraph(layoutIndex) ?: run {
+                    // 结构段位于最后一段正文之后时回退到其前最近的正文段时间
+                    var previous = layoutIndex - 1
+                    var result: Int? = null
+                    while (previous >= 0 && result == null) {
+                        result = layoutBinding.timeForLayoutParagraph(previous)
+                        previous--
+                    }
+                    result ?: 0
+                }
                 ListeningTextItem(
-                    text = cue.text,
-                    isTitle = false,
-                    target = ListeningTextTarget.Time(cue.startMs),
+                    text = paragraph.text,
+                    isTitle = paragraph.isTitle,
+                    target = ListeningTextTarget.Time(timeMs),
+                    segments = paragraph.segments,
                 )
             },
         )
@@ -386,7 +413,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             clearListeningText()
             return
         }
-        sourceAudioTextMapping = null
+        sourceAudioLayoutBinding = null
         bindListeningTextItems(
             chapterIndex = chapter.chapter.index,
             items = chapter.getParagraphs(false).map { paragraph ->
@@ -557,7 +584,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             return
         }
         val selectedIndex = when (progress.kind) {
-            ReadAloudProgress.Kind.TIME -> sourceAudioTextMapping?.paragraphAt(progress.position)
+            ReadAloudProgress.Kind.TIME -> sourceAudioLayoutBinding?.layoutParagraphAt(progress.position)
             ReadAloudProgress.Kind.PARAGRAPH -> ttsHighlightIndex(progress.position)
         }
         applyListeningTextHighlight(selectedIndex?.takeIf { it in listeningTextRows.indices })
@@ -654,7 +681,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     }
 
     private fun clearListeningText() = binding.run {
-        sourceAudioTextMapping = null
+        sourceAudioLayoutBinding = null
         boundListeningTextItems = emptyList()
         listeningTextRows.clear()
         listeningTextChapterIndex = -1
