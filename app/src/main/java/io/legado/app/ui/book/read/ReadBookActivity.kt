@@ -51,6 +51,7 @@ import io.legado.app.help.ai.AiChapterPurifyConfig
 import io.legado.app.help.ai.AiChapterPurifyProgress
 import io.legado.app.help.ai.AiChapterPurifyService
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.BookImgClick
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isEpub
@@ -77,11 +78,6 @@ import io.legado.app.lib.theme.accentColor
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadAloudUiState
 import io.legado.app.model.ReadBook
-import io.legado.app.model.analyzeRule.AnalyzeRule
-import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setChapter
-import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
-import io.legado.app.utils.GSON
-import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.isJsonObject
 import io.legado.app.model.localBook.EpubFile
 import io.legado.app.model.localBook.MobiFile
@@ -170,7 +166,6 @@ import kotlinx.coroutines.withContext
 import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import com.script.rhino.runScriptWithContext
-import io.legado.app.model.analyzeRule.AnalyzeUrl.Companion.paramPattern
 import java.lang.ref.WeakReference
 import io.legado.app.ui.login.SourceLoginJsExtensions
 import kotlinx.coroutines.CoroutineStart
@@ -2264,72 +2259,15 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     /**
-     * 点击图片
+     * 点击图片（评论/图片点击统一入口，阅读页与沉浸听书页共用）
      */
     override fun oldClickImg(src: String): Boolean {
-        val urlMatcher = paramPattern.matcher(src)
-        if (urlMatcher.find()) {
-            val urlOptionStr = src.substring(urlMatcher.end())
-            val urlOptionMap = GSON.fromJsonObject<Map<String, String>>(urlOptionStr).getOrNull()
-            val click = urlOptionMap?.get("click")
-            if (click != null) {
-                Coroutine.async(lifecycleScope,IO) {
-                    val source = ReadBook.bookSource ?: return@async
-                    val java = SourceLoginJsExtensions(this@ReadBookActivity, source, BookType.text)
-                    val book = ReadBook.book ?: return@async
-                    val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, ReadBook.durChapterIndex) ?: throw Exception("no find chapter")
-                    runScriptWithContext {
-                        source.evalJS(click) {
-                            put("java", java)
-                            put("book", book)
-                            put("chapter", chapter)
-                            put("result", src)
-                        }
-                    }
-                }.onError {
-                    AppLog.put("执行图片链接click键值出错\n${it.localizedMessage}", it, true)
-                }
-                return true
-            }
-            val jsStr = urlOptionMap?.get("js") ?: return false
-            Coroutine.async(lifecycleScope, IO) {
-                val source = ReadBook.bookSource ?: return@async
-                val book = ReadBook.book ?: return@async
-                val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, ReadBook.durChapterIndex) ?: throw Exception("no find chapter")
-                val urlNoOption = src.take(urlMatcher.start())
-                AnalyzeRule(book, source).apply {
-                    setCoroutineContext(coroutineContext)
-                    setBaseUrl(chapter.url)
-                    setChapter(chapter)
-                    evalJS(jsStr, urlNoOption)
-                }
-            }.onError {
-                AppLog.put("执行图片链接js键值出错\n${it.localizedMessage}", it, true)
-            }
-            return true
-        }
-        return false
+        return BookImgClick.oldClickImg(this, lifecycleScope, src)
     }
 
     override fun clickImg(click: String, src: String) {
-        Coroutine.async(lifecycleScope,IO) {
-            val source = ReadBook.bookSource ?: return@async
-            val java = SourceLoginJsExtensions(this@ReadBookActivity, source, BookType.text)
-            val book = ReadBook.book ?: return@async
-            val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, ReadBook.durChapterIndex) ?: throw Exception("no find chapter")
-            runScriptWithContext {
-                source.evalJS(click) {
-                    put("java", java)
-                    put("book", book)
-                    put("chapter", chapter)
-                    put("result", src)
-                }
-            }
-        }.onError {
-            AppLog.put("执行图片链接click键值出错\n${it.localizedMessage}", it, true)
-        }
+        BookImgClick.clickImg(this, lifecycleScope, click, src)
     }
-
 
     /**
      * 朗读按钮
