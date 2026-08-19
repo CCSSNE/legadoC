@@ -1775,7 +1775,7 @@ abstract class BaseReadAloudService : BaseService(),
             currentChapterIndex = targetIndex
             this@BaseReadAloudService.toLast = toLast
             nowSpeak = 0
-            launch(Main) {
+            lifecycleScope.launch(Main) {
                 play()
             }
             return
