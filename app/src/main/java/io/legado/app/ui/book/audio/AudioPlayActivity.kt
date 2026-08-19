@@ -36,6 +36,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ActivityAudioPlayBinding
 import io.legado.app.databinding.DialogDownloadChoiceBinding
 import io.legado.app.help.book.AudioTextMapping
+import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.permission.NotificationPermission
@@ -282,15 +283,26 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     }
 
     /**
-     * 当前朗读章节的标题：优先取目录中对应 BookChapter 的章节名，
-     * 目录无此章节或章节名为空时回退书名。按章节缓存，切章才重新查询。
+     * 当前朗读章节的标题：按当前朗读 chapterIndex 查询目录 BookChapter，
+     * 并使用与正文阅读一致的章节标题替换规则生成显示标题。
+     * 目录无此章节或显示标题为空时回退书名。按章节缓存，切章才重新查询。
      */
     private fun currentChapterTitle(): String {
         if (displayedChapterTitleCache == null) {
             val book = ReadBook.book
-            val title = appDb.bookChapterDao
-                .getChapter(book?.bookUrl ?: "", displayedChapterIndex)
-                ?.title?.takeIf { it.isNotBlank() }
+            val chapter = book?.let {
+                appDb.bookChapterDao.getChapter(it.bookUrl, displayedChapterIndex)
+            }
+            val title = if (book != null && chapter != null) {
+                val contentProcessor = ContentProcessor.get(book.name, book.origin)
+                chapter.getDisplayTitle(
+                    contentProcessor.getTitleReplaceRules(),
+                    book.getUseReplaceRule(),
+                    replaceBook = book.toReplaceBook(),
+                ).takeIf { it.isNotBlank() }
+            } else {
+                null
+            }
             displayedChapterTitleCache = title ?: book?.name.orEmpty()
         }
         return displayedChapterTitleCache ?: ""
