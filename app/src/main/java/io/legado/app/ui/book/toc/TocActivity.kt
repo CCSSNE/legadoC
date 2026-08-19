@@ -210,7 +210,7 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
             }
 
             R.id.menu_reverse_toc -> viewModel.reverseToc {
-                viewModel.startChapterListSearch(searchView?.query?.toString())
+                viewModel.startChapterListStructureChanged(searchView?.query?.toString())
                 setResult(RESULT_OK, Intent().apply {
                     putExtra("index", it.durChapterIndex)
                     putExtra("chapterPos", 0)
@@ -263,6 +263,9 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
                 } else {
                     ReadBook.upMsg("LoadTocError:${it.localizedMessage}")
                 }
+            }
+            if (it == null) {
+                viewModel.startChapterListStructureChanged(searchView?.query?.toString())
             }
         }
     }

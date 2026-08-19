@@ -162,6 +162,10 @@ class ChapterListFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_chapt
         updateChapterList(searchKey, noDiff = true)
     }
 
+    override fun upChapterListStructureChanged(searchKey: String?) {
+        updateChapterList(searchKey, resetCollapsed = true)
+    }
+
     private fun updateChapterList(
         searchKey: String?,
         noDiff: Boolean = false,

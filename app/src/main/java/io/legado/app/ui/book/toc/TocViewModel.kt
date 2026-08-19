@@ -102,6 +102,10 @@ class TocViewModel(application: Application) : BaseViewModel(application) {
         chapterListCallBack?.upChapterListDisplayOrder(newText)
     }
 
+    fun startChapterListStructureChanged(newText: String?) {
+        chapterListCallBack?.upChapterListStructureChanged(newText)
+    }
+
     fun clearChapterListDisplayTitle() {
         chapterListCallBack?.clearDisplayTitle()
     }
@@ -160,6 +164,8 @@ class TocViewModel(application: Application) : BaseViewModel(application) {
         fun upChapterList(searchKey: String?)
 
         fun upChapterListDisplayOrder(searchKey: String?)
+
+        fun upChapterListStructureChanged(searchKey: String?)
 
         fun clearDisplayTitle()
 
