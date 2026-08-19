@@ -175,24 +175,30 @@ class ChapterListFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_chapt
         viewLifecycleOwner.lifecycleScope.launch {
             withContext(IO) {
                 val end = (book?.simulatedTotalChapterNum() ?: Int.MAX_VALUE) - 1
-                when {
-                    searchKey.isNullOrBlank() ->
-                        appDb.bookChapterDao.getChapterList(viewModel.bookUrl, 0, end)
-
-                    else -> appDb.bookChapterDao.search(viewModel.bookUrl, searchKey, 0, end)
-                }
-            }.let { chapters ->
-                val displayChapters = if (viewModel.isTocDisplayReversed) {
-                    chapters.asReversed()
+                val canonicalChapters = if (resetCollapsed || searchKey.isNullOrBlank()) {
+                    appDb.bookChapterDao.getChapterList(viewModel.bookUrl, 0, end)
                 } else {
-                    chapters
+                    null
+                }
+                val displayChapters = if (searchKey.isNullOrBlank()) {
+                    canonicalChapters ?: error("Canonical TOC was not loaded")
+                } else {
+                    appDb.bookChapterDao.search(viewModel.bookUrl, searchKey, 0, end)
+                }
+                canonicalChapters to displayChapters
+            }.let { chapters ->
+                val canonicalChapters = chapters.first
+                val displayChapters = if (viewModel.isTocDisplayReversed) {
+                    chapters.second.asReversed()
+                } else {
+                    chapters.second
                 }
                 currentSearchKey = searchKey
-                if (searchKey.isNullOrBlank()) {
-                    chapterList = chapters
-                    chapterVolumeIndexes = volumeIndexes(chapters)
+                canonicalChapters?.let { canonical ->
+                    chapterList = canonical
+                    chapterVolumeIndexes = volumeIndexes(canonical)
                     if (resetCollapsed) {
-                        resetCollapsedVolumes(chapters)
+                        resetCollapsedVolumes(canonical)
                     }
                 }
                 displayChapterList = displayChapters
