@@ -265,6 +265,6 @@ uiautomator2 / ADB
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- `3.26.081921c` / `10697`，2026-08-19（UTC），`own` 主线（代码提交 `c1f8b49`）。听书播放页章节名链路统一以朗读服务的 `chapterIndex`（`READ_ALOUD_PROGRESS` 事件）为准：新增 UI 显示身份 `displayedChapterIndex` 与目录章节名缓存，切章且与 UI 已显示 index 不同时刷新顶部标题与下方章节名；标题来源改为从书籍目录 `BookChapter` 查询（`appDb.bookChapterDao.getChapter`），不再依赖 `curTextChapter`，书源音频 TextChapter 未加载/无字幕时不再回退书名；顶部标题显示模式（默认章节名）与下方章节名开关（默认关闭）两项显示设置沿用上一版，TTS 与书源音频共用同一套逻辑，无 `bookType` 分支。已通过正式后台 `:app:assembleAppC` 冷编译（`--no-daemon --max-workers=1` 关增量），退出码为 0；`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.081921c` / `10697`、中文名 `阅读 C`、架构 `arm64-v8a`，`apksigner` 退出码为 0。源码已推送至 `origin/own`（`c1f8b49`）。本次未安装模拟器、未发布 Release（用户仅要求推送与编译）。
+- `3.26.081923c` / `10698`，2026-08-20（UTC），`own` 主线（代码提交 `e895a4f`）。沉浸听书页评论按钮结构化渲染：段落拆 `Text` / `Review` 节点（`ParagraphSegment` 模型 + `TextParagraph.segments` 访问器），沉浸页复用 `ImageColumn.src` 原图绘制评论按钮并实现点击分流（气泡点击只触发评论、正文点击仍跳转朗读位置），`src + click` JS 执行逻辑统一抽到 `BookImgClick` 公共入口，阅读页 `ReadBookActivity` 的 `clickImg` / `oldClickImg` 改为委托，两端行为一致。已通过正式后台 `:app:assembleAppC` 冷编译（`--no-daemon --max-workers=1` 关增量），退出码为 0；`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.081923c` / `10698`、中文名 `阅读 C`（zh locale）、架构 `arm64-v8a`，`apksigner` 退出码为 0。源码已推送至 `origin/own`（`e895a4f`）。已覆盖安装到雷电模拟器（10697 → 10698）。未发布 Release（用户仅要求推送与编译，未要求正式回归）。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
