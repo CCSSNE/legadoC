@@ -7,7 +7,9 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import io.legado.app.constant.AppLog
+import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.AudioTextMapping
 import io.legado.app.help.book.SourceAudioResolver
 import io.legado.app.help.config.AppConfig
@@ -42,6 +44,13 @@ class SourceAudioReadAloudService : BaseReadAloudService(), Player.Listener {
     private var lastMappedParagraph = -1
     private var lastPersistedAt = 0L
 
+    /**
+     * 书源音频自己记住的当前章节。章节对象来自书源目录（BookChapter），
+     * 章节身份只认统一朗读会话的 currentChapterIndex（BookChapter.index），
+     * 正文 TextChapter 只负责字幕映射、不再决定音频当前正在播放哪一章。
+     */
+    private var currentChapter: BookChapter? = null
+
     override fun play() {
         super.play()
         if (!requestFocus()) {
@@ -49,8 +58,10 @@ class SourceAudioReadAloudService : BaseReadAloudService(), Player.Listener {
             return
         }
         val book = ReadBook.book ?: return failPlayback("书源音频启动失败：当前书籍为空")
-        val chapter = textChapter?.chapter
+        val chapter = resolveCurrentChapter(book)
             ?: return failPlayback("书源音频启动失败：当前章节为空")
+        currentChapter = chapter
+        val chapterIndex = chapter.index
         val generation = ++playbackGeneration
         resolveJob?.cancel()
         progressJob?.cancel()
@@ -67,7 +78,7 @@ class SourceAudioReadAloudService : BaseReadAloudService(), Player.Listener {
                 failPlayback(it)
                 return@launch
             }
-            if (generation != playbackGeneration || chapter.index != textChapter?.chapter?.index) {
+            if (generation != playbackGeneration || chapterIndex != currentChapterIndex) {
                 return@launch
             }
             runCatching {
@@ -102,11 +113,29 @@ class SourceAudioReadAloudService : BaseReadAloudService(), Player.Listener {
         }
     }
 
+    /**
+     * 从统一朗读会话的 currentChapterIndex 取当前 BookChapter。
+     * 章节对象只来自书源目录；TextChapter 未加载、无正文或正在切页都不会让音频丢失当前章节。
+     */
+    private fun resolveCurrentChapter(book: Book): BookChapter? {
+        val sessionChapterIndex = currentChapterIndex
+        if (sessionChapterIndex < 0) return null
+        currentChapter?.takeIf { it.index == sessionChapterIndex }?.let { return it }
+        return appDb.bookChapterDao.getChapter(book.bookUrl, sessionChapterIndex)?.also {
+            currentChapter = it
+        }
+    }
+
     private fun bindMappingToLayout(
         mapping: AudioTextMapping,
     ): AudioTextMapping.LayoutBinding? {
         if (!mapping.hasTimeMapping) return null
-        val chapter = requireNotNull(textChapter) { "绑定字幕时当前章节为空" }
+        val chapter = textChapter?.takeIf { it.chapter.index == currentChapterIndex } ?: run {
+            AppLog.putDebug(
+                "Source audio mapping skipped: text chapter unavailable for index=$currentChapterIndex"
+            )
+            return null
+        }
         val layoutParagraphs = chapter.getParagraphs(false)
         val binding = chapter.bindAudioTextMapping(mapping)
         AppLog.putDebug(
@@ -179,11 +208,9 @@ class SourceAudioReadAloudService : BaseReadAloudService(), Player.Listener {
     }
 
     override fun seekToReadAloudProgress(chapterIndex: Int, position: Int) {
-        val chapter = textChapter?.chapter
-            ?: return stopReadAloudOnInvalidPosition("书源音频跳转失败：当前章节为空")
-        if (chapter.index != chapterIndex) {
+        if (chapterIndex != currentChapterIndex) {
             AppLog.putDebug(
-                "Ignore stale source audio seek: requestedChapter=$chapterIndex, currentChapter=${chapter.index}"
+                "Ignore stale source audio seek: requestedChapter=$chapterIndex, currentChapter=$currentChapterIndex"
             )
             publishTimeProgress()
             return
@@ -214,7 +241,7 @@ class SourceAudioReadAloudService : BaseReadAloudService(), Player.Listener {
                     return
                 }
                 upReadAloudLoading(false)
-                textChapter?.chapter?.let { chapter ->
+                currentChapter?.takeIf { it.index == currentChapterIndex }?.let { chapter ->
                     if (chapter.end != duration) {
                         chapter.end = duration
                         lifecycleScope.launch(IO) { chapter.update() }
@@ -266,7 +293,8 @@ class SourceAudioReadAloudService : BaseReadAloudService(), Player.Listener {
         duration: Long = player.duration,
     ) {
         if (duration <= 0 || duration > Int.MAX_VALUE) return
-        val chapterIndex = textChapter?.chapter?.index ?: return
+        val chapterIndex = currentChapterIndex
+        if (chapterIndex < 0) return
         publishReadAloudProgress(
             ReadAloudProgress(
                 chapterIndex = chapterIndex,
@@ -278,9 +306,9 @@ class SourceAudioReadAloudService : BaseReadAloudService(), Player.Listener {
     }
 
     private fun syncTextPosition(position: Int) {
+        val chapter = textChapter?.takeIf { it.chapter.index == currentChapterIndex } ?: return
         val paragraphIndex = layoutBinding?.layoutParagraphAt(position) ?: return
         if (paragraphIndex == lastMappedParagraph) return
-        val chapter = textChapter ?: return
         val paragraphs = chapter.getParagraphs(false)
         val paragraph = paragraphs.getOrNull(paragraphIndex)
             ?: return failPlayback(
@@ -295,7 +323,8 @@ class SourceAudioReadAloudService : BaseReadAloudService(), Player.Listener {
 
     private fun persistProgress(position: Int) {
         val book = ReadBook.book ?: return
-        val chapterIndex = textChapter?.chapter?.index ?: return
+        val chapterIndex = currentChapterIndex
+        if (chapterIndex < 0) return
         book.setSourceAudioProgress(chapterIndex, position.coerceAtLeast(0))
         lifecycleScope.launch(IO) { book.save() }
     }
