@@ -76,7 +76,7 @@ class BooksAdapterList(
                 tvRead.text = item.durChapterTitle
                 tvLast.text = item.latestChapterTitle
                 ivCover.loadThumb(item, false, fragment, lifecycle)
-                root.bindBookMediaBadge(item)
+                root.bindBookMediaBadge(item.type)
                 ivLocal.visible(AppConfig.showLocalBookIcon && item.isLocal)
                 upRefresh(binding, item)
                 upLastUpdateTime(binding, item)
@@ -99,7 +99,7 @@ class BooksAdapterList(
                             "refresh" -> upRefresh(binding, item)
                             "lastUpdateTime" -> upLastUpdateTime(binding, item)
                             "type" -> {
-                                root.bindBookMediaBadge(item)
+                                root.bindBookMediaBadge(item.type)
                                 ivLocal.visible(AppConfig.showLocalBookIcon && item.isLocal)
                             }
                         }

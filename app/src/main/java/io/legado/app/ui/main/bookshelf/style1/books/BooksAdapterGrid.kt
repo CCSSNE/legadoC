@@ -73,7 +73,7 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
                         tvName.gone()
                     }
                     ivCover.loadThumb(item, false)
-                    root.bindBookMediaBadge(item)
+                    root.bindBookMediaBadge(item.type)
                     ivLocal.visible(AppConfig.showLocalBookIcon && item.isLocal)
                     upRefresh(binding, item)
                 } else {
@@ -89,7 +89,7 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
 
                                 "refresh" -> upRefresh(binding, item)
                                 "type" -> {
-                                    root.bindBookMediaBadge(item)
+                                    root.bindBookMediaBadge(item.type)
                                     ivLocal.visible(AppConfig.showLocalBookIcon && item.isLocal)
                                 }
                             }
@@ -103,7 +103,7 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
                 if (payloads.isEmpty()) {
                     tvName.text = item.name
                     ivCover.loadThumb(item, false)
-                    root.bindBookMediaBadge(item)
+                    root.bindBookMediaBadge(item.type)
                     ivLocal.visible(AppConfig.showLocalBookIcon && item.isLocal)
                     upRefresh(binding, item)
                 } else {
@@ -119,7 +119,7 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
 
                                 "refresh" -> upRefresh(binding, item)
                                 "type" -> {
-                                    root.bindBookMediaBadge(item)
+                                    root.bindBookMediaBadge(item.type)
                                     ivLocal.visible(AppConfig.showLocalBookIcon && item.isLocal)
                                 }
                             }
