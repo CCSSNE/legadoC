@@ -12,9 +12,9 @@ import android.os.SystemClock
 import android.text.Layout
 import android.text.Spannable
 import android.text.SpannableStringBuilder
+import android.text.Spanned
 import android.text.StaticLayout
 import android.text.TextPaint
-import android.text.method.LinkMovementMethod
 import android.text.style.ClickableSpan
 import android.text.style.ReplacementSpan
 import android.util.TypedValue
@@ -419,6 +419,8 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         items.forEach { item ->
             val normalAlpha = if (item.isTitle) 1f else BODY_TEXT_ALPHA
             val normalizedText = StringUtils.trim(item.text)
+            // 只给真正含评论的段落启用评论交互（纯文本段落只有 Text 节点）
+            val hasReview = item.segments.any { it is ParagraphSegment.Review }
             val view = TextView(this@AudioPlayActivity).apply {
                 setTextSize(TypedValue.COMPLEX_UNIT_PX, NORMAL_TEXT_SIZE_PX)
                 setTextColor(Color.WHITE)
@@ -427,12 +429,27 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
                 setLineSpacing(0f, LISTENING_LINE_SPACING_MULTIPLIER)
                 setPadding(0, 8.dpToPx(), 0, 8.dpToPx())
                 isClickable = true
-                // 含评论节点的段落走 span 点击分流：气泡点击评论、正文点击仍落行点击
-                if (item.segments.isNotEmpty()) {
-                    movementMethod = LinkMovementMethod.getInstance()
-                }
                 setOnClickListener {
                     seekToListeningText(chapterIndex, item.target)
+                }
+                // 统一触摸分流：先命中 Review 气泡 span——命中则消费并直接弹评论，
+                // 不落行点击；未命中才回落到行点击 seek。不依赖 LinkMovementMethod，
+                // 避免气泡点击连带触发 seek。
+                if (hasReview) {
+                    setOnTouchListener { _, event ->
+                        if (event.actionMasked == MotionEvent.ACTION_UP) {
+                            val span = reviewingSpanAt(this, event)
+                            if (span != null) {
+                                isPressed = false
+                                onListeningReviewClick(span.click, span.src)
+                                true
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
+                    }
                 }
             }
             val row = ListeningTextRow(
@@ -440,7 +457,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
                 normalizedText = normalizedText,
                 isTitle = item.isTitle,
                 normalAlpha = normalAlpha,
-                spannable = if (item.segments.isNotEmpty()) {
+                spannable = if (hasReview) {
                     buildListeningSpannable(item, view)
                 } else {
                     null
@@ -941,6 +958,31 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         }
     }
 
+    /**
+     * 命中测试：在气泡 span 的可见矩形内判断点击位置。
+     * 直接按气泡矩形的 [左,右] x [行top,行bottom] 判定，
+     * 避免 layout offset 惰性边界把气泡点击判成正文点击（或反之）。
+     */
+    private fun reviewingSpanAt(view: TextView, event: MotionEvent): ListeningReviewClickableSpan? {
+        val layout = view.layout ?: return null
+        val text = view.text as? Spanned ?: return null
+        val px = event.x - view.totalPaddingLeft + view.scrollX
+        val py = event.y - view.totalPaddingTop + view.scrollY
+        val slop = 4.dpToPx()
+        return text.getSpans(0, text.length, ListeningReviewClickableSpan::class.java)
+            .firstOrNull { span ->
+                val start = text.getSpanStart(span)
+                if (start < 0) return@firstOrNull false
+                val line = layout.getLineForOffset(start)
+                val left = layout.getPrimaryHorizontal(start)
+                val right = left + layout.getPrimaryHorizontal(start + 1) - left
+                py >= layout.getLineTop(line) - slop &&
+                    py <= layout.getLineBottom(line) + slop &&
+                    px >= left - slop &&
+                    px <= right + slop
+            }
+    }
+
     private data class ListeningTextItem(
         val text: String,
         val isTitle: Boolean,
@@ -1017,20 +1059,22 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             } else {
                 ImageProvider.getImage(book, src, width, height)
             }
-            // 宽度固定为字符宽；高度按原图比例计算并垂直居中（div 为负时允许高于行高）
+            // 宽度固定为字符宽；高度按原图比例计算并相对当前行坐标垂直居中
+            // （原实现漏加行 top，非首行气泡会整体上移；div 为负时允许高于行高）
             val imgHeight = width.toFloat() / bitmap.width.coerceAtLeast(1) * bitmap.height
             val div = (height - imgHeight) / 2f
-            canvas.drawBitmap(bitmap, null, RectF(x, div, x + width, height - div), paint)
+            canvas.drawBitmap(bitmap, null, RectF(x, top + div, x + width, bottom - div), paint)
         }
     }
 
     /**
-     * 评论气泡点击 span：点击只触发评论（复用公共点击入口），
-     * 正文点击由行点击处理，跳转朗读位置。
+     * 评论气泡命中标记与点击载荷：配合统一触摸分流，
+     * 命中其可见矩形时消费触摸并复用公共评论点击入口；
+     * 正文点击不经过它，走行点击跳转朗读位置。
      */
     private class ListeningReviewClickableSpan(
-        private val click: String?,
-        private val src: String,
+        val click: String?,
+        val src: String,
         private val onReviewClick: (click: String?, src: String) -> Unit,
     ) : ClickableSpan() {
         override fun onClick(widget: View) {
