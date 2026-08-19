@@ -167,6 +167,13 @@ abstract class BaseReadAloudService : BaseService(),
     internal var readAloudNumber: Int = 0
     internal var textChapter: TextChapter? = null
     internal var pageIndex = 0
+
+    /**
+     * 统一朗读会话的当前章节身份：BookChapter.index。
+     * TTS 与书源音频都以它为共同章节身份；正文 TextChapter 只负责显示与字幕映射，
+     * 不再决定音频当前正在播放哪一章。
+     */
+    internal var currentChapterIndex: Int = -1
     private var needResumeOnAudioFocusGain = false
     private var needResumeOnCallStateIdle = false
     private var registeredPhoneStateListener = false
@@ -1011,6 +1018,7 @@ abstract class BaseReadAloudService : BaseService(),
         startPos: Int
     ): Boolean {
         textChapter = chapter
+        currentChapterIndex = chapter.chapter.index
         if (!chapter.isCompleted) {
             return false
         }
@@ -1151,7 +1159,7 @@ abstract class BaseReadAloudService : BaseService(),
     }
 
     protected fun postReadAloudTextPosition(progress: Int) {
-        val chapterIndex = textChapter?.chapter?.index ?: ReadBook.durChapterIndex
+        val chapterIndex = currentChapterIndex.takeIf { it >= 0 } ?: ReadBook.durChapterIndex
         if (chapterIndex == ReadBook.durChapterIndex) {
             ReadBook.durChapterPos = progress
             ReadBook.book?.durChapterPos = progress
@@ -1686,7 +1694,7 @@ abstract class BaseReadAloudService : BaseService(),
     }
 
     private fun switchDetachedReadAloudChapterByOffset(offset: Int, toLast: Boolean) {
-        val sourceIndex = textChapter?.chapter?.index ?: run {
+        val sourceIndex = currentChapterIndex.takeIf { it >= 0 } ?: run {
             stopReadAloudOnInvalidPosition("Detached read aloud chapter is missing")
             return
         }
