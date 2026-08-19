@@ -56,9 +56,120 @@ class AudioTextMappingTest {
         assertNull(mapping.paragraphAt(1_000))
     }
 
+    @Test
+    fun `plain subtitles keep usehtml blocks out of paragraphs and into display order`() {
+        val mapping = AudioTextMapping.parse(
+            """
+            第一段正文
+            <usehtml>评论按钮</usehtml>
+            第二段正文
+            """.trimIndent()
+        )
+
+        assertEquals(listOf("第一段正文", "第二段正文"), mapping.paragraphs)
+        assertFalse(mapping.hasTimeMapping)
+        assertEquals(
+            listOf("第一段正文", "<usehtml>评论按钮</usehtml>", "第二段正文"),
+            mapping.displayContents()
+        )
+    }
+
+    @Test
+    fun `multiline usehtml block is preserved as one structure`() {
+        val block = "<usehtml>\n<center>评论区按钮</center>\n</usehtml>"
+        val mapping = AudioTextMapping.parse("第一段\n$block\n第二段")
+
+        assertEquals(listOf("第一段", "第二段"), mapping.paragraphs)
+        assertEquals(listOf("第一段", block, "第二段"), mapping.displayContents())
+    }
+
+    @Test
+    fun `timed lyrics ignore time-like text inside usehtml blocks`() {
+        val mapping = AudioTextMapping.parse(
+            """
+            [00:01.00]第一句
+            <usehtml>[12:34]评论按钮</usehtml>
+            [00:03.00]第二句
+            """.trimIndent()
+        )
+
+        assertEquals(listOf("第一句", "第二句"), mapping.paragraphs)
+        assertEquals(listOf(1_000, 3_000), mapping.cues.map { it.startMs })
+        assertEquals(
+            listOf("第一句", "<usehtml>[12:34]评论按钮</usehtml>", "第二句"),
+            mapping.displayContents()
+        )
+    }
+
+    @Test
+    fun `inline usehtml inside a timed line does not pollute cues`() {
+        val mapping = AudioTextMapping.parse(
+            "[00:01.00]第一句<usehtml>按钮</usehtml>\n[00:03.00]第二句"
+        )
+
+        assertEquals(listOf("第一句", "第二句"), mapping.paragraphs)
+        assertEquals(listOf(1_000, 3_000), mapping.cues.map { it.startMs })
+        assertEquals(
+            listOf("第一句", "<usehtml>按钮</usehtml>", "第二句"),
+            mapping.displayContents()
+        )
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun `invalid lrc seconds are rejected`() {
         AudioTextMapping.parse("[00:61.00]非法字幕")
+    }
+
+    @Test
+    fun `timed lyrics bind around a structural usehtml paragraph`() {
+        val mapping = AudioTextMapping.parse(
+            """
+            [00:01.00]First line
+            <usehtml>Comment button</usehtml>
+            [00:03.00]Second line
+            """.trimIndent()
+        )
+
+        val binding = mapping.bindLayout(
+            listOf(
+                AudioTextMapping.LayoutParagraph(0, "Chapter title", isStructural = true),
+                AudioTextMapping.LayoutParagraph(1, "First line", isStructural = false),
+                AudioTextMapping.LayoutParagraph(2, "Comment button", isStructural = true),
+                AudioTextMapping.LayoutParagraph(3, "Second line", isStructural = false),
+            )
+        )
+
+        assertEquals(2, binding.paragraphCount)
+        assertEquals(1_000, binding.timeForLayoutParagraph(0))
+        assertEquals(1_000, binding.timeForLayoutParagraph(1))
+        assertEquals(3_000, binding.timeForLayoutParagraph(3))
+        assertEquals(1, binding.layoutParagraphAt(1_000))
+        assertEquals(3, binding.layoutParagraphAt(3_000))
+        assertEquals(1, binding.layoutParagraphAt(2_000))
+    }
+
+    @Test
+    fun `plain subtitles with usehtml bind only to real body paragraphs`() {
+        val mapping = AudioTextMapping.parse(
+            """
+            第一段正文
+            <usehtml>评论按钮</usehtml>
+            第二段正文
+            """.trimIndent()
+        )
+
+        val binding = mapping.bindLayout(
+            listOf(
+                AudioTextMapping.LayoutParagraph(0, "Chapter title", isStructural = true),
+                AudioTextMapping.LayoutParagraph(1, "第一段正文", isStructural = false),
+                AudioTextMapping.LayoutParagraph(2, "评论按钮", isStructural = true),
+                AudioTextMapping.LayoutParagraph(3, "第二段正文", isStructural = false),
+            )
+        )
+
+        assertEquals(2, binding.paragraphCount)
+        assertNull(binding.layoutParagraphAt(1_000))
+        assertNull(binding.timeForLayoutParagraph(1))
     }
 
     @Test
