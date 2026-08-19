@@ -90,6 +90,19 @@
                                 android:scaleType="centerCrop"
                                 android:src="@drawable/image_cover_default" />
 
+                            <androidx.appcompat.widget.AppCompatImageView
+                                android:id="@+id/iv_audio"
+                                android:layout_width="26dp"
+                                android:layout_height="26dp"
+                                android:layout_gravity="top|end"
+                                android:layout_margin="6dp"
+                                android:background="@drawable/bg_bookshelf_audio_badge"
+                                android:contentDescription="@string/audio"
+                                android:padding="5dp"
+                                android:src="@drawable/ic_volume_up"
+                                android:visibility="gone"
+                                tools:visibility="visible" />
+
                         </androidx.cardview.widget.CardView>
 
                         <LinearLayout

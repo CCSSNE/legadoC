@@ -68,6 +68,7 @@ import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ThemeConfig
+import io.legado.app.ui.book.bindBookMediaBadge
 import io.legado.app.help.webView.PooledWebView
 import io.legado.app.help.webView.WebJsExtensions
 import io.legado.app.help.webView.WebJsExtensions.Companion.getInjectionString
@@ -616,6 +617,7 @@ class BookInfoActivity :
 
     private fun showBook(book: Book) = binding.run {
         showCover(book)
+        binding.root.bindBookMediaBadge(book.type)
         tvName.text = book.name
         tvAuthor.text = getString(R.string.author_show, book.getRealAuthor())
         tvOrigin.text = getString(R.string.origin_show, book.originName)
