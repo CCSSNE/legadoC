@@ -4,9 +4,12 @@ import android.content.Context
 import android.os.Parcelable
 import android.view.LayoutInflater
 import android.view.ViewGroup
+import androidx.recyclerview.widget.AdapterListUpdateCallback
+import androidx.recyclerview.widget.AsyncDifferConfig
 import androidx.recyclerview.widget.AsyncListDiffer
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.ListUpdateCallback
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewbinding.ViewBinding
 import io.legado.app.lib.theme.applyUiBodyTypeface
@@ -21,9 +24,40 @@ abstract class DiffRecyclerAdapter<ITEM, VB : ViewBinding>(protected val context
 
     val inflater: LayoutInflater = LayoutInflater.from(context)
 
+    @Volatile
+    private var fullReplacePending = false
+
+    private val listUpdateCallback = object : ListUpdateCallback {
+        private val adapterCallback = AdapterListUpdateCallback(this@DiffRecyclerAdapter)
+
+        override fun onInserted(position: Int, count: Int) {
+            if (!fullReplacePending) adapterCallback.onInserted(position, count)
+        }
+
+        override fun onRemoved(position: Int, count: Int) {
+            if (!fullReplacePending) adapterCallback.onRemoved(position, count)
+        }
+
+        override fun onMoved(fromPosition: Int, toPosition: Int) {
+            if (!fullReplacePending) adapterCallback.onMoved(fromPosition, toPosition)
+        }
+
+        override fun onChanged(position: Int, count: Int, payload: Any?) {
+            if (!fullReplacePending) adapterCallback.onChanged(position, count, payload)
+        }
+    }
+
     private val asyncListDiffer: AsyncListDiffer<ITEM> by lazy {
-        AsyncListDiffer(this, diffItemCallback).apply {
+        AsyncListDiffer(
+            listUpdateCallback,
+            AsyncDifferConfig.Builder<ITEM>(diffItemCallback)
+                .build()
+        ).apply {
             addListListener { _, _ ->
+                if (fullReplacePending) {
+                    fullReplacePending = false
+                    notifyDataSetChanged()
+                }
                 onCurrentListChanged()
                 if (keepScrollPosition) {
                     layoutManager?.onRestoreInstanceState(layoutState)
@@ -59,6 +93,18 @@ abstract class DiffRecyclerAdapter<ITEM, VB : ViewBinding>(protected val context
 
     fun setItems(items: List<ITEM>?) {
         kotlin.runCatching {
+            fullReplacePending = false
+            if (keepScrollPosition) {
+                layoutState = layoutManager?.onSaveInstanceState()
+            }
+            asyncListDiffer.submitList(items?.toMutableList())
+        }
+    }
+
+    /** Replaces a completely reordered list without dispatching item moves. */
+    fun setItemsNoDiff(items: List<ITEM>?) {
+        kotlin.runCatching {
+            fullReplacePending = true
             if (keepScrollPosition) {
                 layoutState = layoutManager?.onSaveInstanceState()
             }
