@@ -196,6 +196,46 @@ class AudioTextMappingTest {
         assertEquals(2, binding.layoutParagraphAt(3_000))
     }
 
+    @Test
+    fun `timed lyrics with out-of-order timestamps keep display and mapping bindable`() {
+        val mapping = AudioTextMapping.parse(
+            """
+            [00:10]第二句
+            <usehtml>评论按钮</usehtml>
+            [00:01]第一句
+            """.trimIndent()
+        )
+
+        // 显示顺序尊重原文：usehtml 原位保留，不按 cue 时间重排
+        assertEquals(
+            listOf("第二句", "<usehtml>评论按钮</usehtml>", "第一句"),
+            mapping.displayContents()
+        )
+        // usehtml 不生成 cue；cues/paragraphs 按时间排序（legacy 时间维度语义不变）
+        assertEquals(listOf("第一句", "第二句"), mapping.cues.map { it.text })
+        assertEquals(listOf(1_000, 10_000), mapping.cues.map { it.startMs })
+        assertEquals(listOf("第一句", "第二句"), mapping.paragraphs)
+
+        // 页面真实正文段（TextChapter 渲染后）：标题(structural)、第二句、按钮(structural)、第一句
+        val binding = mapping.bindLayout(
+            listOf(
+                AudioTextMapping.LayoutParagraph(0, "Chapter title", isStructural = true),
+                AudioTextMapping.LayoutParagraph(1, "第二句", isStructural = false),
+                AudioTextMapping.LayoutParagraph(2, "评论按钮", isStructural = true),
+                AudioTextMapping.LayoutParagraph(3, "第一句", isStructural = false),
+            )
+        )
+        assertEquals(2, binding.paragraphCount)
+
+        // 时间 → 页面段落（反向定位）：00:01 第一句、00:10 第二句
+        assertEquals(3, binding.layoutParagraphAt(1_000))
+        assertEquals(1, binding.layoutParagraphAt(10_000))
+
+        // 页面段落 → 时间（指哪听哪）：第二句段 → 10000ms、第一句段 → 1000ms
+        assertEquals(10_000, binding.timeForLayoutParagraph(1))
+        assertEquals(1_000, binding.timeForLayoutParagraph(3))
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun `layout binding rejects content mismatches`() {
         val mapping = AudioTextMapping.parse("[00:01.00]Expected")
