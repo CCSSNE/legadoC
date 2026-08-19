@@ -12,7 +12,7 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ItemExploreBookGridBinding
 import io.legado.app.databinding.ItemSearchBinding
 import io.legado.app.help.config.AppConfig
-import io.legado.app.ui.main.bookshelf.bindBookMediaBadge
+import io.legado.app.ui.book.bindBookMediaBadge
 import io.legado.app.utils.gone
 import io.legado.app.utils.visible
 
