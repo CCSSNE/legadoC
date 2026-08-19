@@ -47,7 +47,6 @@ class ChapterListFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_chapt
     private var chapterList: List<BookChapter> = emptyList()
     private var displayChapterList: List<BookChapter> = emptyList()
     private var currentSearchKey: String? = null
-    private var suppressNextListScroll = false
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) = binding.run {
         viewModel.registerChapterListCallBack(this@ChapterListFragment)
@@ -142,6 +141,17 @@ class ChapterListFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_chapt
     }
 
     override fun upChapterList(searchKey: String?) {
+        updateChapterList(searchKey) { items -> adapter.setItems(items) }
+    }
+
+    override fun upChapterListDisplayOrder(searchKey: String?) {
+        updateChapterList(searchKey) { items -> adapter.setItemsNoDiff(items) }
+    }
+
+    private fun updateChapterList(
+        searchKey: String?,
+        submit: (List<BookChapter>) -> Unit
+    ) {
         viewLifecycleOwner.lifecycleScope.launch {
             withContext(IO) {
                 val end = (book?.simulatedTotalChapterNum() ?: Int.MAX_VALUE) - 1
@@ -163,30 +173,16 @@ class ChapterListFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_chapt
                     resetCollapsedVolumes(chapters)
                 }
                 displayChapterList = displayChapters
-                adapter.setItems(visibleChapters(displayChapters, searchKey))
+                submit(visibleChapters(displayChapters, searchKey))
             }
         }
     }
 
     override fun onListChanged() {
-        val viewOwner = viewLifecycleOwnerLiveData.value ?: return
-        if (suppressNextListScroll) {
-            suppressNextListScroll = false
-            adapter.upDisplayTitles(
-                mLayoutManager?.findFirstVisibleItemPosition()?.coerceAtLeast(0) ?: 0
-            )
-            return
-        }
-        viewOwner.lifecycleScope.launch {
-            val scrollPos = visiblePositionOf(durChapterIndex)
-            val recyclerView = binding.recyclerView
-            recyclerView.post {
-                if (viewLifecycleOwnerLiveData.value == null) return@post
-                val centerOffset = (recyclerView.height / 2).coerceAtLeast(0)
-                mLayoutManager?.scrollToPositionWithOffset(scrollPos, centerOffset)
-                adapter.upDisplayTitles(scrollPos)
-            }
-        }
+        viewLifecycleOwnerLiveData.value ?: return
+        adapter.upDisplayTitles(
+            mLayoutManager?.findFirstVisibleItemPosition()?.coerceAtLeast(0) ?: 0
+        )
     }
 
     override fun clearDisplayTitle() {
@@ -226,7 +222,6 @@ class ChapterListFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_chapt
             collapsedVolumeIndexes.remove(bookChapter.index)
         }
         val visible = visibleChapters(displayChapterList, currentSearchKey)
-        suppressNextListScroll = true
         adapter.setItems(visible)
         binding.recyclerView.post {
             visible.indexOfFirst { it.index == bookChapter.index }.takeIf { it >= 0 }?.let {

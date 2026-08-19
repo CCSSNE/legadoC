@@ -219,7 +219,7 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
 
             R.id.menu_reverse_toc_display -> {
                 item.isChecked = viewModel.toggleTocDisplayOrder()
-                viewModel.startChapterListSearch(searchView?.query?.toString())
+                viewModel.startChapterListDisplayOrder(searchView?.query?.toString())
             }
 
             R.id.menu_use_replace -> {
