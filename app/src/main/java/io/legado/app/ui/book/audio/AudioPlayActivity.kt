@@ -283,28 +283,23 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     }
 
     /**
-     * 当前朗读章节的显示标题：数据源是目录中对应 BookChapter（不依赖 TextChapter 是否已加载），
-     * 显示处理与正文阅读共用同一入口 [BookChapter.getDisplayTitle]（替换规则、繁简转换完全同参），
-     * 保证听书页与阅读页/目录显示的章节名一致。目录无此章节或处理后标题为空时回退书名。
-     * 按章节缓存，切章才重新查询与处理。
+     * 当前朗读章节的显示标题由 ContentProcessor 统一生成；此处只负责按朗读 chapterIndex
+     * 定位 BookChapter 和缓存结果，不再复制标题替换、简繁转换等规则。
      */
     private fun currentChapterTitle(): String {
         if (displayedChapterTitleCache == null) {
             val book = ReadBook.book
-            val displayTitle = if (book != null) {
-                appDb.bookChapterDao.getChapter(book.bookUrl, displayedChapterIndex)?.let { chapter ->
-                    val contentProcessor = ContentProcessor.get(book.name, book.origin)
-                    chapter.getDisplayTitle(
-                        contentProcessor.getTitleReplaceRules(),
-                        book.getUseReplaceRule(),
-                        replaceBook = book.toReplaceBook(),
-                    )
-                }
+            val chapter = book?.let {
+                appDb.bookChapterDao.getChapter(it.bookUrl, displayedChapterIndex)
+            }
+            val title = if (book != null && chapter != null) {
+                ContentProcessor.get(book)
+                    .getChapterDisplayTitle(book, chapter)
+                    .takeIf { it.isNotBlank() }
             } else {
                 null
             }
-            displayedChapterTitleCache = displayTitle?.takeIf { it.isNotBlank() }
-                ?: book?.name.orEmpty()
+            displayedChapterTitleCache = title ?: book?.name.orEmpty()
         }
         return displayedChapterTitleCache ?: ""
     }

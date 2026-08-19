@@ -85,6 +85,20 @@ class ContentProcessor private constructor(
         return replaceRuleSnapshot.title
     }
 
+    fun getChapterDisplayTitle(
+        book: Book,
+        chapter: BookChapter,
+        useReplace: Boolean = true,
+        chineseConvert: Boolean = true
+    ): String {
+        return chapter.getDisplayTitle(
+            replaceRuleSnapshot.title,
+            useReplace = useReplace && book.getUseReplaceRule(),
+            chineseConvert = chineseConvert,
+            replaceBook = book.toReplaceBook()
+        )
+    }
+
     @Suppress("MemberVisibilityCanBePrivate")
     fun getContentReplaceRules(): List<ReplaceRule> {
         return replaceRuleSnapshot.content
@@ -103,10 +117,11 @@ class ContentProcessor private constructor(
             val transcript = AudioTextMapping.parse(chapter.getVariable("lyric"))
             val contents = arrayListOf<String>()
             if (includeTitle) {
-                contents += chapter.getDisplayTitle(
-                    getTitleReplaceRules(),
-                    useReplace = useReplace && book.getUseReplaceRule(),
-                    replaceBook = book.toReplaceBook()
+                contents += getChapterDisplayTitle(
+                    book,
+                    chapter,
+                    useReplace = useReplace,
+                    chineseConvert = chineseConvert
                 )
             }
             // 音频正文按显示顺序输出：普通段落与 <usehtml>…</usehtml> 结构块
@@ -140,10 +155,11 @@ class ContentProcessor private constructor(
                     sameTitleRemoved = true
                 } else if (useReplace && book.getUseReplaceRule()) {
                     title = Pattern.quote(
-                        chapter.getDisplayTitle(
-                            ruleSnapshot.title,
-                            chineseConvert = false,
-                            replaceBook = replaceBook
+                        getChapterDisplayTitle(
+                            book,
+                            chapter,
+                            useReplace = useReplace,
+                            chineseConvert = false
                         )
                     )
                     matcher = Pattern.compile("^(\\s|\\p{P}|${name})*${title}(\\s)*")
@@ -221,10 +237,11 @@ class ContentProcessor private constructor(
         }
         if (includeTitle) {
             //重新添加标题
-            mContent = chapter.getDisplayTitle(
-                getTitleReplaceRules(),
-                useReplace = useReplace && book.getUseReplaceRule(),
-                replaceBook = replaceBook
+            mContent = getChapterDisplayTitle(
+                book,
+                chapter,
+                useReplace = useReplace,
+                chineseConvert = chineseConvert
             ) + "\n" + mContent
         }
         if (isAndroid8) {
