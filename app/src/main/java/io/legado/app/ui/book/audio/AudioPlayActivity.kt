@@ -433,22 +433,41 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
                 setOnClickListener {
                     seekToListeningText(chapterIndex, item.target)
                 }
-                // 统一触摸分流：先命中 Review 气泡 span——命中则消费并直接弹评论，
-                // 不落行点击；未命中才回落到行点击 seek。不依赖 LinkMovementMethod，
-                // 避免气泡点击连带触发 seek。
+                // 统一触摸分流：命中 Review 气泡的 ACTION_DOWN 起即持有整个手势
+                // （TextView 不介入，不产生按压/tap 状态），UP/CANCEL 成对结束；
+                // UP 仍落在同一气泡内才触发评论，否则整个手势被消费、不落行点击。
+                // 未命中气泡的 DOWN 正常回落到 TextView 行点击 seek。
                 if (hasReview) {
+                    var holdingReview: ListeningReviewClickableSpan? = null
                     setOnTouchListener { _, event ->
-                        if (event.actionMasked == MotionEvent.ACTION_UP) {
-                            val span = reviewingSpanAt(this, event)
-                            if (span != null) {
-                                isPressed = false
-                                onListeningReviewClick(span.click, span.src)
-                                true
-                            } else {
-                                false
+                        when (event.actionMasked) {
+                            MotionEvent.ACTION_DOWN -> {
+                                val span = reviewingSpanAt(this, event)
+                                if (span != null) {
+                                    holdingReview = span
+                                    true
+                                } else {
+                                    false
+                                }
                             }
-                        } else {
-                            false
+                            MotionEvent.ACTION_UP -> {
+                                val span = holdingReview
+                                holdingReview = null
+                                if (span != null) {
+                                    if (reviewingSpanAt(this, event) === span) {
+                                        onListeningReviewClick(span.click, span.src)
+                                    }
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
+                            MotionEvent.ACTION_CANCEL -> {
+                                val wasHolding = holdingReview != null
+                                holdingReview = null
+                                wasHolding
+                            }
+                            else -> holdingReview != null
                         }
                     }
                 }
