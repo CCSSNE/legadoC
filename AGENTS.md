@@ -98,6 +98,7 @@ $versionName = '3.26.<MMddHH>' # <MMddHH> uses UTC; appC automatically appends c
 - 2026-08-15：`HeaderlessDialogChrome` 首次正式编译在 `AccentTextView(context)` 失败，因为该控件构造器强制要求 `AttributeSet?`；读取 Kotlin 报错后改为 `AccentTextView(context, null)`，同版本重编译成功。失败包未产出、未交付。动态创建项目自定义 View 时必须先核对构造器签名，不能假定存在单参构造器。
 - 2026-08-15：首次启动 10608 构建时，把批处理和退出码写入拼在 `cmd /c` 参数中，Windows 报“文件名、目录名或卷标语法不正确”，没有 Gradle 进程、构建日志或 APK。改为由 `.bat` 自己记录退出码，再以 `Start-Process` 直接启动，构建正常。后台构建的重定向/引号错误必须以“未启动”处理，不能等待或误判为 Gradle 卡死。
 - 2026-08-16：新增被 XML 引用的字符串只写入 `values-zh` 会在 `appC` 资源链接时被移除，最终报“resource string not found”。所有新增字符串必须先定义在默认 `values/strings.xml`，再补充语言覆盖；首次链接失败包不产出，补齐默认资源后以同一版本重编译。
+- 2026-08-19：`assembleAppC` 增量 daemon 编译在 `compileAppCJavaWithJavac` 阶段报“Gradle build daemon disappeared unexpectedly”，`hs_err_pid*.log` 显示 JVM 原生内存不足（native OOM，malloc 失败）。根因是系统物理内存/交换空间不足，不是源码错误。清理残留 Gradle/Kotlin/Java 进程后，按冷编译参数 `--no-daemon --max-workers=1 -Dkotlin.incremental=false -Dksp.incremental=false -Dkotlin.compiler.execution.strategy=in-process` 全量重编译成功。本机内存压力下再次构建应直接采用该冷编译参数，不要盲目重跑 daemon 增量编译。
 
 ### 产物验证
 
@@ -264,6 +265,6 @@ uiautomator2 / ADB
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- `3.26.081908c` / `10695`，2026-08-19（UTC），`own` 主线（代码提交 `bb44d4c`）。统一书籍音频标识：详情页封面增加音频角标、发现页增加音频标识、`bindBookMediaBadge` 按 `bookType` 区分有声书与文字书、`BookMediaBadge` 移至共享 book UI 层（书架、发现、详情共用同一实现）。已通过正式后台 `:app:assembleAppC` 构建，退出码为 0；`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.081908c` / `10695`、中文名 `阅读 C`、架构 `arm64-v8a`，`apksigner` 退出码为 0。已发布 GitHub Pre 版本 `v3.26.081908c`（prerelease，目标 `own` 分支 `bb44d4c`），源码已推送至 `origin/own`。本次未执行模拟器安装回归（用户未要求）。
+- `3.26.081916c` / `10696`，2026-08-19（UTC），`own` 主线（代码提交 `984a38a`）。书源音频（SourceAudio）启动与自动切章解耦正文 TextChapter：会话章节身份一律以统一阅读目标 `ReadBook.durChapterIndex` 确定，TextChapter 仅在 index 匹配时参与段落/LRC 准备；`newReadAloud` 在正文未加载/未完成排版/无正文时直达 `play()`；detached 与 attached 模式的上一章/下一章/上一段均以 `BookChapter.index` 推进不等待正文；字幕/LRC 绑定失败、段落映射越界、无时间映射定位均降级为日志，只影响正文同步/高亮/指哪读哪，不再停止正常播放。已通过正式后台 `:app:assembleAppC` 冷编译（`--no-daemon --max-workers=1` 关增量），退出码为 0；`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.081916c` / `10696`、中文名 `阅读 C`、架构 `arm64-v8a`，`apksigner` 退出码为 0。源码已推送至 `origin/own`。本次未安装模拟器、未发布 Release（用户仅要求编译）。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
