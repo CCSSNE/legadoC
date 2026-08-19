@@ -3,12 +3,20 @@ package io.legado.app.ui.book.audio
 import android.animation.ObjectAnimator
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.RectF
 import android.os.Bundle
 import android.os.SystemClock
 import android.text.Layout
+import android.text.Spannable
+import android.text.SpannableStringBuilder
 import android.text.StaticLayout
 import android.text.TextPaint
+import android.text.method.LinkMovementMethod
+import android.text.style.ClickableSpan
+import android.text.style.ReplacementSpan
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.Menu
@@ -36,14 +44,17 @@ import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ActivityAudioPlayBinding
 import io.legado.app.databinding.DialogDownloadChoiceBinding
 import io.legado.app.help.book.AudioTextMapping
+import io.legado.app.help.book.BookImgClick
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.permission.NotificationPermission
 import io.legado.app.model.BookCover
+import io.legado.app.model.ImageProvider
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadAloudUiState
 import io.legado.app.model.ReadBook
+import io.legado.app.ui.book.read.page.entities.ParagraphSegment
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.service.ReadAloudEngineType
 import io.legado.app.service.ReadAloudProgress
@@ -77,6 +88,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 @SuppressLint("ObsoleteSdkInt")
 class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = Theme.Dark) {
@@ -381,6 +393,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
                     text = paragraph.text,
                     isTitle = paragraph.isTitle,
                     target = ListeningTextTarget.Text(paragraph.chapterPosition),
+                    segments = paragraph.segments,
                 )
             },
         )
@@ -407,7 +420,6 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             val normalAlpha = if (item.isTitle) 1f else BODY_TEXT_ALPHA
             val normalizedText = StringUtils.trim(item.text)
             val view = TextView(this@AudioPlayActivity).apply {
-                text = normalizedText
                 setTextSize(TypedValue.COMPLEX_UNIT_PX, NORMAL_TEXT_SIZE_PX)
                 setTextColor(Color.WHITE)
                 alpha = normalAlpha
@@ -415,16 +427,27 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
                 setLineSpacing(0f, LISTENING_LINE_SPACING_MULTIPLIER)
                 setPadding(0, 8.dpToPx(), 0, 8.dpToPx())
                 isClickable = true
+                // 含评论节点的段落走 span 点击分流：气泡点击评论、正文点击仍落行点击
+                if (item.segments.isNotEmpty()) {
+                    movementMethod = LinkMovementMethod.getInstance()
+                }
                 setOnClickListener {
                     seekToListeningText(chapterIndex, item.target)
                 }
             }
-            listeningTextRows += ListeningTextRow(
+            val row = ListeningTextRow(
                 view = view,
                 normalizedText = normalizedText,
                 isTitle = item.isTitle,
                 normalAlpha = normalAlpha,
+                spannable = if (item.segments.isNotEmpty()) {
+                    buildListeningSpannable(item, view)
+                } else {
+                    null
+                },
             )
+            view.text = row.displayText()
+            listeningTextRows += row
             listeningTextContent.addView(
                 view,
                 LinearLayout.LayoutParams(
@@ -454,11 +477,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
                     LISTENING_LONG_TEXT_MIN_LINES
             if (row.isIndented == shouldIndent) return@forEach
             row.isIndented = shouldIndent
-            row.view.text = if (shouldIndent) {
-                "$LISTENING_PARAGRAPH_INDENT${row.normalizedText}"
-            } else {
-                row.normalizedText
-            }
+            row.view.text = row.displayText()
         }
     }
 
@@ -855,10 +874,78 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         super.onDestroy()
     }
 
+    /**
+     * 把结构化段落节点拼成可显示的 Spannable：
+     * 评论节点在原占位字符位置插入“原图 span + 点击 span”，
+     * 字符序列与 [ListeningTextItem.text] 完全一致，首尾裁剪边界可直接复用。
+     */
+    private fun buildListeningSpannable(item: ListeningTextItem, view: TextView): CharSequence {
+        val text = item.text
+        val builder = SpannableStringBuilder(text)
+        var offset = 0
+        item.segments.forEach { segment ->
+            when (segment) {
+                is ParagraphSegment.Text -> offset += segment.text.length
+                is ParagraphSegment.Review -> {
+                    if (offset < text.length) {
+                        builder.setSpan(
+                            ListeningReviewImageSpan(segment.src) { view.invalidate() },
+                            offset,
+                            offset + 1,
+                            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE,
+                        )
+                        builder.setSpan(
+                            ListeningReviewClickableSpan(
+                                segment.click,
+                                segment.src,
+                                ::onListeningReviewClick,
+                            ),
+                            offset,
+                            offset + 1,
+                            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE,
+                        )
+                    }
+                    offset += 1
+                }
+            }
+        }
+        val (start, end) = listeningTrimBounds(text)
+        return builder.subSequence(start, end)
+    }
+
+    /** 与 [StringUtils.trim] 完全一致的首尾空字符边界（含空格与全角空格），供 Spannable 裁剪 */
+    private fun listeningTrimBounds(s: String): Pair<Int, Int> {
+        if (s.isEmpty()) return 0 to 0
+        var start = 0
+        val len = s.length
+        var end = len - 1
+        while (start < end && (s[start].code <= 0x20 || s[start] == '　')) {
+            ++start
+        }
+        while (start < end && (s[end].code <= 0x20 || s[end] == '　')) {
+            --end
+        }
+        ++end
+        return start to end
+    }
+
+    /**
+     * 评论气泡点击：复用阅读页同一套 src + click JS 执行逻辑（弹评论小页）。
+     * 只有点击气泡触发评论，正文点击仍走行点击跳转朗读位置。
+     */
+    private fun onListeningReviewClick(click: String?, src: String) {
+        if (click.isNullOrBlank()) {
+            BookImgClick.oldClickImg(this, lifecycleScope, src)
+        } else {
+            BookImgClick.clickImg(this, lifecycleScope, click, src)
+        }
+    }
+
     private data class ListeningTextItem(
         val text: String,
         val isTitle: Boolean,
         val target: ListeningTextTarget,
+        val segments: List<ParagraphSegment> = emptyList(),
     )
 
     private sealed interface ListeningTextTarget {
@@ -871,8 +958,89 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         val normalizedText: String,
         val isTitle: Boolean,
         val normalAlpha: Float,
+        val spannable: CharSequence? = null,
         var isIndented: Boolean = false,
-    )
+    ) {
+        /** 当前展示文本：评论行带原图 span；缩进时仅在前缀位置追加，span 偏移不变 */
+        fun displayText(): CharSequence {
+            val base = spannable ?: normalizedText
+            return if (isIndented) {
+                SpannableStringBuilder(LISTENING_PARAGRAPH_INDENT).append(base)
+            } else {
+                base
+            }
+        }
+    }
+
+    /**
+     * 评论按钮原图 span：复用书源 src 图片（保留原样式与评论数量），
+     * 与阅读页 ImageColumn 一致——宽度固定为字符宽，高度按原图比例垂直居中。
+     */
+    private class ListeningReviewImageSpan(
+        private val src: String,
+        private val onImageChanged: () -> Unit,
+    ) : ReplacementSpan() {
+
+        override fun getSize(
+            paint: Paint,
+            text: CharSequence?,
+            start: Int,
+            end: Int,
+            fm: Paint.FontMetricsInt?,
+        ): Int {
+            return (paint.textSize * REVIEW_IMAGE_WIDTH_SCALE).toInt().coerceAtLeast(1)
+        }
+
+        override fun draw(
+            canvas: Canvas,
+            text: CharSequence?,
+            start: Int,
+            end: Int,
+            x: Float,
+            top: Int,
+            y: Int,
+            bottom: Int,
+            paint: Paint,
+        ) {
+            val book = ReadBook.book ?: return
+            val height = (bottom - top).coerceAtLeast(1)
+            val width = (paint.textSize * REVIEW_IMAGE_WIDTH_SCALE).roundToInt().coerceAtLeast(1)
+            val bitmap = if (!ImageProvider.isImageExist(book, src)) {
+                ImageProvider.cacheImageAsync(
+                    book = book,
+                    src = src,
+                    bookSource = ReadBook.bookSource,
+                    width = width,
+                    height = height,
+                ) { onImageChanged() }
+                ImageProvider.loadingBitmap
+            } else {
+                ImageProvider.getImage(book, src, width, height)
+            }
+            // 宽度固定为字符宽；高度按原图比例计算并垂直居中（div 为负时允许高于行高）
+            val imgHeight = width.toFloat() / bitmap.width.coerceAtLeast(1) * bitmap.height
+            val div = (height - imgHeight) / 2f
+            canvas.drawBitmap(bitmap, null, RectF(x, div, x + width, height - div), paint)
+        }
+    }
+
+    /**
+     * 评论气泡点击 span：点击只触发评论（复用公共点击入口），
+     * 正文点击由行点击处理，跳转朗读位置。
+     */
+    private class ListeningReviewClickableSpan(
+        private val click: String?,
+        private val src: String,
+        private val onReviewClick: (click: String?, src: String) -> Unit,
+    ) : ClickableSpan() {
+        override fun onClick(widget: View) {
+            onReviewClick(click, src)
+        }
+
+        override fun updateDrawState(ds: TextPaint) {
+            ds.isUnderlineText = false
+        }
+    }
 
     private companion object {
         const val LISTENING_PARAGRAPH_INDENT = "  "
@@ -882,5 +1050,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         const val CURRENT_TEXT_SIZE_PX = 60f
         const val BODY_TEXT_ALPHA = 0.9f
         const val INACTIVE_TEXT_ALPHA = 0.42f
+        /** 评论原图按字符宽比例显示，与阅读页 reviewCharWidth 的缩放比例一致 */
+        const val REVIEW_IMAGE_WIDTH_SCALE = 1.5556f
     }
 }
