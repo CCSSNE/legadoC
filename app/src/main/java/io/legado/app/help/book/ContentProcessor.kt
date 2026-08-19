@@ -120,8 +120,7 @@ class ContentProcessor private constructor(
                 contents += getChapterDisplayTitle(
                     book,
                     chapter,
-                    useReplace = useReplace,
-                    chineseConvert = chineseConvert
+                    useReplace = useReplace
                 )
             }
             // 音频正文按显示顺序输出：普通段落与 <usehtml>…</usehtml> 结构块
@@ -240,8 +239,7 @@ class ContentProcessor private constructor(
             mContent = getChapterDisplayTitle(
                 book,
                 chapter,
-                useReplace = useReplace,
-                chineseConvert = chineseConvert
+                useReplace = useReplace
             ) + "\n" + mContent
         }
         if (isAndroid8) {
