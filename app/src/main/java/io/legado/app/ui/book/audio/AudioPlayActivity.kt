@@ -50,6 +50,7 @@ import io.legado.app.service.SourceAudioReadAloudService
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.audio.SliderPopup.Companion.SPEED
 import io.legado.app.ui.book.audio.SliderPopup.Companion.TIMER
+import io.legado.app.ui.book.audio.config.AudioPlayDisplaySettingDialog
 import io.legado.app.ui.book.audio.config.AudioSkipCredits
 import io.legado.app.ui.book.read.config.SpeakEngineDialog
 import io.legado.app.ui.book.cache.CacheManageViewModel
@@ -60,6 +61,7 @@ import io.legado.app.utils.applyNavigationBarPadding
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.gone
 import io.legado.app.utils.observeEvent
+import io.legado.app.utils.observeSharedPreferences
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
@@ -130,7 +132,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             }
             return
         }
-        binding.titleBar.title = book.name
+        applyDisplaySettings()
         loadCover(book)
         initProgressControl()
         initControls(book)
@@ -245,8 +247,39 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         invalidateOptionsMenu()
     }
 
+    /**
+     * 应用听书页显示设置：顶部标题显示模式、下方章节名是否显示。
+     * 文字书 TTS 与书源音频共用同一套设置，不区分引擎。
+     */
+    private fun applyDisplaySettings() = binding.run {
+        updateTopTitle()
+        if (AppConfig.audioPlayShowChapterTitle) {
+            tvSubTitle.visible()
+        } else {
+            // 必须 GONE 而非 INVISIBLE/清空文字：这一整行不再占高度，
+            // play_content 底部约束自然落到进度区域上方，正文区域向下扩展。
+            tvSubTitle.gone()
+        }
+    }
+
+    /**
+     * 按“顶部标题显示”设置刷新标题栏。章节模式下随切章实时更新，
+     * 当前章节名为空时回退显示书名。
+     */
+    private fun updateTopTitle() {
+        binding.titleBar.title = if (
+            AppConfig.audioPlayTopTitleMode == AppConfig.AUDIO_PLAY_TOP_TITLE_CHAPTER
+        ) {
+            ReadBook.curTextChapter?.title?.takeIf { it.isNotBlank() }
+                ?: ReadBook.book?.name.orEmpty()
+        } else {
+            ReadBook.book?.name.orEmpty()
+        }
+    }
+
     private fun updateChapterUi() {
         binding.tvSubTitle.text = ReadBook.curTextChapter?.title.orEmpty()
+        updateTopTitle()
         bindListeningText()
     }
 
@@ -720,12 +753,19 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
                 putExtra(CacheManageActivity.EXTRA_MODE, CacheManageActivity.MODE_AUDIO)
             }
             R.id.menu_audio_engine -> showDialogFragment<SpeakEngineDialog>()
+            R.id.menu_audio_play_display_setting -> showDialogFragment<AudioPlayDisplaySettingDialog>()
             R.id.menu_log -> showDialogFragment<AppLogDialog>()
         }
         return super.onCompatOptionsItemSelected(item)
     }
 
     override fun observeLiveBus() {
+        observeSharedPreferences { _, key ->
+            when (key) {
+                PreferKey.audioPlayTopTitleMode,
+                PreferKey.audioPlayShowChapterTitle -> applyDisplaySettings()
+            }
+        }
         observeEvent<Int>(EventBus.ALOUD_STATE) { state ->
             updatePlayState()
             if (state == Status.STOP) {

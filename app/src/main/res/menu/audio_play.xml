@@ -28,6 +28,11 @@
         app:showAsAction="never" />
 
     <item
+        android:id="@+id/menu_audio_play_display_setting"
+        android:title="@string/audio_play_display_setting"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/menu_play_mode"
         android:title="@string/play_mode"
         app:showAsAction="never" />
