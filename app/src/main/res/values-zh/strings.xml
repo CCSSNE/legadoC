@@ -91,6 +91,7 @@
     <string name="delete_book_collection">删除合集</string>
     <string name="book_group_added">已加入分组</string>
     <string name="book_drop_system_group_invalid">系统标签不能加入，请选择自定义分组</string>
+    <string name="book_drop_target_back_home">放回\n主页</string>
     <string name="selected_book_count">已选择 %d 本书</string>
     <string name="selected">已选择</string>
     <string name="book_collection_count">共%d本</string>
