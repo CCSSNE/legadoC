@@ -265,6 +265,6 @@ uiautomator2 / ADB
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- `3.26.081923c` / `10698`，2026-08-20（UTC），`own` 主线（代码提交 `e895a4f`）。沉浸听书页评论按钮结构化渲染：段落拆 `Text` / `Review` 节点（`ParagraphSegment` 模型 + `TextParagraph.segments` 访问器），沉浸页复用 `ImageColumn.src` 原图绘制评论按钮并实现点击分流（气泡点击只触发评论、正文点击仍跳转朗读位置），`src + click` JS 执行逻辑统一抽到 `BookImgClick` 公共入口，阅读页 `ReadBookActivity` 的 `clickImg` / `oldClickImg` 改为委托，两端行为一致。已通过正式后台 `:app:assembleAppC` 冷编译（`--no-daemon --max-workers=1` 关增量），退出码为 0；`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.081923c` / `10698`、中文名 `阅读 C`（zh locale）、架构 `arm64-v8a`，`apksigner` 退出码为 0。源码已推送至 `origin/own`（`e895a4f`）。已覆盖安装到雷电模拟器（10697 → 10698）。未发布 Release（用户仅要求推送与编译，未要求正式回归）。
+- `3.26.082000c` / `10700`，2026-08-20（UTC），`own` 主线（代码提交 `bf44779`）。沉浸听书页两件事：① 显示设置下新增字体设置（`PreferKey.audioPlayTextSize` 字号 32~90px 步进 2 默认 50 + `audioPlayTextZoom` 朗读行放大倍率 100%~180% 步进 5 默认 120%，`AudioPlayFontSettingDialog` 双 SeekBar 实时写 pref，`AudioPlayActivity` 经 `applyListeningFontSettings` 就地重排全部文字行，`NORMAL/CURRENT_TEXT_SIZE_PX` 常量改为动态读取，默认值与原行为一致）；② 文字区顶部下移 7dp（`layout_marginTop`，竖屏）并上下 21dp 文字亮度渐变（`requiresFadingEdge="vertical"` + `fadingEdgeLength`，仅作用于文字内容不碰背景；横屏只加渐变不加下移，`2a1ae49`）。已通过正式后台 `:app:assembleAppC` 冷编译（`--no-daemon --max-workers=1` 关增量），退出码为 0；`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.082000c` / `10700`、中文名 `阅读 C`（zh locale）、架构 `arm64-v8a`，`apksigner` 退出码为 0。源码已推送至 `origin/own`（`bf44779`）。编译前已 push。未安装到模拟器、未做正式回归（用户仅要求推送与编译）。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
