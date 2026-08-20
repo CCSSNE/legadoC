@@ -1,7 +1,7 @@
 # Frida UI 调试窗口速查（雷电模拟器 / legadoC）
 
 > 用途：给模拟器里运行的 App 注入带悬浮窗的可调节调试面板（如"背景板下移 offset"）。
-> 环境：frida 16.7.19 + frida-tools 13.0.1（venv：`D:\AI\audio\frida-env`），frida-server 必须同版本 push 模拟器并启动。frida 17 在 QJS/V8 下无 Java 桥，不可用。
+> 环境：frida 16.7.19 + frida-tools 13.0.1（venv：`D:\AI\audio\frida-env`）；或 frida 17.17.0（venv：`.android-dev-venv`，Java 桥来自 `frida_tools\bridges\java.js`，见 `tools/android-dev/frida_probe.py` 的加载方式，用 `const Java = bridge;` 绑定）。frida-server 必须与客户端同版本。模拟器上当前常驻 17.17.0 server（`/data/local/tmp/legadoc-frida-server`，监听 127.0.0.1:27044，root 启动，`-D` 守护）；旧 16.7.19 server 已停。驱动 `ui_drop_ball_inject.py` 用 `.android-dev-venv` python 并自动 `adb forward tcp:27042 tcp:27044`。
 
 ## 注入脚本要点
 
@@ -23,6 +23,18 @@
 4. **崩溃规避**：onCreate hook 里立即建复杂 UI 曾 SIGABRT → `Handler.postDelayed(runnable, 300)` 再挂面板；所有 UI 操作 `Java.scheduleOnMainThread`。
 
 5. **会话规则**：同一进程只允许一个 frida 会话可靠用 Java 桥（第二会话 `Java.choose` 空转/树不全）→ 调试/查询脚本要么独占、要么一次做完 detach。
+
+6. **CheckJNI 跨帧 jobject 崩溃（2026-08-20 实测，必坑）**
+   - 症状：注入后一切正常（悬浮窗已上屏），一旦 hook 触发（如拖动开始）立即 **SIGABRT 闪退**。logcat 报：
+     `JNI DETECTED ERROR IN APPLICATION: JNI ERROR (app bug): jobject is an invalid JNI transition frame reference: 0x... (use of invalid jobject)` + `CallObjectMethod` / CheckJNI 栈。
+   - 根因：LDPlayer 是 userdebug 构建（`ro.debuggable=1`），**CheckJNI 强制开启**；frida 桥把**跨 JNI 调用帧持有的 jobject**（hook 的 `this`、Java.choose 找的实例、一个回调里 new/查出的 View 存到 JS 全局变量、再在另一个回调/定时器里调用方法）喂给 ART，CheckJNI 直接 abort——JS 侧 catch 不到，进程当场死。
+   - 判定：**与 frida 版本无关**（16.7.19 与 17.17.0 都会崩），桥每次从 JS 进 Java 都是一个独立 JNI frame；对象跨 frame 复用的正确姿势是 **`Java.retain(obj)` 后存 JS 全局**。
+   - 规避清单：
+     - hook 里要把 `this` 留下来稍后用 → `stored = Java.retain(this)`。
+     - `Java.choose` 要留实例 → `firstMatch = Java.retain(instance)`（frida_probe.py 已这么做）。
+     - 面板/覆盖层 View 与 contentFrame 等 JS 全局 → 创建/找到后立即 `Java.retain()`。
+     - 同一回调内部“查出→立刻用”的对象无需 retain。
+   - 触发陷阱：`Java.registerClass` 注册的 Runnable/Listener 由 Java 侧回调进 JS，等于换了一个 JNI frame；里面调用任何“早先存下的”对象方法都必须已 retain。
 
 ## 验证方法
 
