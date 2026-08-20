@@ -117,6 +117,8 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     private var fontSettingsApplyPending = false
     /** 缩进测量在 layout 回调排队中时不再重复挂载 */
     private var listeningTextIndentationPending = false
+    /** 切章节/清空时递增，使上一代已排队的字体/缩进 UI 回调失效 */
+    private var listeningTextCallbackGeneration = 0L
     private var preserveAfterEngineSwitch = false
     private var coverRotationAnimator: ObjectAnimator? = null
     /**
@@ -548,7 +550,9 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     private fun scheduleListeningTextIndentation() {
         if (listeningTextIndentationPending) return
         listeningTextIndentationPending = true
+        val callbackGeneration = listeningTextCallbackGeneration
         binding.listeningTextContent.doOnLayout {
+            if (callbackGeneration != listeningTextCallbackGeneration) return@doOnLayout
             listeningTextIndentationPending = false
             updateListeningTextIndentation()
         }
@@ -674,7 +678,9 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         if (listeningTextRows.isEmpty()) return
         if (fontSettingsApplyPending) return
         fontSettingsApplyPending = true
+        val callbackGeneration = listeningTextCallbackGeneration
         binding.listeningTextContent.postOnAnimation {
+            if (callbackGeneration != listeningTextCallbackGeneration) return@postOnAnimation
             fontSettingsApplyPending = false
             if (isDestroyed || isFinishing) return@postOnAnimation
             updateListeningTextHighlight(displayedProgress)
@@ -741,7 +747,8 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         pendingListeningTextHighlightIndex = null
         listeningTextScrollFollowJob?.cancel()
         listeningTextScrollFollowJob = null
-        // 复位字体重排/缩进合并标志，避免旧 layout 回调排队卡住后续章节的排布
+        // 旧 callback 即使已入队也不得作用于下一章节，且不得清掉新一代 pending 状态。
+        listeningTextCallbackGeneration++
         fontSettingsApplyPending = false
         listeningTextIndentationPending = false
     }
