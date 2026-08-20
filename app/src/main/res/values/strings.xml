@@ -1360,6 +1360,11 @@
     <string name="audio_play_display_top_title">Top title shows</string>
     <string name="audio_play_display_top_title_chapter_name">Current chapter name</string>
     <string name="audio_play_display_bottom_chapter_title">Show chapter name below</string>
+    <string name="audio_play_display_font_setting">Font settings</string>
+    <string name="audio_play_font_size">Text size</string>
+    <string name="audio_play_font_size_value">%1$d px</string>
+    <string name="audio_play_font_zoom">Reading line zoom</string>
+    <string name="audio_play_font_zoom_value">%1$d%%</string>
     <string name="set_source_variable">Set source variable</string>
     <string name="set_book_variable">Set book variable</string>
     <string name="summary">summary</string>

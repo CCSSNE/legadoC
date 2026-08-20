@@ -8,6 +8,7 @@ import io.legado.app.base.BaseDialogFragment
 import io.legado.app.databinding.DialogAudioPlayDisplaySettingBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.setLayout
+import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
 /**
@@ -39,6 +40,9 @@ class AudioPlayDisplaySettingDialog :
             swShowChapterTitle.isChecked = AppConfig.audioPlayShowChapterTitle
             swShowChapterTitle.setOnUserCheckedChangeListener { checked ->
                 AppConfig.audioPlayShowChapterTitle = checked
+            }
+            tvFontSetting.setOnClickListener {
+                showDialogFragment<AudioPlayFontSettingDialog>()
             }
         }
     }

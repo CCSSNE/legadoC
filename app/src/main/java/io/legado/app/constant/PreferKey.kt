@@ -288,6 +288,8 @@ object PreferKey {
     const val audioPlayWakeLock = "audioPlayWakeLock"
     const val audioPlayTopTitleMode = "audioPlayTopTitleMode"
     const val audioPlayShowChapterTitle = "audioPlayShowChapterTitle"
+    const val audioPlayTextSize = "audioPlayTextSize"
+    const val audioPlayTextZoom = "audioPlayTextZoom"
     const val readAloudWakeLock = "readAloudWakeLock"
     const val readAloudCoverRotation = "readAloudCoverRotation"
     const val readAloudCoverRotationDuration = "readAloudCoverRotationDuration"

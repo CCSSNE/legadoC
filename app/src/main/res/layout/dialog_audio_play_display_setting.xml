@@ -59,6 +59,17 @@
             android:text="@string/audio_play_display_bottom_chapter_title"
             tools:ignore="TouchTargetSizeCheck" />
 
+        <TextView
+            android:id="@+id/tv_font_setting"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="?attr/selectableItemBackground"
+            android:padding="12dp"
+            android:text="@string/audio_play_display_font_setting"
+            android:textColor="@color/primaryText"
+            android:textSize="15sp" />
+
     </LinearLayout>
 
 </androidx.core.widget.NestedScrollView>
