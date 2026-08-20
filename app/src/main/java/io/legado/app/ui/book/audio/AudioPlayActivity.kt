@@ -105,6 +105,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     private var displayedProgress: ReadAloudProgress? = null
     private var trackingProgress = false
     private var sourceAudioLayoutBinding: AudioTextMapping.LayoutBinding? = null
+    private var sourceAudioFallbackMapping: AudioTextMapping? = null
     private var boundListeningTextItems = emptyList<ListeningTextItem>()
     private val listeningTextRows = arrayListOf<ListeningTextRow>()
     private var listeningTextChapterIndex = -1
@@ -359,10 +360,12 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     }
 
     /**
-     * 书源音频正文渲染：与 TTS 引擎同一数据源——TextChapter 结构化段落 +
+     * 书源音频正文渲染：优先与 TTS 引擎同一数据源——TextChapter 结构化段落 +
      * [AudioTextMapping.bindLayout] 显式布局绑定（与 SourceAudioReadAloudService 同一路径），
      * `<usehtml>` 结构块（含评论节点）按显示顺序原位渲染，两种引擎沉浸页完全一致。
      * 段落目标时间是绑定层给出的音频时间；结构段（标题/usehtml）取最近正文段时间。
+     * 绑定失败（字幕与正文不一致的异常书源）回退纯字幕模式：保留 cues 文本与时间，
+     * 高亮用 fallback mapping 的 paragraphAt()，至少不退化成字幕全空。
      */
     private fun bindSourceAudioText() {
         val chapter = ReadBook.curTextChapter ?: run {
@@ -378,12 +381,24 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             chapter.bindAudioTextMapping(mapping)
         } catch (e: Exception) {
             // 字幕与正文段落不一致属数据问题（服务端同一绑定会 failPlayback）；
-            // 沉浸页同样不渲染并记录原因，直接暴露，不做静默兜底。
-            AppLog.put("源音频正文映射失败：${e.message}", e)
-            clearListeningText()
+            // 沉浸页回退纯字幕模式并记录原因，直接暴露，不静默兜底也不清空字幕。
+            AppLog.put("源音频正文映射失败，回退纯字幕模式：${e.message}", e)
+            sourceAudioLayoutBinding = null
+            sourceAudioFallbackMapping = mapping
+            bindListeningTextItems(
+                chapterIndex = chapter.chapter.index,
+                items = mapping.cues.map { cue ->
+                    ListeningTextItem(
+                        text = cue.text,
+                        isTitle = false,
+                        target = ListeningTextTarget.Time(cue.startMs),
+                    )
+                },
+            )
             return
         }
         sourceAudioLayoutBinding = layoutBinding
+        sourceAudioFallbackMapping = null
         val paragraphs = chapter.getParagraphs(false)
         bindListeningTextItems(
             chapterIndex = chapter.chapter.index,
@@ -414,6 +429,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             return
         }
         sourceAudioLayoutBinding = null
+        sourceAudioFallbackMapping = null
         bindListeningTextItems(
             chapterIndex = chapter.chapter.index,
             items = chapter.getParagraphs(false).map { paragraph ->
@@ -584,7 +600,10 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             return
         }
         val selectedIndex = when (progress.kind) {
-            ReadAloudProgress.Kind.TIME -> sourceAudioLayoutBinding?.layoutParagraphAt(progress.position)
+            ReadAloudProgress.Kind.TIME ->
+                // 绑定成功：段落序号即行序；回退纯字幕：cue 序号即行序
+                sourceAudioLayoutBinding?.layoutParagraphAt(progress.position)
+                    ?: sourceAudioFallbackMapping?.paragraphAt(progress.position)
             ReadAloudProgress.Kind.PARAGRAPH -> ttsHighlightIndex(progress.position)
         }
         applyListeningTextHighlight(selectedIndex?.takeIf { it in listeningTextRows.indices })
@@ -682,6 +701,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
 
     private fun clearListeningText() = binding.run {
         sourceAudioLayoutBinding = null
+        sourceAudioFallbackMapping = null
         boundListeningTextItems = emptyList()
         listeningTextRows.clear()
         listeningTextChapterIndex = -1
