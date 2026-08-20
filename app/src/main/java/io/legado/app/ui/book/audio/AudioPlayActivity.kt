@@ -466,7 +466,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             // 只给真正含评论的段落启用评论交互（纯文本段落只有 Text 节点）
             val hasReview = item.segments.any { it is ParagraphSegment.Review }
             val view = TextView(this@AudioPlayActivity).apply {
-                setTextSize(TypedValue.COMPLEX_UNIT_PX, NORMAL_TEXT_SIZE_PX)
+                setTextSize(TypedValue.COMPLEX_UNIT_PX, normalTextSizePx())
                 setTextColor(Color.WHITE)
                 alpha = normalAlpha
                 gravity = Gravity.CENTER_HORIZONTAL
@@ -568,7 +568,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     ): Int {
         // Measure the expanded text without indentation; apply the spaces only after this decision.
         val paint = TextPaint(view.paint)
-        paint.textSize = CURRENT_TEXT_SIZE_PX
+        paint.textSize = currentTextSizePx()
         return StaticLayout.Builder.obtain(text, 0, text.length, paint, availableWidth)
             .setAlignment(Layout.Alignment.ALIGN_CENTER)
             .setIncludePad(view.includeFontPadding)
@@ -638,7 +638,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             val selected = index == selectedIndex
             row.view.setTextSize(
                 TypedValue.COMPLEX_UNIT_PX,
-                if (selected) CURRENT_TEXT_SIZE_PX else NORMAL_TEXT_SIZE_PX,
+                if (selected) currentTextSizePx() else normalTextSizePx(),
             )
             row.view.setTextColor(Color.WHITE)
             row.view.alpha = when {
@@ -654,6 +654,12 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             return
         }
         scheduleListeningTextCenter()
+    }
+
+    /** 字号/放大倍率变化后的就地重排：全部行按新字号重设并重算缩进、跟随高亮行 */
+    private fun applyListeningFontSettings() {
+        if (listeningTextRows.isEmpty()) return
+        updateListeningTextHighlight(displayedProgress)
     }
 
     private fun scheduleListeningTextCenter() {
@@ -914,6 +920,8 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             when (key) {
                 PreferKey.audioPlayTopTitleMode,
                 PreferKey.audioPlayShowChapterTitle -> applyDisplaySettings()
+                PreferKey.audioPlayTextSize,
+                PreferKey.audioPlayTextZoom -> applyListeningFontSettings()
             }
         }
         observeEvent<Int>(EventBus.ALOUD_STATE) { state ->
@@ -1195,8 +1203,9 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         const val LISTENING_PARAGRAPH_INDENT = "  "
         const val LISTENING_LINE_SPACING_MULTIPLIER = 1.12f
         const val LISTENING_LONG_TEXT_MIN_LINES = 3
-        const val NORMAL_TEXT_SIZE_PX = 50f
-        const val CURRENT_TEXT_SIZE_PX = 60f
+        fun normalTextSizePx(): Float = AppConfig.audioPlayTextSize.toFloat()
+        fun currentTextSizePx(): Float =
+            AppConfig.audioPlayTextSize * AppConfig.audioPlayTextZoom / 100f
         const val BODY_TEXT_ALPHA = 0.9f
         const val INACTIVE_TEXT_ALPHA = 0.42f
         /** 评论原图按字符宽比例显示，与阅读页 reviewCharWidth 的缩放比例一致 */

@@ -1516,6 +1516,29 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         get() = appCtx.getPrefBoolean(PreferKey.audioPlayShowChapterTitle, false)
         set(value) = appCtx.putPrefBoolean(PreferKey.audioPlayShowChapterTitle, value)
 
+    // 听书播放页文字字号（px），默认 50，与历史正文行号一致
+    var audioPlayTextSize: Int
+        get() = appCtx.getPrefInt(
+            PreferKey.audioPlayTextSize,
+            DEFAULT_AUDIO_PLAY_TEXT_SIZE
+        ).coerceIn(MIN_AUDIO_PLAY_TEXT_SIZE, MAX_AUDIO_PLAY_TEXT_SIZE)
+        set(value) = appCtx.putPrefInt(PreferKey.audioPlayTextSize, value)
+
+    // 听书播放页当前朗读行放大倍率（%），默认 120（60/50）
+    var audioPlayTextZoom: Int
+        get() = appCtx.getPrefInt(
+            PreferKey.audioPlayTextZoom,
+            DEFAULT_AUDIO_PLAY_TEXT_ZOOM
+        ).coerceIn(MIN_AUDIO_PLAY_TEXT_ZOOM, MAX_AUDIO_PLAY_TEXT_ZOOM)
+        set(value) = appCtx.putPrefInt(PreferKey.audioPlayTextZoom, value)
+
+    const val DEFAULT_AUDIO_PLAY_TEXT_SIZE = 50
+    const val MIN_AUDIO_PLAY_TEXT_SIZE = 32
+    const val MAX_AUDIO_PLAY_TEXT_SIZE = 90
+    const val DEFAULT_AUDIO_PLAY_TEXT_ZOOM = 120
+    const val MIN_AUDIO_PLAY_TEXT_ZOOM = 100
+    const val MAX_AUDIO_PLAY_TEXT_ZOOM = 180
+
     const val DEFAULT_READ_ALOUD_COVER_ROTATION_DURATION = 10000
     const val MIN_READ_ALOUD_COVER_ROTATION_DURATION = 100
     const val MAX_READ_ALOUD_COVER_ROTATION_DURATION = 60000

@@ -1115,6 +1115,11 @@
     <string name="audio_play_display_top_title">顶部标题显示</string>
     <string name="audio_play_display_top_title_chapter_name">当前章节名</string>
     <string name="audio_play_display_bottom_chapter_title">显示下方章节名</string>
+    <string name="audio_play_display_font_setting">字体设置</string>
+    <string name="audio_play_font_size">字号</string>
+    <string name="audio_play_font_size_value">%1$d px</string>
+    <string name="audio_play_font_zoom">朗读行放大倍率</string>
+    <string name="audio_play_font_zoom_value">%1$d%%</string>
     <string name="set_source_variable">设置源变量</string>
     <string name="set_book_variable">设置书籍变量</string>
     <string name="summary">注释</string>
