@@ -380,7 +380,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         val layoutBinding = try {
             chapter.bindAudioTextMapping(mapping)
         } catch (e: Exception) {
-            // 字幕与正文段落不一致属数据问题（服务端同一绑定会 failPlayback）；
+            // 字幕与正文段落不一致属数据问题；服务端会继续播放音频，仅失去正文同步/高亮。
             // 沉浸页回退纯字幕模式并记录原因，直接暴露，不静默兜底也不清空字幕。
             AppLog.put("源音频正文映射失败，回退纯字幕模式：${e.message}", e)
             sourceAudioLayoutBinding = null
