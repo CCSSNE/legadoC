@@ -63,7 +63,7 @@
         android:text="@string/book_collection_empty"
         android:visibility="gone" />
 
-    <View
+    <TextView
         android:id="@+id/root_drop_target"
         android:layout_width="56dp"
         android:layout_height="56dp"
@@ -72,6 +72,12 @@
         android:background="@drawable/bg_bookshelf_root_drop_target"
         android:clickable="false"
         android:elevation="12dp"
+        android:gravity="center"
+        android:includeFontPadding="false"
+        android:text="@string/book_drop_target_back_home"
+        android:textColor="@color/accent"
+        android:textSize="16sp"
+        android:textStyle="bold"
         android:visibility="gone" />
 
     <LinearLayout
