@@ -113,6 +113,10 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     private var listeningTextScrollFollowBlockedUntil = 0L
     private var listeningTextScrollFollowJob: Job? = null
     private var pendingListeningTextHighlightIndex: Int? = null
+    /** 字号/放大倍率拖动高频触发时，合并到每帧最多执行一次就地重排 */
+    private var fontSettingsApplyPending = false
+    /** 缩进测量在 layout 回调排队中时不再重复挂载 */
+    private var listeningTextIndentationPending = false
     private var preserveAfterEngineSwitch = false
     private var coverRotationAnimator: ObjectAnimator? = null
     /**
@@ -542,7 +546,10 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     }
 
     private fun scheduleListeningTextIndentation() {
+        if (listeningTextIndentationPending) return
+        listeningTextIndentationPending = true
         binding.listeningTextContent.doOnLayout {
+            listeningTextIndentationPending = false
             updateListeningTextIndentation()
         }
     }
@@ -550,11 +557,13 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     private fun updateListeningTextIndentation() {
         val availableWidth = binding.listeningTextContent.width
         if (availableWidth <= 0) return
+        val currentPx = AppConfig.audioPlayTextSize * AppConfig.audioPlayTextZoom / 100f
         listeningTextRows.forEach { row ->
             val shouldIndent = !row.isTitle &&
                     row.normalizedText.isNotEmpty() &&
-                    listeningTextLineCount(row.normalizedText, row.view, availableWidth) >=
-                    LISTENING_LONG_TEXT_MIN_LINES
+                    listeningTextLineCount(
+                        row.normalizedText, row.view, availableWidth, currentPx
+                    ) >= LISTENING_LONG_TEXT_MIN_LINES
             if (row.isIndented == shouldIndent) return@forEach
             row.isIndented = shouldIndent
             row.view.text = row.displayText()
@@ -565,18 +574,20 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         text: String,
         view: TextView,
         availableWidth: Int,
+        currentTextSizePx: Float,
     ): Int {
         // Measure the expanded text without indentation; apply the spaces only after this decision.
         val paint = TextPaint(view.paint)
-        paint.textSize = currentTextSizePx()
-        return StaticLayout.Builder.obtain(text, 0, text.length, paint, availableWidth)
+        paint.textSize = currentTextSizePx
+        val builder = StaticLayout.Builder.obtain(text, 0, text.length, paint, availableWidth)
             .setAlignment(Layout.Alignment.ALIGN_CENTER)
             .setIncludePad(view.includeFontPadding)
             .setLineSpacing(0f, LISTENING_LINE_SPACING_MULTIPLIER)
             .setBreakStrategy(view.breakStrategy)
             .setHyphenationFrequency(view.hyphenationFrequency)
-            .build()
-            .lineCount
+        val lineCount = builder.build().lineCount
+        builder.release()
+        return lineCount
     }
 
     private fun seekToListeningText(chapterIndex: Int, target: ListeningTextTarget) {
@@ -634,11 +645,13 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
 
     private fun applyListeningTextHighlight(selectedIndex: Int?) {
         pendingListeningTextHighlightIndex = selectedIndex
+        val normalPx = AppConfig.audioPlayTextSize.toFloat()
+        val currentPx = normalPx * AppConfig.audioPlayTextZoom / 100f
         listeningTextRows.forEachIndexed { index, row ->
             val selected = index == selectedIndex
             row.view.setTextSize(
                 TypedValue.COMPLEX_UNIT_PX,
-                if (selected) currentTextSizePx() else normalTextSizePx(),
+                if (selected) currentPx else normalPx,
             )
             row.view.setTextColor(Color.WHITE)
             row.view.alpha = when {
@@ -656,10 +669,16 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         scheduleListeningTextCenter()
     }
 
-    /** 字号/放大倍率变化后的就地重排：全部行按新字号重设并重算缩进、跟随高亮行 */
+    /** 字号/放大倍率变化后的就地重排：合并到每帧最多执行一次（拖动高频触发时不重活） */
     private fun applyListeningFontSettings() {
         if (listeningTextRows.isEmpty()) return
-        updateListeningTextHighlight(displayedProgress)
+        if (fontSettingsApplyPending) return
+        fontSettingsApplyPending = true
+        binding.listeningTextContent.postOnAnimation {
+            fontSettingsApplyPending = false
+            if (isDestroyed || isFinishing) return@postOnAnimation
+            updateListeningTextHighlight(displayedProgress)
+        }
     }
 
     private fun scheduleListeningTextCenter() {
@@ -722,6 +741,9 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         pendingListeningTextHighlightIndex = null
         listeningTextScrollFollowJob?.cancel()
         listeningTextScrollFollowJob = null
+        // 复位字体重排/缩进合并标志，避免旧 layout 回调排队卡住后续章节的排布
+        fontSettingsApplyPending = false
+        listeningTextIndentationPending = false
     }
 
     private fun updateProgress(progress: ReadAloudProgress) = binding.run {
@@ -1204,8 +1226,6 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         const val LISTENING_LINE_SPACING_MULTIPLIER = 1.12f
         const val LISTENING_LONG_TEXT_MIN_LINES = 3
         fun normalTextSizePx(): Float = AppConfig.audioPlayTextSize.toFloat()
-        fun currentTextSizePx(): Float =
-            AppConfig.audioPlayTextSize * AppConfig.audioPlayTextZoom / 100f
         const val BODY_TEXT_ALPHA = 0.9f
         const val INACTIVE_TEXT_ALPHA = 0.42f
         /** 评论原图按字符宽比例显示，与阅读页 reviewCharWidth 的缩放比例一致 */
