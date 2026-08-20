@@ -55,9 +55,13 @@ class ImportBookSourceDialog() : BaseDialogFragment(R.layout.dialog_recycler_vie
     private val viewModel by viewModels<ImportBookSourceViewModel>()
     private val adapter by lazy { SourcesAdapter(requireContext()) }
 
+    // Keep the toolbar so WRAP_CONTENT/weight=1 import list does not collapse.
+    // HEADERLESS hid the title bar and the recycler got 0 height.
+    override val chromeMode: ChromeMode = ChromeMode.FULL_SCREEN_TOOL
+
     override fun onStart() {
         super.onStart()
-        setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        setLayout(ViewGroup.LayoutParams.MATCH_PARENT, 0.9f)
     }
 
     override fun onDismiss(dialog: DialogInterface) {
