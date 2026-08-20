@@ -282,20 +282,19 @@ fun Dialog.applyDialogSurfaceBlur(
         }
     }
 
-    if (style.blurRadiusPx <= 0 || hostWindow == null) {
+    // Do not hide the dialog (alpha=0) while PixelCopy runs. On transparent
+    // hosts such as OnLineImportActivity this left the import sheet invisible,
+    // so the first tap dismissed it and finishOnDismiss finished the activity.
+    val hostTranslucent = context.isTranslucentActivity()
+    if (style.blurRadiusPx <= 0 || hostWindow == null || hostTranslucent) {
         revealWindow()
         return
-    }
-    val alpha = dialogWindow.attributes.alpha
-    if (alpha > 0f) {
-        preparedDialogWindowAlphas.putIfAbsent(dialogWindow, alpha)
-        dialogWindow.attributes = dialogWindow.attributes.apply { this.alpha = 0f }
     }
     SurfaceBackdrop.apply(
         hostWindow = hostWindow,
         target = target,
         style = style,
-        onReady = ::revealWindow
+        onReady = {}
     )
 }
 
@@ -304,6 +303,14 @@ fun Dialog.applyAdaptiveDim(
     style: SurfaceStyle = SurfaceStyles.dialog(context)
 ) {
     applyDialogSurfaceBlur(surface, style)
+}
+
+private fun Context.isTranslucentActivity(): Boolean {
+    val activity = findActivity() ?: return false
+    val ta = activity.theme.obtainStyledAttributes(intArrayOf(android.R.attr.windowIsTranslucent))
+    val translucent = ta.getBoolean(0, false)
+    ta.recycle()
+    return translucent
 }
 
 private fun Context.findActivity(): Activity? {
