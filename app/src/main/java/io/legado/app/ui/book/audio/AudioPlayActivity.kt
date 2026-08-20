@@ -590,7 +590,6 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             .setBreakStrategy(view.breakStrategy)
             .setHyphenationFrequency(view.hyphenationFrequency)
         val lineCount = builder.build().lineCount
-        builder.release()
         return lineCount
     }
 
