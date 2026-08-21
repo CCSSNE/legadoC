@@ -20,6 +20,7 @@ import java.util.WeakHashMap
 private const val SURFACE_STABLE_FRAME_DELAY_MS = 16L
 private const val SURFACE_STABLE_FRAME_LIMIT = 24
 private const val SURFACE_PIXEL_COPY_RETRIES = 2
+private const val SURFACE_PIXEL_COPY_TIMEOUT_MS = 800L
 private const val SURFACE_BLUR_SAMPLE = 4
 
 /** Resolves the host Activity window without inspecting popup internals. */
@@ -308,8 +309,40 @@ object SurfaceBackdrop {
             return
         }
 
+        // PixelCopy 回调在个别设备/窗口状态下可能永不触发，导致依赖 onReady
+        // 恢复可见性的界面（菜单/弹窗）永远隐形。加统一超时：未回调按失败处理。
+        var settled = false
+        fun fail() {
+            if (settled) return
+            settled = true
+            sourceBitmap.recycleSafely()
+            if (attempt < SURFACE_PIXEL_COPY_RETRIES) {
+                mainHandler.postDelayed({
+                    requestBackdrop(
+                        hostWindow,
+                        hostDecor,
+                        target,
+                        radius,
+                        generationValid,
+                        attempt + 1,
+                        onFinished
+                    )
+                }, SURFACE_STABLE_FRAME_DELAY_MS)
+            } else {
+                onFinished(null)
+            }
+        }
+        val timeoutGuard = Runnable { fail() }
         try {
+            mainHandler.postDelayed(timeoutGuard, SURFACE_PIXEL_COPY_TIMEOUT_MS)
             PixelCopy.request(hostWindow, sourceRect, sourceBitmap, { result ->
+                if (settled) {
+                    // 超时兜底已触发，忽略迟到回调
+                    if (!generationValid()) sourceBitmap.recycleSafely()
+                    return@request
+                }
+                settled = true
+                mainHandler.removeCallbacks(timeoutGuard)
                 if (!generationValid()) {
                     sourceBitmap.recycleSafely()
                     onFinished(null)
@@ -320,27 +353,12 @@ object SurfaceBackdrop {
                     sourceBitmap.recycleSafely()
                     onFinished(blurred)
                 } else {
-                    sourceBitmap.recycleSafely()
-                    if (attempt < SURFACE_PIXEL_COPY_RETRIES) {
-                        mainHandler.postDelayed({
-                            requestBackdrop(
-                                hostWindow,
-                                hostDecor,
-                                target,
-                                radius,
-                                generationValid,
-                                attempt + 1,
-                                onFinished
-                            )
-                        }, SURFACE_STABLE_FRAME_DELAY_MS)
-                    } else {
-                        onFinished(null)
-                    }
+                    fail()
                 }
             }, mainHandler)
         } catch (_: Throwable) {
-            sourceBitmap.recycleSafely()
-            onFinished(null)
+            mainHandler.removeCallbacks(timeoutGuard)
+            fail()
         }
     }
 
