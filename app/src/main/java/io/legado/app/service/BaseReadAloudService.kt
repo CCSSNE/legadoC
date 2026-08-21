@@ -1523,11 +1523,18 @@ abstract class BaseReadAloudService : BaseService(),
             else -> getString(R.string.read_aloud_t)
         }
         nTitle += ": ${ReadBook.book?.name}"
+        // 章节标题可能已随暂停被卸载，回退到书名，避免系统媒体通知出现字面 "null" (issue #3)
+        val metadataTitle = currentReadAloudChapterTitle()?.takeIf { it.isNotBlank() }
+            ?: ReadBook.book?.name?.takeIf { it.isNotBlank() }
+            ?: getString(R.string.read_aloud_s)
         val metadata = MediaMetadataCompat.Builder()
             .putBitmap(MediaMetadataCompat.METADATA_KEY_ART, cover)
-            .putText(MediaMetadataCompat.METADATA_KEY_TITLE, currentReadAloudChapterTitle() ?: "null")
+            .putText(MediaMetadataCompat.METADATA_KEY_TITLE, metadataTitle)
             .putText(MediaMetadataCompat.METADATA_KEY_ARTIST, nTitle)
-            .putText(MediaMetadataCompat.METADATA_KEY_ALBUM, ReadBook.book?.author ?: "null")
+            .putText(
+                MediaMetadataCompat.METADATA_KEY_ALBUM,
+                ReadBook.book?.author?.takeIf { it.isNotBlank() } ?: ""
+            )
 //            .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, nowSpeak.toLong())
             .build()
         mediaSessionCompat.setMetadata(metadata)
