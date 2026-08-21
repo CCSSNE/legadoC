@@ -628,9 +628,17 @@ class VideoPlayService : BaseService() {
     private fun upMediaMetadata() {
         val metadata = MediaMetadataCompat.Builder()
             .putBitmap(MediaMetadataCompat.METADATA_KEY_ART, cover)
-            .putString(MediaMetadataCompat.METADATA_KEY_TITLE, VideoPlay.videoTitle ?: "null")
+            .putString(
+                MediaMetadataCompat.METADATA_KEY_TITLE,
+                VideoPlay.videoTitle?.takeIf { it.isNotBlank() }
+                    ?: VideoPlay.book?.name?.takeIf { it.isNotBlank() }
+                    ?: "视频播放"
+            )
             .putText(MediaMetadataCompat.METADATA_KEY_ARTIST, VideoPlay.book?.name ?: "视频播放")
-            .putText(MediaMetadataCompat.METADATA_KEY_ALBUM, VideoPlay.book?.author ?: "null")
+            .putText(
+                MediaMetadataCompat.METADATA_KEY_ALBUM,
+                VideoPlay.book?.author?.takeIf { it.isNotBlank() } ?: ""
+            )
             .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, playerView.getDuration())
             .build()
         mediaSessionCompat.setMetadata(metadata)
