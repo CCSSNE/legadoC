@@ -90,23 +90,30 @@ class CacheBookService : BaseService() {
                 cacheBook.setLoading()
                 mutex.withLock {
                     if (book.tocUrl.isEmpty()) {
-                        WebBook.getBookInfoAwait(cacheBook.bookSource, book).onFailure {
-                            val message = "${book.name} 目录为空且加载详情失败：${it.localizedMessage}"
-                            fail(bookUrl, message, it)
+                        val infoResult = runCatching {
+                            WebBook.getBookInfoAwait(cacheBook.bookSource, book)
+                        }
+                        if (infoResult.isFailure) {
+                            val error = infoResult.exceptionOrNull()!!
+                            val message = "${book.name} 目录为空且加载详情失败：${error.localizedMessage}"
+                            fail(bookUrl, message, error)
                             removeDownload(bookUrl)
                             return@execute
                         }
                     }
-                    WebBook.getChapterListAwait(cacheBook.bookSource, book).onFailure {
+                    val chapterResult = WebBook.getChapterListAwait(cacheBook.bookSource, book)
+                    if (chapterResult.isFailure) {
+                        val error = chapterResult.exceptionOrNull()!!
                         if (book.totalChapterNum > 0) {
                             book.totalChapterNum = 0
                             book.update()
                         }
-                        val message = "${book.name} 目录为空且加载目录失败：${it.localizedMessage}"
-                        fail(bookUrl, message, it)
+                        val message = "${book.name} 目录为空且加载目录失败：${error.localizedMessage}"
+                        fail(bookUrl, message, error)
                         removeDownload(bookUrl)
                         return@execute
-                    }.getOrNull()?.let { toc ->
+                    }
+                    chapterResult.getOrNull()?.let { toc ->
                         appDb.bookChapterDao.insert(*toc.toTypedArray())
                     }
                     book.update()
