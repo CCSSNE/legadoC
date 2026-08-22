@@ -13,21 +13,15 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.cache.CacheWorkerLease
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.StrResponse
-import io.legado.app.model.CacheBook
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.service.ReviewCacheService
 import io.legado.app.ui.login.SourceLoginJsExtensions
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.mapAsyncIndexed
-import io.legado.app.utils.startService
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.toList
-import kotlinx.coroutines.flow.update
 import splitties.init.appCtx
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -38,12 +32,8 @@ import java.util.concurrent.atomic.AtomicReference
 /**
  * 评论快照抓取调度器（登记端）。
  *
- * 正文永远优先：批量缓存分两阶段——
- * - Body Phase：只下载正文，评论任务只登记（pendingForce），绝不开 WebView 抓评论；
- * - Review Phase：整批目标正文结束后（[endBodyPhase]）把登记任务放入队列，
- *   由独立前台 [io.legado.app.service.ReviewCacheService] 低优先级并发抓取，
- *   评论进度不算正文下载进度。
- * 阅读页单章下载（不走批量）正文完全结束后直接登记并启动评论服务。
+ * 只负责评论任务去重、force 合并和 WebView 执行队列；正文与评论的依赖、
+ * 生命周期和结果归属由 CacheCoordinator 管理。
  *
  * 快照刷新语义：
  * - 普通后台重复触发（force=false）：已有快照可跳过；
@@ -58,30 +48,6 @@ object ReviewSnapshotManager {
         val force: Boolean,
         internal val executionLease: CacheWorkerLease?,
     )
-
-    /**
-     * 评论快照同步进度（供 ReviewCacheService 通知展示）。
-     * 并发 worker 下不存在“当前章”概念，进度一律按实际完成量聚合：
-     * - 进度条 = 评论任务完成章数/目标章数（completedChapters/totalChapters），只增不减；
-     * - “评论快照 c/d” = 已完成快照数/已登记需处理快照总数（跨并发章累计），c 只增不减。
-     */
-    data class ReviewSyncState(
-        val bookUrl: String = "",
-        val bookName: String = "",
-        /** 正文目标进度（本次批量目标章数），通知“正文 x/y”用 */
-        val bodyDone: Int = 0,
-        val bodyTotal: Int = 0,
-        /** 本次会话入队的评论任务总数（目标章数），通知“评论 a/b”用 */
-        val totalChapters: Int = 0,
-        val completedChapters: Int = 0,
-        /** 已登记需处理评论快照总数（章节开始解析按钮时累加），通知“评论快照 c/d”用 */
-        val totalSnapshots: Int = 0,
-        /** 已完成评论快照数（跨并发章原子累计，只增不减，按实际下载量） */
-        val completedSnapshots: Int = 0
-    )
-
-    private val _syncState = MutableStateFlow(ReviewSyncState())
-    val syncState: StateFlow<ReviewSyncState> = _syncState.asStateFlow()
 
     /**
      * 进程内存计数：bookUrl → 有评论快照的章 url 集合。
@@ -124,9 +90,6 @@ object ReviewSnapshotManager {
 
     private val channel = Channel<Task>(Channel.UNLIMITED)
 
-    /** 批量缓存进行中的书（Body Phase）：该书已登记任务只入 pendingForce，暂不执行 */
-    private val bodyPhaseBooks = ConcurrentHashMap.newKeySet<String>()
-
     /**
      * 待处理任务的 force 聚合表（key = bookUrl|chapterIndex）。
      * 负责两件事：
@@ -137,8 +100,6 @@ object ReviewSnapshotManager {
      * remove(key) 之间的并发窗口。
      */
     private val pendingForce = ConcurrentHashMap<String, PendingReview>()
-    /** 已被 worker 取出但尚未完成的任务，不能只看 pendingForce。 */
-    private val activeTaskKeys = ConcurrentHashMap.newKeySet<String>()
     private val taskOutcomes = ConcurrentHashMap<String, Boolean>()
     private val cancelledBooks = ConcurrentHashMap.newKeySet<String>()
     private val queueLock = Any()
@@ -197,8 +158,6 @@ object ReviewSnapshotManager {
         executionLease: CacheWorkerLease?,
     ) {
         cancelledBooks.remove(book.bookUrl)
-        var shouldStartService = false
-        refreshBodyState(book)
         synchronized(queueLock) {
             val key = keyOf(book, chapter)
             val existed = pendingForce.putIfAbsent(
@@ -206,13 +165,7 @@ object ReviewSnapshotManager {
                 PendingReview(force, executionLease),
             )
             if (existed == null) {
-                if (bodyPhaseBooks.contains(book.bookUrl)) {
-                    // Body Phase：只登记待抓任务，绝不在批量正文结束前启动 WebView 抓取
-                } else {
-                    channel.trySend(Task(key, executionLease))
-                    _syncState.update { it.copy(totalChapters = it.totalChapters + 1) }
-                    shouldStartService = true
-                }
+                channel.trySend(Task(key, executionLease))
             } else if (force && !existed.force) {
                 // force 合并：已排队任务升级为强制重抓，不丢 true
                 pendingForce.replace(
@@ -225,77 +178,7 @@ object ReviewSnapshotManager {
                 )
             }
         }
-        if (shouldStartService) {
-            ReviewCacheService.startSelf()
-        }
-    }
-
-    /** 同步正文目标进度到通知状态（正文通知“正文 x/y”用） */
-    private fun refreshBodyState(book: Book) {
-        val model = CacheBook.cacheBookMap[book.bookUrl]
-        val done = model?.bodyDone
-            ?: BookHelp.getChapterFiles(book).count { it.endsWith(".nb") }
-        val total = model?.bodyTarget ?: book.totalChapterNum
-        _syncState.update { it.copy(bodyDone = done, bodyTotal = total) }
-    }
-
-    /** 批量缓存开始（Body Phase）：该书评论任务只登记不执行 */
-    fun beginBodyPhase(bookUrl: String) {
-        var newSession = false
-        synchronized(queueLock) {
-            if (bodyPhaseBooks.isEmpty() && pendingForce.isEmpty() && activeTaskKeys.isEmpty()) {
-                _syncState.value = ReviewSyncState()
-                newSession = true
-            }
-            bodyPhaseBooks.add(bookUrl)
-        }
-        if (newSession) {
-            AppLog.put("评论缓存会话开始：$bookUrl")
-        }
-    }
-
-    /** 整批目标正文结束后（Review Phase 开始）：该书登记的任务正式入队执行 */
-    fun endBodyPhase(bookUrl: String) {
-        if (!bodyPhaseBooks.remove(bookUrl)) return
-        var sentAny = false
-        synchronized(queueLock) {
-            val book = appDb.bookDao.getBook(bookUrl)
-            if (book != null) refreshBodyState(book)
-            pendingForce.keys
-                .filter { it.substringBefore('|') == bookUrl }
-                .forEach { key ->
-                    channel.trySend(Task(key, pendingForce[key]?.executionLease))
-                    _syncState.update { it.copy(totalChapters = it.totalChapters + 1) }
-                    sentAny = true
-                }
-        }
-        if (sentAny) {
-            ReviewCacheService.startSelf()
-        }
-    }
-
-    /**
-     * 批量取消/异常等非正常结束：同样必须收掉 Body Phase，否则该书后续
-     * 评论任务会一直“只登记不执行”。已登记任务（正文已完成）照常执行。
-     * 幂等：与 [endBodyPhase] 同一收尾路径，重复调用无副作用。
-     */
-    fun cancelBodyPhase(bookUrl: String) {
-        endBodyPhase(bookUrl)
-    }
-
-    /** 兜底收尾（CacheBook.close 等整体清理场景）：清掉所有残留 Body Phase */
-    fun cancelAllBodyPhases() {
-        bodyPhaseBooks.toList().forEach { endBodyPhase(it) }
-    }
-
-    /**
-     * 批量循环发现队列空时的收尾：只有该书确实处于 Body Phase（活跃批量）才
-     * 收——阅读页单章下载的 model 也会被批量流程窥见，不能误收/重复入队。
-     */
-    fun endBodyPhaseIfActive(bookUrl: String) {
-        if (bodyPhaseBooks.contains(bookUrl)) {
-            endBodyPhase(bookUrl)
-        }
+        ReviewCacheService.startSelf()
     }
 
     /** 评论服务消费：取一个任务（无任务返回 null）。force 取聚合值并原子移除 */
@@ -303,7 +186,6 @@ object ReviewSnapshotManager {
         val task = synchronized(queueLock) {
             val t = channel.tryReceive().getOrNull() ?: return null
             val pending = pendingForce.remove(t.key) ?: PendingReview(false, null)
-            activeTaskKeys.add(t.key)
             t to pending
         }
         return QueueTask(task.first.key, task.second.force, task.second.executionLease)
@@ -322,29 +204,8 @@ object ReviewSnapshotManager {
                 if (task.key.substringBefore('|') != bookUrl) retained += task
             }
             retained.forEach { channel.trySend(it) }
-            bodyPhaseBooks.remove(bookUrl)
         }
         AppLog.put("评论缓存取消单书任务：$bookUrl")
-    }
-
-    fun hasPendingTasks(): Boolean = synchronized(queueLock) {
-        pendingForce.isNotEmpty() || activeTaskKeys.isNotEmpty()
-    }
-
-    /** 用户明确停止时丢弃队列；正常正文收尾绝不能调用此方法。 */
-    fun clearAllTasks() {
-        var cleared = 0
-        synchronized(queueLock) {
-            cleared = pendingForce.size + activeTaskKeys.size
-            pendingForce.clear()
-            activeTaskKeys.clear()
-            bodyPhaseBooks.clear()
-            while (channel.tryReceive().isSuccess) {
-                // Drain queued tasks before resetting the session counters.
-            }
-            _syncState.value = ReviewSyncState()
-        }
-        AppLog.put("评论缓存队列已清理：$cleared 个任务")
     }
 
     /** 评论服务处理任务（suspend：内部解析 URL、WebView 抓取、落盘） */
@@ -352,11 +213,7 @@ object ReviewSnapshotManager {
         val outcomeKey = task.executionLease?.let {
             "${task.key}|${it.sessionId}/${it.taskId}/${it.generation}"
         } ?: task.key
-        try {
-            processTask(task.key, task.force, outcomeKey)
-        } finally {
-            activeTaskKeys.remove(task.key)
-        }
+        processTask(task.key, task.force, outcomeKey)
         return taskOutcomes.remove(outcomeKey) == true
     }
 
@@ -494,14 +351,6 @@ object ReviewSnapshotManager {
         val needProcess = buttons.filter {
             it.hasAction && (force || !ReviewSnapshotStore.has(book, chapter, it.src))
         }
-        // 并发下无“当前章”概念：登记本章需处理的快照数，累加进“评论快照 c/d”的总数
-        _syncState.update {
-            it.copy(
-                bookUrl = book.bookUrl,
-                bookName = book.name,
-                totalSnapshots = it.totalSnapshots + needProcess.size
-            )
-        }
         var completedButtons = 0
         var failedButtons = 0
         // force=true（用户明确刷新）时，任何一个需要刷新的按钮失败都保留待刷新标记，
@@ -529,14 +378,6 @@ object ReviewSnapshotManager {
         // 该章所有需要刷新的评论按钮全部成功处理，才清除“评论待刷新”持久标记
         if (force && !hasFailure) {
             clearUserRefresh(bookUrl, chapterIndex)
-        }
-        // 本章结束：完成章数原子 +1（并发下不能读-改-写共享值，否则丢失完成计数）
-        _syncState.update {
-            it.copy(
-                bookUrl = book.bookUrl,
-                bookName = book.name,
-                completedChapters = it.completedChapters + 1
-            )
         }
         // 只有本章真实存在至少一个有效评论快照时，才计入“有评论快照的章数”
         // 并广播事件，避免抓失败的章虚增“评论 x/y”（事件载荷带 hasSnapshot）
@@ -640,10 +481,6 @@ object ReviewSnapshotManager {
         val putResult = runCatching { ReviewSnapshotStore.put(book, capture.snapshot) }
         if (putResult.isSuccess) {
             sb.append("7. SnapshotStore.put：成功\n")
-            // 实际完成一个快照：跨并发章/按钮原子累计，只增不减（不可读-改-写共享值）
-            _syncState.update {
-                it.copy(completedSnapshots = it.completedSnapshots + 1)
-            }
             return ButtonOutcome(buttonIndex, sb.toString(), success = true)
         }
         sb.append("7. SnapshotStore.put：失败\n")
