@@ -28,11 +28,12 @@ import splitties.systemservices.notificationManager
  *   绝不开 WebView 抓评论；
  * - Review Phase：整批目标正文结束后，[ReviewSnapshotManager.endBodyPhase]
  *   把登记任务入队并启动本服务。本服务以低优先级通知常驻前台，
- *   单线程串行抓取评论页快照，失败只记日志。
+ *   [AppConfig.reviewCacheConcurrency] 个并发 worker 抓取评论页快照，失败只记日志。
  *
- * 通知与音频缓存一致：低优先级通知 + 进度条，进度条 = 当前章的评论按钮进度
- * （done/total，未解析时 indeterminate），文本显示当前章与已完成章数，
- * 1 秒节流；一个任务失败只记日志，绝不打死整个 Review Phase。
+ * 通知与音频缓存一致：低优先级通知 + 进度条。并发下没有“当前章”概念，
+ * 进度一律按实际完成量聚合：进度条 = 已完成评论章数/本次目标章数（只增不减），
+ * 文本显示正文/评论总进度，并附跨并发章累计的“评论快照 c/d”；1 秒节流。
+ * 一个任务失败只记日志，绝不打死整个 Review Phase。
  *
  * 生命周期保障：
  * - 评论进度不算正文下载进度，正文下载状态（CacheBookService）结束后才启动；
@@ -150,8 +151,7 @@ class ReviewCacheService : BaseService() {
         notificationManager.notify(NotificationId.ReviewCacheService, notification)
     }
 
-    /** 进度通知：当前章按钮进度（进度条），文本带书名/当前章/已完成章数 */
-    /** 通知文字：正文 x/y · 评论 a/b（y = 本次缓存目标章数），当前章有按钮进度时附“当前章快照 c/d” */
+    /** 通知文字：正文 x/y · 评论 a/b（y = 本次缓存目标章数），有已登记快照时附“评论快照 c/d” */
     private fun totalProgressText(state: ReviewSyncState): String {
         val bodyTotal = state.bodyTotal.takeIf { it > 0 }
             ?: state.bookUrl.takeIf { it.isNotBlank() }
@@ -160,13 +160,13 @@ class ReviewCacheService : BaseService() {
         val bodyDone = state.bodyDone
         val reviewTotal = state.totalChapters.takeIf { it > 0 } ?: bodyTotal
         val reviewDone = state.completedChapters.coerceAtMost(reviewTotal)
-        if (state.totalButtons > 0) {
-            // 评论区阶段：附当前章的评论泡/快照进度
+        if (state.totalSnapshots > 0) {
+            // 评论快照阶段：附跨并发章累计的已完成/已登记快照数
             return getString(
                 R.string.review_notification_detail,
                 bodyDone, bodyTotal,
                 reviewDone, reviewTotal,
-                state.completedButtons.coerceIn(0, state.totalButtons), state.totalButtons
+                state.completedSnapshots.coerceIn(0, state.totalSnapshots), state.totalSnapshots
             )
         }
         return getString(
@@ -180,18 +180,20 @@ class ReviewCacheService : BaseService() {
         val now = System.currentTimeMillis()
         if (now - lastNotifyTime < NOTIFICATION_INTERVAL_MS) return
         lastNotifyTime = now
-        // 文字显示总进度（正文 x/y · 评论 a/b）
+        // 文字显示总进度（正文 x/y · 评论 a/b · 评论快照 c/d）
         val contentText = totalProgressText(state)
         val builder = notificationBuilder.setContentText(contentText)
-        // 进度条 = 当前评论单章节处理进度（当前章按钮 done/total）
-        if (state.totalButtons > 0) {
+        // 进度条 = 评论任务实际完成量（已完成章数/本次目标章数）：
+        // 并发 worker 下只按完成数累计，绝不显示在途章节位置，避免前后跳动
+        val reviewTotal = state.totalChapters.takeIf { it > 0 } ?: state.bodyTotal
+        if (reviewTotal > 0) {
             builder.setProgress(
-                state.totalButtons,
-                state.completedButtons.coerceIn(0, state.totalButtons),
+                reviewTotal,
+                state.completedChapters.coerceIn(0, reviewTotal),
                 false
             )
         } else {
-            // 当前章按钮数未知（未解析/章与章之间）：不固定进度
+            // 总章数未知（任务尚未登记完成）：不定进度
             builder.setProgress(0, 0, true)
         }
         notificationManager.notify(NotificationId.ReviewCacheService, builder.build())

@@ -38,7 +38,7 @@ import java.util.concurrent.atomic.AtomicReference
  * 正文永远优先：批量缓存分两阶段——
  * - Body Phase：只下载正文，评论任务只登记（pendingForce），绝不开 WebView 抓评论；
  * - Review Phase：整批目标正文结束后（[endBodyPhase]）把登记任务放入队列，
- *   由独立前台 [io.legado.app.service.ReviewCacheService] 低优先级串行抓取，
+ *   由独立前台 [io.legado.app.service.ReviewCacheService] 低优先级并发抓取，
  *   评论进度不算正文下载进度。
  * 阅读页单章下载（不走批量）正文完全结束后直接登记并启动评论服务。
  *
@@ -56,8 +56,10 @@ object ReviewSnapshotManager {
     )
 
     /**
-     * 评论快照同步进度（供 ReviewCacheService 通知展示）：
-     * 进度条 = 当前章的评论按钮进度（done/total），与音频缓存“单章进度”决策一致。
+     * 评论快照同步进度（供 ReviewCacheService 通知展示）。
+     * 并发 worker 下不存在“当前章”概念，进度一律按实际完成量聚合：
+     * - 进度条 = 评论任务完成章数/目标章数（completedChapters/totalChapters），只增不减；
+     * - “评论快照 c/d” = 已完成快照数/已登记需处理快照总数（跨并发章累计），c 只增不减。
      */
     data class ReviewSyncState(
         val bookUrl: String = "",
@@ -68,10 +70,10 @@ object ReviewSnapshotManager {
         /** 本次会话入队的评论任务总数（目标章数），通知“评论 a/b”用 */
         val totalChapters: Int = 0,
         val completedChapters: Int = 0,
-        val currentChapterTitle: String = "",
-        /** 当前章评论按钮进度，通知“当前章快照 c/d”用 */
-        val totalButtons: Int = 0,
-        val completedButtons: Int = 0
+        /** 已登记需处理评论快照总数（章节开始解析按钮时累加），通知“评论快照 c/d”用 */
+        val totalSnapshots: Int = 0,
+        /** 已完成评论快照数（跨并发章原子累计，只增不减，按实际下载量） */
+        val completedSnapshots: Int = 0
     )
 
     private val _syncState = MutableStateFlow(ReviewSyncState())
@@ -396,14 +398,14 @@ object ReviewSnapshotManager {
         val needProcess = buttons.filter {
             it.hasAction && (force || !ReviewSnapshotStore.has(book, chapter, it.src))
         }
-        // 通知进度：进度条=当前章的评论按钮进度（参照音频缓存“单章进度”的决策逻辑）
-        _syncState.value = _syncState.value.copy(
-            bookUrl = book.bookUrl,
-            bookName = book.name,
-            currentChapterTitle = chapter.title,
-            totalButtons = needProcess.size,
-            completedButtons = 0
-        )
+        // 并发下无“当前章”概念：登记本章需处理的快照数，累加进“评论快照 c/d”的总数
+        _syncState.update {
+            it.copy(
+                bookUrl = book.bookUrl,
+                bookName = book.name,
+                totalSnapshots = it.totalSnapshots + needProcess.size
+            )
+        }
         var completedButtons = 0
         var failedButtons = 0
         // force=true（用户明确刷新）时，任何一个需要刷新的按钮失败都保留待刷新标记，
@@ -481,7 +483,10 @@ object ReviewSnapshotManager {
                 if (putResult.isSuccess) {
                     sb.append("7. SnapshotStore.put：成功\n")
                     completedButtons++
-                    _syncState.value = _syncState.value.copy(completedButtons = completedButtons)
+                    // 实际完成一个快照：跨并发章原子累计，只增不减（不可读-改-写共享值）
+                    _syncState.update {
+                        it.copy(completedSnapshots = it.completedSnapshots + 1)
+                    }
                 } else {
                     hasFailure = true
                     failedButtons++
@@ -495,15 +500,14 @@ object ReviewSnapshotManager {
         if (force && !hasFailure) {
             clearUserRefresh(bookUrl, chapterIndex)
         }
-        // 本章结束：进度计数收尾，通知切回“已完成 n 章”
-        _syncState.value = _syncState.value.copy(
-            bookUrl = book.bookUrl,
-            bookName = book.name,
-            currentChapterTitle = "",
-            totalButtons = 0,
-            completedButtons = 0,
-            completedChapters = _syncState.value.completedChapters + 1
-        )
+        // 本章结束：完成章数原子 +1（并发下不能读-改-写共享值，否则丢失完成计数）
+        _syncState.update {
+            it.copy(
+                bookUrl = book.bookUrl,
+                bookName = book.name,
+                completedChapters = it.completedChapters + 1
+            )
+        }
         // 只有本章真实存在至少一个有效评论快照时，才计入“有评论快照的章数”
         // 并广播事件，避免抓失败的章虚增“评论 x/y”（事件载荷带 hasSnapshot）
         val chapterHasSnapshot = buttons.any { ReviewSnapshotStore.has(book, chapter, it.src) }
