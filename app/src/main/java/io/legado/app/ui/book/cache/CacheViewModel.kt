@@ -19,6 +19,9 @@ class CacheViewModel(application: Application) : BaseViewModel(application) {
     private var loadChapterCoroutine: Coroutine<Unit>? = null
     val cacheChapters = hashMapOf<String, HashSet<String>>()
 
+    /** 有评论页快照的章节（bookUrl -> 章 url 集合），用于缓存页“正文 x/y · 评论 a/b” */
+    val reviewChapters = hashMapOf<String, HashSet<String>>()
+
     fun loadCacheFiles(books: List<Book>) {
         loadChapterCoroutine?.cancel()
         loadChapterCoroutine = execute {
@@ -40,6 +43,13 @@ class CacheViewModel(application: Application) : BaseViewModel(application) {
                         }
                     }
                     cacheChapters[book.bookUrl] = chapterCaches
+                    // 评论快照章数：统计该书快照文件（按章去重），后续由事件增量更新
+                    reviewChapters[book.bookUrl] = io.legado.app.help.review.ReviewSnapshotStore
+                        .listAll(book)
+                        .asSequence()
+                        .map { it.chapterUrl }
+                        .filter { it.isNotBlank() }
+                        .toHashSet()
                     upAdapterLiveData.sendValue(book.bookUrl)
                 }
                 ensureActive()
