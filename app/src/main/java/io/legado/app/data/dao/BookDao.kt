@@ -117,6 +117,7 @@ interface BookDao {
     @Query("SELECT * FROM books WHERE bookUrl = :bookUrl")
     fun getBook(bookUrl: String): Book?
 
+    /** Name/author/mediaType is metadata lookup only; bookUrl is the identity key. */
     @Query("SELECT * FROM books WHERE name = :name and author = :author and mediaType = :mediaType")
     fun getBook(name: String, author: String, @BookMediaType.Type mediaType: Int): Book?
 
@@ -175,6 +176,7 @@ interface BookDao {
     @Query("select exists(select 1 from books where bookUrl = :bookUrl)")
     fun has(bookUrl: String): Boolean
 
+    /** Name/author/mediaType is metadata lookup only; bookUrl is the identity key. */
     @Query("select exists(select 1 from books where name = :name and author = :author and mediaType = :mediaType)")
     fun has(name: String, author: String, @BookMediaType.Type mediaType: Int): Boolean
 

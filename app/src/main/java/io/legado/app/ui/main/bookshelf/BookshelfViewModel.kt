@@ -6,7 +6,6 @@ import com.google.gson.stream.JsonWriter
 import io.legado.app.R
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.BookMediaType
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
@@ -95,20 +94,13 @@ class BookshelfViewModel(application: Application) : BaseViewModel(application) 
                 kotlin.runCatching {
                     WebBook.getBookInfoAwait(bookSource, book)
                 }.onSuccess {
-                    val dbBook = appDb.bookDao.getBook(
-                        it.name,
-                        it.author,
-                        BookMediaType.fromBookType(it.type)
-                    )
-                    if (dbBook != null) {
-                        val toc = WebBook.getChapterListAwait(bookSource, it).getOrThrow()
-                        dbBook.migrateTo(it, toc)
-                        appDb.bookDao.insert(it)
-                        appDb.bookChapterDao.insert(*toc.toTypedArray())
-                    } else {
-                        it.order = appDb.bookDao.minOrder - 1
-                        it.save()
+                    if (appDb.bookDao.getBook(it.bookUrl) != null) {
+                        successCount++
+                        addBookProgressLiveData.postValue(successCount)
+                        return@onSuccess
                     }
+                    it.order = appDb.bookDao.minOrder - 1
+                    it.save()
                     successCount++
                     addBookProgressLiveData.postValue(successCount)
                 }
@@ -187,7 +179,7 @@ class BookshelfViewModel(application: Application) : BaseViewModel(application) 
             GSON.fromJsonArray<Map<String, String?>>(json).getOrThrow().forEach { bookInfo ->
                 val name = bookInfo["name"] ?: ""
                 val author = bookInfo["author"] ?: ""
-                if (name.isEmpty() || appDb.bookDao.has(name, author, BookMediaType.text)) {
+                if (name.isEmpty()) {
                     return@forEach
                 }
                 semaphore.withPermit {
@@ -196,6 +188,9 @@ class BookshelfViewModel(application: Application) : BaseViewModel(application) 
                         semaphore = semaphore
                     ).onSuccess {
                         val book = it.first
+                        if (appDb.bookDao.has(book.bookUrl)) {
+                            return@onSuccess
+                        }
                         if (groupId > 0) {
                             book.group = groupId
                         }
