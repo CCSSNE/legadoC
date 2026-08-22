@@ -304,9 +304,8 @@
     <string name="select_all_count">全选（%1$d/%2$d）</string>
     <string name="select_all_books_collections">全选(%1$d,%2$d)</string>
     <string name="bookshelf_fusion">融合</string>
-    <string name="fusion_need_two_books">融合需要恰好选中两本同名同作者的书：一本有声书、一本文字书</string>
+    <string name="fusion_need_two_books">融合需要恰好选中两本书：一本有声书、一本文字书</string>
     <string name="fusion_type_invalid">选中的两本书类型相同，需要一本有声书和一本文字书</string>
-    <string name="fusion_info_mismatch">两本书的书名或作者不一致，无法融合</string>
     <string name="fusion_confirm_title">融合评论到有声书</string>
     <string name="fusion_confirm_message">只处理双方已经缓存的章节，不联网下载。文字书中与听书章节、段落匹配的评论按钮，将挂载到有声书对应字幕位置；挂载结果单独保存，不会覆盖原始字幕，音频源刷新歌词也不会冲掉它。若之前融合过，将按文字书当前内容重新生成并替换上一次的挂载。确定继续吗？</string>
     <string name="fusion_done">融合完成：配对 %1$d 章，挂载 %2$d 章，迁移 %3$d 个评论入口</string>
@@ -1269,6 +1268,8 @@
     <string name="export_reviews">导出评论</string>
     <string name="export_reviews_summary">TXT-ZIP 压缩包内附带已缓存的评论页快照</string>
     <string name="review_sync_running">正在后台同步缓存评论页快照</string>
+    <string name="review_sync_waiting">…</string>
+    <string name="review_sync_notification_progress">%1$s · %2$s · 快照 %3$d/%4$d · 已完成 %5$d 章</string>
     <!-- string end -->
     <string name="error_decode_bitmap">图片解码失败</string>
     <string name="error_image_url_empty">图片链接为空，检查替换净化规则</string>

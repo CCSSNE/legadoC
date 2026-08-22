@@ -20,6 +20,9 @@ import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.startService
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import splitties.init.appCtx
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -49,6 +52,21 @@ object ReviewSnapshotManager {
         val key: String,
         val force: Boolean
     )
+
+    /**
+     * 评论快照同步进度（供 ReviewCacheService 通知展示）：
+     * 进度条 = 当前章的评论按钮进度（done/total），与音频缓存“单章进度”决策一致。
+     */
+    data class ReviewSyncState(
+        val bookName: String = "",
+        val currentChapterTitle: String = "",
+        val totalButtons: Int = 0,
+        val completedButtons: Int = 0,
+        val completedChapters: Int = 0
+    )
+
+    private val _syncState = MutableStateFlow(ReviewSyncState())
+    val syncState: StateFlow<ReviewSyncState> = _syncState.asStateFlow()
 
     private data class Task(val key: String)
 
@@ -272,6 +290,17 @@ object ReviewSnapshotManager {
         val chapter = appDb.bookChapterDao.getChapter(bookUrl, chapterIndex) ?: return
         val content = BookHelp.getContent(book, chapter) ?: return
         val buttons = extractReviewButtons(content).take(MAX_BUTTONS_PER_CHAPTER)
+        val needProcess = buttons.filter {
+            it.hasAction && (force || !ReviewSnapshotStore.has(book, chapter, it.src))
+        }
+        // 通知进度：进度条=当前章的评论按钮进度（参照音频缓存“单章进度”的决策逻辑）
+        _syncState.value = _syncState.value.copy(
+            bookName = book.name,
+            currentChapterTitle = chapter.title,
+            totalButtons = needProcess.size,
+            completedButtons = 0
+        )
+        var completedButtons = 0
         // force=true（用户明确刷新）时，任何一个需要刷新的按钮失败都保留待刷新标记，
         // 不能“一个成功就算整章成功”
         var hasFailure = false
@@ -279,6 +308,7 @@ object ReviewSnapshotManager {
             if (!button.hasAction) continue
             // 普通触发有快照可跳过；force（明确重新缓存/刷新）必须重抓覆盖
             if (!force && ReviewSnapshotStore.has(book, chapter, button.src)) continue
+            var buttonOk = false
             val url = runCatching {
                 resolveReviewPageUrl(book, bookSource, chapter, button)
             }.onFailure {
@@ -289,19 +319,24 @@ object ReviewSnapshotManager {
             }.getOrNull()
             if (url.isNullOrBlank()) {
                 hasFailure = true
-                continue
+            } else {
+                // 失败只记日志：重新缓存/刷新会再次入队重试，绝不影响正文
+                runCatching {
+                    val snapshot = ReviewSnapshotCapture.capture(
+                        bookSource, book, chapter, button.src, url
+                    )
+                    ReviewSnapshotStore.put(book, snapshot)
+                    buttonOk = true
+                }.onFailure {
+                    hasFailure = true
+                    AppLog.put(
+                        "评论快照抓取失败 ${book.name} ${chapter.title}\n${it.localizedMessage}", it
+                    )
+                }
             }
-            // 失败只记日志：重新缓存/刷新会再次入队重试，绝不影响正文
-            runCatching {
-                val snapshot = ReviewSnapshotCapture.capture(
-                    bookSource, book, chapter, button.src, url
-                )
-                ReviewSnapshotStore.put(book, snapshot)
-            }.onFailure {
-                hasFailure = true
-                AppLog.put(
-                    "评论快照抓取失败 ${book.name} ${chapter.title}\n${it.localizedMessage}", it
-                )
+            if (buttonOk) {
+                completedButtons++
+                _syncState.value = _syncState.value.copy(completedButtons = completedButtons)
             }
             delay(BUTTON_INTERVAL_MS)
         }
@@ -309,6 +344,14 @@ object ReviewSnapshotManager {
         if (force && !hasFailure) {
             clearUserRefresh(bookUrl, chapterIndex)
         }
+        // 本章结束：进度计数收尾，通知切回“已完成 n 章”
+        _syncState.value = _syncState.value.copy(
+            bookName = book.name,
+            currentChapterTitle = "",
+            totalButtons = 0,
+            completedButtons = 0,
+            completedChapters = _syncState.value.completedChapters + 1
+        )
     }
 
     /**
