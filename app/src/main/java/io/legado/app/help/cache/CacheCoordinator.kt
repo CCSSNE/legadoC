@@ -127,6 +127,21 @@ object CacheCoordinator : CacheUiPort {
         }
     }
 
+    /** Summary notification commands intentionally operate on all active tasks. */
+    fun pauseAll(): Int = commandAll { pause(it) }
+
+    fun resumeAll(): Int = commandAll { resume(it) }
+
+    fun cancelAll(): Int = commandAll { cancel(it) }
+
+    private fun commandAll(command: (CacheSubmission) -> Boolean): Int {
+        val submissions = snapshot.value.sessions
+            .flatMap { it.tasks }
+            .filter { !CacheLifecycleRules.isTerminal(it.status) }
+            .map { CacheSubmission(it.sessionId, it.taskId) }
+        return submissions.count(command)
+    }
+
     /** Only the text coordinator may append the REVIEW task to an existing session. */
     internal fun appendReviewTask(
         sessionId: String,
@@ -177,11 +192,8 @@ object CacheCoordinator : CacheUiPort {
         result: CacheResult,
         error: String? = null,
     ) {
-        CacheNotificationBridge.finished(
-            currentTask(CacheSubmission(lease.sessionId, lease.taskId)),
-            result,
-            error,
-        )
+        val task = currentTask(CacheSubmission(lease.sessionId, lease.taskId))
+        CacheNotificationBridge.finished(task, task?.result ?: result, error)
     }
 
     internal fun notifyTaskFinished(
@@ -189,7 +201,8 @@ object CacheCoordinator : CacheUiPort {
         result: CacheResult,
         error: String? = null,
     ) {
-        CacheNotificationBridge.finished(currentTask(submission), result, error)
+        val task = currentTask(submission)
+        CacheNotificationBridge.finished(task, task?.result ?: result, error)
     }
 
     private fun validateUiRequest(request: CacheRequest) {
