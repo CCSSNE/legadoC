@@ -14,7 +14,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.StrResponse
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.service.ReviewCacheService
-import io.legado.app.ui.rss.read.RssJsExtensions
+import io.legado.app.ui.login.SourceLoginJsExtensions
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.startService
@@ -412,19 +412,27 @@ object ReviewSnapshotManager {
                 sb.append("   ").append(resolveResult.exceptionOrNull()!!.stackTraceToString()).append('\n')
                 continue
             }
-            val url = resolveResult.getOrNull()
+            val page = resolveResult.getOrNull()!!
+            val url = page.url
             if (url.isNullOrBlank()) {
                 // resolveReviewPageUrl 无异常但没等到地址
                 hasFailure = true
                 failedButtons++
-                sb.append("   解析真实评论页 URL：失败（click/js 执行了，但没有触发 browser open，")
+                sb.append("   解析真实评论页 URL：失败（click/js 执行了，但没有触发 browser open/showBrowser，")
                     .append(RESOLVE_TIMEOUT_MS / 1000).append("s 超时）\n")
                 continue
             }
-            sb.append("   解析真实评论页 URL：成功\n")
+            sb.append("   解析真实评论页 URL：成功")
+            if (!page.html.isNullOrBlank()) {
+                sb.append("（showBrowser 已带回渲染 HTML ")
+                    .append(page.html.length / 1024).append(" KB，作为初始页面）")
+            }
+            sb.append('\n')
             sb.append("   URL=").append(url).append('\n')
             val outcome = runCatching {
-                ReviewSnapshotCapture.capture(bookSource, book, chapter, button.src, url)
+                ReviewSnapshotCapture.capture(
+                    bookSource, book, chapter, button.src, url, page.html
+                )
             }
             if (outcome.isFailure) {
                 hasFailure = true
@@ -489,37 +497,86 @@ object ReviewSnapshotManager {
     }
 
     /**
-     * 解析评论按钮对应的真实评论页地址。
+     * 解析评论按钮对应的真实评论页。
+     *
      * 与用户点击共用 [BookImgClick.executeClick]/[executeJs]：
      * click 分支替换 java 拦截宿主，旧源 js 分支挂 AnalyzeRule 钩子，
      * 执行环境与真实点击完全一致。
+     *
+     * 宿主基于 [SourceLoginJsExtensions]：书源评论实际走
+     * `java.showBrowser(url, html, preloadJs, config)`（改版 app 弹窗路径），
+     * 或 qread 的 `java.startBrowserDp(url, title)`，或老式 startBrowser 路径；
+     * showBrowser 时书源已用 ajax 取回渲染 HTML，一并记录，抓取阶段可直接
+     * 作为初始页面，不用再开网络请求。
      */
+    data class ReviewPage(
+        val url: String?,
+        /** showBrowser 路径书源已取到的渲染 HTML（可为 null） */
+        val html: String?
+    )
+
     suspend fun resolveReviewPageUrl(
         book: Book,
         bookSource: BookSource,
         chapter: BookChapter,
         button: ReviewButton
-    ): String? {
-        val resolved = AtomicReference<String>()
+    ): ReviewPage {
+        val resolvedUrl = AtomicReference<String>()
+        val resolvedHtml = AtomicReference<String?>()
         val latch = CountDownLatch(1)
-        fun record(url: String): Boolean {
-            resolved.compareAndSet(null, url)
-            latch.countDown()
-            return true
+        fun record(url: String, html: String? = null) {
+            if (resolvedUrl.compareAndSet(null, url)) {
+                resolvedHtml.compareAndSet(null, html)
+                latch.countDown()
+            }
         }
         if (!button.click.isNullOrBlank()) {
-            val host = object : RssJsExtensions(null, bookSource, BookType.text) {
-                override fun onBrowserOpenRequested(url: String, title: String, html: String?): Boolean {
-                    return record(url)
+            val host = object : SourceLoginJsExtensions(null, bookSource, BookType.text) {
+                override fun startBrowser(url: String, title: String) {
+                    record(url)
                 }
 
-                override fun onBrowserAwaitRequested(
+                override fun startBrowser(url: String, title: String, html: String?) {
+                    record(url, html)
+                }
+
+                override fun startBrowserAwait(url: String, title: String): StrResponse {
+                    record(url)
+                    return StrResponse(url, "")
+                }
+
+                override fun startBrowserAwait(
                     url: String,
                     title: String,
-                    html: String?
+                    refetchAfterSuccess: Boolean
                 ): StrResponse {
                     record(url)
                     return StrResponse(url, "")
+                }
+
+                override fun startBrowserAwait(
+                    url: String,
+                    title: String,
+                    refetchAfterSuccess: Boolean,
+                    html: String?
+                ): StrResponse {
+                    record(url, html)
+                    return StrResponse(url, "")
+                }
+
+                /** 改版 app 弹窗路径：书源评论实际走这里 */
+                override fun showBrowser(
+                    url: String,
+                    html: String?,
+                    preloadJs: String?,
+                    config: String?
+                ) {
+                    record(url, html)
+                }
+
+                /** qread 弹窗路径兼容 */
+                fun startBrowserDp(url: String, title: String) {
+                    record(url)
                 }
             }
             BookImgClick.executeClick(book, bookSource, chapter, button.click, button.src) { host }
@@ -527,7 +584,10 @@ object ReviewSnapshotManager {
             val js = button.js.orEmpty()
             val urlNoOption = button.urlNoOption.orEmpty()
             BookImgClick.executeJs(book, bookSource, chapter, js, urlNoOption) {
-                onBrowserOpenRequestedHook = { url, _, _ -> record(url) }
+                onBrowserOpenRequestedHook = { url, _, _ ->
+                    record(url)
+                    true
+                }
                 onBrowserAwaitRequestedHook = { url, _, _ ->
                     record(url)
                     StrResponse(url, "")
@@ -535,7 +595,7 @@ object ReviewSnapshotManager {
             }
         }
         latch.await(RESOLVE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-        return resolved.get()
+        return ReviewPage(resolvedUrl.get(), resolvedHtml.get())
     }
 
     /**
