@@ -26,9 +26,11 @@ enum class CachePhase {
 enum class CacheLifecycle {
     QUEUED,
     RUNNING,
+    PAUSING,
     PAUSED,
+    INTERRUPTED,
     CANCELLING,
-    SUCCEEDED,
+    COMPLETED,
     FAILED,
     CANCELLED,
 }
@@ -74,7 +76,7 @@ data class CacheRequest(
     val reviewEnabled: Boolean = false,
 )
 
-data class CacheWorkerLease(
+internal data class CacheWorkerLease(
     val sessionId: String,
     val taskId: String,
     val generation: Long,
@@ -89,6 +91,7 @@ data class CacheTaskState(
     val bookUrl: String,
     val bookName: String,
     val units: List<CacheUnitState>,
+    val reviewEnabled: Boolean = false,
     val status: CacheLifecycle = CacheLifecycle.QUEUED,
     val result: CacheResult? = null,
     val generation: Long = 0L,
@@ -118,22 +121,27 @@ object CacheLifecycleRules {
             CacheLifecycle.QUEUED -> to == CacheLifecycle.RUNNING ||
                 to == CacheLifecycle.CANCELLING ||
                 to == CacheLifecycle.CANCELLED
-            CacheLifecycle.RUNNING -> to == CacheLifecycle.PAUSED ||
+            CacheLifecycle.RUNNING -> to == CacheLifecycle.PAUSING ||
                 to == CacheLifecycle.CANCELLING ||
-                to == CacheLifecycle.SUCCEEDED ||
+                to == CacheLifecycle.COMPLETED ||
                 to == CacheLifecycle.FAILED
+            CacheLifecycle.PAUSING -> to == CacheLifecycle.PAUSED ||
+                to == CacheLifecycle.CANCELLING
             CacheLifecycle.PAUSED -> to == CacheLifecycle.RUNNING ||
                 to == CacheLifecycle.CANCELLING ||
                 to == CacheLifecycle.CANCELLED
+            CacheLifecycle.INTERRUPTED -> to == CacheLifecycle.RUNNING ||
+                to == CacheLifecycle.CANCELLING ||
+                to == CacheLifecycle.CANCELLED
             CacheLifecycle.CANCELLING -> to == CacheLifecycle.CANCELLED
-            CacheLifecycle.SUCCEEDED,
+            CacheLifecycle.COMPLETED,
             CacheLifecycle.FAILED,
             CacheLifecycle.CANCELLED -> false
         }
     }
 
     fun isTerminal(status: CacheLifecycle): Boolean {
-        return status == CacheLifecycle.SUCCEEDED ||
+        return status == CacheLifecycle.COMPLETED ||
             status == CacheLifecycle.FAILED ||
             status == CacheLifecycle.CANCELLED
     }

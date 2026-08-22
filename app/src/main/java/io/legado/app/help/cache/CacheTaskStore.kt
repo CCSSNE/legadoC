@@ -8,17 +8,30 @@ import java.util.UUID
 /**
  * The single in-process source of cache task state.
  *
- * Persistence can be added behind this boundary later. Workers never mutate a
- * task directly; every update must carry the lease generation.
+ * A small snapshot persistence layer survives process death. Workers never
+ * mutate a task directly; every update must carry the lease generation.
  */
-class CacheTaskStore(
+internal class CacheTaskStore(
     private val logSink: CacheLogSink = AppLogCacheLogSink,
+    private val persistence: CacheTaskPersistence = AppFileCacheTaskPersistence,
 ) {
 
     private val lock = Any()
     private val sessions = LinkedHashMap<String, CacheSessionState>()
     private val _snapshot = MutableStateFlow(CacheSnapshot())
     val snapshot: StateFlow<CacheSnapshot> = _snapshot.asStateFlow()
+
+    init {
+        val loaded = persistence.load()
+        loaded.onFailure { error ->
+            record(
+                CacheLogEventType.PERSISTENCE_LOAD_FAILED,
+                detail = error.localizedMessage,
+            )
+            throw IllegalStateException("cache task state recovery failed", error)
+        }
+        loaded.getOrNull()?.let { restore(it) }
+    }
 
     fun createSession(title: String): CacheSessionState {
         val now = System.currentTimeMillis()
@@ -32,7 +45,7 @@ class CacheTaskStore(
             sessions[session.sessionId] = session
             publishLocked()
         }
-        logSink.record("SESSION_CREATED", sessionId = session.sessionId, detail = title)
+        record(CacheLogEventType.SESSION_CREATED, session.sessionId, detail = title)
         return session
     }
 
@@ -48,20 +61,21 @@ class CacheTaskStore(
             bookUrl = request.bookUrl,
             bookName = request.bookName,
             units = request.units.distinct().map { CacheUnitState(it, updatedAt = now) },
+            reviewEnabled = request.reviewEnabled,
             updatedAt = now,
         )
         synchronized(lock) {
             val session = requireSessionLocked(sessionId)
-            sessions[sessionId] = session.copy(
+            sessions[sessionId] = aggregateSession(session.copy(
                 tasks = session.tasks + task,
                 updatedAt = now,
-            )
+            ))
             publishLocked()
         }
-        logSink.record(
-            "TASK_QUEUED",
-            sessionId = sessionId,
-            taskId = task.taskId,
+        record(
+            CacheLogEventType.TASK_QUEUED,
+            sessionId,
+            task.taskId,
             detail = "kind=${task.kind} phase=${task.phase} units=${task.units.size}",
         )
         return task
@@ -74,7 +88,7 @@ class CacheTaskStore(
             if (task.status != CacheLifecycle.QUEUED) return null
             val lease = attachWorkerLocked(task)
             publishLocked()
-            logSink.record("TASK_STARTED", sessionId, taskId, "generation=${lease.generation}")
+            record(CacheLogEventType.TASK_STARTED, sessionId, taskId, "generation=${lease.generation}")
             return lease
         }
     }
@@ -90,7 +104,7 @@ class CacheTaskStore(
             }
             val lease = attachWorkerLocked(task)
             publishLocked()
-            logSink.record("TASK_RECLAIMED", sessionId, taskId, "generation=${lease.generation}")
+            record(CacheLogEventType.TASK_RECLAIMED, sessionId, taskId, "generation=${lease.generation}")
             return lease
         }
     }
@@ -100,12 +114,27 @@ class CacheTaskStore(
             val task = requireTaskLocked(sessionId, taskId)
             if (task.status != CacheLifecycle.RUNNING) return false
             replaceTaskLocked(task.copy(
+                status = CacheLifecycle.PAUSING,
+                generation = task.generation + 1,
+                updatedAt = System.currentTimeMillis(),
+            ))
+            publishLocked()
+        }
+        record(CacheLogEventType.TASK_PAUSING, sessionId, taskId)
+        return true
+    }
+
+    fun confirmPaused(sessionId: String, taskId: String): Boolean {
+        synchronized(lock) {
+            val task = requireTaskLocked(sessionId, taskId)
+            if (task.status != CacheLifecycle.PAUSING) return false
+            replaceTaskLocked(task.copy(
                 status = CacheLifecycle.PAUSED,
                 updatedAt = System.currentTimeMillis(),
             ))
             publishLocked()
         }
-        logSink.record("TASK_PAUSED", sessionId, taskId)
+        record(CacheLogEventType.TASK_PAUSED, sessionId, taskId)
         return true
     }
 
@@ -116,7 +145,7 @@ class CacheTaskStore(
             if (task.status != CacheLifecycle.PAUSED) return null
             val lease = attachWorkerLocked(task)
             publishLocked()
-            logSink.record("TASK_RESUMED", sessionId, taskId, "generation=${lease.generation}")
+            record(CacheLogEventType.TASK_RESUMED, sessionId, taskId, "generation=${lease.generation}")
             return lease
         }
     }
@@ -140,7 +169,7 @@ class CacheTaskStore(
             ))
             publishLocked()
         }
-        logSink.record("TASK_CANCELLING", sessionId, taskId)
+        record(CacheLogEventType.TASK_CANCELLING, sessionId, taskId)
         return true
     }
 
@@ -155,7 +184,7 @@ class CacheTaskStore(
             ))
             publishLocked()
         }
-        logSink.record("TASK_CANCELLED", sessionId, taskId)
+        record(CacheLogEventType.TASK_CANCELLED, sessionId, taskId)
         return true
     }
 
@@ -167,7 +196,7 @@ class CacheTaskStore(
     ): Boolean {
         synchronized(lock) {
             val task = requireTaskLocked(lease.sessionId, lease.taskId)
-            if (!isCurrentLease(task, lease)) {
+            if (!isCurrentLease(task, lease) || task.status != CacheLifecycle.RUNNING) {
                 logStaleUpdate(lease, "unit=${key.chapterIndex} status=$status")
                 return false
             }
@@ -187,8 +216,12 @@ class CacheTaskStore(
             replaceTaskLocked(task.copy(units = units, updatedAt = System.currentTimeMillis()))
             publishLocked()
         }
-        logSink.record(
-            if (status == CacheUnitStatus.FAILED) "UNIT_FAILED" else "UNIT_UPDATED",
+        record(
+            if (status == CacheUnitStatus.FAILED) {
+                CacheLogEventType.UNIT_FAILED
+            } else {
+                CacheLogEventType.UNIT_UPDATED
+            },
             lease.sessionId,
             lease.taskId,
             "chapter=${key.chapterIndex} status=$status${error?.let { " error=$it" }.orEmpty()}",
@@ -207,7 +240,7 @@ class CacheTaskStore(
         }
         synchronized(lock) {
             val task = requireTaskLocked(lease.sessionId, lease.taskId)
-            if (!isCurrentLease(task, lease)) {
+            if (!isCurrentLease(task, lease) || task.status != CacheLifecycle.RUNNING) {
                 logStaleUpdate(lease, "finish=$result")
                 return false
             }
@@ -217,7 +250,7 @@ class CacheTaskStore(
             val lifecycle = if (result == CacheResult.FAILED) {
                 CacheLifecycle.FAILED
             } else {
-                CacheLifecycle.SUCCEEDED
+                CacheLifecycle.COMPLETED
             }
             replaceTaskLocked(task.copy(
                 status = lifecycle,
@@ -227,8 +260,8 @@ class CacheTaskStore(
             ))
             publishLocked()
         }
-        logSink.record(
-            "TASK_FINISHED",
+        record(
+            CacheLogEventType.TASK_FINISHED,
             lease.sessionId,
             lease.taskId,
             "result=$result${error?.let { " error=$it" }.orEmpty()}",
@@ -239,6 +272,24 @@ class CacheTaskStore(
     fun currentTask(sessionId: String, taskId: String): CacheTaskState? = synchronized(lock) {
         sessions[sessionId]?.tasks?.firstOrNull { it.taskId == taskId }
     }
+
+    fun hasTask(sessionId: String, kind: CacheKind, phase: CachePhase, bookUrl: String): Boolean =
+        synchronized(lock) {
+            sessions[sessionId]?.tasks?.any {
+                it.kind == kind && it.phase == phase && it.bookUrl == bookUrl
+            } == true
+        }
+
+    fun reviewEligibleUnits(sessionId: String, bodyTaskId: String): List<CacheUnitKey> =
+        synchronized(lock) {
+            val task = requireTaskLocked(sessionId, bodyTaskId)
+            require(task.kind == CacheKind.TEXT && task.phase == CachePhase.BODY) {
+                "review eligibility requires a text BODY task"
+            }
+            task.units
+                .filter { it.status == CacheUnitStatus.SUCCEEDED }
+                .map { it.key }
+        }
 
     private fun attachWorkerLocked(task: CacheTaskState): CacheWorkerLease {
         val nextGeneration = task.generation + 1
@@ -268,17 +319,20 @@ class CacheTaskStore(
         if (session.tasks.isEmpty()) return session
         val status = when {
             session.tasks.any { it.status == CacheLifecycle.CANCELLING } -> CacheLifecycle.CANCELLING
+            session.tasks.any { it.status == CacheLifecycle.PAUSING } -> CacheLifecycle.PAUSING
             session.tasks.any { it.status == CacheLifecycle.RUNNING } -> CacheLifecycle.RUNNING
             session.tasks.any { it.status == CacheLifecycle.PAUSED } -> CacheLifecycle.PAUSED
+            session.tasks.any { it.status == CacheLifecycle.INTERRUPTED } -> CacheLifecycle.INTERRUPTED
             session.tasks.any { it.status == CacheLifecycle.QUEUED } -> CacheLifecycle.QUEUED
-            session.tasks.any { it.status == CacheLifecycle.CANCELLED } -> CacheLifecycle.CANCELLED
-            session.tasks.any { it.status == CacheLifecycle.FAILED } -> CacheLifecycle.FAILED
-            else -> CacheLifecycle.SUCCEEDED
+            session.tasks.all { it.status == CacheLifecycle.CANCELLED } -> CacheLifecycle.CANCELLED
+            session.tasks.all { it.status == CacheLifecycle.FAILED } -> CacheLifecycle.FAILED
+            else -> CacheLifecycle.COMPLETED
         }
         val result = if (!CacheLifecycleRules.isTerminal(status)) {
             null
         } else when {
-            session.tasks.any { it.status == CacheLifecycle.CANCELLED } -> CacheResult.CANCELLED
+            session.tasks.all { it.status == CacheLifecycle.CANCELLED } -> CacheResult.CANCELLED
+            session.tasks.any { it.status == CacheLifecycle.CANCELLED } -> CacheResult.PARTIAL
             session.tasks.any { it.status == CacheLifecycle.FAILED } -> {
                 if (session.tasks.any { it.result == CacheResult.SUCCEEDED || it.result == CacheResult.PARTIAL }) {
                     CacheResult.PARTIAL
@@ -301,7 +355,11 @@ class CacheTaskStore(
     private fun canUpdateUnit(from: CacheUnitStatus, to: CacheUnitStatus): Boolean {
         if (from == to) return true
         return when (from) {
-            CacheUnitStatus.PENDING -> true
+            CacheUnitStatus.PENDING -> to == CacheUnitStatus.RUNNING ||
+                to == CacheUnitStatus.REVIEW_ELIGIBLE ||
+                to == CacheUnitStatus.REVIEW_BLOCKED ||
+                to == CacheUnitStatus.NOT_APPLICABLE ||
+                to == CacheUnitStatus.CANCELLED
             CacheUnitStatus.RUNNING -> to == CacheUnitStatus.SUCCEEDED ||
                 to == CacheUnitStatus.FAILED ||
                 to == CacheUnitStatus.CANCELLED
@@ -317,8 +375,8 @@ class CacheTaskStore(
     }
 
     private fun logStaleUpdate(lease: CacheWorkerLease, detail: String) {
-        logSink.record(
-            "STALE_UPDATE_DROPPED",
+        record(
+            CacheLogEventType.STALE_UPDATE_DROPPED,
             lease.sessionId,
             lease.taskId,
             "generation=${lease.generation} $detail",
@@ -334,7 +392,59 @@ class CacheTaskStore(
             ?: error("unknown cache task: session=$sessionId task=$taskId")
     }
 
-    private fun publishLocked() {
+    private fun record(
+        type: CacheLogEventType,
+        sessionId: String? = null,
+        taskId: String? = null,
+        detail: String? = null,
+    ) {
+        logSink.record(CacheLogEvent(type, sessionId, taskId, detail))
+    }
+
+    private fun restore(snapshot: CacheSnapshot) {
+        synchronized(lock) {
+            snapshot.sessions.forEach { savedSession ->
+                val recoveredTasks = savedSession.tasks.map { task ->
+                    when (task.status) {
+                        CacheLifecycle.RUNNING -> task.copy(
+                            status = CacheLifecycle.INTERRUPTED,
+                            generation = task.generation + 1,
+                            updatedAt = System.currentTimeMillis(),
+                        )
+                        CacheLifecycle.CANCELLING -> task.copy(
+                            status = CacheLifecycle.CANCELLED,
+                            result = CacheResult.CANCELLED,
+                            generation = task.generation + 1,
+                            updatedAt = System.currentTimeMillis(),
+                        )
+                        CacheLifecycle.PAUSING -> task.copy(
+                            status = CacheLifecycle.PAUSED,
+                            generation = task.generation + 1,
+                            updatedAt = System.currentTimeMillis(),
+                        )
+                        else -> task
+                    }
+                }
+                val recovered = aggregateSession(savedSession.copy(tasks = recoveredTasks))
+                sessions[recovered.sessionId] = recovered
+                record(
+                    CacheLogEventType.SESSION_RECOVERED,
+                    recovered.sessionId,
+                    detail = "tasks=${recovered.tasks.size} status=${recovered.status}",
+                )
+            }
+            publishLocked(persist = false)
+        }
+    }
+
+    private fun publishLocked(persist: Boolean = true) {
         _snapshot.value = CacheSnapshot(sessions.values.toList())
+        if (!persist) return
+        persistence.save(_snapshot.value).onFailure { error ->
+            record(
+                CacheLogEventType.PERSISTENCE_SAVE_FAILED,
+                detail = error.localizedMessage,
+            )
+        }
     }
 }
