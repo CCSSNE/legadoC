@@ -20,6 +20,7 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.lib.permission.NotificationPermission
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.service.CacheBookService
+import io.legado.app.service.ReviewCacheService
 import io.legado.app.utils.onEachParallel
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.startService
@@ -106,11 +107,17 @@ object CacheBook {
         NotificationPermission.ensure(
             context,
             onGranted = {
-                context.startService<CacheBookService> {
-                    action = IntentAction.start
-                    putExtra("bookUrl", book.bookUrl)
-                    putExtra("start", start)
-                    putExtra("end", end)
+                runCatching {
+                    context.startService<CacheBookService> {
+                        action = IntentAction.start
+                        putExtra("bookUrl", book.bookUrl)
+                        putExtra("start", start)
+                        putExtra("end", end)
+                    }
+                }.onFailure {
+                    val message = "${book.name}: 启动正文缓存服务失败：${it.localizedMessage}"
+                    AppLog.put(message, it, true)
+                    notifyResult(context, R.string.cache_download_failed, message)
                 }
             },
             onDenied = {
@@ -144,19 +151,34 @@ object CacheBook {
     }
 
     fun stop(context: Context) {
-        if (CacheBookService.isRun) {
+        var requested = false
+        if (ReviewCacheService.isRun) {
+            ReviewCacheService.requestStop()
+            requested = true
+        } else if (CacheBookService.isRun) {
             context.startService<CacheBookService> {
                 action = IntentAction.stop
             }
+            requested = true
+        }
+        if (!requested) {
+            AppLog.put("停止离线缓存：当前没有运行中的缓存服务")
         }
     }
 
-    fun close() {
-        cacheBookMap.forEach { it.value.stop() }
+    /** 清理正文任务状态；评论队列由 ReviewSnapshotManager 单独管理。 */
+    fun stopAll() {
+        cacheBookMap.forEach { it.value.stop(releaseReviewPhase = false) }
         cacheBookMap.clear()
         downloadPauseState.value = true
+        workingState.value = true
         successDownloadSet.clear()
         errorDownloadMap.clear()
+        postEvent(EventBus.UP_DOWNLOAD, "")
+    }
+
+    fun close() {
+        stopAll()
         // 兜底清掉所有残留 Body Phase，异常退出也不留“只登记不执行”状态
         io.legado.app.help.review.ReviewSnapshotManager.cancelAllBodyPhases()
     }
@@ -318,7 +340,7 @@ object CacheBook {
         }
 
         @Synchronized
-        fun stop() {
+        fun stop(releaseReviewPhase: Boolean = true) {
             waitDownloadSet.clear()
             tasks.clear()
             isStopped = true
@@ -326,7 +348,9 @@ object CacheBook {
             targetChapterCount = 0
             // 用户取消批量缓存：同样必须收掉 Body Phase，否则该书后续评论任务
             // 会一直“只登记不执行”；已登记任务（正文已完成）照常进入 Review Phase
-            io.legado.app.help.review.ReviewSnapshotManager.cancelBodyPhase(book.bookUrl)
+            if (releaseReviewPhase) {
+                io.legado.app.help.review.ReviewSnapshotManager.cancelBodyPhase(book.bookUrl)
+            }
             postEvent(EventBus.UP_DOWNLOAD, book.bookUrl)
         }
 
