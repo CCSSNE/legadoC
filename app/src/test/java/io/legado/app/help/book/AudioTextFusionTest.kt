@@ -737,4 +737,27 @@ class AudioTextFusionTest {
         assertEquals(1, plan.writes.size)
         assertNull(plan.writes.single().insertions)
     }
+
+    @Test
+    fun `plan collects per chapter diagnostics without changing matching`() {
+        val textChapters = listOf(chapter("t0", "第一章", 0), chapter("t1", "第二章", 1))
+        val audioChapters = listOf(chapter("a0", "第一章", 0), chapter("a1", "第二章", 1))
+
+        val plan = AudioTextFusion.planFusionWrites(
+            textChapters, audioChapters,
+            textBookUrl = "textBookUrl",
+            hasTextContent = { it.url == "t0" },           // 第二章文字缓存缺失
+            getTextContent = { "第一章$reviewImg" },
+            hasAudioContent = { true },
+            getLyric = { if (it.url == "a0") "[00:01.00]第一章" else "[00:01.00]第二章" },
+            getCurrentOverlay = { "" },
+        )
+
+        // 匹配行为不变：只有第一章能产生挂载
+        assertEquals(1, plan.writes.count { it.insertions != null })
+        assertEquals(0, plan.writes.count { it.insertions == null })
+        // 诊断逐章记录成功与失败原因
+        assertTrue(plan.details.any { it.contains("评论段落 1 段，匹配挂载 1 个，未匹配 0 段") })
+        assertTrue(plan.details.any { it.contains("第二章 ↔ 第二章") && it.contains("跳过：文字缓存缺失") })
+    }
 }

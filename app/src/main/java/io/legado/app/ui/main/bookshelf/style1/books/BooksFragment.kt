@@ -612,12 +612,9 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
                 toastOnUi(getString(R.string.fusion_failed, e.localizedMessage ?: "unknown"))
                 return@launch
             }
+            // 一次融合在 AppLog 只落一条多行诊断（章节配对、每章匹配成功/失败、统计）
+            AppLog.put(result.detail)
             if (result.migratedAnything) {
-                AppLog.put(
-                    "融合评论完成 ${textBook.name} -> ${audioBook.name}：" +
-                        "配对 ${result.pairedChapters} 章，挂载 ${result.fusedChapters} 章，" +
-                        "迁移 ${result.migratedEntries} 个评论入口"
-                )
                 toastOnUi(
                     getString(
                         R.string.fusion_done,
