@@ -44,7 +44,7 @@ object ReviewSnapshotManager {
     internal data class QueueTask(
         val key: String,
         val force: Boolean,
-        internal val executionLease: CacheWorkerLease?,
+        internal val executionLease: CacheWorkerLease,
     )
 
     /**
@@ -68,12 +68,12 @@ object ReviewSnapshotManager {
 
     private data class Task(
         val key: String,
-        val executionLease: CacheWorkerLease?,
+        val executionLease: CacheWorkerLease,
     )
 
     private data class PendingReview(
         val force: Boolean,
-        val executionLease: CacheWorkerLease?,
+        val executionLease: CacheWorkerLease,
     )
 
     /** 评论按钮模型：click / 旧源 js 二选一 */
@@ -99,7 +99,7 @@ object ReviewSnapshotManager {
      */
     private val pendingForce = ConcurrentHashMap<String, PendingReview>()
     private val taskOutcomes = ConcurrentHashMap<String, Boolean>()
-    private val cancelledBooks = ConcurrentHashMap.newKeySet<String>()
+    private val cancelledTasks = ConcurrentHashMap.newKeySet<String>()
     private val queueLock = Any()
 
     /**
@@ -129,23 +129,24 @@ object ReviewSnapshotManager {
      * 已缓存正文的章节在重新缓存/刷新时也必须走“是否需要补评论”的判断，
      * 因此缓存流程在跳过正文下载前调用本方法直接入队。
      */
-    internal fun enqueue(book: Book, chapter: BookChapter, force: Boolean = false) {
-        enqueue(book, chapter, force, executionLease = null)
-    }
-
     internal fun enqueue(
         book: Book,
         chapter: BookChapter,
         force: Boolean,
-        executionLease: CacheWorkerLease?,
+        executionLease: CacheWorkerLease,
     ) {
-        cancelledBooks.remove(book.bookUrl)
+        cancelledTasks.remove(taskKey(executionLease))
         synchronized(queueLock) {
             val key = keyOf(book, chapter)
             val existed = pendingForce.putIfAbsent(
                 key,
                 PendingReview(force, executionLease),
             )
+            if (existed != null &&
+                taskKey(existed.executionLease) != taskKey(executionLease)
+            ) {
+                error("review chapter already owned by another Coordinator task: $key")
+            }
             if (existed == null) {
                 channel.trySend(Task(key, executionLease))
             } else if (force && !existed.force) {
@@ -155,7 +156,7 @@ object ReviewSnapshotManager {
                     existed,
                     existed.copy(
                         force = true,
-                        executionLease = executionLease ?: existed.executionLease,
+                        executionLease = executionLease,
                     ),
                 )
             }
@@ -166,39 +167,52 @@ object ReviewSnapshotManager {
     internal fun tryTakeTask(): QueueTask? {
         val task = synchronized(queueLock) {
             val t = channel.tryReceive().getOrNull() ?: return null
-            val pending = pendingForce.remove(t.key) ?: PendingReview(false, null)
+            val pending = pendingForce.remove(t.key)
+                ?: error("review queue entry has no ownership: ${t.key}")
             t to pending
         }
         return QueueTask(task.first.key, task.second.force, task.second.executionLease)
     }
 
-    /** Cancel only one book's review work; other books remain queued and runnable. */
-    fun cancelBookTasks(bookUrl: String) {
-        cancelledBooks.add(bookUrl)
+    /** Cancel one Coordinator review task without affecting other task leases. */
+    internal fun cancelTask(sessionId: String, taskId: String) {
+        val taskKey = "$sessionId/$taskId"
+        cancelledTasks.add(taskKey)
         synchronized(queueLock) {
             pendingForce.keys.toList()
-                .filter { it.substringBefore('|') == bookUrl }
+                .filter { key ->
+                    pendingForce[key]?.executionLease?.let { taskKey(it) == taskKey } == true
+                }
                 .forEach { pendingForce.remove(it) }
             val retained = ArrayList<Task>()
             while (true) {
                 val task = channel.tryReceive().getOrNull() ?: break
-                if (task.key.substringBefore('|') != bookUrl) retained += task
+                if (taskKey(task.executionLease) != taskKey) retained += task
             }
             retained.forEach { channel.trySend(it) }
         }
-        AppLog.put("评论缓存取消单书任务：$bookUrl")
+        AppLog.put("评论缓存取消 Coordinator 任务：$taskKey")
     }
 
     /** 评论服务处理任务（suspend：内部解析 URL、WebView 抓取、落盘） */
     internal suspend fun processTask(task: QueueTask): Boolean {
-        val outcomeKey = task.executionLease?.let {
-            "${task.key}|${it.sessionId}/${it.taskId}/${it.generation}"
-        } ?: task.key
-        processTask(task.key, task.force, outcomeKey)
-        return taskOutcomes.remove(outcomeKey) == true
+        val lease = task.executionLease
+        val outcomeKey = "${task.key}|${lease.sessionId}/${lease.taskId}/${lease.generation}"
+        return try {
+            if (cancelledTasks.contains(taskKey(lease))) {
+                false
+            } else {
+                processTask(task.key, task.force, outcomeKey)
+                taskOutcomes.remove(outcomeKey) == true
+            }
+        } finally {
+            cancelledTasks.remove(taskKey(lease))
+        }
     }
 
     private fun keyOf(book: Book, chapter: BookChapter) = "${book.bookUrl}|${chapter.index}"
+
+    private fun taskKey(lease: CacheWorkerLease): String = "${lease.sessionId}/${lease.taskId}"
 
     /** 用户明确刷新某章：登记“评论待刷新”并落盘，状态保持到该章评论真正处理成功后清除 */
     fun markUserRefresh(bookUrl: String, chapterIndex: Int) {
@@ -250,9 +264,8 @@ object ReviewSnapshotManager {
         }
     }
 
-    private suspend fun processTask(key: String, force: Boolean, outcomeKey: String = key) {
+    private suspend fun processTask(key: String, force: Boolean, outcomeKey: String) {
         taskOutcomes[outcomeKey] = false
-        if (cancelledBooks.contains(key.substringBefore('|'))) return
         // 一章一次评论缓存任务 = 日志一条（多行详情），进入 AppLog 日志页可展开查看
         val sb = StringBuilder()
         val unexpected = runCatching {

@@ -143,7 +143,7 @@ internal object CacheBodyWorkerRegistry {
     }
 
     fun remove(sessionId: String, taskId: String) {
-        bindings.remove("$sessionId/$taskId")?.let { managedBooks.remove(it.bookUrl) }
+        removeBinding(sessionId, taskId)
     }
 
     fun onChapterSuccess(lease: CacheWorkerLease, chapterIndex: Int) {
@@ -172,13 +172,17 @@ internal object CacheBodyWorkerRegistry {
         if (requireWorkerPort().finish(lease, CacheResult.FAILED, error)) {
             CacheCoordinator.notifyTaskFinished(lease, CacheResult.FAILED, error)
         }
-        bindings.remove(taskKey(lease))?.let { managedBooks.remove(it.bookUrl) }
+        removeBinding(lease)
     }
 
     fun onWorkerFinished(lease: CacheWorkerLease, error: String? = null) {
         val binding = bindings[taskKey(lease)] ?: run {
             val task = CacheCoordinator.currentTask(CacheSubmission(lease.sessionId, lease.taskId))
-            if (task == null || CacheLifecycleRules.isTerminal(task.status)) return
+            if (task == null) return
+            if (CacheLifecycleRules.isTerminal(task.status)) {
+                managedBooks.remove(task.bookUrl)
+                return
+            }
             logStale(lease, "body worker finished binding missing")
             return
         }
@@ -234,16 +238,7 @@ internal object CacheBodyWorkerRegistry {
                     if (failed) "one or more chapters failed" else null,
                 )
             }
-            if (finished && CacheCoordinator.currentTask(
-                    CacheSubmission(binding.lease.sessionId, binding.lease.taskId)
-                )?.reviewEnabled == true
-            ) {
-                CacheCoordinator.appendReviewTask(
-                    binding.lease.sessionId,
-                    binding.lease.taskId,
-                )
-            }
-            bindings.remove(taskKey(binding.lease))
+            removeBinding(binding.lease)
         }
     }
 
@@ -274,4 +269,12 @@ internal object CacheBodyWorkerRegistry {
 
     private fun requireWorkerPort(): CacheWorkerPort =
         checkNotNull(workerPort) { "cache body worker registry is not bound" }
+
+    private fun removeBinding(lease: CacheWorkerLease) {
+        removeBinding(lease.sessionId, lease.taskId)
+    }
+
+    private fun removeBinding(sessionId: String, taskId: String) {
+        bindings.remove("$sessionId/$taskId")?.let { managedBooks.remove(it.bookUrl) }
+    }
 }

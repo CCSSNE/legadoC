@@ -2,11 +2,7 @@ package io.legado.app.help.cache
 
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
-import io.legado.app.data.entities.BookSource
-import io.legado.app.help.book.isLocal
-import io.legado.app.help.config.AppConfig
 import io.legado.app.help.review.ReviewSnapshotManager
-import io.legado.app.service.ReviewCacheService
 import io.legado.app.data.appDb
 import java.util.concurrent.ConcurrentHashMap
 
@@ -16,18 +12,13 @@ internal class ReviewWorkerAdapter(
 ) {
 
     companion object {
-        /** Compatibility entry for reader-triggered review caching. */
-        internal fun enqueueLegacyIfEnabled(
-            bookSource: BookSource?,
+        /** Coordinator entry for reader-triggered review caching. */
+        internal fun enqueueReaderReviewIfEnabled(
             book: Book,
             chapter: BookChapter,
             force: Boolean = false,
         ): Boolean {
-            if (!AppConfig.syncCacheReview || book.isLocal || bookSource == null) return false
-            ReviewSnapshotManager.enqueue(book, chapter, force)
-            val started = ReviewCacheService.startSelf()
-            if (!started) ReviewSnapshotManager.cancelBookTasks(book.bookUrl)
-            return started
+            return CacheCoordinator.submitReaderReview(book, chapter, force)
         }
     }
 
@@ -77,6 +68,7 @@ internal class ReviewWorkerAdapter(
                 )
             }
         if (!CacheReviewWorkerRegistry.register(task, lease, validKeys)) {
+            val error = "review chapter is already owned by another Coordinator task"
             task.units
                 .filter { it.status in setOf(
                     CacheUnitStatus.PENDING,
@@ -84,19 +76,10 @@ internal class ReviewWorkerAdapter(
                     CacheUnitStatus.RUNNING,
                 ) }
                 .forEach { unit ->
-                workerPort.updateUnit(
-                    lease,
-                    unit.key,
-                    CacheUnitStatus.FAILED,
-                    "another review task is active for this book",
-                )
-            }
-            if (workerPort.finish(lease, CacheResult.FAILED, "another review task is active for this book")) {
-                CacheCoordinator.notifyTaskFinished(
-                    lease,
-                    CacheResult.FAILED,
-                    "another review task is active for this book",
-                )
+                    workerPort.updateUnit(lease, unit.key, CacheUnitStatus.FAILED, error)
+                }
+            if (workerPort.finish(lease, CacheResult.FAILED, error)) {
+                CacheCoordinator.notifyTaskFinished(lease, CacheResult.FAILED, error)
             }
             return
         }
@@ -112,12 +95,13 @@ internal class ReviewWorkerAdapter(
             ReviewSnapshotManager.enqueue(
                 book,
                 chapter,
-                force = true,
+                force = task.source != CacheRequestSource.READER ||
+                    ReviewSnapshotManager.isUserRefreshActive(book.bookUrl, chapter.index),
                 executionLease = lease,
             )
         }
         if (!ReviewCacheService.startSelf()) {
-            ReviewSnapshotManager.cancelBookTasks(book.bookUrl)
+            ReviewSnapshotManager.cancelTask(lease.sessionId, lease.taskId)
             CacheReviewWorkerRegistry.onServiceStartFailed(
                 lease,
                 "评论缓存宿主启动失败，任务未执行",
@@ -126,11 +110,8 @@ internal class ReviewWorkerAdapter(
     }
 
     fun cancel(submission: CacheSubmission) {
+        ReviewSnapshotManager.cancelTask(submission.sessionId, submission.taskId)
         CacheReviewWorkerRegistry.remove(submission.sessionId, submission.taskId)
-        val task = CacheCoordinator.currentTask(submission)
-        if (task != null) {
-            ReviewSnapshotManager.cancelBookTasks(task.bookUrl)
-        }
         if (workerPort.confirmCancelled(submission)) {
             CacheCoordinator.notifyTaskFinished(submission, CacheResult.CANCELLED)
         }
@@ -139,8 +120,8 @@ internal class ReviewWorkerAdapter(
     fun pause(submission: CacheSubmission) {
         val task = CacheCoordinator.currentTask(submission)
             ?: return
+        ReviewSnapshotManager.cancelTask(submission.sessionId, submission.taskId)
         CacheReviewWorkerRegistry.remove(submission.sessionId, submission.taskId)
-        ReviewSnapshotManager.cancelBookTasks(task.bookUrl)
         workerPort.confirmPaused(submission)
     }
 }
@@ -149,7 +130,6 @@ internal object CacheReviewWorkerRegistry {
     private var workerPort: CacheWorkerPort? = null
     private data class Binding(
         val lease: CacheWorkerLease,
-        val bookUrl: String,
         val expected: Set<CacheUnitKey>,
         val completed: MutableMap<CacheUnitKey, Boolean> = linkedMapOf(),
     )
@@ -169,13 +149,13 @@ internal object CacheReviewWorkerRegistry {
         expected: Set<CacheUnitKey> = task.units.map { it.key }.toSet(),
     ): Boolean {
         synchronized(lock) {
-            val existing = bindings.values.firstOrNull {
-                it.bookUrl == task.bookUrl && it.lease.taskId != lease.taskId
+            val conflict = bindings.values.any { binding ->
+                binding.lease.taskId != lease.taskId &&
+                    binding.expected.any(expected::contains)
             }
-            if (existing != null) return false
+            if (conflict) return false
             bindings[taskKey(lease)] = Binding(
                 lease = lease,
-                bookUrl = task.bookUrl,
                 expected = expected,
             )
         }
