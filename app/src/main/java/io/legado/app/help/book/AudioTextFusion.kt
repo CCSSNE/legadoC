@@ -562,10 +562,11 @@ object AudioTextFusion {
         var lastEnd = 0
         AppPattern.useHtmlRegex.findAll(content).forEach { blockMatch ->
             appendBodyLines(content.substring(lastEnd, blockMatch.range.first), lastEnd)
-            // usehtml 块仅归属按原始 offset 紧随其前的正文段落
+            // usehtml 块仅归属按原始 offset 紧随其前的正文段落；块内评论图
+            // 一并转换成渲染端可识别的 data-legado-* 形态
             paragraphs.lastOrNull()?.let { previous ->
                 if (isDirectlyAfter(content, previous.endOffset, blockMatch.range.first)) {
-                    val block = blockMatch.value.trim()
+                    val block = convertImgsIn(blockMatch.value.trim())
                     previous.payload += if (previous.payload.isEmpty()) block else "\n$block"
                 }
             }
@@ -617,18 +618,68 @@ object AudioTextFusion {
      * 与阅读页渲染、BookImgClick.parseSrcOptions 完全同一口径）。
      */
     private fun isReviewButton(src: String?): Boolean {
-        if (src.isNullOrEmpty()) return false
-        val optionMatcher = AppPattern.urlOptionPattern.matcher(src)
-        if (!optionMatcher.find()) return false
-        val optionJson = src.substring(optionMatcher.end())
-        val options = GSON.fromJsonObject<Map<String, String>>(optionJson).getOrNull() ?: return false
-        return options["style"].equals("TEXT", ignoreCase = true)
+        val options = parseSrcOptions(src) ?: return false
+        return options.second["style"].equals("TEXT", ignoreCase = true)
     }
 
-    /** 组装要写入 Audio 字幕行之后的载荷：行内评论图包进一个 usehtml 块 */
+    /** 解析 img src 的 URL 选项：返回 (去选项地址, 选项Map)；无选项返回 null */
+    private fun parseSrcOptions(src: String?): Pair<String, Map<String, String>>? {
+        if (src.isNullOrEmpty()) return null
+        val optionMatcher = AppPattern.urlOptionPattern.matcher(src)
+        if (!optionMatcher.find()) return null
+        val urlNoOption = src.take(optionMatcher.start())
+        val optionJson = src.substring(optionMatcher.end())
+        val options = GSON.fromJsonObject<Map<String, String>>(optionJson).getOrNull() ?: return null
+        return urlNoOption to options
+    }
+
+    /**
+     * 把书源评论泡 img 转换成渲染端（usehtml 结构块路径）可识别的形态：
+     * src 只留地址，style/click 从 URL 选项 JSON 提出来写成
+     * `data-legado-style` / `data-legado-click` 属性（TextChapterLayout 的
+     * setTypeHtmlImage 只读这两类属性；原样带 JSON 的 src 会走大图分支且
+     * 丢失点击）。解析失败原样返回。
+     */
+    private fun toLegadoButtonTag(imgTag: String): String {
+        val matcher = AppPattern.imgPattern.matcher(imgTag)
+        if (!matcher.find()) return imgTag
+        val src = matcher.group(1) ?: return imgTag
+        val parsed = parseSrcOptions(src) ?: return imgTag
+        val (urlNoOption, options) = parsed
+        val builder = StringBuilder("<img src=\"$urlNoOption\"")
+        options["style"]?.let { style ->
+            if (style.isNotBlank()) builder.append(" data-legado-style=\"").append(escapeAttr(style)).append('"')
+        }
+        options["click"]?.let { click ->
+            if (click.isNotBlank()) builder.append(" data-legado-click=\"").append(escapeAttr(click)).append('"')
+        }
+        return builder.append('>').toString()
+    }
+
+    /** 属性值转义：`"`→`&quot;`、`&`→`&amp;`（点击 JS 常含引号） */
+    private fun escapeAttr(value: String): String {
+        return value.replace("&", "&amp;").replace("\"", "&quot;")
+    }
+
+    /** 逐 img 转换整段 HTML（usehtml 块内评论图同样需要 data-legado 形态） */
+    private fun convertImgsIn(html: String): String {
+        val matcher = AppPattern.imgPattern.matcher(html)
+        if (!matcher.find()) return html
+        val builder = StringBuilder(html.length + 32)
+        var lastEnd = 0
+        do {
+            builder.append(html, lastEnd, matcher.start())
+            builder.append(toLegadoButtonTag(matcher.group()))
+            lastEnd = matcher.end()
+        } while (matcher.find())
+        builder.append(html, lastEnd, html.length)
+        return builder.toString()
+    }
+
+    /** 组装要写入 Audio 字幕行之后的载荷：行内评论图转成渲染端可识别形态后包进 usehtml 块 */
     private fun joinButtonPayload(buttons: List<String>): String {
         if (buttons.isEmpty()) return ""
-        return "<usehtml>" + buttons.joinToString("") + "</usehtml>"
+        return "<usehtml>" + buttons.joinToString("") { toLegadoButtonTag(it) } + "</usehtml>"
     }
 
     /**
