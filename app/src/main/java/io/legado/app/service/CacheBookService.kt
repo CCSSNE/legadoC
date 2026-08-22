@@ -170,6 +170,13 @@ class CacheBookService : BaseService() {
     }
 
     private fun upCacheBookNotification() {
+        // 正文缓存进度条：已完成章 / 目标总章（含等待与进行中）
+        val progress = CacheBook.downloadProgress
+        if (progress != null) {
+            notificationBuilder.setProgress(progress.second, progress.first, false)
+        } else {
+            notificationBuilder.setProgress(0, 0, true)
+        }
         notificationBuilder.setContentText(notificationContent)
         val notification = notificationBuilder.build()
         notificationManager.notify(NotificationId.CacheBookService, notification)

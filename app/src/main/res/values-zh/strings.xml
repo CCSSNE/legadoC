@@ -1271,6 +1271,8 @@
     <string name="review_sync_running">正在后台同步缓存评论页快照</string>
     <string name="review_sync_waiting">…</string>
     <string name="review_sync_notification_progress">%1$s · %2$s · 快照 %3$d/%4$d · 已完成 %5$d 章</string>
+    <string name="review_open_mode">评论打开方式</string>
+    <string name="review_no_cached_snapshot">当前章节没有缓存评论</string>
     <!-- string end -->
     <string name="error_decode_bitmap">图片解码失败</string>
     <string name="error_image_url_empty">图片链接为空，检查替换净化规则</string>

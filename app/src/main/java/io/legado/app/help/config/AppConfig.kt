@@ -39,6 +39,13 @@ import java.net.URI
 
 @Suppress("MemberVisibilityCanBePrivate", "ConstPropertyName")
 object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
+
+    /** 评论打开方式取值 */
+    object ReviewOpenMode {
+        const val NETWORK = "network"
+        const val SNAPSHOT_FIRST = "snapshot_first"
+        const val SNAPSHOT_ONLY = "snapshot_only"
+    }
     const val EPUB_PARSE_MODE_NEW = 0
     const val EPUB_PARSE_MODE_CLASSIC = 1
 
@@ -1046,6 +1053,11 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         set(value) {
             appCtx.putPrefBoolean(PreferKey.syncCacheReview, value)
         }
+
+    /** 评论打开方式：network / snapshot_first / snapshot_only */
+    val reviewOpenMode: String
+        get() = appCtx.getPrefString(PreferKey.reviewOpenMode, ReviewOpenMode.NETWORK)
+            ?: ReviewOpenMode.NETWORK
 
     /** TXT-ZIP 导出时附带评论页快照 */
     var exportReviews: Boolean

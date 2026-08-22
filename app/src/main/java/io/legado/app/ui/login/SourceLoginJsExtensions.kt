@@ -20,7 +20,7 @@ import java.io.File
 import java.lang.ref.WeakReference
 
 @Suppress("unused")
-class SourceLoginJsExtensions(
+open class SourceLoginJsExtensions(
     activity: AppCompatActivity?,
     source: BaseSource?,
     bookType: Int = 0,

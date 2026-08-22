@@ -117,6 +117,18 @@
         <item>双击生效</item>
     </string-array>
 
+    <string-array name="review_open_mode_title">
+        <item>网络优先</item>
+        <item>快照优先</item>
+        <item>仅使用快照</item>
+    </string-array>
+
+    <string-array name="review_open_mode_value">
+        <item>network</item>
+        <item>snapshot_first</item>
+        <item>snapshot_only</item>
+    </string-array>
+
     <string-array name="bottom_web_view_dialog_height_title">
         <item>Default</item>
         <item>Half screen</item>
