@@ -138,6 +138,9 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     private var totalRows = 0
     private val selectedBooks = linkedMapOf<String, Book>()
     private val selectedCollections = linkedMapOf<Long, BookCollectionShelfItem>()
+    /** 已知存在融合 overlay 的有声书包 url（单选取消融合按钮可用性缓存） */
+    private val fusionOverlayBookUrls = hashSetOf<String>()
+    private var fusionCheckJob: Job? = null
     private val draggingViewStates = mutableListOf<DraggingViewState>()
     private var draggingBooks: List<Book> = emptyList()
     private var draggingCollections: List<BookCollectionShelfItem> = emptyList()
@@ -406,6 +409,10 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             }
         )
         setMainBottomBarHidden(hasSelection && showActionBar)
+        // 单选有声书时异步检测 overlay，刷新「取消融合」按钮可用性
+        if (hasSelection && showActionBar) {
+            refreshFusionCancelAvailability()
+        }
         if (refreshItems) {
             notifySelectionChanged()
         }
@@ -577,7 +584,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         }
     }
 
-    /** 当前选择能否触发有效操作：合法两本，或单个有声书（可能取消融合） */
+    /** 当前选择能否触发有效操作：合法两本可融合；单个有声书必须已确认存在 overlay 才能取消融合 */
     fun fusionActionAvailable(): Boolean {
         if (selectedCollections.isNotEmpty() || selectedBooks.isEmpty()) return false
         if (selectedBooks.size == 2) {
@@ -588,7 +595,35 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             return audioBook.name.trim() == textBook.name.trim() &&
                 audioBook.author.trim() == textBook.author.trim()
         }
-        return selectedBooks.size == 1 && selectedBookList().single().isAudio
+        if (selectedBooks.size == 1) {
+            val book = selectedBookList().single()
+            // 单个有声书：只有确认存在融合 overlay 才可取消融合（异步检测缓存）
+            return book.isAudio && book.bookUrl in fusionOverlayBookUrls
+        }
+        return false
+    }
+
+    /**
+     * 单选有声书时异步检测该书是否已有融合 overlay，并刷新按钮状态。
+     * 结果按 bookUrl 缓存，避免每次选择变化都阻塞主线程查全书章节。
+     */
+    private fun refreshFusionCancelAvailability() {
+        if (selectedBooks.size != 1) return
+        val solo = selectedBookList().single().takeIf { it.isAudio } ?: return
+        fusionCheckJob?.cancel()
+        fusionCheckJob = viewLifecycleOwner.lifecycleScope.launch {
+            val hasOverlay = withContext(Dispatchers.IO) {
+                appDb.bookChapterDao.getChapterList(solo.bookUrl)
+                    .any { it.getVariable(AudioTextFusion.OVERLAY_KEY).isNotBlank() }
+            }
+            if (!isActive) return@launch
+            if (hasOverlay) {
+                fusionOverlayBookUrls.add(solo.bookUrl)
+            } else {
+                fusionOverlayBookUrls.remove(solo.bookUrl)
+            }
+            notifyParentSelectionChanged()
+        }
     }
 
     private fun confirmFusion(audioBook: Book, textBook: Book) {
@@ -631,6 +666,8 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             } else {
                 toastOnUi(R.string.fusion_nothing)
             }
+            // reconcile 后 overlay 状态可能变化，无效化缓存，下次选择重新检测
+            fusionOverlayBookUrls.remove(audioBook.bookUrl)
             clearSelection()
         }
     }
@@ -668,6 +705,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
                             return@launch
                         }
                         toastOnUi(getString(R.string.fusion_cancel_done, removed))
+                        fusionOverlayBookUrls.remove(audioBook.bookUrl)
                         clearSelection()
                     }
                 }
