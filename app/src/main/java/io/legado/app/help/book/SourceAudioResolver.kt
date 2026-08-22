@@ -23,7 +23,7 @@ object SourceAudioResolver {
             ?.let { cachedUrl ->
                 return ResolvedSourceAudio(
                     request = ExoPlayerHelper.createMediaRequest(cachedUrl, emptyMap()),
-                    mapping = AudioTextMapping.parse(chapter.getVariable("lyric")),
+                    mapping = AudioTextMapping.parse(AudioTextFusion.effectiveLyric(chapter)),
                 )
             }
 
@@ -59,7 +59,7 @@ object SourceAudioResolver {
         }
         return ResolvedSourceAudio(
             request = request,
-            mapping = AudioTextMapping.parse(chapter.getVariable("lyric")),
+            mapping = AudioTextMapping.parse(AudioTextFusion.effectiveLyric(chapter)),
         )
     }
 

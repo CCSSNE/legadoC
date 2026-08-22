@@ -663,34 +663,15 @@ object BookHelp {
         }
     }
 
-    private val chapterNamePattern1 by lazy {
-        Pattern.compile(
-            ".*?第([\\d零〇一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+)[章节篇回集话]"
-        )
-    }
-
-    @Suppress("RegExpSimplifiable")
-    private val chapterNamePattern2 by lazy {
-        Pattern.compile(
-            "^(?:[\\d零〇一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+[,:、])*([\\d零〇一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+)(?:[,:、]|\\.[^\\d])"
-        )
-    }
-
     private val regexA by lazy {
         return@lazy "\\s".toRegex()
     }
 
-    private fun getChapterNum(chapterName: String?): Int {
-        chapterName ?: return -1
-        val chapterName1 = StringUtils.fullToHalf(chapterName).replace(regexA, "")
-        return StringUtils.stringToInt(
-            (
-                    chapterNamePattern1.matcher(chapterName1).takeIf { it.find() }
-                        ?: chapterNamePattern2.matcher(chapterName1).takeIf { it.find() }
-                    )?.group(1)
-                ?: "-1"
-        )
-    }
+    /**
+     * 解析章节名中的章节号（中文/阿拉伯数字，支持“第N章/回/集……”“N、标题”等形态）；
+     * 解析失败返回 -1。统一委托 [ChapterTitle]，与音频文本融合等场景共用同一解析口径。
+     */
+    fun getChapterNum(chapterName: String?): Int = ChapterTitle.num(chapterName)
 
     private val regexOther by lazy {
         // 所有非字母数字中日韩文字 CJK区+扩展A-F区
