@@ -96,9 +96,23 @@ object CacheBook {
         }
     }
 
-    fun start(context: Context, book: Book, start: Int, end: Int) {
+    fun start(
+        context: Context,
+        book: Book,
+        start: Int,
+        end: Int,
+        coordinatorSessionId: String? = null,
+        coordinatorTaskId: String? = null,
+        coordinatorGeneration: Long? = null,
+    ) {
         AppLog.put("开始离线缓存 ${book.name}，章节范围 ${start + 1}-${end + 1}")
         if (book.isLocal) {
+            notifyCoordinatorStartFailure(
+                coordinatorSessionId,
+                coordinatorTaskId,
+                coordinatorGeneration,
+                "${book.name}: local book",
+            )
             val error = IllegalArgumentException("local book cannot be cached from network")
             AppLog.put("离线缓存拒绝：${book.name} 是本地书", error, true)
             notifyResult(context, R.string.cache_download_failed, "${book.name}: local book")
@@ -113,18 +127,46 @@ object CacheBook {
                         putExtra("bookUrl", book.bookUrl)
                         putExtra("start", start)
                         putExtra("end", end)
+                        putExtra("coordinatorSessionId", coordinatorSessionId)
+                        putExtra("coordinatorTaskId", coordinatorTaskId)
+                        coordinatorGeneration?.let { putExtra("coordinatorGeneration", it) }
                     }
                 }.onFailure {
                     val message = "${book.name}: 启动正文缓存服务失败：${it.localizedMessage}"
                     AppLog.put(message, it, true)
+                    notifyCoordinatorStartFailure(
+                        coordinatorSessionId,
+                        coordinatorTaskId,
+                        coordinatorGeneration,
+                        message,
+                    )
                     notifyResult(context, R.string.cache_download_failed, message)
                 }
             },
             onDenied = {
                 AppLog.put("离线缓存拒绝：通知权限未授予，${book.name}")
+                notifyCoordinatorStartFailure(
+                    coordinatorSessionId,
+                    coordinatorTaskId,
+                    coordinatorGeneration,
+                    context.getString(R.string.notification_permission_required_for_download),
+                )
                 context.toastOnUi(R.string.notification_permission_required_for_download)
                 notifyResult(context, R.string.cache_download_failed, context.getString(R.string.notification_permission_required_for_download))
             }
+        )
+    }
+
+    private fun notifyCoordinatorStartFailure(
+        sessionId: String?,
+        taskId: String?,
+        generation: Long?,
+        message: String,
+    ) {
+        if (sessionId == null || taskId == null || generation == null) return
+        io.legado.app.help.cache.CacheBodyWorkerRegistry.onStartRejected(
+            io.legado.app.help.cache.CacheWorkerLease(sessionId, taskId, generation),
+            message,
         )
     }
 
@@ -379,6 +421,7 @@ object CacheBook {
             successDownloadSet.add(chapter.primaryStr())
             errorDownloadMap.remove(chapter.primaryStr())
             successUrls.add(chapter.url)
+            io.legado.app.help.cache.CacheBodyWorkerRegistry.onChapterSuccess(book.bookUrl, chapter.index)
             AppLog.put("离线缓存成功 ${book.name}-${chapter.title} (index=${chapter.index})")
         }
 
@@ -397,6 +440,11 @@ object CacheBook {
             if ((errorDownloadMap[chapter.primaryStr()] ?: 0) < 3 && !isStopped) {
                 waitDownloadSet.add(chapter.index)
             } else {
+                io.legado.app.help.cache.CacheBodyWorkerRegistry.onChapterFailed(
+                    book.bookUrl,
+                    chapter.index,
+                    error.localizedMessage,
+                )
                 AppLog.put(
                     "下载${book.name}-${chapter.title}失败\n${error.localizedMessage}",
                     error
@@ -425,9 +473,10 @@ object CacheBook {
                     CacheManifestHelper.refresh(book)
                 }
                 cacheBookMap.remove(book.bookUrl)
+                io.legado.app.help.review.ReviewSnapshotManager.endBodyPhase(book.bookUrl)
+                io.legado.app.help.cache.CacheBodyWorkerRegistry.onWorkerFinished(book.bookUrl)
                 // 整批目标正文结束（Review Phase 开始）：登记过的评论任务正式执行，
                 // 评论进度不参与正文下载状态
-                io.legado.app.help.review.ReviewSnapshotManager.endBodyPhase(book.bookUrl)
             }
             postEvent(EventBus.UP_DOWNLOAD, book.bookUrl)
         }
@@ -457,6 +506,11 @@ object CacheBook {
                 waitDownloadSet.remove(chapterIndex)
                 val error = IllegalStateException("chapter index $chapterIndex is missing")
                 errorDownloadMap["${book.bookUrl}#$chapterIndex"] = 1
+                io.legado.app.help.cache.CacheBodyWorkerRegistry.onChapterFailed(
+                    book.bookUrl,
+                    chapterIndex,
+                    error.localizedMessage,
+                )
                 AppLog.put("离线缓存失败 ${book.name}：找不到章节索引 $chapterIndex", error)
                 onFinally()
                 return

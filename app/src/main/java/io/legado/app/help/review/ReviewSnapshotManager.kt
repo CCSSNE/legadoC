@@ -129,6 +129,7 @@ object ReviewSnapshotManager {
     private val pendingForce = ConcurrentHashMap<String, Boolean>()
     /** 已被 worker 取出但尚未完成的任务，不能只看 pendingForce。 */
     private val activeTaskKeys = ConcurrentHashMap.newKeySet<String>()
+    private val taskOutcomes = ConcurrentHashMap<String, Boolean>()
     private val queueLock = Any()
 
     /**
@@ -297,12 +298,13 @@ object ReviewSnapshotManager {
     }
 
     /** 评论服务处理任务（suspend：内部解析 URL、WebView 抓取、落盘） */
-    suspend fun processTask(task: QueueTask) {
+    suspend fun processTask(task: QueueTask): Boolean {
         try {
             processTask(task.key, task.force)
         } finally {
             activeTaskKeys.remove(task.key)
         }
+        return taskOutcomes.remove(task.key) == true
     }
 
     private fun keyOf(book: Book, chapter: BookChapter) = "${book.bookUrl}|${chapter.index}"
@@ -358,17 +360,17 @@ object ReviewSnapshotManager {
     }
 
     private suspend fun processTask(key: String, force: Boolean) {
+        taskOutcomes[key] = false
         // 一章一次评论缓存任务 = 日志一条（多行详情），进入 AppLog 日志页可展开查看
         val sb = StringBuilder()
-        val unexpected = runCatching {
-            processTaskWithLog(key, force, sb)
-        }.exceptionOrNull()
+        val unexpected = runCatching { processTaskWithLog(key, force, sb) }.exceptionOrNull()
         if (unexpected != null) {
             sb.append("\n异常：").append(unexpected.stackTraceToString())
         }
         if (sb.isNotBlank()) {
             AppLog.put(sb.toString())
         }
+        taskOutcomes[key] = unexpected == null && taskOutcomes[key] == true
     }
 
     private suspend fun processTaskWithLog(key: String, force: Boolean, sb: StringBuilder) {
@@ -485,6 +487,7 @@ object ReviewSnapshotManager {
                 Triple(book.bookUrl, chapter.url, true)
             )
         }
+        taskOutcomes[key] = !hasFailure
         sb.append("8. 最终结果：\n")
         sb.append("   成功快照 ").append(completedButtons).append("/").append(needProcess.size).append('\n')
         sb.append("   失败 ").append(failedButtons).append("/").append(needProcess.size).append('\n')
