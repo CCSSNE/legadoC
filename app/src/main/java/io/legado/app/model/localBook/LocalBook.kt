@@ -33,6 +33,7 @@ import io.legado.app.help.book.getLocalUri
 import io.legado.app.help.book.getRemoteUrl
 import io.legado.app.help.book.isArchive
 import io.legado.app.help.book.isEpub
+import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isMobi
 import io.legado.app.help.book.isPdf
 import io.legado.app.help.book.isUmd
@@ -583,6 +584,9 @@ object LocalBook {
             // 注意放在 illustrations.json 存在性判断之前：无配图的书可能只有评论快照
             val importedBook = importedBooks.firstOrNull()
             if (importedBook != null) {
+                // 刚导入的普通 TXT 只创建了 Book，目录（BookChapter）尚未解析入库，
+                // 快照 remap 依赖本地章节列表：先按现有分章逻辑补齐目录
+                ensureChapterListForImport(importedBook)
                 val localChapters = appDb.bookChapterDao.getChapterList(importedBook.bookUrl)
                 files.filter { it.name.startsWith("r_") && it.name.endsWith(".json") }
                     .forEach { snapshotFile ->
@@ -633,6 +637,21 @@ object LocalBook {
         }.onFailure { e ->
             AppLog.put("还原配图数据失败\n${e.localizedMessage}", e)
         }
+    }
+
+    /**
+     * 导入评论快照前确保本地书目录已解析入库：
+     * 普通 TXT 导入后章节要由 [getChapterList]（TextFile 分章）生成，
+     * 快照 remap 依赖本地章节列表，因此先补齐数据库章节。
+     */
+    private fun ensureChapterListForImport(book: Book) {
+        if (!book.isLocal) return
+        if (appDb.bookChapterDao.getChapterCount(book.bookUrl) > 0) return
+        val chapters = runCatching { getChapterList(book) }.getOrNull() ?: return
+        if (chapters.isEmpty()) return
+        appDb.bookChapterDao.delByBook(book.bookUrl)
+        appDb.bookChapterDao.insert(*chapters.toTypedArray())
+        appDb.bookDao.update(book)
     }
 
     /* 批量导入 支持自动导入压缩包的支持书籍 */

@@ -62,12 +62,19 @@ object ReviewSnapshotManager {
      * - 去重：已存在代表该章已在队列中，不重复入队；
      * - force 合并：后入队的 force=true 必须提升已排队任务的 force，
      *   绝不允许先 false 后 true 时把 true 丢掉。
+     * 入队与消费的读取/删除都持有 [queueLock]，消除 putIfAbsent→replace 与
+     * remove(key) 之间的并发窗口。
      */
     private val pendingForce = ConcurrentHashMap<String, Boolean>()
+    private val queueLock = Any()
 
-    /** 用户刷新标记：按具体章节追踪（key = bookUrl|chapterIndex → 标记时间） */
-    private val userRefreshMarks = ConcurrentHashMap<String, Long>()
-    private const val MARK_TTL_MS = 15 * 60 * 1000L
+    /**
+     * “评论待刷新”持久标记（key = bookUrl|chapterIndex）。
+     * 用户明确要求刷新的章节加入；不设时间 TTL——
+     * 状态一直保持到该章评论被真正重新处理（processTask 处理完成）后清除，
+     * 因此“刷新当前之后”隔很久才读到的章节，force 依然有效。
+     */
+    private val refreshPending = ConcurrentHashMap.newKeySet<String>()
 
     /** 按钮之间的间隔，把网络与 WebView 占用压到最低 */
     private const val BUTTON_INTERVAL_MS = 800L
@@ -103,37 +110,33 @@ object ReviewSnapshotManager {
      */
     fun enqueue(book: Book, chapter: BookChapter, force: Boolean = false) {
         val key = keyOf(book, chapter)
-        val existed = pendingForce.putIfAbsent(key, force)
-        if (existed == null) {
-            channel.trySend(Task(key))
-            startWorkerIfNeeded()
-        } else if (force && existed != true) {
-            // force 合并：已排队任务升级为强制重抓，不丢 true
-            pendingForce.replace(key, existed, true)
+        synchronized(queueLock) {
+            val existed = pendingForce.putIfAbsent(key, force)
+            if (existed == null) {
+                channel.trySend(Task(key))
+                startWorkerIfNeeded()
+            } else if (force && existed != true) {
+                // force 合并：已排队任务升级为强制重抓，不丢 true
+                pendingForce.replace(key, existed, true)
+            }
         }
     }
 
     private fun keyOf(book: Book, chapter: BookChapter) = "${book.bookUrl}|${chapter.index}"
 
-    /** 用户明确刷新某章：记录时间戳，该章下载完成后强制重抓评论 */
+    /** 用户明确刷新某章：登记“评论待刷新”，状态保持到该章评论真正处理后清除 */
     fun markUserRefresh(bookUrl: String, chapterIndex: Int) {
-        userRefreshMarks["$bookUrl|$chapterIndex"] = System.currentTimeMillis()
+        refreshPending.add("$bookUrl|$chapterIndex")
     }
 
-    /** 该章是否处于用户刷新标记有效期内（顺带惰性清理过期标记） */
+    /** 该章是否处于“评论待刷新”状态（无 TTL，直到真正处理） */
     fun isUserRefreshActive(bookUrl: String, chapterIndex: Int): Boolean {
-        val now = System.currentTimeMillis()
-        val key = "$bookUrl|$chapterIndex"
-        val markedAt = userRefreshMarks[key] ?: return false
-        if (now - markedAt > MARK_TTL_MS) {
-            userRefreshMarks.remove(key)
-            return false
-        }
-        return true
+        return "$bookUrl|$chapterIndex" in refreshPending
     }
 
+    /** 该章评论已真正重新处理后清除待刷新标记 */
     fun clearUserRefresh(bookUrl: String, chapterIndex: Int) {
-        userRefreshMarks.remove("$bookUrl|$chapterIndex")
+        refreshPending.remove("$bookUrl|$chapterIndex")
     }
 
     private fun startWorkerIfNeeded() {
@@ -150,7 +153,9 @@ object ReviewSnapshotManager {
     private suspend fun consume() {
         for (task in channel) {
             // 取出聚合后的 force（队列去重期间可能被提升为 true）
-            val force = pendingForce.remove(task.key) ?: false
+            val force = synchronized(queueLock) {
+                pendingForce.remove(task.key) ?: false
+            }
             runCatching { processTask(task.key, force) }
         }
     }
@@ -190,6 +195,8 @@ object ReviewSnapshotManager {
             }
             delay(BUTTON_INTERVAL_MS)
         }
+        // 该章评论已真正重新处理完毕：清除“评论待刷新”持久标记
+        clearUserRefresh(bookUrl, chapterIndex)
     }
 
     /**
