@@ -57,6 +57,7 @@ class CacheBookService : BaseService() {
     private var resultNotified = false
     private var stopRequested = false
     private var bodyCompleted = false
+    private val coordinatorBookUrls = linkedSetOf<String>()
     private var mutex = Mutex()
     private fun notificationBuilder(): NotificationCompat.Builder {
         val builder = NotificationCompat.Builder(this, AppConst.channelIdDownload)
@@ -104,11 +105,16 @@ class CacheBookService : BaseService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         intent?.action?.let { action ->
             when (action) {
-                IntentAction.start -> addDownloadData(
-                    intent.getStringExtra("bookUrl"),
-                    intent.getIntExtra("start", 0),
-                    intent.getIntExtra("end", 0)
-                )
+                IntentAction.start -> {
+                    if (intent.getStringExtra("coordinatorSessionId") != null) {
+                        intent.getStringExtra("bookUrl")?.let(coordinatorBookUrls::add)
+                    }
+                    addDownloadData(
+                        intent.getStringExtra("bookUrl"),
+                        intent.getIntExtra("start", 0),
+                        intent.getIntExtra("end", 0)
+                    )
+                }
 
                 IntentAction.remove -> removeDownload(intent.getStringExtra("bookUrl"))
                 IntentAction.pause -> {
@@ -230,6 +236,9 @@ class CacheBookService : BaseService() {
 
     private fun reportTerminalFailure(message: String, throwable: Throwable? = null) {
         terminalFailure = message
+        coordinatorBookUrls.forEach {
+            io.legado.app.help.cache.CacheBodyWorkerRegistry.onWorkerFinished(it, message)
+        }
         AppLog.put("离线缓存失败：$message", throwable)
         notificationContent = message
         upCacheBookNotification()
@@ -257,6 +266,10 @@ class CacheBookService : BaseService() {
                 reportTerminalFailure("下载调度异常：${e.localizedMessage}", e)
             } finally {
                 bodyCompleted = true
+                coordinatorBookUrls.forEach {
+                    io.legado.app.help.cache.CacheBodyWorkerRegistry.onWorkerFinished(it)
+                }
+                coordinatorBookUrls.clear()
                 finishNotification()
                 stopSelf()
             }

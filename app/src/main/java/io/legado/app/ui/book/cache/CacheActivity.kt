@@ -36,6 +36,12 @@ import io.legado.app.help.book.removeExportFileSuffix
 import io.legado.app.help.book.tryParesExportFileName
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
+import io.legado.app.help.cache.CacheCoordinator
+import io.legado.app.help.cache.CacheKind
+import io.legado.app.help.cache.CachePhase
+import io.legado.app.help.cache.CacheRequest
+import io.legado.app.help.cache.CacheRequestSource
+import io.legado.app.help.cache.CacheUnitKey
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
@@ -235,12 +241,7 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
             R.id.menu_download_after -> {
                 if (!CacheBook.isRun) sureCacheBook {
                     adapter.getItems().forEach { book ->
-                        CacheBook.start(
-                            this@CacheActivity,
-                            book,
-                            book.durChapterIndex,
-                            book.lastChapterIndex
-                        )
+                        submitBodyCache(book, book.durChapterIndex, book.lastChapterIndex)
                     }
                 } else {
                     CacheBook.stop(this@CacheActivity)
@@ -250,12 +251,7 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
             R.id.menu_download_all -> {
                 if (!CacheBook.isRun) sureCacheBook {
                     adapter.getItems().forEach { book ->
-                        CacheBook.start(
-                            this@CacheActivity,
-                            book,
-                            0,
-                            book.lastChapterIndex
-                        )
+                        submitBodyCache(book, 0, book.lastChapterIndex)
                     }
                 } else {
                     CacheBook.stop(this@CacheActivity)
@@ -270,6 +266,21 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
             }
         }
         return super.onCompatOptionsItemSelected(item)
+    }
+
+    private fun submitBodyCache(book: Book, start: Int, end: Int) {
+        if (end < start) return
+        CacheCoordinator.submit(
+            CacheRequest(
+                source = CacheRequestSource.CACHE_ACTIVITY,
+                kind = CacheKind.TEXT,
+                phase = CachePhase.BODY,
+                bookUrl = book.bookUrl,
+                bookName = book.name,
+                units = (start..end).map { CacheUnitKey(book.bookUrl, it) },
+                reviewEnabled = AppConfig.syncCacheReview,
+            )
+        )
     }
 
     override fun onMenuItemClick(item: MenuItem): Boolean {
@@ -850,7 +861,7 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
                             ?.coerceIn(1, total) ?: 1
                         val end = alertBinding.editEnd.text?.toString()?.toIntOrNull()
                             ?.coerceIn(start, total) ?: total
-                        CacheBook.start(this@CacheActivity, book, start - 1, end - 1)
+                        submitBodyCache(book, start - 1, end - 1)
                     },
                     onDenied = {
                         toastOnUi(R.string.notification_permission_required_for_download)
