@@ -49,6 +49,20 @@ class ReviewCacheService : BaseService() {
         var isRun = false
             private set
 
+        @Volatile
+        private var stopRequestedGlobal = false
+
+        val isStopRequested: Boolean
+            get() = stopRequestedGlobal
+
+        fun requestStop() {
+            runCatching {
+                appCtx.startService<ReviewCacheService> { action = IntentAction.stop }
+            }.onFailure {
+                AppLog.put("请求停止评论缓存失败\n${it.localizedMessage}", it)
+            }
+        }
+
         /** 与音频缓存相同的通知更新节流 */
         private const val NOTIFICATION_INTERVAL_MS = 1000L
 
@@ -59,8 +73,19 @@ class ReviewCacheService : BaseService() {
             runCatching {
                 appCtx.startService<ReviewCacheService> {}
             }.onFailure {
-                io.legado.app.constant.AppLog.put(
-                    "启动评论快照服务失败\n${it.localizedMessage}", it
+                val message = "评论缓存服务启动失败：${it.localizedMessage}"
+                io.legado.app.constant.AppLog.put(message, it)
+                notificationManager.notify(
+                    NotificationId.CacheBookService,
+                    NotificationCompat.Builder(appCtx, AppConst.channelIdDownload)
+                        .setSmallIcon(R.drawable.ic_status_bar_r)
+                        .setContentTitle(appCtx.getString(R.string.cache_download_failed))
+                        .setContentText(message)
+                        .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+                        .setAutoCancel(false)
+                        .setOngoing(false)
+                        .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                        .build()
                 )
             }
         }
@@ -69,6 +94,8 @@ class ReviewCacheService : BaseService() {
     private var workJob: Job? = null
     private var notifyJob: Job? = null
     private var lastNotifyTime = 0L
+    private var stopRequested = false
+    private var stopText: String? = null
     /** 正在执行任务的 worker 数：队列空时需全部 idle 才停服务 */
     private val activeCount = java.util.concurrent.atomic.AtomicInteger(0)
 
@@ -107,6 +134,7 @@ class ReviewCacheService : BaseService() {
 
     override fun onCreate() {
         super.onCreate()
+        stopRequestedGlobal = false
         isRun = true
         startWork()
         // 订阅进度：参照音频缓存 notifyState，1 秒节流更新通知与进度条
@@ -130,9 +158,16 @@ class ReviewCacheService : BaseService() {
                 upNotification(ReviewSnapshotManager.syncState.value)
             }
             IntentAction.stop -> {
-                AppLog.put("用户从评论缓存通知停止下载")
-                appCtx.startService<CacheBookService> { action = IntentAction.stop }
+                stopRequested = true
+                stopRequestedGlobal = true
+                stopText = totalProgressText(ReviewSnapshotManager.syncState.value)
+                AppLog.put("用户从评论缓存通知停止下载：$stopText")
+                if (CacheBookService.isRun && !CacheBookService.isStopRequested) {
+                    appCtx.startService<CacheBookService> { action = IntentAction.stop }
+                }
+                ReviewSnapshotManager.clearAllTasks()
                 stopSelf()
+                return super.onStartCommand(intent, flags, startId)
             }
         }
         if (workJob?.isActive != true) {
@@ -185,8 +220,14 @@ class ReviewCacheService : BaseService() {
 
     override fun onDestroy() {
         val state = ReviewSnapshotManager.syncState.value
-        val finalText = totalProgressText(state)
-        AppLog.put("评论缓存结束：$finalText")
+        val finalText = if (stopRequested) {
+            stopText ?: getString(R.string.cache_manage_task_cancelled)
+        } else {
+            totalProgressText(state)
+        }
+        AppLog.put(
+            if (stopRequested) "评论缓存已停止：$finalText" else "评论缓存结束：$finalText"
+        )
         val finalNotification = notificationBuilder()
             .setContentText(finalText)
             .setOngoing(false)
@@ -197,6 +238,7 @@ class ReviewCacheService : BaseService() {
         workJob?.cancel()
         notifyJob?.cancel()
         isRun = false
+        stopRequestedGlobal = false
         super.onDestroy()
     }
 

@@ -127,6 +127,8 @@ object ReviewSnapshotManager {
      * remove(key) 之间的并发窗口。
      */
     private val pendingForce = ConcurrentHashMap<String, Boolean>()
+    /** 已被 worker 取出但尚未完成的任务，不能只看 pendingForce。 */
+    private val activeTaskKeys = ConcurrentHashMap.newKeySet<String>()
     private val queueLock = Any()
 
     /**
@@ -206,12 +208,22 @@ object ReviewSnapshotManager {
 
     /** 批量缓存开始（Body Phase）：该书评论任务只登记不执行 */
     fun beginBodyPhase(bookUrl: String) {
-        bodyPhaseBooks.add(bookUrl)
+        var newSession = false
+        synchronized(queueLock) {
+            if (bodyPhaseBooks.isEmpty() && pendingForce.isEmpty() && activeTaskKeys.isEmpty()) {
+                _syncState.value = ReviewSyncState()
+                newSession = true
+            }
+            bodyPhaseBooks.add(bookUrl)
+        }
+        if (newSession) {
+            AppLog.put("评论缓存会话开始：$bookUrl")
+        }
     }
 
     /** 整批目标正文结束后（Review Phase 开始）：该书登记的任务正式入队执行 */
     fun endBodyPhase(bookUrl: String) {
-        bodyPhaseBooks.remove(bookUrl)
+        if (!bodyPhaseBooks.remove(bookUrl)) return
         var sentAny = false
         synchronized(queueLock) {
             val book = appDb.bookDao.getBook(bookUrl)
@@ -258,18 +270,39 @@ object ReviewSnapshotManager {
         val task = synchronized(queueLock) {
             val t = channel.tryReceive().getOrNull() ?: return null
             val force = pendingForce.remove(t.key) ?: false
+            activeTaskKeys.add(t.key)
             t to force
         }
         return QueueTask(task.first.key, task.second)
     }
 
     fun hasPendingTasks(): Boolean = synchronized(queueLock) {
-        pendingForce.isNotEmpty() || _syncState.value.completedChapters < _syncState.value.totalChapters
+        pendingForce.isNotEmpty() || activeTaskKeys.isNotEmpty()
+    }
+
+    /** 用户明确停止时丢弃队列；正常正文收尾绝不能调用此方法。 */
+    fun clearAllTasks() {
+        var cleared = 0
+        synchronized(queueLock) {
+            cleared = pendingForce.size + activeTaskKeys.size
+            pendingForce.clear()
+            activeTaskKeys.clear()
+            bodyPhaseBooks.clear()
+            while (channel.tryReceive().isSuccess) {
+                // Drain queued tasks before resetting the session counters.
+            }
+            _syncState.value = ReviewSyncState()
+        }
+        AppLog.put("评论缓存队列已清理：$cleared 个任务")
     }
 
     /** 评论服务处理任务（suspend：内部解析 URL、WebView 抓取、落盘） */
     suspend fun processTask(task: QueueTask) {
-        processTask(task.key, task.force)
+        try {
+            processTask(task.key, task.force)
+        } finally {
+            activeTaskKeys.remove(task.key)
+        }
     }
 
     private fun keyOf(book: Book, chapter: BookChapter) = "${book.bookUrl}|${chapter.index}"
