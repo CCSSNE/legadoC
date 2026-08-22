@@ -171,6 +171,30 @@ object ReviewSnapshotManager {
         }
     }
 
+    /**
+     * 批量取消/异常等非正常结束：同样必须收掉 Body Phase，否则该书后续
+     * 评论任务会一直“只登记不执行”。已登记任务（正文已完成）照常执行。
+     * 幂等：与 [endBodyPhase] 同一收尾路径，重复调用无副作用。
+     */
+    fun cancelBodyPhase(bookUrl: String) {
+        endBodyPhase(bookUrl)
+    }
+
+    /** 兜底收尾（CacheBook.close 等整体清理场景）：清掉所有残留 Body Phase */
+    fun cancelAllBodyPhases() {
+        bodyPhaseBooks.toList().forEach { endBodyPhase(it) }
+    }
+
+    /**
+     * 批量循环发现队列空时的收尾：只有该书确实处于 Body Phase（活跃批量）才
+     * 收——阅读页单章下载的 model 也会被批量流程窥见，不能误收/重复入队。
+     */
+    fun endBodyPhaseIfActive(bookUrl: String) {
+        if (bodyPhaseBooks.contains(bookUrl)) {
+            endBodyPhase(bookUrl)
+        }
+    }
+
     /** 评论服务消费：取一个任务（无任务返回 null）。force 取聚合值并原子移除 */
     fun tryTakeTask(): QueueTask? {
         val task = synchronized(queueLock) {
