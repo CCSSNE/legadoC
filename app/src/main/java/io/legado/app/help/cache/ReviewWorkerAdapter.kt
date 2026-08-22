@@ -1,5 +1,10 @@
 package io.legado.app.help.cache
 
+import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.BookSource
+import io.legado.app.help.book.isLocal
+import io.legado.app.help.config.AppConfig
 import io.legado.app.help.review.ReviewSnapshotManager
 import io.legado.app.service.ReviewCacheService
 import io.legado.app.data.appDb
@@ -9,6 +14,22 @@ import java.util.concurrent.ConcurrentHashMap
 internal class ReviewWorkerAdapter(
     private val workerPort: CacheWorkerPort,
 ) {
+
+    companion object {
+        /** Compatibility entry for reader-triggered review caching. */
+        internal fun enqueueLegacyIfEnabled(
+            bookSource: BookSource?,
+            book: Book,
+            chapter: BookChapter,
+            force: Boolean = false,
+        ): Boolean {
+            if (!AppConfig.syncCacheReview || book.isLocal || bookSource == null) return false
+            ReviewSnapshotManager.enqueue(book, chapter, force)
+            val started = ReviewCacheService.startSelf()
+            if (!started) ReviewSnapshotManager.cancelBookTasks(book.bookUrl)
+            return started
+        }
+    }
 
     init {
         CacheReviewWorkerRegistry.bind(workerPort)
@@ -95,7 +116,13 @@ internal class ReviewWorkerAdapter(
                 executionLease = lease,
             )
         }
-        ReviewCacheService.startSelf()
+        if (!ReviewCacheService.startSelf()) {
+            ReviewSnapshotManager.cancelBookTasks(book.bookUrl)
+            CacheReviewWorkerRegistry.onServiceStartFailed(
+                lease,
+                "评论缓存宿主启动失败，任务未执行",
+            )
+        }
     }
 
     fun cancel(submission: CacheSubmission) {
@@ -176,7 +203,12 @@ internal object CacheReviewWorkerRegistry {
         val result = if (failed) CacheResult.FAILED else CacheResult.SUCCEEDED
         if (requireWorkerPort().finish(lease, result, error)) {
             CacheCoordinator.notifyTaskFinished(lease, result, error)
+            bindings.remove(taskKey(lease))
         }
+    }
+
+    fun onServiceStartFailed(lease: CacheWorkerLease, error: String) {
+        failTask(lease, error)
     }
 
     fun remove(sessionId: String, taskId: String) {
@@ -208,12 +240,26 @@ internal object CacheReviewWorkerRegistry {
     /** A normal empty queue means chapters had no review work and therefore completed. */
     fun onServiceFinished(cancelled: Boolean = false) {
         val targets = synchronized(lock) { bindings.values.toList() }
+        if (cancelled) {
+            targets.forEach { binding ->
+                failTask(binding.lease, "评论缓存宿主异常结束")
+            }
+            return
+        }
         targets.forEach { binding ->
             val unfinished = synchronized(lock) { binding.expected - binding.completed.keys }
             unfinished.forEach { key ->
                 onChapterFinished(binding.lease, key.chapterIndex, success = !cancelled)
             }
         }
+    }
+
+    private fun failTask(lease: CacheWorkerLease, error: String) {
+        val finished = requireWorkerPort().finish(lease, CacheResult.FAILED, error)
+        if (finished) {
+            CacheCoordinator.notifyTaskFinished(lease, CacheResult.FAILED, error)
+        }
+        bindings.remove(taskKey(lease))
     }
 
     private fun finishIfComplete(binding: Binding) {
@@ -239,6 +285,8 @@ internal object CacheReviewWorkerRegistry {
 
     private fun bindingFor(lease: CacheWorkerLease, detail: String): Binding? {
         val binding = bindings[taskKey(lease)] ?: run {
+            val task = CacheCoordinator.currentTask(CacheSubmission(lease.sessionId, lease.taskId))
+            if (task == null || CacheLifecycleRules.isTerminal(task.status)) return null
             AppLogCacheLogSink.record(
                 CacheLogEvent(
                     CacheLogEventType.STALE_UPDATE_DROPPED,

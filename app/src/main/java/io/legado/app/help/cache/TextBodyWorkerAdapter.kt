@@ -155,6 +155,20 @@ internal object CacheBodyWorkerRegistry {
     }
 
     fun onStartRejected(lease: CacheWorkerLease, error: String) {
+        onExecutionFailed(lease, error)
+    }
+
+    /** Fail the task itself when the Android host dies before normal unit completion. */
+    fun onExecutionFailed(lease: CacheWorkerLease, error: String) {
+        val binding = bindings[taskKey(lease)]
+        if (binding != null && binding.lease.generation != lease.generation) {
+            logStale(lease, "body execution failed generation=${lease.generation}")
+            return
+        }
+        val task = CacheCoordinator.currentTask(CacheSubmission(lease.sessionId, lease.taskId))
+        if (task == null || task.status != CacheLifecycle.RUNNING || task.generation != lease.generation) {
+            return
+        }
         if (requireWorkerPort().finish(lease, CacheResult.FAILED, error)) {
             CacheCoordinator.notifyTaskFinished(lease, CacheResult.FAILED, error)
         }
@@ -163,6 +177,8 @@ internal object CacheBodyWorkerRegistry {
 
     fun onWorkerFinished(lease: CacheWorkerLease, error: String? = null) {
         val binding = bindings[taskKey(lease)] ?: run {
+            val task = CacheCoordinator.currentTask(CacheSubmission(lease.sessionId, lease.taskId))
+            if (task == null || CacheLifecycleRules.isTerminal(task.status)) return
             logStale(lease, "body worker finished binding missing")
             return
         }
