@@ -1518,8 +1518,6 @@
     <string name="export_pics_file">Export Picture Files</string>
     <string name="export_bookmarks">Export bookmarks</string>
     <string name="sync_cache_review">Cache comment snapshots on refresh</string>
-    <string name="comment_cache_concurrency">Comment cache concurrency</string>
-    <string name="comment_cache_concurrency_summary">Number of comment buttons fetched in parallel within a chapter (default 16)</string>
     <string name="sync_cache_review_summary">When downloading (caching) chapters, also snapshot the real comment page in the background; text always downloads first and comment failures never affect text</string>
     <string name="export_reviews">Export comments</string>
     <string name="export_reviews_summary">Include cached comment page snapshots in the TXT-ZIP archive</string>

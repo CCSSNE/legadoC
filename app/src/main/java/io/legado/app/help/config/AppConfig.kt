@@ -1054,13 +1054,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefBoolean(PreferKey.syncCacheReview, value)
         }
 
-    /** 评论页快照缓存并行任务数（默认 16）：单章内并行抓取的评论按钮数 */
-    var reviewCacheConcurrency: Int
-        get() = appCtx.getPrefInt(PreferKey.reviewCacheConcurrency, 16)
-        set(value) {
-            appCtx.putPrefInt(PreferKey.reviewCacheConcurrency, value)
-        }
-
     /** 评论打开方式：network / snapshot_first / snapshot_only */
     val reviewOpenMode: String
         get() = appCtx.getPrefString(PreferKey.reviewOpenMode, ReviewOpenMode.NETWORK)

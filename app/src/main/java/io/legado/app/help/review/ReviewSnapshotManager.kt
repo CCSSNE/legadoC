@@ -114,16 +114,6 @@ object ReviewSnapshotManager {
 
     private val channel = Channel<Task>(Channel.UNLIMITED)
 
-    /**
-     * 全局按钮并发门：限制所有章节 worker 同时抓取的评论按钮总数，
-     * 避免“章节 worker 数 × 章内按钮数”相乘导致 WebView 数量暴涨。
-     * 许可数 = [AppConfig.reviewCacheConcurrency]（默认 16）；设置改动后
-     * 下次进程任务生效（与其他运行时配置一致）。
-     */
-    private val buttonGate = java.util.concurrent.Semaphore(
-        AppConfig.reviewCacheConcurrency.coerceIn(1, 32)
-    )
-
     /** 批量缓存进行中的书（Body Phase）：该书已登记任务只入 pendingForce，暂不执行 */
     private val bodyPhaseBooks = ConcurrentHashMap.newKeySet<String>()
 
@@ -158,9 +148,6 @@ object ReviewSnapshotManager {
     }
     @Volatile
     private var refreshPendingLoaded = false
-
-    /** 单章最多处理的评论按钮数，防止异常书源拖垮后台 */
-    private const val MAX_BUTTONS_PER_CHAPTER = 30
 
     /** 单个按钮解析评论页地址的超时 */
     private const val RESOLVE_TIMEOUT_MS = 20_000L
@@ -403,7 +390,7 @@ object ReviewSnapshotManager {
             }
         }
         sb.append('\n')
-        val buttons = extraction.buttons.take(MAX_BUTTONS_PER_CHAPTER)
+        val buttons = extraction.buttons
         val needProcess = buttons.filter {
             it.hasAction && (force || !ReviewSnapshotStore.has(book, chapter, it.src))
         }
@@ -420,19 +407,13 @@ object ReviewSnapshotManager {
         // force=true（用户明确刷新）时，任何一个需要刷新的按钮失败都保留待刷新标记，
         // 不能“一个成功就算整章成功”
         var hasFailure = false
-        // 按钮级并发：单章内多个评论按钮并行抓取（reviewCacheConcurrency，默认 16），
-        // 日志按原按钮序号归位，进度/计数跨并发原子累计
-        val buttonConcurrency = AppConfig.reviewCacheConcurrency.coerceIn(1, 32)
+        // 按钮级并发：本章提取到的全部评论按钮都进入统一队列，不人为截断数量。
+        // 空章不进入 mapAsyncIndexed；这里保持正数以满足并发 API 的契约。
+        val buttonConcurrency = buttons.size.coerceAtLeast(1)
         val outcomes = buttons
             .asFlow()
             .mapAsyncIndexed(buttonConcurrency) { index, button ->
-                // 全局并发门：跨章节 worker 累计最多 buttonConcurrency 个按钮在途
-                buttonGate.acquire()
-                try {
-                    processButton(book, bookSource, chapter, index, button, force)
-                } finally {
-                    buttonGate.release()
-                }
+                processButton(book, bookSource, chapter, index, button, force)
             }
             .toList()
             .sortedBy { it.index }
