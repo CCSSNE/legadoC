@@ -134,20 +134,36 @@ class ReviewCacheService : BaseService() {
     }
 
     /** 进度通知：当前章按钮进度（进度条），文本带书名/当前章/已完成章数 */
+    /** 通知文字：正文 x/y · 评论 a/b（总进度），与正文缓存通知同一格式 */
+    private fun totalProgressText(state: ReviewSyncState): String {
+        val book = state.bookUrl.takeIf { it.isNotBlank() }
+            ?.let { io.legado.app.data.appDb.bookDao.getBook(it) }
+        if (book != null) {
+            val cachedText = io.legado.app.help.book.BookHelp.getChapterFiles(book)
+                .count { it.endsWith(".nb") }
+            val cachedReview = ReviewSnapshotManager.cachedReviewChapterCount(book)
+            return getString(
+                R.string.download_count_review,
+                cachedText,
+                book.totalChapterNum,
+                cachedReview,
+                book.totalChapterNum
+            )
+        }
+        return getString(
+            R.string.review_sync_running,
+            state.bookName.ifBlank { getString(R.string.sync_cache_review) }
+        )
+    }
+
     private fun upNotification(state: ReviewSyncState) {
         val now = System.currentTimeMillis()
         if (now - lastNotifyTime < NOTIFICATION_INTERVAL_MS) return
         lastNotifyTime = now
-        val chapterText = state.currentChapterTitle.ifBlank { getString(R.string.review_sync_waiting) }
-        val contentText = getString(
-            R.string.review_sync_notification_progress,
-            state.bookName.ifBlank { getString(R.string.sync_cache_review) },
-            chapterText,
-            state.completedButtons,
-            state.totalButtons,
-            state.completedChapters
-        )
+        // 文字显示总进度（正文 x/y · 评论 a/b）
+        val contentText = totalProgressText(state)
         val builder = notificationBuilder.setContentText(contentText)
+        // 进度条 = 当前评论单章节处理进度（当前章按钮 done/total）
         if (state.totalButtons > 0) {
             builder.setProgress(
                 state.totalButtons,

@@ -88,6 +88,7 @@ import io.legado.app.utils.writeBytes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import java.io.ByteArrayInputStream
 import java.lang.ref.WeakReference
 import java.net.URLDecoder
@@ -104,6 +105,15 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
      */
     private var networkRefresher: (suspend () -> Pair<String, String>?)? = null
 
+    /**
+     * “网络优先”模式的兜底快照：网络加载失败/超时时切换为本地快照。
+     */
+    private var fallbackHtml: String? = null
+    private var fallbackApplied = false
+    private var fallbackTimeoutRunnable: Runnable? = null
+
+    private val mHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
     constructor(
         sourceKey: String,
         bookType: Int,
@@ -111,9 +121,11 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         html: String? = null,
         preloadJs: String? = null,
         config: String? = null,
-        networkRefresher: (suspend () -> Pair<String, String>?)? = null
+        networkRefresher: (suspend () -> Pair<String, String>?)? = null,
+        fallbackHtml: String? = null
     ) : this() {
         this.networkRefresher = networkRefresher
+        this.fallbackHtml = fallbackHtml
         arguments = Bundle().apply {
             putString("sourceKey", sourceKey)
             putInt("bookType", bookType)
@@ -588,19 +600,23 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
                     currentWebView.onResume() //缓存库拿的需要激活
                     initWebView(analyzeUrl.url, spliceHtml, analyzeUrl.headerMap, bookType)
                     currentWebView.clearHistory()
-                    // “快照优先”：快照先显示，后台刷新真实网络评论页成功后覆盖
+                    // “快照优先”：快照先显示，后台刷新真实网络评论页成功后覆盖。
+                    // 后台抓取必须跑在 IO，耗时网络/WebView 解析不能卡主线程；
+                    // 刷新成功后切回主线程更新 WebView
                     val refresher = networkRefresher
                     if (refresher != null) {
-                        lifecycleScope.launch {
+                        lifecycleScope.launch(Dispatchers.IO) {
                             val refreshed = runCatching { refresher() }.getOrNull()
-                            if (refreshed != null && isAdded && !isHidden && currentWebView.url != null) {
-                                currentWebView.loadDataWithBaseURL(
-                                    refreshed.first.ifBlank { analyzeUrl.url },
-                                    refreshed.second,
-                                    "text/html",
-                                    "utf-8",
-                                    refreshed.first.ifBlank { analyzeUrl.url }
-                                )
+                            if (refreshed != null && isAdded && !isHidden) {
+                                withContext(Dispatchers.Main) {
+                                    currentWebView.loadDataWithBaseURL(
+                                        refreshed.first.ifBlank { analyzeUrl.url },
+                                        refreshed.second,
+                                        "text/html",
+                                        "utf-8",
+                                        refreshed.first.ifBlank { analyzeUrl.url }
+                                    )
+                                }
                             }
                         }
                     }
@@ -689,6 +705,38 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         currentWebView.loadDataWithBaseURL(url, html, "text/html", "utf-8", url)
     }
 
+    /** 网络优先兜底：主框架开始加载时启动真正的超时定时任务 */
+    private fun scheduleFallbackTimeout() {
+        if (fallbackHtml == null) return
+        fallbackTimeoutRunnable?.let { mHandler.removeCallbacks(it) }
+        fallbackTimeoutRunnable = Runnable { applyFallbackSnapshot() }
+        mHandler.postDelayed(fallbackTimeoutRunnable!!, FALLBACK_TIMEOUT_MS)
+    }
+
+    private fun cancelFallbackTimeout() {
+        fallbackTimeoutRunnable?.let { mHandler.removeCallbacks(it) }
+        fallbackTimeoutRunnable = null
+    }
+
+    /** 网络优先兜底：网络加载失败/真正超时后切换为本地评论快照 */
+    private fun applyFallbackSnapshot() {
+        val html = fallbackHtml ?: return
+        if (fallbackApplied) return
+        fallbackApplied = true
+        cancelFallbackTimeout()
+        currentWebView.loadDataWithBaseURL(
+            currentWebView.url ?: "https://localhost/",
+            html,
+            "text/html",
+            "utf-8",
+            null
+        )
+    }
+
+    private companion object {
+        const val FALLBACK_TIMEOUT_MS = 60_000L
+    }
+
     private fun saveImage(webPic: String) {
         val path = ACache.get().getAsString(imagePathKey)
         if (path.isNullOrEmpty()) {
@@ -736,6 +784,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
 
     override fun onDestroyView() {
         customWebViewCallback?.onCustomViewHidden()
+        cancelFallbackTimeout()
         WebViewPool.release(pooledWebView)
         originOrientation?.let {
             activity?.requestedOrientation = it
@@ -913,6 +962,38 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
             }
             super.onPageStarted(view, url, favicon)
             currentWebView.evaluateJavascript(basicJs, null)
+            // 网络优先：主框架开始加载时启动真正的超时定时任务
+            scheduleFallbackTimeout()
+        }
+
+        override fun onPageFinished(view: WebView?, url: String?) {
+            super.onPageFinished(view, url)
+            // 页面加载成功：取消超时定时任务
+            cancelFallbackTimeout()
+        }
+
+        @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION", "KotlinRedundantDiagnosticSuppress")
+        override fun onReceivedError(
+            view: WebView?,
+            errorCode: Int,
+            description: String?,
+            failingUrl: String?
+        ) {
+            super.onReceivedError(view, errorCode, description, failingUrl)
+            if (fallbackHtml != null && !fallbackApplied) {
+                applyFallbackSnapshot()
+            }
+        }
+
+        override fun onReceivedError(
+            view: WebView?,
+            request: WebResourceRequest?,
+            error: android.webkit.WebResourceError?
+        ) {
+            super.onReceivedError(view, request, error)
+            if (fallbackHtml != null && !fallbackApplied && request?.isForMainFrame == true) {
+                applyFallbackSnapshot()
+            }
         }
 
         private fun shouldOverrideUrlLoading(url: Uri): Boolean {

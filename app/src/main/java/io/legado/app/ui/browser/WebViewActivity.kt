@@ -6,6 +6,8 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.net.http.SslError
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
@@ -89,7 +91,8 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
     /** 评论“网络优先”兜底快照：网络加载失败/超时时自动切换到本地快照 */
     private var fallbackHtml: String? = null
     private var fallbackApplied = false
-    private var loadStartedAt = 0L
+    private var fallbackTimeoutRunnable: Runnable? = null
+    private val mHandler = Handler(Looper.getMainLooper())
     private val saveImage = registerForActivityResult(HandleFileContract()) {
         it.uri?.let { uri ->
             ACache.get().put(imagePathKey, uri.toString())
@@ -101,6 +104,19 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
         currentWebView.reload()
     }
 
+    /** 评论“网络优先”兜底：主框架开始加载时启动真正的超时定时任务 */
+    private fun scheduleFallbackTimeout() {
+        if (fallbackHtml == null) return
+        fallbackTimeoutRunnable?.let { mHandler.removeCallbacks(it) }
+        fallbackTimeoutRunnable = Runnable { applyFallbackSnapshot() }
+        mHandler.postDelayed(fallbackTimeoutRunnable!!, FALLBACK_TIMEOUT_MS)
+    }
+
+    private fun cancelFallbackTimeout() {
+        fallbackTimeoutRunnable?.let { mHandler.removeCallbacks(it) }
+        fallbackTimeoutRunnable = null
+    }
+
     /**
      * 评论“网络优先”兜底：网络加载失败/超时后切换为本地评论快照。
      * 只影响携带 fallbackHtml 的评论打开链路，其余 WebView 行为不变。
@@ -109,6 +125,7 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
         val html = fallbackHtml ?: return
         if (fallbackApplied) return
         fallbackApplied = true
+        cancelFallbackTimeout()
         currentWebView.loadDataWithBaseURL(
             viewModel.baseUrl.ifBlank { "https://localhost/" },
             html,
@@ -364,6 +381,7 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
     }
 
     override fun onDestroy() {
+        cancelFallbackTimeout()
         WebViewPool.release(pooledWebView)
         super.onDestroy()
     }
@@ -409,13 +427,6 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
             super.onProgressChanged(view, newProgress)
             binding.progressBar.setDurProgress(newProgress)
             binding.progressBar.gone(newProgress == 100)
-            // 评论“网络优先”兜底：页面加载超时（60s 未完成）且有快照 → 切换快照
-            if (fallbackHtml != null && !fallbackApplied && newProgress < 100) {
-                val startedAt = loadStartedAt
-                if (startedAt > 0 && System.currentTimeMillis() - startedAt > FALLBACK_TIMEOUT_MS) {
-                    applyFallbackSnapshot()
-                }
-            }
         }
 
         override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
@@ -477,13 +488,14 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
         }
 
         override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
-            loadStartedAt = System.currentTimeMillis()
             if (needClearHistory) {
                 needClearHistory = false
                 currentWebView.clearHistory() //清除历史
             }
             super.onPageStarted(view, url, favicon)
             currentWebView.evaluateJavascript(basicJs, null)
+            // 评论“网络优先”兜底：主框架开始加载时启动真正的超时定时任务
+            scheduleFallbackTimeout()
         }
 
         override fun onReceivedError(
@@ -492,7 +504,7 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
             error: android.webkit.WebResourceError?
         ) {
             super.onReceivedError(view, request, error)
-            // 评论“网络优先”兜底：主框架加载失败/超时错误且有快照 → 切换快照
+            // 评论“网络优先”兜底：主框架加载失败且有快照 → 切换快照
             if (fallbackHtml != null && !fallbackApplied &&
                 request?.isForMainFrame == true
             ) {
@@ -502,6 +514,8 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
         
         override fun onPageFinished(view: WebView?, url: String?) {
             super.onPageFinished(view, url)
+            // 页面加载成功：取消超时定时任务
+            cancelFallbackTimeout()
             val cookieManager = CookieManager.getInstance()
             url?.let {
                 CookieStore.setCookie(it, cookieManager.getCookie(it))

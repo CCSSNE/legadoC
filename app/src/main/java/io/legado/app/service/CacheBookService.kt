@@ -68,7 +68,7 @@ class CacheBookService : BaseService() {
         lifecycleScope.launch {
             while (isActive) {
                 delay(1000)
-                notificationContent = CacheBook.downloadSummary
+                notificationContent = upNotificationContent()
                 upCacheBookNotification()
                 postEvent(EventBus.UP_DOWNLOAD, "")
             }
@@ -169,14 +169,29 @@ class CacheBookService : BaseService() {
         }
     }
 
-    private fun upCacheBookNotification() {
-        // 正文缓存进度条：已完成章 / 目标总章（含等待与进行中）
-        val progress = CacheBook.downloadProgress
-        if (progress != null) {
-            notificationBuilder.setProgress(progress.second, progress.first, false)
-        } else {
-            notificationBuilder.setProgress(0, 0, true)
+    /** 通知文字：正文 x/y · 评论 a/b（总进度）；无活跃书时回退下载摘要 */
+    private fun upNotificationContent(): String {
+        val book = CacheBook.activeCachingBook()
+        if (book == null) {
+            return CacheBook.downloadSummary
         }
+        val cachedText = io.legado.app.help.book.BookHelp.getChapterFiles(book)
+            .count { it.endsWith(".nb") }
+        val cachedReview = io.legado.app.help.review.ReviewSnapshotManager
+            .cachedReviewChapterCount(book)
+        return getString(
+            R.string.download_count_review,
+            cachedText,
+            book.totalChapterNum,
+            cachedReview,
+            book.totalChapterNum
+        )
+    }
+
+    private fun upCacheBookNotification() {
+        // 进度条 = 当前正文单章节下载进度：正文整章一次性抓取，无字节级进度，
+        // 以不确定进度条表示“当前章正在缓存”（总进度只体现在文字里）
+        notificationBuilder.setProgress(0, 0, true)
         notificationBuilder.setContentText(notificationContent)
         val notification = notificationBuilder.build()
         notificationManager.notify(NotificationId.CacheBookService, notification)
