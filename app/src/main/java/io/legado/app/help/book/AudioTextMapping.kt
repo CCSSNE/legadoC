@@ -1,6 +1,7 @@
 package io.legado.app.help.book
 
 import io.legado.app.constant.AppPattern
+import io.legado.app.ui.book.read.page.provider.ChapterProvider
 
 /**
  * 音频正文映射。
@@ -155,8 +156,16 @@ data class AudioTextMapping(
         }
 
         private fun normalizeParagraph(text: String): String {
-            return text.trim { it.isWhitespace() || it == '\u00A0' }
+            // 字幕侧可能保留行内评论/图片的原始 `<img>` 标记，排版侧把同一
+            // 入口渲染成占位符（ChapterProvider.reviewChar/srcReplaceChar）；
+            // 两侧都剔除后再比对，避免融合行内评论泡造成假性不一致，
+            // 真实文字差异仍会被拒绝。
+            val clean = htmlTagRegex.replace(text, "")
+                .filterNot { it == ChapterProvider.reviewChar || it == ChapterProvider.srcReplaceChar }
+            return clean.trim { it.isWhitespace() || it == '\u00A0' }
         }
+
+        private val htmlTagRegex = Regex("<[^>]+>")
 
         fun parse(rawText: String?): AudioTextMapping {
             if (rawText.isNullOrBlank()) return AudioTextMapping(emptyList(), emptyList())
