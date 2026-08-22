@@ -6,6 +6,7 @@ import android.os.Looper
 import android.net.http.SslError
 import android.webkit.SslErrorHandler
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import io.legado.app.constant.AppConst
@@ -13,8 +14,16 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.WebCacheManager
 import io.legado.app.help.http.CookieManager as AppCookieManager
 import io.legado.app.help.http.okHttpClient
+import io.legado.app.help.webView.WebJsExtensions
+import io.legado.app.help.webView.WebJsExtensions.Companion.JS_INJECTION
+import io.legado.app.help.webView.WebJsExtensions.Companion.JS_URL
+import io.legado.app.help.webView.WebJsExtensions.Companion.nameCache
+import io.legado.app.help.webView.WebJsExtensions.Companion.nameJava
+import io.legado.app.help.webView.WebJsExtensions.Companion.nameSource
+import io.legado.app.help.webView.WebJsExtensions.Companion.nameUrl
 import io.legado.app.help.webView.WebViewPool
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.utils.GSON
@@ -23,6 +32,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeout
 import org.apache.commons.text.StringEscapeUtils
 import splitties.init.appCtx
+import java.io.ByteArrayInputStream
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -63,10 +73,38 @@ object ReviewSnapshotCapture {
     )
 
     /**
+     * showBrowser 带回的 HTML 有效性校验：ajax 错误/异常文本不能当作评论页快照。
+     * 命中以下情况视为无效（宁可不保存，也不把错误页存成“成功快照”）：
+     * - 空或过短（<256 字符，基本是错误信息）
+     * - 纯 JSON 错误负载（无任何 HTML 结构）
+     * - 常见错误文案（登录失效/频控/系统繁忙/参数错误/接口异常/网关错误等）
+     */
+    fun isValidCommentHtml(html: String?): Boolean {
+        if (html.isNullOrBlank()) return false
+        if (html.length < 256) return false
+        val trimmed = html.trimStart()
+        if ((trimmed.startsWith("{") || trimmed.startsWith("[")) && !html.contains("<")) {
+            return false
+        }
+        val lower = html.lowercase()
+        val errorKeywords = listOf(
+            "登录失效", "需要登录", "请先登录", "登录已过期", "未登录",
+            "操作频繁", "操作太频繁", "访问过于频繁",
+            "系统繁忙", "服务器繁忙", "接口异常", "接口错误",
+            "参数错误", "请求失败", "网络异常", "访问失败",
+            "验证失败", "风控",
+            "page not found", "bad gateway", "internal server error", "404 not found"
+        )
+        return errorKeywords.none { lower.contains(it) }
+    }
+
+    /**
      * 抓取真实评论页快照并序列化。
      * @param url 真实评论页地址（由调度器经与用户点击共用的执行逻辑解析）
      * @param initialHtml 书源 showBrowser 已用 ajax 取回的渲染 HTML；
-     *        非空时作为 WebView 初始页面（不再发起网络请求），仍继续展开/内联/序列化
+     *        非空且通过 [isValidCommentHtml] 时作为 WebView 初始页面（不再发起网络请求），
+     *        仍继续展开/内联/序列化；无效则按失败处理
+     * @param preloadJs 书源 showBrowser 传入的 preloadJs：随初始页面注入 JS bridge 环境
      */
     suspend fun capture(
         bookSource: BookSource,
@@ -74,9 +112,16 @@ object ReviewSnapshotCapture {
         chapter: BookChapter,
         buttonSrc: String,
         url: String,
-        initialHtml: String? = null
+        initialHtml: String? = null,
+        preloadJs: String? = null
     ): CaptureOutcome {
-        val (html, expandRounds, expandClickCount) = snapshotPage(url, bookSource, initialHtml)
+        if (initialHtml != null && !isValidCommentHtml(initialHtml)) {
+            throw NoStackTraceException(
+                "showBrowser 带回的 HTML 非有效评论页（疑似 ajax 错误/异常文本，" +
+                    "${initialHtml.length} 字符，已按失败处理）"
+            )
+        }
+        val (html, expandRounds, expandClickCount) = snapshotPage(url, bookSource, initialHtml, preloadJs)
         return CaptureOutcome(
             snapshot = ReviewSnapshot(
                 bookUrl = book.bookUrl,
@@ -103,7 +148,8 @@ object ReviewSnapshotCapture {
     private suspend fun snapshotPage(
         url: String,
         bookSource: BookSource,
-        initialHtml: String? = null
+        initialHtml: String? = null,
+        preloadJs: String? = null
     ): Triple<String, Int, Int> =
         withTimeout(PAGE_TIMEOUT_MS) {
             val analyzeUrl = AnalyzeUrl(url, source = bookSource)
@@ -130,7 +176,12 @@ object ReviewSnapshotCapture {
                             headerMap[AppConst.UA_NAME]?.let { userAgentString = it }
                         }
                         AppCookieManager.applyToWebView(url)
-                        val session = SnapshotSession(webView, url) { result, error, rounds, clicks ->
+                        val jsBridge = if (!initialHtml.isNullOrBlank()) {
+                            PageJsBridge(preloadJs)
+                        } else {
+                            null
+                        }
+                        val session = SnapshotSession(webView, url, jsBridge) { result, error, rounds, clicks ->
                             releaseOnce()
                             if (block.isActive) {
                                 if (error != null) block.resumeWithException(error)
@@ -139,9 +190,15 @@ object ReviewSnapshotCapture {
                         }
                         webView.webViewClient = session.client
                         if (!initialHtml.isNullOrBlank()) {
-                            // 书源 showBrowser 已取回渲染 HTML：直接作为初始页面，
+                            // 书源 showBrowser 已取回渲染 HTML：作为初始页面并注入 JS bridge 环境
+                            // （真实评论页可能依赖 window.java/run/ajaxAwait 等），
                             // 仍走 onPageFinished → 展开/内联/序列化全流程
-                            webView.loadDataWithBaseURL(url, initialHtml, "text/html", "utf-8", url)
+                            webView.addJavascriptInterface(WebCacheManager, nameCache)
+                            webView.addJavascriptInterface(bookSource, nameSource)
+                            webView.addJavascriptInterface(WebJsExtensions(bookSource, null, webView), nameJava)
+                            webView.loadDataWithBaseURL(
+                                url, spliceJsUrl(initialHtml), "text/html", "utf-8", url
+                            )
                         } else {
                             webView.loadUrl(url, headerMap)
                         }
@@ -159,12 +216,31 @@ object ReviewSnapshotCapture {
         }
 
     /**
+     * 初始 HTML 的 head 后插入 JS_URL（触发 shouldInterceptRequest 加载 preloadJs 桥）。
+     * 与 BottomWebViewDialog 的 preloadJs 注入同一套机制。
+     */
+    private fun spliceJsUrl(html: String): String {
+        val headIndex = html.indexOf("<head", ignoreCase = true)
+        if (headIndex >= 0) {
+            val closingHeadIndex = html.indexOf('>', startIndex = headIndex)
+            if (closingHeadIndex >= 0) {
+                return StringBuilder(html).insert(closingHeadIndex + 1, JS_URL).toString()
+            }
+        }
+        return JS_URL + html
+    }
+
+    /**
      * 一个页面的穷尽会话：onPageFinished 后循环执行展开脚本直到稳定，
      * 再收集图片/样式资源内联，最后序列化 HTML。
+     * jsBridge 非空时（初始 HTML 模式）拦截 nameUrl 注入书源 preloadJs 桥。
      */
+    private class PageJsBridge(val preloadJs: String?)
+
     private class SnapshotSession(
         private val webView: WebView,
         private val url: String,
+        private val jsBridge: PageJsBridge?,
         private val done: (String?, Throwable?, Int, Int) -> Unit
     ) {
 
@@ -175,6 +251,8 @@ object ReviewSnapshotCapture {
         private var lastTextLen = -1
         private var lastHeight = -1
         private var lastNodes = -1
+
+        private var jsInjectedForPage = false
 
         val client = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, finishedUrl: String?) {
@@ -198,6 +276,29 @@ object ReviewSnapshotCapture {
                 // 评论页内的跳转不跟随，避免快照跑题
                 return request?.isForMainFrame == true &&
                     !request.url.toString().startsWith(url.substringBefore("#"))
+            }
+
+            override fun shouldInterceptRequest(
+                view: WebView,
+                request: WebResourceRequest
+            ): WebResourceResponse? {
+                // 初始 HTML 模式：拦截 nameUrl，注入 JS_INJECTION + 书源 preloadJs，
+                // 给真实评论页提供 window.java/run/ajaxAwait 等 JS bridge 环境
+                val bridge = jsBridge
+                if (bridge != null && !jsInjectedForPage &&
+                    request.url.toString() == nameUrl
+                ) {
+                    jsInjectedForPage = true
+                    return WebResourceResponse(
+                        "text/javascript",
+                        "utf-8",
+                        ByteArrayInputStream(
+                            ("(() => {$JS_INJECTION\n${bridge.preloadJs.orEmpty()}\n})();")
+                                .toByteArray()
+                        )
+                    )
+                }
+                return super.shouldInterceptRequest(view, request)
             }
         }
 

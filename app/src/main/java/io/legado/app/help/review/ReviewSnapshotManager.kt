@@ -425,13 +425,15 @@ object ReviewSnapshotManager {
             sb.append("   解析真实评论页 URL：成功")
             if (!page.html.isNullOrBlank()) {
                 sb.append("（showBrowser 已带回渲染 HTML ")
-                    .append(page.html.length / 1024).append(" KB，作为初始页面）")
+                    .append(page.html.length / 1024).append(" KB")
+                    .append(if (page.preloadJs.isNullOrBlank()) "" else " + preloadJs ${page.preloadJs.length} 字符")
+                    .append("，作为初始页面）")
             }
             sb.append('\n')
             sb.append("   URL=").append(url).append('\n')
             val outcome = runCatching {
                 ReviewSnapshotCapture.capture(
-                    bookSource, book, chapter, button.src, url, page.html
+                    bookSource, book, chapter, button.src, url, page.html, page.preloadJs
                 )
             }
             if (outcome.isFailure) {
@@ -512,7 +514,9 @@ object ReviewSnapshotManager {
     data class ReviewPage(
         val url: String?,
         /** showBrowser 路径书源已取到的渲染 HTML（可为 null） */
-        val html: String?
+        val html: String?,
+        /** showBrowser 路径书源传入的 preloadJs（页面 JS bridge 需要） */
+        val preloadJs: String? = null
     )
 
     suspend fun resolveReviewPageUrl(
@@ -523,10 +527,12 @@ object ReviewSnapshotManager {
     ): ReviewPage {
         val resolvedUrl = AtomicReference<String>()
         val resolvedHtml = AtomicReference<String?>()
+        val resolvedPreloadJs = AtomicReference<String?>()
         val latch = CountDownLatch(1)
-        fun record(url: String, html: String? = null) {
+        fun record(url: String, html: String? = null, preloadJs: String? = null) {
             if (resolvedUrl.compareAndSet(null, url)) {
                 resolvedHtml.compareAndSet(null, html)
+                resolvedPreloadJs.compareAndSet(null, preloadJs)
                 latch.countDown()
             }
         }
@@ -571,7 +577,7 @@ object ReviewSnapshotManager {
                     preloadJs: String?,
                     config: String?
                 ) {
-                    record(url, html)
+                    record(url, html, preloadJs)
                 }
 
                 /** qread 弹窗路径兼容 */
