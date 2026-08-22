@@ -91,16 +91,7 @@ fun Fragment.startActivityForBook(
     book: Book,
     configIntent: Intent.() -> Unit = {},
 ) {
-    if (appDb.bookChapterDao.getChapterCount(book.bookUrl) <= 0) {
-        startActivity<BookTocLoadingActivity> {
-            putExtra("name", book.name)
-            putExtra("author", book.author)
-            putExtra("bookUrl", book.bookUrl)
-            putExtra(BookMediaType.EXTRA_MEDIA_TYPE, BookMediaType.fromBookType(book.type))
-            apply(configIntent)
-        }
-        return
-    }
+    // 同 ContextExtensions：直进阅读页，不在入口阻塞加载目录
     val intent = Intent(requireActivity(), book.defaultReadingActivityClass())
     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     intent.putExtra("bookUrl", book.bookUrl)
