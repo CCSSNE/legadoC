@@ -38,6 +38,8 @@ import io.legado.app.utils.fromJsonObject
  * 评论小图（`<img src="…,{…}">`，与排版层共用 [AppPattern.imgPattern]
  * 解析口径；URL 选项 JSON 分隔共用 [AppPattern.urlOptionPattern]）与
  * 紧随段落（按原始 offset 邻接，空行即断开）的 `<usehtml>…</usehtml>` 块。
+ * 行内评论小图保持书源原形态插入字幕行尾（与段落文字同行渲染，同文字书
+ * 的显示习惯）；`usehtml` 块仍作为独立结构保留。
  */
 object AudioTextFusion {
 
@@ -57,7 +59,9 @@ object AudioTextFusion {
 
     /**
      * 一条评论挂载：挂在 lyric 中第 [occurrence] 次出现（从 1 起）的
-     * [anchor] 匹配正文行之后；[payload] 为完整 `<usehtml>…</usehtml>` 块。
+     * [anchor] 匹配正文行的行尾；[payload] 为行内评论入口 HTML —— 保持
+     * 书源原 `<img src="…,{…}">` 形态（src 携带选项 JSON），插入字幕行
+     * 文字末尾后由阅读页正常正文路径识别为 TEXT 行内评论泡，与段落同行。
      *
      * [textBookUrl]/[textChapterUrl] 记录评论按钮的来源（文字书章节）：
      * 点击与评论快照都按文字书上下文执行，不使用有声书上下文。旧数据
@@ -445,11 +449,12 @@ object AudioTextFusion {
     }
 
     /**
-     * 把 overlay 动态合并到 lyric：按“锚点 + 第几次出现”在对应字幕行后
-     * 插入 payload 块；已有 usehtml 块原样保留。纯函数。
+     * 把 overlay 动态合并到 lyric：按“锚点 + 第几次出现”把评论入口行内
+     * 插入到对应字幕行文字末尾（换行前），即 [OverlayInsertion.payload]
+     * 紧随该行正文，随段落文字同行显示；已有 usehtml 块原样保留。纯函数。
      *
      * 输入约定为原始存储的 lyric。同时实现同位置幂等：若原始 lyric 中
-     * 该字幕行之后已经是同一 payload（例如旧版本直写或重复应用），则
+     * 该字幕行行尾已经是同一 payload（例如旧版本直写或重复应用），则
      * 跳过插入并消费该挂载，不会产生二份副本。
      */
     internal fun applyOverlay(rawLyric: String, overlayJson: String): String {
@@ -470,7 +475,6 @@ object AudioTextFusion {
                 val lineText = segment.substring(lineStart, lineEnd)
                 val hasTrailingNewLine = !atEnd
                 builder.append(lineText)
-                var inserted = false
                 val key = subtitleKey(lineText)
                 val queue = if (key.isEmpty()) null else pendingByKey[key]
                 if (queue != null) {
@@ -480,14 +484,13 @@ object AudioTextFusion {
                     if (head != null && head.occurrence == count) {
                         queue.removeFirst()
                         val lineAbsEnd = segmentStartInLyric + lineEnd
-                        // 同位置幂等：该行之后（紧接换行 + payload）已是同一挂载则跳过
-                        if (!rawLyric.startsWith("\n" + head.payload, lineAbsEnd)) {
-                            builder.append('\n').append(head.payload).append('\n')
-                            inserted = true
+                        // 同位置幂等：该行行尾（正文后、换行前）已是同一挂载则跳过
+                        if (!rawLyric.startsWith(head.payload, lineAbsEnd)) {
+                            builder.append(head.payload)
                         }
                     }
                 }
-                if (!inserted && hasTrailingNewLine) {
+                if (hasTrailingNewLine) {
                     builder.append('\n')
                 }
                 if (atEnd) break
@@ -496,7 +499,7 @@ object AudioTextFusion {
             }
         }
         var lastEnd = 0
-        // 已有 usehtml 结构块原样保留；只在其外的字幕行后插入新块
+        // 已有 usehtml 结构块原样保留；只在其外的字幕行行尾插入评论入口
         AppPattern.useHtmlRegex.findAll(rawLyric).forEach { blockMatch ->
             rebuildSegment(rawLyric.substring(lastEnd, blockMatch.range.first), lastEnd)
             builder.append(blockMatch.value)
@@ -676,10 +679,15 @@ object AudioTextFusion {
         return builder.toString()
     }
 
-    /** 组装要写入 Audio 字幕行之后的载荷：行内评论图转成渲染端可识别形态后包进 usehtml 块 */
+    /**
+     * 组装行内评论泡载荷：保持书源原 `<img>`（src 携带选项 JSON）形态，
+     * 不包 usehtml、不做 data-legado 改写 —— 行内插入字幕行尾后由阅读页
+     * 正常正文路径按 src JSON 的 TEXT 样式识别为行内评论泡，与段落文字同行
+     * （与文字书的显示完全一致）。
+     */
     private fun joinButtonPayload(buttons: List<String>): String {
         if (buttons.isEmpty()) return ""
-        return "<usehtml>" + buttons.joinToString("") { toLegadoButtonTag(it) } + "</usehtml>"
+        return buttons.joinToString("")
     }
 
     /**
