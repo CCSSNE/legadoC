@@ -60,6 +60,7 @@ import io.legado.app.utils.setIconCompat
 import io.legado.app.utils.showPopupMenu
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startService
+import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.verificationField
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.externalFiles
@@ -825,6 +826,38 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
             yesButton {
                 action.invoke()
             }
+        }
+    }
+
+    /**
+     * 离线缓存页点“播放/开始缓存”：先选章节范围（章 x 至 y），
+     * 用户确认后才开始正文缓存（再按现有 Body → Review 流程走）
+     */
+    override fun showCacheRange(book: Book) {
+        alert(titleResource = R.string.offline_cache) {
+            val total = (book.lastChapterIndex + 1).coerceAtLeast(1)
+            val alertBinding = io.legado.app.databinding.DialogDownloadChoiceBinding
+                .inflate(layoutInflater).apply {
+                    editStart.setText("1")
+                    editEnd.setText(total.toString())
+                }
+            customView { alertBinding.root }
+            okButton {
+                io.legado.app.lib.permission.NotificationPermission.ensure(
+                    this@CacheActivity,
+                    onGranted = {
+                        val start = alertBinding.editStart.text?.toString()?.toIntOrNull()
+                            ?.coerceIn(1, total) ?: 1
+                        val end = alertBinding.editEnd.text?.toString()?.toIntOrNull()
+                            ?.coerceIn(start, total) ?: total
+                        CacheBook.start(this@CacheActivity, book, start - 1, end - 1)
+                    },
+                    onDenied = {
+                        toastOnUi(R.string.notification_permission_required_for_download)
+                    }
+                )
+            }
+            cancelButton()
         }
     }
 
