@@ -527,12 +527,14 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
                 normalizedText = normalizedText,
                 isTitle = item.isTitle,
                 normalAlpha = normalAlpha,
+                reviewCount = item.segments.count { it is ParagraphSegment.Review },
                 spannable = if (hasReview) {
                     buildListeningSpannable(item, view)
                 } else {
                     null
                 },
             )
+            updateListeningReviewCentering(row)
             view.text = row.displayText()
             listeningTextRows += row
             listeningTextContent.addView(
@@ -560,10 +562,10 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     }
 
     private fun updateListeningTextIndentation() {
-        val availableWidth = binding.listeningTextContent.width
-        if (availableWidth <= 0) return
         val currentPx = AppConfig.audioPlayTextSize * AppConfig.audioPlayTextZoom / 100f
         listeningTextRows.forEach { row ->
+            val availableWidth = row.view.width - row.view.paddingLeft - row.view.paddingRight
+            if (availableWidth <= 0) return@forEach
             val shouldIndent = !row.isTitle &&
                     row.normalizedText.isNotEmpty() &&
                     listeningTextLineCount(
@@ -657,6 +659,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
                 TypedValue.COMPLEX_UNIT_PX,
                 if (selected) currentPx else normalPx,
             )
+            updateListeningReviewCentering(row)
             row.view.setTextColor(Color.WHITE)
             row.view.alpha = when {
                 selected -> 1f
@@ -1117,6 +1120,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         val normalizedText: String,
         val isTitle: Boolean,
         val normalAlpha: Float,
+        val reviewCount: Int = 0,
         val spannable: CharSequence? = null,
         var isIndented: Boolean = false,
     ) {
@@ -1129,6 +1133,29 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
                 base
             }
         }
+    }
+
+    /**
+     * 评论图是行尾的附加 UI，不应把正文的视觉中心向左拉。
+     * ReplacementSpan 仍保留真实宽度以避免气泡与正文重叠；把同等宽度
+     * 预留到行首内容区后，Gravity.CENTER 的组合中心右移一半，正文中心
+     * 恰好回到容器中心，气泡仍完整落在右侧可见范围内。
+     */
+    private fun updateListeningReviewCentering(row: ListeningTextRow) {
+        val reviewWidth = if (row.reviewCount == 0) {
+            0
+        } else {
+            (row.view.paint.textSize * REVIEW_IMAGE_WIDTH_SCALE)
+                .toInt()
+                .coerceAtLeast(1) * row.reviewCount
+        }
+        if (row.view.paddingLeft == reviewWidth && row.view.paddingRight == 0) return
+        row.view.setPaddingRelative(
+            reviewWidth,
+            row.view.paddingTop,
+            0,
+            row.view.paddingBottom,
+        )
     }
 
     /**
