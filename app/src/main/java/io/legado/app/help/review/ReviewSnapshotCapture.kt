@@ -73,29 +73,31 @@ object ReviewSnapshotCapture {
     )
 
     /**
-     * showBrowser 带回的 HTML 有效性校验：ajax 错误/异常文本不能当作评论页快照。
-     * 命中以下情况视为无效（宁可不保存，也不把错误页存成“成功快照”）：
-     * - 空或过短（<256 字符，基本是错误信息）
-     * - 纯 JSON 错误负载（无任何 HTML 结构）
-     * - 常见错误文案（登录失效/频控/系统繁忙/参数错误/接口异常/网关错误等）
+     * showBrowser 带回的 HTML 有效性校验。
+     *
+     * 按“结构”判定，而不是关键词黑名单：真实评论页里“登录/请先登录/操作频繁/
+     * 失败”等字样非常常见（页脚、提示、meta 都可能出现），见词即死会把正常评论页
+     * 误杀成整章 0/615 全部失败，代价远大于“偶尔把一个带这类字样的正常页存成快照”。
+     *
+     * 判为无效的情形：
+     * - 空或纯空白
+     * - 纯 JSON 错误负载（无任何 HTML 标签）
+     * - 无 HTML 标签的纯文本且过短（<512 字符，基本是错误提示）
+     * - 有 HTML 结构但极短（<256 字符）
      */
     fun isValidCommentHtml(html: String?): Boolean {
         if (html.isNullOrBlank()) return false
-        if (html.length < 256) return false
         val trimmed = html.trimStart()
+        // 纯 JSON 错误负载（无任何 HTML 标签）
         if ((trimmed.startsWith("{") || trimmed.startsWith("[")) && !html.contains("<")) {
             return false
         }
-        val lower = html.lowercase()
-        val errorKeywords = listOf(
-            "登录失效", "需要登录", "请先登录", "登录已过期", "未登录",
-            "操作频繁", "操作太频繁", "访问过于频繁",
-            "系统繁忙", "服务器繁忙", "接口异常", "接口错误",
-            "参数错误", "请求失败", "网络异常", "访问失败",
-            "验证失败", "风控",
-            "page not found", "bad gateway", "internal server error", "404 not found"
-        )
-        return errorKeywords.none { lower.contains(it) }
+        // 无 HTML 标签的纯文本：只有足够长才信，否则是错误提示
+        if (!html.contains("<")) {
+            return html.length >= 512
+        }
+        // 有 HTML 结构：过短按无效，其余视为有效评论页
+        return html.length >= 256
     }
 
     /**
