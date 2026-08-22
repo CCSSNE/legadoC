@@ -1268,6 +1268,8 @@
     <string name="sync_cache_review">刷新时同步缓存评论</string>
     <string name="comment_cache_concurrency">评论缓存并行数</string>
     <string name="comment_cache_concurrency_summary">同时抓取评论快照的章节数，默认 16</string>
+    <string name="comment_button_concurrency">评论按钮并行数</string>
+    <string name="comment_button_concurrency_summary">单章内同时抓取评论快照的按钮数，默认 8</string>
     <string name="sync_cache_review_summary">下载(缓存)章节时，正文完成后在后台低优先级抓取真实评论页快照；评论失败不影响正文</string>
     <string name="export_reviews">导出评论</string>
     <string name="export_reviews_summary">TXT-ZIP 压缩包内附带已缓存的评论页快照</string>
