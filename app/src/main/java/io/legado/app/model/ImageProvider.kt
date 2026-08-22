@@ -18,6 +18,7 @@ import io.legado.app.model.localBook.EpubFile
 import io.legado.app.model.localBook.MobiFile
 import io.legado.app.model.localBook.PdfFile
 import io.legado.app.utils.BitmapUtils
+import io.legado.app.utils.ImageSource
 import io.legado.app.utils.decodeBase64DataUrlBytes
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.SvgUtils
@@ -146,10 +147,12 @@ object ImageProvider {
         bookSource: BookSource?
     ): File {
         return withContext(IO) {
-            val vFile = BookHelp.getImage(book, src)
-            if (!BookHelp.isImageExist(book, src)) {
+            val storageSrc = ImageSource.normalizeForStorage(src)
+            val vFile = BookHelp.getImage(book, storageSrc)
+            if (!vFile.exists()) {
                 val inputStream = when {
-                    src.isDataUrl() -> src.decodeBase64DataUrlBytes()?.let(::ByteArrayInputStream)
+                    storageSrc.isDataUrl() ->
+                        storageSrc.decodeBase64DataUrlBytes()?.let(::ByteArrayInputStream)
                     book.isEpub -> EpubFile.getImage(book, src)
                     book.isPdf -> PdfFile.getImage(book, src)
                     book.isMobi -> MobiFile.getImage(book, src)
@@ -269,8 +272,9 @@ object ImageProvider {
             book.setUseReplaceRule(false)
             appCtx.toastOnUi(R.string.error_image_url_empty)
         }
+        val storageSrc = ImageSource.normalizeForStorage(src)
         val vFile = BookHelp.getImage(book, src)
-        if (!vFile.exists()) return errorBitmap
+        // Data URIs with legado options are decoded before requiring a backing file.
         //epub文件提供图片链接是相对链接，同时阅读多个epub文件，缓存命中错误
         //bitmapLruCache的key同一改成缓存文件的路径
         val cacheKey = if (cacheKeySuffix.isNullOrBlank()) {
@@ -280,9 +284,9 @@ object ImageProvider {
         }
         val cacheBitmap = getNotRecycled(cacheKey)
         if (cacheBitmap != null) return cacheBitmap
-        if (!vFile.exists() && src.isDataUrl()) {
+        if (!vFile.exists() && storageSrc.isDataUrl()) {
             return kotlin.runCatching {
-                val dataBytes = src.decodeBase64DataUrlBytes()
+                val dataBytes = storageSrc.decodeBase64DataUrlBytes()
                     ?: throw NoStackTraceException(appCtx.getString(R.string.error_decode_bitmap))
                 val options = BitmapFactory.Options().apply {
                     inJustDecodeBounds = true
@@ -307,6 +311,7 @@ object ImageProvider {
                 put(cacheKey, errorBitmap)
             }.getOrDefault(errorBitmap)
         }
+        if (!vFile.exists()) return errorBitmap
         return kotlin.runCatching {
             val bitmap = BitmapUtils.decodeBitmap(vFile.absolutePath, width, height)
                 ?: SvgUtils.createBitmap(vFile.absolutePath, width, height)
