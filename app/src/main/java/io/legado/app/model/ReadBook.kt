@@ -16,6 +16,7 @@ import io.legado.app.help.AppWebDav
 import io.legado.app.help.ReadRecordDailyHelper
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.AudioTextMapping
+import io.legado.app.help.book.AudioTextFusion
 import io.legado.app.help.book.CacheManifestHelper
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.isEpub
@@ -932,7 +933,7 @@ object ReadBook : CoroutineScope by MainScope() {
         if (!book.isAudio || book.getAudioProgressVersion() >= 1) return
 
         val legacyAudioPosition = book.durChapterPos.coerceAtLeast(0)
-        val mapping = AudioTextMapping.parse(textChapter.chapter.getVariable("lyric"))
+        val mapping = AudioTextMapping.parse(AudioTextFusion.effectiveLyric(textChapter.chapter))
         val layoutParagraphs = textChapter.getParagraphs(false)
         val layoutBinding = if (mapping.hasTimeMapping) {
             textChapter.bindAudioTextMapping(mapping)

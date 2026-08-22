@@ -100,7 +100,7 @@ class ContentProcessor private constructor(
         reSegment: Boolean = true
     ): BookContent {
         if (book.isAudio) {
-            val transcript = AudioTextMapping.parse(chapter.getVariable("lyric"))
+            val transcript = AudioTextMapping.parse(AudioTextFusion.effectiveLyric(chapter))
             val contents = arrayListOf<String>()
             if (includeTitle) {
                 contents += chapter.getDisplayTitle(

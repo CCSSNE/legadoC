@@ -44,6 +44,7 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ActivityAudioPlayBinding
 import io.legado.app.databinding.DialogDownloadChoiceBinding
+import io.legado.app.help.book.AudioTextFusion
 import io.legado.app.help.book.AudioTextMapping
 import io.legado.app.help.book.BookImgClick
 import io.legado.app.help.book.ContentProcessor
@@ -378,7 +379,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             clearListeningText()
             return
         }
-        val mapping = AudioTextMapping.parse(chapter.chapter.getVariable("lyric"))
+        val mapping = AudioTextMapping.parse(AudioTextFusion.effectiveLyric(chapter.chapter))
         if (!mapping.hasTimeMapping) {
             clearListeningText()
             return
