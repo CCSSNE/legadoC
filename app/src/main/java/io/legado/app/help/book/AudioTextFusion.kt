@@ -48,6 +48,8 @@ object AudioTextFusion {
         val pairedChapters: Int,
         val fusedChapters: Int,
         val migratedEntries: Int,
+        /** 一次融合的多行诊断日志（章节配对、每章匹配成功/失败、统计）；空串表示无 */
+        val detail: String = "",
     ) {
         val migratedAnything: Boolean get() = migratedEntries > 0
     }
@@ -74,10 +76,12 @@ object AudioTextFusion {
         val insertions: List<OverlayInsertion>?,
     )
 
-    /** 整本书融合计划：配对章数与写入动作列表（先计算后写入） */
+    /** 整本书融合计划：配对章数、写入动作列表与逐章诊断行（先计算后写入） */
     data class FusionPlan(
         val pairedChapters: Int,
         val writes: List<ChapterOverlayWrite>,
+        /** 逐章诊断行：配对 → 每章匹配成功/失败原因；未配对只记总数，不逐条 */
+        val details: List<String> = emptyList(),
     )
 
     /**
@@ -113,10 +117,22 @@ object AudioTextFusion {
                 }
             }
         }
+        val fusedChapters = plan.writes.count { it.insertions != null }
+        val migratedEntries = plan.writes.sumOf { it.insertions?.size ?: 0 }
+        // 一次融合只产出一条多行诊断：章节配对、每章匹配成功/失败、最终统计
+        val detail = buildString {
+            appendLine("融合 ${textBook.name} ↔ ${audioBook.name}")
+            appendLine("章节配对 ${plan.pairedChapters} 章，挂载 $fusedChapters 章，迁移 $migratedEntries 个评论入口")
+            if (plan.details.isEmpty()) {
+                appendLine("  （无已配对章节）")
+            }
+            plan.details.forEach { appendLine(it) }
+        }
         return Result(
             pairedChapters = plan.pairedChapters,
-            fusedChapters = plan.writes.count { it.insertions != null },
-            migratedEntries = plan.writes.sumOf { it.insertions?.size ?: 0 },
+            fusedChapters = fusedChapters,
+            migratedEntries = migratedEntries,
+            detail = detail,
         )
     }
 
@@ -145,18 +161,50 @@ object AudioTextFusion {
         val pairs = pairChapters(textChapters, audioChapters)
         // identity -> 期望 overlay；null 表示确认无评论（清除），key 缺失表示保持
         val desired = linkedMapOf<String, List<OverlayInsertion>?>()
+        val details = ArrayList<String>()
         pairs.forEach { (textChapter, audioChapter) ->
-            // 无法确认的章节一律保持旧 overlay，不清除
-            if (!hasTextContent(textChapter)) return@forEach
-            if (!hasAudioContent(audioChapter)) return@forEach
+            val pairLabel = "${textChapter.title.take(28)} ↔ ${audioChapter.title.take(28)}"
+            // 无法确认的章节一律保持旧 overlay，不清除；原因逐行记录
+            if (!hasTextContent(textChapter)) {
+                details.add("  $pairLabel → 跳过：文字缓存缺失")
+                return@forEach
+            }
+            if (!hasAudioContent(audioChapter)) {
+                details.add("  $pairLabel → 跳过：音频缓存缺失")
+                return@forEach
+            }
             val lyric = getLyric(audioChapter)
-            if (lyric.isBlank()) return@forEach
+            if (lyric.isBlank()) {
+                details.add("  $pairLabel → 跳过：字幕(lyric)为空")
+                return@forEach
+            }
             val textContent = getTextContent(textChapter)
-            if (textContent == null) return@forEach
+            if (textContent == null) {
+                details.add("  $pairLabel → 跳过：正文读取失败")
+                return@forEach
+            }
             // 为 null 即“确认当前无评论入口”，生成清除
-            desired[audioChapter.primaryStr()] = fuseOverlay(textContent, lyric)?.map {
+            val insertions = fuseOverlay(textContent, lyric)
+            if (insertions == null) {
+                details.add("  $pairLabel → 确认无评论入口")
+            } else {
+                // 统计段落匹配：评论段总数 = 有评论入口的有效段落数（与匹配算法无关）
+                val commentCount = parseCommentParagraphs(textContent).count { it.payload.isNotEmpty() }
+                val unmatched = (commentCount - insertions.size).coerceAtLeast(0)
+                details.add(
+                    "  $pairLabel → 评论段落 $commentCount 段，匹配挂载 ${insertions.size} 个，未匹配 $unmatched 段"
+                )
+            }
+            desired[audioChapter.primaryStr()] = insertions?.map {
                 it.copy(textBookUrl = textBookUrl, textChapterUrl = textChapter.url)
             }
+        }
+        val unmatchedText = (textChapters.size - pairs.size).coerceAtLeast(0)
+        val unmatchedAudio = (audioChapters.size - pairs.size).coerceAtLeast(0)
+        if (unmatchedText > 0 || unmatchedAudio > 0) {
+            details.add(
+                "  未配对：文字 $unmatchedText 章、音频 $unmatchedAudio 章（标题/章节号无匹配，不参与段落匹配）"
+            )
         }
         val writes = buildList {
             audioChapters.forEach { audioChapter ->
@@ -171,7 +219,11 @@ object AudioTextFusion {
                 }
             }
         }
-        return FusionPlan(pairedChapters = pairs.size, writes = writes)
+        return FusionPlan(
+            pairedChapters = pairs.size,
+            writes = writes,
+            details = details,
+        )
     }
 
     /** 取消融合：清除该书全部章节的 overlay，恢复为原始 lyric；返回清理章节数 */
