@@ -76,6 +76,7 @@ import io.legado.app.help.webView.WebJsExtensions.Companion.JS_URL
 import io.legado.app.help.webView.WebJsExtensions.Companion.nameUrl
 import io.legado.app.help.webView.WebViewPool.BLANK_HTML
 import io.legado.app.help.webView.WebViewPool.DATA_HTML
+import io.legado.app.help.webView.WebViewHtmlStore
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.model.Download
@@ -109,6 +110,8 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
      * “网络优先”模式的兜底快照：网络加载失败/超时时切换为本地快照。
      */
     private var fallbackHtml: String? = null
+    private var htmlFileReference: String? = null
+    private var fallbackHtmlFileReference: String? = null
     private var fallbackApplied = false
     private var fallbackTimeoutRunnable: Runnable? = null
 
@@ -133,12 +136,17 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
     ) : this() {
         this.networkRefresher = networkRefresher
         this.fallbackHtml = fallbackHtml
+        htmlFileReference = html?.let(WebViewHtmlStore::write)
+        fallbackHtmlFileReference = fallbackHtml?.let(WebViewHtmlStore::write)
         this.offlineMode = offlineOnly
         arguments = Bundle().apply {
             putString("sourceKey", sourceKey)
             putInt("bookType", bookType)
             putString("url", url)
-            putString("html", html)
+            // Large HTML (especially snapshots with inline images) must not enter
+            // Fragment arguments: Android serializes arguments into the state Bundle.
+            putString(ARG_HTML_FILE, htmlFileReference)
+            putString(ARG_FALLBACK_HTML_FILE, fallbackHtmlFileReference)
             putString("preloadJs", preloadJs)
             putString("config", config)
         }
@@ -177,6 +185,17 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
     private var pullDownLastDistance = 0f
     private val touchSlop by lazy {
         ViewConfiguration.get(requireContext()).scaledTouchSlop
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        // Migrate fragments created by older versions before another Activity
+        // state save can serialize their large legacy HTML argument.
+        arguments?.getString(ARG_LEGACY_HTML)?.let { legacyHtml ->
+            htmlFileReference = WebViewHtmlStore.write(legacyHtml)
+            arguments?.putString(ARG_HTML_FILE, htmlFileReference)
+            arguments?.remove(ARG_LEGACY_HTML)
+        }
     }
 
     override fun onAttach(context: Context) {
@@ -554,6 +573,17 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
             val sourceKey = args.getString("sourceKey") ?: return@launch
             val url = args.getString("url") ?: return@launch
             kotlin.runCatching {
+                val htmlArgument = args.getString(ARG_HTML_FILE)?.let { reference ->
+                    htmlFileReference = reference
+                    WebViewHtmlStore.read(reference)
+                        ?: throw NoStackTraceException("WebView HTML file is missing: $reference")
+                }
+                val fallbackReference = args.getString(ARG_FALLBACK_HTML_FILE)
+                if (fallbackReference != null) {
+                    fallbackHtmlFileReference = fallbackReference
+                    fallbackHtml = WebViewHtmlStore.read(fallbackReference)
+                        ?: throw NoStackTraceException("WebView fallback HTML file is missing: $fallbackReference")
+                }
                 args.getString("config")?.let { json ->
                     try {
                         GSON.fromJsonObject<Config>(json).getOrThrow().let { config ->
@@ -575,7 +605,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
                     AnalyzeUrl(url, source = source, coroutineContext = coroutineContext)
                 // 网络优先兜底：WebView 启动前的网络获取若直接失败/超时，
                 // 也必须切换到快照显示，而不是显示异常文本
-                var fetchedHtml = args.getString("html")
+                var fetchedHtml = htmlArgument
                 if (fetchedHtml == null) {
                     fetchedHtml = runCatching {
                         analyzeUrl.getStrResponseAwait().body
@@ -608,7 +638,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
                     }
                 }
                 appDb.bookSourceDao.getBookSource(sourceKey).let {
-                    if (it == null && args.getString("html").isNullOrEmpty()) {
+                    if (it == null && htmlArgument.isNullOrEmpty()) {
                         // 评论快照等本地 HTML 可在无书源时离线渲染，不再强制要求书源存在
                         activity?.toastOnUi("no find bookSource")
                         dismiss()
@@ -765,6 +795,9 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
 
     private companion object {
         const val FALLBACK_TIMEOUT_MS = 60_000L
+        const val ARG_HTML_FILE = "htmlFile"
+        const val ARG_FALLBACK_HTML_FILE = "fallbackHtmlFile"
+        const val ARG_LEGACY_HTML = "html"
     }
 
     private fun saveImage(webPic: String) {
@@ -820,6 +853,16 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
             activity?.requestedOrientation = it
         }
         super.onDestroyView()
+    }
+
+    override fun onDestroy() {
+        // Configuration changes recreate the Fragment from its arguments. Keep
+        // the files in that case so the restored dialog can read them again.
+        if (activity?.isChangingConfigurations != true) {
+            WebViewHtmlStore.delete(htmlFileReference)
+            WebViewHtmlStore.delete(fallbackHtmlFileReference)
+        }
+        super.onDestroy()
     }
 
     override fun upConfig(config: String) {
