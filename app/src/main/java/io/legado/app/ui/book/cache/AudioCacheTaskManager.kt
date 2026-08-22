@@ -59,6 +59,7 @@ object AudioCacheTaskManager {
         chapters: List<BookChapter>,
         resolver: suspend (Book, BookChapter) -> ExoPlayerHelper.MediaRequest,
         onChapterResolved: ((BookChapter, ExoPlayerHelper.MediaRequest) -> Unit)? = null,
+        onChapterFinished: ((BookChapter, Boolean, String?) -> Unit)? = null,
         onFinished: (() -> Unit)? = null,
         coordinatorManaged: Boolean = false,
     ): Boolean {
@@ -72,6 +73,7 @@ object AudioCacheTaskManager {
             chapters = chapters,
             resolver = resolver,
             onChapterResolved = onChapterResolved,
+            onChapterFinished = onChapterFinished,
             onFinished = onFinished,
             coordinatorManaged = coordinatorManaged,
             totalChapters = chapters.size
@@ -122,6 +124,7 @@ object AudioCacheTaskManager {
         val future = executor.submit {
             var finalStatus: CacheTaskStatus? = null
             var completed = completedOffset
+            var activeChapter: BookChapter? = null
             var downloadedBytes = 0L
             var knownTotalBytes = 0L
             var speedBytes = 0L
@@ -129,6 +132,7 @@ object AudioCacheTaskManager {
             try {
                 chapters.forEach { chapter ->
                     if (cancelFlag.get()) throw CancellationException("cancelled")
+                    activeChapter = chapter
                     val displayIndex = (completed + 1).coerceAtMost(request.totalChapters)
                     updateState(
                         book.bookUrl
@@ -197,6 +201,8 @@ object AudioCacheTaskManager {
                         },
                         shouldCancel = { cancelFlag.get() }
                     )
+                    request.onChapterFinished?.invoke(chapter, true, null)
+                    activeChapter = null
                     completed += 1
                     updateState(book.bookUrl) {
                         it.copy(
@@ -249,6 +255,9 @@ object AudioCacheTaskManager {
                     )
                 }
             } catch (e: Exception) {
+                activeChapter?.let { chapter ->
+                    request.onChapterFinished?.invoke(chapter, false, e.localizedMessage)
+                }
                 finalStatus = if (cancelFlag.get() && pausingBookUrls.contains(book.bookUrl)) {
                     CacheTaskStatus.PAUSED
                 } else {
@@ -327,7 +336,11 @@ object AudioCacheTaskManager {
         }
     }
 
-    fun resume(bookUrl: String): Boolean {
+    fun resume(
+        bookUrl: String,
+        onChapterFinished: ((BookChapter, Boolean, String?) -> Unit)? = null,
+        onFinished: (() -> Unit)? = null,
+    ): Boolean {
         val state = _states.value[bookUrl] ?: return false
         if (state.status != CacheTaskStatus.PAUSED) return false
         if (futures.containsKey(bookUrl)) {
@@ -337,7 +350,14 @@ object AudioCacheTaskManager {
         if (!preparingResumeBookUrls.add(bookUrl)) return true
         executor.execute {
             try {
-                val request = requests[bookUrl] ?: return@execute
+                var request = requests[bookUrl] ?: return@execute
+                if (onChapterFinished != null || onFinished != null) {
+                    request = request.copy(
+                        onChapterFinished = onChapterFinished ?: request.onChapterFinished,
+                        onFinished = onFinished ?: request.onFinished,
+                    )
+                    requests[bookUrl] = request
+                }
                 val latestState = _states.value[bookUrl] ?: return@execute
                 if (latestState.status != CacheTaskStatus.PAUSED || futures.containsKey(bookUrl)) {
                     return@execute
@@ -494,6 +514,7 @@ private data class AudioCacheTaskRequest(
     val chapters: List<BookChapter>,
     val resolver: suspend (Book, BookChapter) -> ExoPlayerHelper.MediaRequest,
     val onChapterResolved: ((BookChapter, ExoPlayerHelper.MediaRequest) -> Unit)?,
+    val onChapterFinished: ((BookChapter, Boolean, String?) -> Unit)?,
     val onFinished: (() -> Unit)?,
     val coordinatorManaged: Boolean,
     val totalChapters: Int

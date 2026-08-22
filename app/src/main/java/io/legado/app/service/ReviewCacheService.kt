@@ -10,6 +10,9 @@ import io.legado.app.constant.NotificationId
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.IntentAction
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.cache.CacheCoordinator
+import io.legado.app.help.cache.CacheNotificationBridge
+import io.legado.app.help.cache.CacheReviewWorkerRegistry
 import io.legado.app.help.review.ReviewSnapshotManager
 import io.legado.app.help.review.ReviewSnapshotManager.ReviewSyncState
 import io.legado.app.model.CacheBook
@@ -76,18 +79,22 @@ class ReviewCacheService : BaseService() {
             }.onFailure {
                 val message = "评论缓存服务启动失败：${it.localizedMessage}"
                 io.legado.app.constant.AppLog.put(message, it)
-                notificationManager.notify(
-                    NotificationId.CacheBookService,
-                    NotificationCompat.Builder(appCtx, AppConst.channelIdDownload)
-                        .setSmallIcon(R.drawable.ic_status_bar_r)
-                        .setContentTitle(appCtx.getString(R.string.cache_download_failed))
-                        .setContentText(message)
-                        .setStyle(NotificationCompat.BigTextStyle().bigText(message))
-                        .setAutoCancel(false)
-                        .setOngoing(false)
-                        .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                        .build()
-                )
+                if (CacheReviewWorkerRegistry.hasCoordinatorTasks()) {
+                    CacheNotificationBridge.render(CacheCoordinator.snapshot.value)
+                } else {
+                    notificationManager.notify(
+                        NotificationId.CacheBookService,
+                        NotificationCompat.Builder(appCtx, AppConst.channelIdDownload)
+                            .setSmallIcon(R.drawable.ic_status_bar_r)
+                            .setContentTitle(appCtx.getString(R.string.cache_download_failed))
+                            .setContentText(message)
+                            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+                            .setAutoCancel(false)
+                            .setOngoing(false)
+                            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                            .build()
+                    )
+                }
             }
         }
     }
@@ -97,6 +104,7 @@ class ReviewCacheService : BaseService() {
     private var lastNotifyTime = 0L
     private var stopRequested = false
     private var stopText: String? = null
+    private var coordinatorNotificationOwned = false
     /** 正在执行任务的 worker 数：队列空时需全部 idle 才停服务 */
     private val activeCount = java.util.concurrent.atomic.AtomicInteger(0)
 
@@ -109,7 +117,16 @@ class ReviewCacheService : BaseService() {
             .setContentText(getString(R.string.review_sync_running))
             .setContentIntent(activityPendingIntent<io.legado.app.ui.book.cache.CacheActivity>("cacheActivity"))
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .also { builder -> addNotificationActions(builder) }
+            .also { builder -> if (!coordinatorNotificationMode()) addNotificationActions(builder) }
+    }
+
+    private fun coordinatorNotificationMode(): Boolean =
+        coordinatorNotificationOwned || CacheReviewWorkerRegistry.hasCoordinatorTasks()
+
+    private fun notificationId(): Int = if (coordinatorNotificationMode()) {
+        NotificationId.CacheCoordinator
+    } else {
+        NotificationId.CacheBookService
     }
 
     private fun addNotificationActions(builder: NotificationCompat.Builder) {
@@ -137,6 +154,7 @@ class ReviewCacheService : BaseService() {
         super.onCreate()
         stopRequestedGlobal = false
         isRun = true
+        coordinatorNotificationOwned = CacheReviewWorkerRegistry.hasCoordinatorTasks()
         startWork()
         // 订阅进度：参照音频缓存 notifyState，1 秒节流更新通知与进度条
         notifyJob = lifecycleScope.launch(Dispatchers.IO) {
@@ -174,7 +192,13 @@ class ReviewCacheService : BaseService() {
         if (workJob?.isActive != true) {
             startWork()
         }
-        return super.onStartCommand(intent, flags, startId)
+        coordinatorNotificationOwned = CacheReviewWorkerRegistry.hasCoordinatorTasks()
+        val result = super.onStartCommand(intent, flags, startId)
+        if (coordinatorNotificationOwned) {
+            notificationManager.cancel(NotificationId.CacheBookService)
+            CacheNotificationBridge.render(CacheCoordinator.snapshot.value)
+        }
+        return result
     }
 
     private fun startWork() {
@@ -212,14 +236,15 @@ class ReviewCacheService : BaseService() {
                                 )
                                 }
                                 .getOrDefault(false)
-                            val bookUrl = task.key.substringBefore('|')
                             val chapterIndex = task.key.substringAfter('|').toIntOrNull()
                             if (chapterIndex != null) {
-                                io.legado.app.help.cache.CacheReviewWorkerRegistry.onChapterFinished(
-                                    bookUrl,
-                                    chapterIndex,
-                                    success,
-                                )
+                                task.executionLease?.let { lease ->
+                                    io.legado.app.help.cache.CacheReviewWorkerRegistry.onChapterFinished(
+                                        lease,
+                                        chapterIndex,
+                                        success,
+                                    )
+                                }
                             }
                         } finally {
                             activeCount.decrementAndGet()
@@ -248,7 +273,9 @@ class ReviewCacheService : BaseService() {
             .setOngoing(false)
             .setAutoCancel(false)
             .build()
-        notificationManager.notify(NotificationId.CacheBookService, finalNotification)
+        if (!coordinatorNotificationOwned) {
+            notificationManager.notify(notificationId(), finalNotification)
+        }
         stopForeground(false)
         workJob?.cancel()
         notifyJob?.cancel()
@@ -259,8 +286,12 @@ class ReviewCacheService : BaseService() {
 
     override fun startForegroundNotification() {
         val notification = notificationBuilder().build()
-        startForeground(NotificationId.CacheBookService, notification)
-        notificationManager.notify(NotificationId.CacheBookService, notification)
+        startForeground(notificationId(), notification)
+        if (coordinatorNotificationMode()) {
+            CacheNotificationBridge.render(CacheCoordinator.snapshot.value)
+        } else {
+            notificationManager.notify(notificationId(), notification)
+        }
     }
 
     /** 通知文字：正文 x/y · 评论 a/b（y = 本次缓存目标章数），有已登记快照时附“评论快照 c/d” */
@@ -289,6 +320,10 @@ class ReviewCacheService : BaseService() {
     }
 
     private fun upNotification(state: ReviewSyncState) {
+        if (coordinatorNotificationMode()) {
+            CacheNotificationBridge.render(CacheCoordinator.snapshot.value)
+            return
+        }
         val now = System.currentTimeMillis()
         if (now - lastNotifyTime < NOTIFICATION_INTERVAL_MS) return
         lastNotifyTime = now

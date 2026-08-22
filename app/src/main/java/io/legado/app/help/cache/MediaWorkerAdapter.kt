@@ -1,6 +1,7 @@
 package io.legado.app.help.cache
 
 import io.legado.app.data.appDb
+import io.legado.app.data.entities.BookChapter
 import io.legado.app.ui.book.cache.AudioCacheTaskManager
 import io.legado.app.ui.book.cache.CacheTaskStatus
 import java.util.concurrent.ConcurrentHashMap
@@ -17,7 +18,9 @@ internal class MediaWorkerAdapter(
         require(task.phase == CachePhase.MEDIA) { "media adapter received ${task.phase}" }
         val book = appDb.bookDao.getBook(task.bookUrl)
             ?: error("book not found: ${task.bookUrl}")
-        task.units.forEach { workerPort.updateUnit(lease, it.key, CacheUnitStatus.RUNNING) }
+        task.units
+            .filter { it.status == CacheUnitStatus.PENDING || it.status == CacheUnitStatus.REVIEW_ELIGIBLE }
+            .forEach { workerPort.updateUnit(lease, it.key, CacheUnitStatus.RUNNING) }
         val chapters = task.units.mapNotNull { unit ->
             appDb.bookChapterDao.getChapter(task.bookUrl, unit.key.chapterIndex)
                 ?.let { unit.key to it }
@@ -42,9 +45,18 @@ internal class MediaWorkerAdapter(
             CacheMediaWorkerRegistry.fail(lease, "no media chapters found")
             return
         }
+        val chapterFinished: (BookChapter, Boolean, String?) -> Unit = { chapter, success, error ->
+            CacheMediaWorkerRegistry.onChapterFinished(
+                lease,
+                chapter.index,
+                success,
+                error,
+            )
+        }
+        val finished = { CacheMediaWorkerRegistry.onFinished(lease) }
         val state = AudioCacheTaskManager.snapshot(task.bookUrl)
         if (state?.status == CacheTaskStatus.PAUSED) {
-            if (!AudioCacheTaskManager.resume(task.bookUrl)) {
+            if (!AudioCacheTaskManager.resume(task.bookUrl, chapterFinished, finished)) {
                 CacheMediaWorkerRegistry.fail(lease, "paused media task could not resume")
             }
             return
@@ -59,7 +71,8 @@ internal class MediaWorkerAdapter(
                     appDb.bookChapterDao.update(chapter)
                 }
             },
-            onFinished = { CacheMediaWorkerRegistry.onFinished(task.bookUrl) },
+            onChapterFinished = chapterFinished,
+            onFinished = finished,
             coordinatorManaged = true,
         )
         if (!started) CacheMediaWorkerRegistry.fail(lease, "media task was already active")
@@ -68,6 +81,7 @@ internal class MediaWorkerAdapter(
     fun pause(submission: CacheSubmission) {
         val task = CacheCoordinator.currentTask(submission) ?: return
         AudioCacheTaskManager.pause(task.bookUrl)
+        CacheMediaWorkerRegistry.remove(submission.sessionId, submission.taskId)
         CacheCoordinator.workerPort.confirmPaused(submission)
     }
 
@@ -117,48 +131,109 @@ private object CacheMediaWorkerRegistry {
             ?.units
             ?.filter { it.status == CacheUnitStatus.PENDING || it.status == CacheUnitStatus.RUNNING }
             ?.forEach { unit ->
+                if (unit.status == CacheUnitStatus.PENDING) {
+                    port.updateUnit(lease, unit.key, CacheUnitStatus.RUNNING)
+                }
                 port.updateUnit(lease, unit.key, CacheUnitStatus.FAILED, error)
             }
         if (port.finish(lease, CacheResult.FAILED, error)) {
             CacheCoordinator.notifyTaskFinished(lease, CacheResult.FAILED, error)
         }
-        bindings.remove(lease.bookKey())
+        removeBinding(lease)
     }
 
-    fun onFinished(bookUrl: String) {
-        val binding = bindings[bookUrl] ?: return
-        val state = AudioCacheTaskManager.snapshot(bookUrl) ?: return
+    fun onChapterFinished(
+        lease: CacheWorkerLease,
+        chapterIndex: Int,
+        success: Boolean,
+        error: String?,
+    ) {
+        val binding = bindingFor(lease) ?: return
+        if (!binding.expected.any { it.chapterIndex == chapterIndex }) return
+        val key = binding.expected.first { it.chapterIndex == chapterIndex }
+        requirePort().updateUnit(
+            lease,
+            key,
+            if (success) CacheUnitStatus.SUCCEEDED else CacheUnitStatus.FAILED,
+            error,
+        )
+    }
+
+    fun onFinished(lease: CacheWorkerLease) {
+        val binding = bindingFor(lease) ?: return
+        val state = AudioCacheTaskManager.snapshot(binding.bookUrl)
+            ?: run {
+                fail(lease, "media worker finished without a state")
+                return
+            }
         if (state.status == CacheTaskStatus.PAUSED) return
         val completed = state.completedChapters.coerceIn(0, binding.expected.size)
         val failed = state.status == CacheTaskStatus.FAILED || state.status == CacheTaskStatus.CANCELLED
+        val current = CacheCoordinator.currentTask(CacheSubmission(lease.sessionId, lease.taskId))
         binding.expected.forEachIndexed { index, key ->
-            val status = if (index < completed) CacheUnitStatus.SUCCEEDED
-            else CacheUnitStatus.FAILED
-            requirePort().updateUnit(
-                binding.lease,
-                key,
-                status,
-                if (status == CacheUnitStatus.FAILED) state.message else null,
-            )
+            val currentStatus = current?.units?.firstOrNull { it.key == key }?.status
+            if (currentStatus == CacheUnitStatus.PENDING || currentStatus == CacheUnitStatus.RUNNING) {
+                if (currentStatus == CacheUnitStatus.PENDING) {
+                    requirePort().updateUnit(lease, key, CacheUnitStatus.RUNNING)
+                }
+                val status = if (index < completed && !failed) CacheUnitStatus.SUCCEEDED
+                else CacheUnitStatus.FAILED
+                requirePort().updateUnit(lease, key, status, state.message.takeIf { status == CacheUnitStatus.FAILED })
+            }
         }
         val result = if (failed || completed < binding.expected.size) {
             CacheResult.FAILED
         } else {
             CacheResult.SUCCEEDED
         }
-        if (requirePort().finish(binding.lease, result, state.message.takeIf { result == CacheResult.FAILED })) {
+        if (requirePort().finish(lease, result, state.message.takeIf { result == CacheResult.FAILED })) {
             CacheCoordinator.notifyTaskFinished(
-                binding.lease,
+                lease,
                 result,
                 state.message.takeIf { result == CacheResult.FAILED },
             )
         }
-        bindings.remove(bookUrl)
+        removeBinding(lease)
+    }
+
+    private fun bindingFor(lease: CacheWorkerLease): Binding? {
+        val binding = bindings.values.firstOrNull {
+            it.lease.sessionId == lease.sessionId && it.lease.taskId == lease.taskId
+        } ?: run {
+            AppLogCacheLogSink.record(
+                CacheLogEvent(
+                    CacheLogEventType.STALE_UPDATE_DROPPED,
+                    lease.sessionId,
+                    lease.taskId,
+                    "media binding missing",
+                )
+            )
+            return null
+        }
+        if (binding.lease.generation != lease.generation) {
+            AppLogCacheLogSink.record(
+                CacheLogEvent(
+                    CacheLogEventType.STALE_UPDATE_DROPPED,
+                    lease.sessionId,
+                    lease.taskId,
+                    "media generation=${lease.generation}",
+                )
+            )
+            return null
+        }
+        return binding
+    }
+
+    private fun removeBinding(lease: CacheWorkerLease) {
+        bindings.entries.toList()
+            .filter {
+                it.value.lease.sessionId == lease.sessionId &&
+                    it.value.lease.taskId == lease.taskId
+            }
+            .forEach { bindings.remove(it.key, it.value) }
     }
 
     private fun requirePort(): CacheWorkerPort =
         checkNotNull(workerPort) { "cache media worker registry is not bound" }
 
-    private fun CacheWorkerLease.bookKey(): String =
-        CacheCoordinator.currentTask(CacheSubmission(sessionId, taskId))?.bookUrl.orEmpty()
 }

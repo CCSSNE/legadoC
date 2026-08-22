@@ -21,11 +21,19 @@ internal class TextBodyWorkerAdapter(
         }
         val book = appDb.bookDao.getBook(task.bookUrl)
             ?: error("book not found: ${task.bookUrl}")
-        task.units.forEach { unit ->
-            workerPort.updateUnit(lease, unit.key, CacheUnitStatus.RUNNING)
-        }
+        task.units
+            .filter { it.status == CacheUnitStatus.PENDING || it.status == CacheUnitStatus.REVIEW_ELIGIBLE }
+            .forEach { unit ->
+                workerPort.updateUnit(lease, unit.key, CacheUnitStatus.RUNNING)
+            }
         if (!registry.register(task, lease, task.units.map { it.key }.toSet())) {
-            task.units.forEach { unit ->
+            task.units
+                .filter { it.status in setOf(
+                    CacheUnitStatus.PENDING,
+                    CacheUnitStatus.REVIEW_ELIGIBLE,
+                    CacheUnitStatus.RUNNING,
+                ) }
+                .forEach { unit ->
                 workerPort.updateUnit(
                     lease,
                     unit.key,
@@ -146,12 +154,12 @@ internal object CacheBodyWorkerRegistry {
         bindings["$sessionId/$taskId"]?.let { pausedBooks.add(it.bookUrl) }
     }
 
-    fun onChapterSuccess(bookUrl: String, chapterIndex: Int) {
-        complete(bookUrl, chapterIndex, CacheUnitStatus.SUCCEEDED, null)
+    fun onChapterSuccess(lease: CacheWorkerLease, chapterIndex: Int) {
+        complete(lease, chapterIndex, CacheUnitStatus.SUCCEEDED, null)
     }
 
-    fun onChapterFailed(bookUrl: String, chapterIndex: Int, error: String?) {
-        complete(bookUrl, chapterIndex, CacheUnitStatus.FAILED, error)
+    fun onChapterFailed(lease: CacheWorkerLease, chapterIndex: Int, error: String?) {
+        complete(lease, chapterIndex, CacheUnitStatus.FAILED, error)
     }
 
     fun onStartRejected(lease: CacheWorkerLease, error: String) {
@@ -165,94 +173,109 @@ internal object CacheBodyWorkerRegistry {
         }
     }
 
-    fun onWorkerFinished(bookUrl: String? = null, error: String? = null) {
-        val books = synchronized(lock) {
-            if (bookUrl != null) setOf(bookUrl) else managedBooks.toSet()
+    fun onWorkerFinished(lease: CacheWorkerLease, error: String? = null) {
+        val binding = bindings[taskKey(lease)] ?: run {
+            logStale(lease, "body worker finished binding missing")
+            return
         }
-        val paused = books.filter { pausedBooks.remove(it) }.toSet()
-        paused.forEach { pausedBook ->
-            bindings.entries
-                .filter { it.value.bookUrl == pausedBook }
-                .forEach { bindings.remove(it.key, it.value) }
-            managedBooks.remove(pausedBook)
-        }
-        val targets = synchronized(lock) {
-            bindings.values.filter {
-                (bookUrl == null || it.bookUrl == bookUrl) && it.bookUrl !in paused
-            }.toList()
-        }
-        targets.forEach { binding ->
-            val unfinished = binding.expected - binding.completed.keys
-            unfinished.forEach { key ->
-                complete(
-                    binding.bookUrl,
-                    key.chapterIndex,
-                    CacheUnitStatus.FAILED,
-                    error ?: "body worker ended before chapter completion",
-                )
+        if (pausedBooks.remove(binding.bookUrl)) {
+            if (binding.lease.generation != lease.generation) {
+                logStale(lease, "body worker finished while paused")
             }
+            bindings.remove(taskKey(lease), binding)
+            managedBooks.remove(binding.bookUrl)
+            return
         }
-        books.asSequence()
-            .filterNot(paused::contains)
-            .forEach { io.legado.app.help.review.ReviewSnapshotManager.endBodyPhase(it) }
-        books.forEach(managedBooks::remove)
+        if (binding.lease.generation != lease.generation) {
+            logStale(lease, "body worker finished generation=${lease.generation}")
+            return
+        }
+        val unfinished = binding.expected - binding.completed.keys
+        unfinished.forEach { key ->
+            complete(
+                lease,
+                key.chapterIndex,
+                CacheUnitStatus.FAILED,
+                error ?: "body worker ended before chapter completion",
+            )
+        }
+        io.legado.app.help.review.ReviewSnapshotManager.endBodyPhase(binding.bookUrl)
+        managedBooks.remove(binding.bookUrl)
     }
 
     private fun complete(
-        bookUrl: String,
+        lease: CacheWorkerLease,
         chapterIndex: Int,
         status: CacheUnitStatus,
         error: String?,
     ) {
-        val targets = synchronized(lock) {
-            bindings.values.filter {
-                it.bookUrl == bookUrl && it.expected.any { key -> key.chapterIndex == chapterIndex }
-            }.toList()
-        }
-        targets.forEach { binding ->
-            val key = binding.expected.first { it.chapterIndex == chapterIndex }
-            val accepted = synchronized(lock) {
-                if (binding.completed.containsKey(key)) {
-                    false
-                } else {
-                    binding.completed[key] = status
-                    true
-                }
+        val binding = bindingFor(lease, "body chapter=$chapterIndex") ?: return
+        if (!binding.expected.any { it.chapterIndex == chapterIndex }) return
+        val key = binding.expected.first { it.chapterIndex == chapterIndex }
+        val accepted = synchronized(lock) {
+            if (binding.completed.containsKey(key)) {
+                false
+            } else {
+                binding.completed[key] = status
+                true
             }
-            if (!accepted) return@forEach
-            requireWorkerPort().updateUnit(binding.lease, key, status, error)
-            val done = synchronized(lock) { binding.completed.size == binding.expected.size }
-            if (done) {
-                val failed = synchronized(lock) {
-                    binding.completed.values.any { it == CacheUnitStatus.FAILED }
-                }
-                val finished = requireWorkerPort().finish(
+        }
+        if (!accepted) return
+        requireWorkerPort().updateUnit(binding.lease, key, status, error)
+        val done = synchronized(lock) { binding.completed.size == binding.expected.size }
+        if (done) {
+            val failed = synchronized(lock) {
+                binding.completed.values.any { it == CacheUnitStatus.FAILED }
+            }
+            val finished = requireWorkerPort().finish(
+                binding.lease,
+                if (failed) CacheResult.FAILED else CacheResult.SUCCEEDED,
+                if (failed) "one or more chapters failed" else null,
+            )
+            if (finished) {
+                CacheCoordinator.notifyTaskFinished(
                     binding.lease,
                     if (failed) CacheResult.FAILED else CacheResult.SUCCEEDED,
                     if (failed) "one or more chapters failed" else null,
                 )
-                if (finished) {
-                    CacheCoordinator.notifyTaskFinished(
-                        binding.lease,
-                        if (failed) CacheResult.FAILED else CacheResult.SUCCEEDED,
-                        if (failed) "one or more chapters failed" else null,
-                    )
-                }
-                if (finished && CacheCoordinator.currentTask(
-                        CacheSubmission(binding.lease.sessionId, binding.lease.taskId)
-                    )?.reviewEnabled == true
-                ) {
-                    CacheCoordinator.appendReviewTask(
-                        binding.lease.sessionId,
-                        binding.lease.taskId,
-                    )
-                }
-                bindings.remove(taskKey(binding.lease))
             }
+            if (finished && CacheCoordinator.currentTask(
+                    CacheSubmission(binding.lease.sessionId, binding.lease.taskId)
+                )?.reviewEnabled == true
+            ) {
+                CacheCoordinator.appendReviewTask(
+                    binding.lease.sessionId,
+                    binding.lease.taskId,
+                )
+            }
+            bindings.remove(taskKey(binding.lease))
         }
     }
 
     private fun taskKey(lease: CacheWorkerLease): String = "${lease.sessionId}/${lease.taskId}"
+
+    private fun bindingFor(lease: CacheWorkerLease, detail: String): Binding? {
+        val binding = bindings[taskKey(lease)] ?: run {
+            logStale(lease, "$detail binding missing")
+            return null
+        }
+        if (binding.lease.generation != lease.generation) {
+            logStale(lease, "$detail generation=${lease.generation}")
+            return null
+        }
+        return binding
+    }
+
+    private fun logStale(lease: CacheWorkerLease, detail: String) {
+        AppLogCacheLogSink.record(
+            CacheLogEvent(
+                CacheLogEventType.STALE_UPDATE_DROPPED,
+                lease.sessionId,
+                lease.taskId,
+                detail,
+            )
+        )
+    }
 
     private fun requireWorkerPort(): CacheWorkerPort =
         checkNotNull(workerPort) { "cache body worker registry is not bound" }

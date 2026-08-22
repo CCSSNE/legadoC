@@ -271,6 +271,7 @@ internal class CacheTaskStore(
         require(result != CacheResult.CANCELLED) {
             "cancelled tasks must use beginCancel/confirmCancelled"
         }
+        var aggregateResult: CacheResult? = null
         synchronized(lock) {
             val task = requireTaskLocked(lease.sessionId, lease.taskId)
             if (!isCurrentLease(task, lease) || task.status != CacheLifecycle.RUNNING) {
@@ -280,14 +281,16 @@ internal class CacheTaskStore(
             check(task.status == CacheLifecycle.RUNNING) {
                 "task is not running: ${task.status}"
             }
-            val lifecycle = if (result == CacheResult.FAILED) {
+            val finalResult = aggregateTaskResult(task, result)
+            aggregateResult = finalResult
+            val lifecycle = if (finalResult == CacheResult.FAILED) {
                 CacheLifecycle.FAILED
             } else {
                 CacheLifecycle.COMPLETED
             }
             replaceTaskLocked(task.copy(
                 status = lifecycle,
-                result = result,
+                result = finalResult,
                 error = error,
                 updatedAt = System.currentTimeMillis(),
             ))
@@ -297,9 +300,21 @@ internal class CacheTaskStore(
             CacheLogEventType.TASK_FINISHED,
             lease.sessionId,
             lease.taskId,
-            "result=$result${error?.let { " error=$it" }.orEmpty()}",
+            "result=$aggregateResult requested=$result${error?.let { " error=$it" }.orEmpty()}",
         )
         return true
+    }
+
+    private fun aggregateTaskResult(task: CacheTaskState, requested: CacheResult): CacheResult {
+        val succeeded = task.units.count { it.status == CacheUnitStatus.SUCCEEDED }
+        val failed = task.units.count { it.status == CacheUnitStatus.FAILED }
+        return when {
+            succeeded > 0 && failed > 0 -> CacheResult.PARTIAL
+            failed > 0 -> CacheResult.FAILED
+            succeeded > 0 -> CacheResult.SUCCEEDED
+            requested == CacheResult.FAILED -> CacheResult.FAILED
+            else -> requested
+        }
     }
 
     fun currentTask(sessionId: String, taskId: String): CacheTaskState? = synchronized(lock) {
@@ -473,7 +488,7 @@ internal class CacheTaskStore(
                     detail = "tasks=${recovered.tasks.size} status=${recovered.status}",
                 )
             }
-            publishLocked()
+            publishLocked(persist = true)
         }
     }
 
