@@ -59,22 +59,27 @@ object AudioCacheTaskManager {
         chapters: List<BookChapter>,
         resolver: suspend (Book, BookChapter) -> ExoPlayerHelper.MediaRequest,
         onChapterResolved: ((BookChapter, ExoPlayerHelper.MediaRequest) -> Unit)? = null,
-        onFinished: (() -> Unit)? = null
+        onFinished: (() -> Unit)? = null,
+        coordinatorManaged: Boolean = false,
     ): Boolean {
         if (chapters.isEmpty()) return false
         val existing = _states.value[book.bookUrl]
         if (existing?.active == true) return false
         if (existing?.status == CacheTaskStatus.PAUSED) return false
+        if (futures.containsKey(book.bookUrl)) return false
         val request = AudioCacheTaskRequest(
             book = book,
             chapters = chapters,
             resolver = resolver,
             onChapterResolved = onChapterResolved,
             onFinished = onFinished,
+            coordinatorManaged = coordinatorManaged,
             totalChapters = chapters.size
         )
-        requests[book.bookUrl] = request
-        return startRequest(request, chapters, completedOffset = 0)
+        if (requests.putIfAbsent(book.bookUrl, request) != null) return false
+        val started = startRequest(request, chapters, completedOffset = 0)
+        if (!started) requests.remove(book.bookUrl, request)
+        return started
     }
 
     private fun startRequest(
@@ -285,7 +290,7 @@ object AudioCacheTaskManager {
                     if (finalStatus != CacheTaskStatus.PAUSED) {
                         requests.remove(book.bookUrl)
                     }
-                    if (finalStatus == CacheTaskStatus.COMPLETED) {
+                    if (finalStatus == CacheTaskStatus.COMPLETED || request.coordinatorManaged) {
                         request.onFinished?.invoke()
                     }
                 }
@@ -418,6 +423,7 @@ object AudioCacheTaskManager {
     }
 
     private fun notifyState(state: AudioCacheTaskState) {
+        if (requests[state.bookUrl]?.coordinatorManaged == true) return
         val terminal = !state.active && state.status.isTerminalNotificationStatus()
         val now = System.currentTimeMillis()
         val last = lastNotifyTimes[state.bookUrl] ?: 0L
@@ -489,6 +495,7 @@ private data class AudioCacheTaskRequest(
     val resolver: suspend (Book, BookChapter) -> ExoPlayerHelper.MediaRequest,
     val onChapterResolved: ((BookChapter, ExoPlayerHelper.MediaRequest) -> Unit)?,
     val onFinished: (() -> Unit)?,
+    val coordinatorManaged: Boolean,
     val totalChapters: Int
 )
 

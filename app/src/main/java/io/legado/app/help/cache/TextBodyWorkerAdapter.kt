@@ -1,7 +1,6 @@
 package io.legado.app.help.cache
 
 import io.legado.app.data.appDb
-import io.legado.app.help.book.BookHelp
 import io.legado.app.model.CacheBook
 import splitties.init.appCtx
 import java.util.concurrent.ConcurrentHashMap
@@ -22,51 +21,28 @@ internal class TextBodyWorkerAdapter(
         }
         val book = appDb.bookDao.getBook(task.bookUrl)
             ?: error("book not found: ${task.bookUrl}")
-        val valid = task.units.map { it.key }.filter { key ->
-            appDb.bookChapterDao.getChapter(task.bookUrl, key.chapterIndex) != null
-        }
         task.units.forEach { unit ->
             workerPort.updateUnit(lease, unit.key, CacheUnitStatus.RUNNING)
         }
-        val pending = linkedSetOf<CacheUnitKey>()
-        valid.forEach { key ->
-            val chapter = appDb.bookChapterDao.getChapter(task.bookUrl, key.chapterIndex)
-            if (chapter == null) {
+        if (!registry.register(task, lease, task.units.map { it.key }.toSet())) {
+            task.units.forEach { unit ->
                 workerPort.updateUnit(
                     lease,
-                    key,
+                    unit.key,
                     CacheUnitStatus.FAILED,
-                    "chapter not found: ${key.chapterIndex}",
+                    "another body task is active for this book",
                 )
-            } else if (chapter.isVolume || BookHelp.hasImageContent(book, chapter)) {
-                workerPort.updateUnit(lease, key, CacheUnitStatus.SUCCEEDED)
-            } else {
-                pending += key
             }
-        }
-        task.units.filter { it.key !in valid }.forEach { unit ->
-            workerPort.updateUnit(
-                lease,
-                unit.key,
-                CacheUnitStatus.FAILED,
-                "chapter not found: ${unit.key.chapterIndex}",
-            )
-        }
-        if (pending.isEmpty()) {
-            val failed = task.units.any { current ->
-                val state = CacheCoordinator.currentTask(CacheSubmission(task.sessionId, task.taskId))
-                    ?.units?.firstOrNull { it.key == current.key }
-                state?.status == CacheUnitStatus.FAILED
+            if (workerPort.finish(lease, CacheResult.FAILED, "another body task is active for this book")) {
+                CacheCoordinator.notifyTaskFinished(
+                    lease,
+                    CacheResult.FAILED,
+                    "another body task is active for this book",
+                )
             }
-            finishBody(
-                lease,
-                if (failed) CacheResult.FAILED else CacheResult.SUCCEEDED,
-                if (failed) "one or more chapters could not be resolved" else null,
-            )
             return
         }
-        registry.register(task, lease, pending)
-        ranges(pending.map { it.chapterIndex }).forEach { (start, end) ->
+        ranges(task.units.map { it.key.chapterIndex }).forEach { (start, end) ->
             CacheBook.start(
                 appCtx,
                 book,
@@ -80,29 +56,20 @@ internal class TextBodyWorkerAdapter(
     }
 
     fun pause(submission: CacheSubmission) {
-        CacheBook.pauseDownload()
+        val task = CacheCoordinator.currentTask(submission)
+            ?: return
+        registry.markPaused(submission.sessionId, submission.taskId)
+        CacheBook.stop(task.bookUrl, releaseReviewPhase = false)
         CacheCoordinator.workerPort.confirmPaused(submission)
     }
 
     fun cancel(submission: CacheSubmission) {
+        val task = CacheCoordinator.currentTask(submission)
+            ?: return
         registry.remove(submission.sessionId, submission.taskId)
-        CacheBook.stopAll()
+        CacheBook.stop(task.bookUrl, releaseReviewPhase = false)
         if (workerPort.confirmCancelled(submission)) {
             CacheCoordinator.notifyTaskFinished(submission, CacheResult.CANCELLED)
-        }
-    }
-
-    private fun finishBody(
-        lease: CacheWorkerLease,
-        result: CacheResult,
-        error: String?,
-    ) {
-        if (workerPort.finish(lease, result, error)) {
-            CacheCoordinator.notifyTaskFinished(lease, result, error)
-            val task = CacheCoordinator.currentTask(CacheSubmission(lease.sessionId, lease.taskId))
-            if (task?.reviewEnabled == true) {
-                CacheCoordinator.appendReviewTask(lease.sessionId, lease.taskId)
-            }
         }
     }
 
@@ -137,19 +104,46 @@ internal object CacheBodyWorkerRegistry {
 
     private val lock = Any()
     private val bindings = ConcurrentHashMap<String, Binding>()
+    private val managedBooks = ConcurrentHashMap.newKeySet<String>()
+    private val pausedBooks = ConcurrentHashMap.newKeySet<String>()
 
     fun bind(workerPort: CacheWorkerPort) {
         this.workerPort = workerPort
     }
 
-    fun register(task: CacheTaskState, lease: CacheWorkerLease, units: Set<CacheUnitKey>) {
+    fun register(task: CacheTaskState, lease: CacheWorkerLease, units: Set<CacheUnitKey>): Boolean {
         synchronized(lock) {
+            val existing = bindings.values.firstOrNull {
+                it.bookUrl == task.bookUrl && it.lease.taskId != lease.taskId
+            }
+            if (existing != null) return false
+            if (CacheBook.cacheBookMap[task.bookUrl]?.isRun() == true) return false
             bindings[taskKey(lease)] = Binding(lease, task.bookUrl, units)
+            managedBooks.add(task.bookUrl)
+            pausedBooks.remove(task.bookUrl)
         }
+        return true
+    }
+
+    fun isCoordinatorManaged(bookUrl: String): Boolean = managedBooks.contains(bookUrl)
+
+    fun isLeaseActive(lease: CacheWorkerLease): Boolean {
+        val task = CacheCoordinator.currentTask(CacheSubmission(lease.sessionId, lease.taskId))
+        return task != null &&
+            managedBooks.contains(task.bookUrl) &&
+            task.status == CacheLifecycle.RUNNING &&
+            task.generation == lease.generation &&
+            bindings[taskKey(lease)] != null
     }
 
     fun remove(sessionId: String, taskId: String) {
-        bindings.remove("$sessionId/$taskId")
+        val binding = bindings.remove("$sessionId/$taskId") ?: return
+        io.legado.app.help.review.ReviewSnapshotManager.endBodyPhase(binding.bookUrl)
+        managedBooks.remove(binding.bookUrl)
+    }
+
+    fun markPaused(sessionId: String, taskId: String) {
+        bindings["$sessionId/$taskId"]?.let { pausedBooks.add(it.bookUrl) }
     }
 
     fun onChapterSuccess(bookUrl: String, chapterIndex: Int) {
@@ -161,13 +155,31 @@ internal object CacheBodyWorkerRegistry {
     }
 
     fun onStartRejected(lease: CacheWorkerLease, error: String) {
-        requireWorkerPort().finish(lease, CacheResult.FAILED, error)
-        bindings.remove(taskKey(lease))
+        if (requireWorkerPort().finish(lease, CacheResult.FAILED, error)) {
+            CacheCoordinator.notifyTaskFinished(lease, CacheResult.FAILED, error)
+        }
+        val binding = bindings.remove(taskKey(lease))
+        binding?.let {
+            io.legado.app.help.review.ReviewSnapshotManager.endBodyPhase(it.bookUrl)
+            managedBooks.remove(it.bookUrl)
+        }
     }
 
     fun onWorkerFinished(bookUrl: String? = null, error: String? = null) {
+        val books = synchronized(lock) {
+            if (bookUrl != null) setOf(bookUrl) else managedBooks.toSet()
+        }
+        val paused = books.filter { pausedBooks.remove(it) }.toSet()
+        paused.forEach { pausedBook ->
+            bindings.entries
+                .filter { it.value.bookUrl == pausedBook }
+                .forEach { bindings.remove(it.key, it.value) }
+            managedBooks.remove(pausedBook)
+        }
         val targets = synchronized(lock) {
-            bindings.values.filter { bookUrl == null || it.bookUrl == bookUrl }.toList()
+            bindings.values.filter {
+                (bookUrl == null || it.bookUrl == bookUrl) && it.bookUrl !in paused
+            }.toList()
         }
         targets.forEach { binding ->
             val unfinished = binding.expected - binding.completed.keys
@@ -180,6 +192,10 @@ internal object CacheBodyWorkerRegistry {
                 )
             }
         }
+        books.asSequence()
+            .filterNot(paused::contains)
+            .forEach { io.legado.app.help.review.ReviewSnapshotManager.endBodyPhase(it) }
+        books.forEach(managedBooks::remove)
     }
 
     private fun complete(

@@ -19,6 +19,13 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.databinding.ActivityCacheManageBinding
 import io.legado.app.help.AppWebDav
+import io.legado.app.help.cache.CacheCoordinator
+import io.legado.app.help.cache.CacheKind
+import io.legado.app.help.cache.CacheLifecycle
+import io.legado.app.help.cache.CachePhase
+import io.legado.app.help.cache.CacheSnapshot
+import io.legado.app.help.cache.CacheTaskState
+import io.legado.app.help.cache.CacheSubmission
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.SegmentedControlStyle
@@ -142,7 +149,8 @@ class CacheManageActivity :
 
     private fun observeTasks() {
         lifecycleScope.launch {
-            AudioCacheTaskManager.states.collectLatest { states ->
+            CacheCoordinator.snapshot.collectLatest { snapshot ->
+                val states = snapshot.toMediaTaskStates()
                 adapter.updateTaskStates(states)
                 if (viewModel.mode == CacheManageMode.AUDIO || viewModel.mode == CacheManageMode.VIDEO) {
                     reloadAudioItemsWhenNeeded(states)
@@ -415,7 +423,14 @@ class CacheManageActivity :
     }
 
     override fun stopAudioCache(item: CacheBookItem) {
-        AudioCacheTaskManager.togglePause(item.book.bookUrl)
+        val task = CacheCoordinator.snapshot.value.findMediaTask(item.book.bookUrl) ?: return
+        when (task.second.status) {
+            CacheLifecycle.PAUSED -> CacheCoordinator.resume(task.first)
+            CacheLifecycle.RUNNING,
+            CacheLifecycle.QUEUED,
+            CacheLifecycle.PAUSING -> CacheCoordinator.pause(task.first)
+            else -> Unit
+        }
     }
 
     override fun selectSource(item: CacheBookItem) {
@@ -533,12 +548,61 @@ private val tabOrder = listOf(
 )
 
 private fun CacheBookItem.hasLockedAudioTask(): Boolean {
-    if (AudioCacheTaskManager.snapshot(book.bookUrl).locksCacheActions()) return true
-    return sourceVariants.any { AudioCacheTaskManager.snapshot(it.book.bookUrl).locksCacheActions() }
+    if (CacheCoordinator.snapshot.value.findMediaTask(book.bookUrl)?.second?.locksCacheActions() == true) {
+        return true
+    }
+    return sourceVariants.any {
+        CacheCoordinator.snapshot.value.findMediaTask(it.book.bookUrl)?.second?.locksCacheActions() == true
+    }
 }
 
-private fun AudioCacheTaskState?.locksCacheActions(): Boolean {
-    return this?.active == true || this?.status == CacheTaskStatus.PAUSED
+private fun CacheTaskState.locksCacheActions(): Boolean {
+    return status == CacheLifecycle.RUNNING ||
+        status == CacheLifecycle.QUEUED ||
+        status == CacheLifecycle.PAUSING ||
+        status == CacheLifecycle.PAUSED
+}
+
+private fun CacheSnapshot.findMediaTask(bookUrl: String): Pair<CacheSubmission, CacheTaskState>? {
+    return sessions.asSequence()
+        .flatMap { it.tasks.asSequence() }
+        .filter { it.kind != CacheKind.TEXT && it.phase == CachePhase.MEDIA && it.bookUrl == bookUrl }
+        .maxByOrNull { it.updatedAt }
+        ?.let { CacheSubmission(it.sessionId, it.taskId) to it }
+}
+
+private fun CacheSnapshot.toMediaTaskStates(): Map<String, AudioCacheTaskState> {
+    return sessions.asSequence()
+        .flatMap { it.tasks.asSequence() }
+        .filter { it.kind != CacheKind.TEXT && it.phase == CachePhase.MEDIA }
+        .groupBy { it.bookUrl }
+        .mapValues { (_, tasks) ->
+            val task = tasks.maxBy { it.updatedAt }
+            val completed = task.units.count { it.status == io.legado.app.help.cache.CacheUnitStatus.SUCCEEDED }
+            val status = when (task.status) {
+                CacheLifecycle.QUEUED -> CacheTaskStatus.PENDING
+                CacheLifecycle.RUNNING,
+                CacheLifecycle.PAUSING -> CacheTaskStatus.CACHING
+                CacheLifecycle.PAUSED -> CacheTaskStatus.PAUSED
+                CacheLifecycle.COMPLETED -> CacheTaskStatus.COMPLETED
+                CacheLifecycle.CANCELLED -> CacheTaskStatus.CANCELLED
+                CacheLifecycle.FAILED -> CacheTaskStatus.FAILED
+                CacheLifecycle.INTERRUPTED -> CacheTaskStatus.PENDING
+                CacheLifecycle.CANCELLING -> CacheTaskStatus.CACHING
+            }
+            AudioCacheTaskState(
+                bookUrl = task.bookUrl,
+                bookName = task.bookName,
+                totalChapters = task.units.size,
+                completedChapters = completed,
+                currentChapterIndex = completed,
+                status = status,
+                message = task.error.orEmpty(),
+                active = task.status == CacheLifecycle.RUNNING ||
+                    task.status == CacheLifecycle.PAUSING ||
+                    task.status == CacheLifecycle.CANCELLING,
+            )
+        }
 }
 
 private fun summarySize(bytes: Long): String {

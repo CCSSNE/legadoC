@@ -341,27 +341,17 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
                 .toList()
         }
         if (targets.isEmpty()) return 0
-        val started = AudioCacheTaskManager.start(
-            book = book,
-            chapters = targets,
-            resolver = ::resolveMediaRequest,
-            onChapterResolved = { chapter, request ->
-                if (chapter.resourceUrl != request.url) {
-                    chapter.resourceUrl = request.url
-                    appDb.bookChapterDao.update(chapter)
-                }
-            },
-            onFinished = {
-                refreshManifest(book)
-                if (reloadOnFinished && mode == book.cacheManageMode) {
-                    load(mode)
-                }
-            }
+        CacheCoordinator.submit(
+            CacheRequest(
+                source = CacheRequestSource.CACHE_MANAGE,
+                kind = if (book.isVideo) CacheKind.VIDEO else CacheKind.AUDIO,
+                phase = CachePhase.MEDIA,
+                bookUrl = book.bookUrl,
+                bookName = book.name,
+                units = targets.map { CacheUnitKey(book.bookUrl, it.index) },
+            )
         )
-        if (started && mode == book.cacheManageMode) {
-            load(mode)
-        }
-        return if (started) targets.size else 0
+        return targets.size
     }
 
     suspend fun restoreCacheToBookshelf(item: CacheBookItem): Boolean {
