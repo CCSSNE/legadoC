@@ -1,6 +1,11 @@
 package io.legado.app.help.cache
 
 import kotlinx.coroutines.flow.StateFlow
+import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookChapter
+import io.legado.app.help.config.AppConfig
+import io.legado.app.help.book.isLocal
+import io.legado.app.help.review.ReviewSnapshotManager
 
 data class CacheSubmission(
     val sessionId: String,
@@ -39,7 +44,7 @@ internal interface CacheWorkerPort {
 
 /**
  * The only public submission/command boundary for offline cache work.
- * Existing workers are migrated behind [workerPort] in later phases.
+ * Execution workers are hosted behind [workerPort]; they cannot mutate UI state.
  */
 object CacheCoordinator : CacheUiPort {
 
@@ -87,6 +92,7 @@ object CacheCoordinator : CacheUiPort {
 
     private val workerDispatcher: CacheWorkerDispatcher =
         CacheWorkerDispatcherImpl(workerPort)
+    private val readerReviewLock = Any()
 
     init {
         workerDispatcher.recover(snapshot.value)
@@ -133,6 +139,11 @@ object CacheCoordinator : CacheUiPort {
     fun resumeAll(): Int = commandAll { resume(it) }
 
     fun cancelAll(): Int = commandAll { cancel(it) }
+
+    /** Record a reader-requested review refresh without exposing the queue manager. */
+    fun markReviewRefresh(bookUrl: String, chapterIndex: Int) {
+        ReviewSnapshotManager.markUserRefresh(bookUrl, chapterIndex)
+    }
 
     private fun commandAll(command: (CacheSubmission) -> Boolean): Int {
         val submissions = snapshot.value.sessions
@@ -183,6 +194,52 @@ object CacheCoordinator : CacheUiPort {
         }
     }
 
+    /**
+     * Reader-triggered review caching still belongs to the coordinator domain.
+     * Reuse an active same-chapter task so repeated page callbacks do not create
+     * competing REVIEW workers for one book.
+     */
+    internal fun submitReaderReview(
+        book: Book,
+        chapter: BookChapter,
+        force: Boolean,
+    ): Boolean {
+        if (!AppConfig.syncCacheReview || book.isLocal) return false
+        synchronized(readerReviewLock) {
+            val existing = snapshot.value.sessions.asSequence()
+                .flatMap { it.tasks.asSequence() }
+                .filter {
+                    it.kind == CacheKind.TEXT &&
+                        it.phase == CachePhase.REVIEW &&
+                        it.bookUrl == book.bookUrl &&
+                        !CacheLifecycleRules.isTerminal(it.status)
+                }
+                .firstOrNull { task ->
+                    task.units.any { it.key.chapterIndex == chapter.index }
+                }
+            if (existing != null) {
+                // Keep an explicit refresh request durable while the active task
+                // remains the single owner for this chapter.
+                if (force) {
+                    ReviewSnapshotManager.markUserRefresh(book.bookUrl, chapter.index)
+                }
+                return true
+            }
+            submit(
+                CacheRequest(
+                    source = CacheRequestSource.READER,
+                    kind = CacheKind.TEXT,
+                    phase = CachePhase.REVIEW,
+                    bookUrl = book.bookUrl,
+                    bookName = book.name,
+                    units = listOf(CacheUnitKey(book.bookUrl, chapter.index)),
+                    reviewEnabled = true,
+                )
+            )
+            return true
+        }
+    }
+
     internal fun currentTask(submission: CacheSubmission): CacheTaskState? {
         return store.currentTask(submission.sessionId, submission.taskId)
     }
@@ -192,8 +249,7 @@ object CacheCoordinator : CacheUiPort {
         result: CacheResult,
         error: String? = null,
     ) {
-        val task = currentTask(CacheSubmission(lease.sessionId, lease.taskId))
-        CacheNotificationBridge.finished(task, task?.result ?: result, error)
+        notifyTaskFinished(CacheSubmission(lease.sessionId, lease.taskId), result, error)
     }
 
     internal fun notifyTaskFinished(
@@ -202,15 +258,28 @@ object CacheCoordinator : CacheUiPort {
         error: String? = null,
     ) {
         val task = currentTask(submission)
-        CacheNotificationBridge.finished(task, task?.result ?: result, error)
+        if (task != null &&
+            task.kind == CacheKind.TEXT &&
+            task.phase == CachePhase.BODY &&
+            task.reviewEnabled &&
+            task.status in setOf(CacheLifecycle.COMPLETED, CacheLifecycle.FAILED)
+        ) {
+            appendReviewTask(task.sessionId, task.taskId)
+        }
+        val finalTask = currentTask(submission)
+        CacheNotificationBridge.finished(finalTask, finalTask?.result ?: result, error)
     }
 
     private fun validateUiRequest(request: CacheRequest) {
-        require(request.phase != CachePhase.REVIEW) {
-            "UI cannot submit a REVIEW task; the text coordinator appends it after BODY results"
-        }
-        require(request.kind != CacheKind.TEXT || request.phase == CachePhase.BODY) {
-            "text UI requests must use BODY phase"
+        if (request.phase == CachePhase.REVIEW) {
+            require(request.kind == CacheKind.TEXT) { "only text requests can use REVIEW phase" }
+            require(request.source == CacheRequestSource.READER) {
+                "REVIEW tasks must be appended by the text coordinator or submitted by READER"
+            }
+        } else {
+            require(request.kind != CacheKind.TEXT || request.phase == CachePhase.BODY) {
+                "text UI requests must use BODY phase"
+            }
         }
         validateCommon(request)
     }

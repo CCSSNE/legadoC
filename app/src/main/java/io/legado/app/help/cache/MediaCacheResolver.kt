@@ -18,7 +18,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import splitties.init.appCtx
 import java.io.File
 
-/** Shared media URL resolution used by both the old page and Coordinator adapter. */
+/** Shared media URL resolution used by the media execution adapter. */
 internal object MediaCacheResolver {
     suspend fun resolve(book: Book, chapter: BookChapter): ExoPlayerHelper.MediaRequest {
         chapter.resourceUrl
