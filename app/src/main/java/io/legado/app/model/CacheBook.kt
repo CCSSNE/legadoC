@@ -511,21 +511,6 @@ object CacheBook {
             }
         }
 
-        private fun downloadFinish(
-            chapter: BookChapter,
-            content: String,
-            resetPageOffset: Boolean = false,
-            canceled: Boolean = false
-        ) {
-            if (ReadBook.book?.bookUrl == book.bookUrl) {
-                ReadBook.contentLoadFinish(
-                    book, chapter, content,
-                    resetPageOffset = resetPageOffset,
-                    canceled = canceled
-                )
-            }
-        }
-
     }
 
 }

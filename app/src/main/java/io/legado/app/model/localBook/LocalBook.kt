@@ -595,21 +595,25 @@ object LocalBook {
                                 GSON.fromJsonObject<io.legado.app.help.review.ReviewSnapshot>(
                                     snapshotFile.readText()
                                 ).getOrNull() ?: return@runCatching
-                            // 先按 index 精确匹配，再按 title 兜底（本地重新分章后 index 可能漂移）
-                            val localChapter = localChapters.firstOrNull {
-                                it.index == snapshot.chapterIndex
-                            } ?: localChapters.firstOrNull {
-                                it.title == snapshot.chapterTitle && it.title.isNotBlank()
-                            } ?: return@runCatching
-                            val remapped = snapshot.copy(
-                                bookUrl = importedBook.bookUrl,
-                                chapterUrl = localChapter.url,
-                                chapterIndex = localChapter.index,
-                                chapterTitle = localChapter.title
-                            )
-                            io.legado.app.help.review.ReviewSnapshotStore.put(
-                                importedBook, remapped
-                            )
+                            matchLocalChapter(localChapters, snapshot)?.let { localChapter ->
+                                val remapped = snapshot.copy(
+                                    bookUrl = importedBook.bookUrl,
+                                    chapterUrl = localChapter.url,
+                                    chapterIndex = localChapter.index,
+                                    chapterTitle = localChapter.title
+                                )
+                                io.legado.app.help.review.ReviewSnapshotStore.put(
+                                    importedBook, remapped
+                                )
+                            } ?: run {
+                                // 无法唯一确认就不绑定：宁可漏恢复，也不能把评论绑错章
+                                AppLog.put(
+                                    "导入评论快照跳过：找不到唯一匹配的本地章节 " +
+                                        "chapterIndex=${snapshot.chapterIndex} " +
+                                        "chapterTitle=${snapshot.chapterTitle} " +
+                                        "（${snapshotFile.name}）"
+                                )
+                            }
                         }.onFailure { e ->
                             AppLog.put(
                                 "导入评论快照失败 ${snapshotFile.name}\n${e.localizedMessage}", e
@@ -637,6 +641,43 @@ object LocalBook {
         }.onFailure { e ->
             AppLog.put("还原配图数据失败\n${e.localizedMessage}", e)
         }
+    }
+
+    /**
+     * 匹配评论快照对应的本地章节。
+     *
+     * 不能直接 index 优先：TXT 导出再导入后可能因书名/作者/简介生成“前言”，
+     * 导致本地章节整体 index 后移，index 盲绑会把评论绑到错误章节。
+     *
+     * 匹配顺序：
+     * 1. index 相同 且 title 相同（最可靠）；
+     * 2. title 精确匹配：唯一 → 采用；
+     * 3. title 同名多个 → 结合原 index 取距离最近的本地章节，且距离必须唯一；
+     * 4. 仍无法唯一确认 → 返回 null（跳过并记日志，宁可漏恢复也不乱绑定）。
+     */
+    private fun matchLocalChapter(
+        localChapters: List<BookChapter>,
+        snapshot: io.legado.app.help.review.ReviewSnapshot
+    ): BookChapter? {
+        if (snapshot.chapterTitle.isBlank()) return null
+        // 1. index + title 双匹配
+        localChapters.firstOrNull {
+            it.index == snapshot.chapterIndex && it.title == snapshot.chapterTitle
+        }?.let { return it }
+        // 2/3. title 匹配候选
+        val candidates = localChapters.filter { it.title == snapshot.chapterTitle }
+        if (candidates.isEmpty()) return null
+        if (candidates.size == 1) return candidates.first()
+        // 同名多个：取与原 index 距离最近且唯一
+        val nearest = candidates.minByOrNull {
+            kotlin.math.abs(it.index - snapshot.chapterIndex)
+        } ?: return null
+        val hasTie = candidates.any {
+            it !== nearest &&
+                kotlin.math.abs(it.index - snapshot.chapterIndex) ==
+                kotlin.math.abs(nearest.index - snapshot.chapterIndex)
+        }
+        return if (hasTie) null else nearest
     }
 
     /**
