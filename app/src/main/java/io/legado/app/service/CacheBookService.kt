@@ -84,6 +84,7 @@ class CacheBookService : BaseService() {
             servicePendingIntent<CacheBookService>(IntentAction.stop)
         )
         builder.setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+        return builder
     }
 
     override fun onCreate() {

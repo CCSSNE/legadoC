@@ -14,6 +14,7 @@ import io.legado.app.help.review.ReviewSnapshotManager
 import io.legado.app.help.review.ReviewSnapshotManager.ReviewSyncState
 import io.legado.app.model.CacheBook
 import io.legado.app.utils.activityPendingIntent
+import io.legado.app.utils.servicePendingIntent
 import io.legado.app.utils.startService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -100,7 +101,7 @@ class ReviewCacheService : BaseService() {
     private val activeCount = java.util.concurrent.atomic.AtomicInteger(0)
 
     private fun notificationBuilder(): NotificationCompat.Builder {
-        NotificationCompat.Builder(this, AppConst.channelIdDownload)
+        return NotificationCompat.Builder(this, AppConst.channelIdDownload)
             .setSmallIcon(R.drawable.ic_status_bar_r)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
