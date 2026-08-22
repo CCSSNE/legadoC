@@ -36,7 +36,8 @@ object SourceVerificationHelp {
         title: String,
         useBrowser: Boolean,
         refetchAfterSuccess: Boolean = true,
-        html: String? = null
+        html: String? = null,
+        fallbackHtml: String? = null
     ): Pair<String, String> {
         source
             ?: throw NoStackTraceException("getVerificationResult parameter source cannot be null")
@@ -54,7 +55,7 @@ object SourceVerificationHelp {
                 IntentData.put(getVerificationResultKey(source), Thread.currentThread())
             }
         } else {
-            startBrowser(source, url, title, true, refetchAfterSuccess, html)
+            startBrowser(source, url, title, true, refetchAfterSuccess, html, fallbackHtml)
         }
 
         var waitUserInput = false
@@ -81,7 +82,8 @@ object SourceVerificationHelp {
         title: String,
         saveResult: Boolean? = false,
         refetchAfterSuccess: Boolean? = true,
-        html: String? = null
+        html: String? = null,
+        fallbackHtml: String? = null
     ) {
         source ?: throw NoStackTraceException("startBrowser parameter source cannot be null")
         require(url.length < 64 * 1024) { "startBrowser parameter url too long" }
@@ -94,6 +96,7 @@ object SourceVerificationHelp {
             putExtra("sourceVerificationEnable", saveResult)
             putExtra("refetchAfterSuccess", refetchAfterSuccess)
             putExtra("html", html)
+            putExtra("fallbackHtml", fallbackHtml)
             IntentData.put(getVerificationResultKey(source), Thread.currentThread())
         }
     }

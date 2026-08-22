@@ -172,6 +172,14 @@ object CacheBook {
             return "正在下载:${onDownloadCount}|等待中:${waitCount}|失败:${errorDownloadMap.count()}|成功:${successDownloadSet.size}"
         }
 
+    /** 正文缓存进度（已成功章数, 目标总章数）；空表示暂无目标 */
+    val downloadProgress: Pair<Int, Int>?
+        get() {
+            val done = successDownloadSet.size
+            val total = done + waitCount + onDownloadCount
+            return if (total <= 0) null else done to total
+        }
+
     val isRun: Boolean
         get() {
             cacheBookMap.forEach {

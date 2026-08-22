@@ -365,7 +365,7 @@ object ReviewSnapshotManager {
      * click 分支替换 java 拦截宿主，旧源 js 分支挂 AnalyzeRule 钩子，
      * 执行环境与真实点击完全一致。
      */
-    private suspend fun resolveReviewPageUrl(
+    suspend fun resolveReviewPageUrl(
         book: Book,
         bookSource: BookSource,
         chapter: BookChapter,

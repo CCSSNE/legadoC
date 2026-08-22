@@ -1523,6 +1523,8 @@
     <string name="review_sync_running">Syncing cached comment snapshots in the background</string>
     <string name="review_sync_waiting">…</string>
     <string name="review_sync_notification_progress">%1$s · %2$s · %3$d/%4$d snapshots · %5$d chapters done</string>
+    <string name="review_open_mode">Comment open mode</string>
+    <string name="review_no_cached_snapshot">No cached comments for this chapter</string>
     <!-- string end -->
     <string name="error_decode_bitmap">Fail to decode bitmap</string>
     <string name="error_image_url_empty">Image url is empty, check replacement rules</string>

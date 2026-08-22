@@ -370,4 +370,13 @@
         android:key="syncCacheReview"
         android:summary="@string/sync_cache_review_summary"
         android:title="@string/sync_cache_review" />
+
+    <io.legado.app.lib.prefs.NameListPreference
+        android:defaultValue="network"
+        android:entries="@array/review_open_mode_title"
+        android:entryValues="@array/review_open_mode_value"
+        android:key="reviewOpenMode"
+        android:title="@string/review_open_mode"
+        app:iconSpaceReserved="false"
+        app:isBottomBackground="true" />
 </androidx.preference.PreferenceScreen>
