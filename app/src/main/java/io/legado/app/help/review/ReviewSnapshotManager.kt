@@ -9,12 +9,10 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.BookImgClick
-import io.legado.app.help.book.isLocal
 import io.legado.app.help.cache.CacheWorkerLease
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.StrResponse
 import io.legado.app.model.analyzeRule.AnalyzeUrl
-import io.legado.app.service.ReviewCacheService
 import io.legado.app.ui.login.SourceLoginJsExtensions
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
@@ -128,26 +126,10 @@ object ReviewSnapshotManager {
     private const val RESOLVE_TIMEOUT_MS = 20_000L
 
     /**
-     * 正文保存/成功状态结束后调用。
-     * @param force true = 用户明确重新缓存/刷新该章节，忽略旧快照直接重抓
-     */
-    fun enqueueIfEnabled(
-        bookSource: BookSource?,
-        book: Book,
-        chapter: BookChapter,
-        force: Boolean = false
-    ) {
-        if (!AppConfig.syncCacheReview) return
-        if (book.isLocal) return
-        if (bookSource == null) return
-        enqueue(book, chapter, force)
-    }
-
-    /**
      * 已缓存正文的章节在重新缓存/刷新时也必须走“是否需要补评论”的判断，
      * 因此缓存流程在跳过正文下载前调用本方法直接入队。
      */
-    fun enqueue(book: Book, chapter: BookChapter, force: Boolean = false) {
+    internal fun enqueue(book: Book, chapter: BookChapter, force: Boolean = false) {
         enqueue(book, chapter, force, executionLease = null)
     }
 
@@ -178,7 +160,6 @@ object ReviewSnapshotManager {
                 )
             }
         }
-        ReviewCacheService.startSelf()
     }
 
     /** 评论服务消费：取一个任务（无任务返回 null）。force 取聚合值并原子移除 */

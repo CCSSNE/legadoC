@@ -30,6 +30,7 @@ import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.book.update
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
+import io.legado.app.help.cache.ReviewWorkerAdapter
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.globalExecutor
 import io.legado.app.model.localBook.TextFile
@@ -769,7 +770,7 @@ object ReadBook : CoroutineScope by MainScope() {
      */
     private fun notifyChapterDownloaded(book: Book, chapter: BookChapter) {
         val source = appDb.bookSourceDao.getBookSource(book.origin) ?: return
-        io.legado.app.help.review.ReviewSnapshotManager.enqueueIfEnabled(
+        ReviewWorkerAdapter.enqueueLegacyIfEnabled(
             source, book, chapter,
             force = io.legado.app.help.review.ReviewSnapshotManager
                 .isUserRefreshActive(book.bookUrl, chapter.index)

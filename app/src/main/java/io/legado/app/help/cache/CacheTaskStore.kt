@@ -309,9 +309,15 @@ internal class CacheTaskStore(
     private fun aggregateTaskResult(task: CacheTaskState, requested: CacheResult): CacheResult {
         val succeeded = task.units.count { it.status == CacheUnitStatus.SUCCEEDED }
         val failed = task.units.count { it.status == CacheUnitStatus.FAILED }
+        val unfinished = task.units.any {
+            it.status == CacheUnitStatus.PENDING ||
+                it.status == CacheUnitStatus.RUNNING ||
+                it.status == CacheUnitStatus.REVIEW_ELIGIBLE
+        }
         return when {
             succeeded > 0 && failed > 0 -> CacheResult.PARTIAL
             failed > 0 -> CacheResult.FAILED
+            unfinished && requested == CacheResult.FAILED -> CacheResult.FAILED
             succeeded > 0 -> CacheResult.SUCCEEDED
             requested == CacheResult.FAILED -> CacheResult.FAILED
             else -> requested
