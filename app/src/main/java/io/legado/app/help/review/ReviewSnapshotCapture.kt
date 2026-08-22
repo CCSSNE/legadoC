@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.Looper
 import android.net.http.SslError
 import android.webkit.SslErrorHandler
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
