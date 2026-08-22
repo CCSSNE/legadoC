@@ -84,9 +84,10 @@ object BookImgClick {
                 val button = reviewButtonOf(src)
                 if (button != null) {
                     refresher = refresh@{
-                        val onlineUrl = ReviewSnapshotManager.resolveReviewPageUrl(
+                        val page = ReviewSnapshotManager.resolveReviewPageUrl(
                             snapshotBook, source, snapshotChapter, button
-                        ) ?: return@refresh null
+                        )
+                        val onlineUrl = page.url ?: return@refresh null
                         fetchOnlineHtml(onlineUrl, source)
                     }
                 }
