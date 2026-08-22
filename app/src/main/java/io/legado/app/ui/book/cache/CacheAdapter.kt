@@ -90,15 +90,10 @@ class CacheAdapter(context: Context, private val callBack: CallBack) :
                         if (!it.isStop()) {
                             CacheBook.remove(context, book.bookUrl)
                         } else {
-                            callBack.sureCacheBook {
-                                CacheBook.start(context, book, 0, book.lastChapterIndex)
-                            }
+                            // 保留章节范围弹窗：用户确认 章x至y 后才开始正文缓存
+                            callBack.showCacheRange(book)
                         }
-                    } ?: let {
-                        callBack.sureCacheBook {
-                            CacheBook.start(context, book, 0, book.lastChapterIndex)
-                        }
-                    }
+                    } ?: callBack.showCacheRange(book)
                 }
             }
             tvExport.setOnClickListener {
@@ -146,6 +141,7 @@ class CacheAdapter(context: Context, private val callBack: CallBack) :
     interface CallBack {
         val cacheChapters: HashMap<String, HashSet<String>>
         val reviewChapters: HashMap<String, HashSet<String>>
+        fun showCacheRange(book: Book)
         fun sureCacheBook(action: () -> Unit)
         fun export(position: Int)
         fun exportProgress(bookUrl: String): Int?
