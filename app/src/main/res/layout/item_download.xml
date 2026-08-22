@@ -10,12 +10,27 @@
         android:id="@+id/tv_name"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
+        android:ellipsize="end"
         android:singleLine="true"
         android:textColor="@color/primaryText"
         app:layout_constraintLeft_toLeftOf="parent"
-        app:layout_constraintRight_toLeftOf="@+id/iv_download"
+        app:layout_constraintRight_toLeftOf="@+id/iv_audio"
         app:layout_constraintTop_toTopOf="parent"
         tools:text="@string/name" />
+
+    <androidx.appcompat.widget.AppCompatImageView
+        android:id="@+id/iv_audio"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:background="@drawable/bg_bookshelf_audio_badge"
+        android:contentDescription="@string/audio"
+        android:padding="4dp"
+        android:src="@drawable/ic_volume_up"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@+id/tv_name"
+        app:layout_constraintRight_toLeftOf="@+id/iv_download"
+        app:layout_constraintTop_toTopOf="@+id/tv_name"
+        tools:visibility="visible" />
 
     <TextView
         android:id="@+id/tv_author"
