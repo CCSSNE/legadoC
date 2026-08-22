@@ -99,6 +99,7 @@ $versionName = '3.26.<MMddHH>' # <MMddHH> uses UTC; appC automatically appends c
 - 2026-08-15：首次启动 10608 构建时，把批处理和退出码写入拼在 `cmd /c` 参数中，Windows 报“文件名、目录名或卷标语法不正确”，没有 Gradle 进程、构建日志或 APK。改为由 `.bat` 自己记录退出码，再以 `Start-Process` 直接启动，构建正常。后台构建的重定向/引号错误必须以“未启动”处理，不能等待或误判为 Gradle 卡死。
 - 2026-08-16：新增被 XML 引用的字符串只写入 `values-zh` 会在 `appC` 资源链接时被移除，最终报“resource string not found”。所有新增字符串必须先定义在默认 `values/strings.xml`，再补充语言覆盖；首次链接失败包不产出，补齐默认资源后以同一版本重编译。
 - 2026-08-19：`assembleAppC` 增量 daemon 编译在 `compileAppCJavaWithJavac` 阶段报“Gradle build daemon disappeared unexpectedly”，`hs_err_pid*.log` 显示 JVM 原生内存不足（native OOM，malloc 失败）。根因是系统物理内存/交换空间不足，不是源码错误。清理残留 Gradle/Kotlin/Java 进程后，按冷编译参数 `--no-daemon --max-workers=1 -Dkotlin.incremental=false -Dksp.incremental=false -Dkotlin.compiler.execution.strategy=in-process` 全量重编译成功。本机内存压力下再次构建应直接采用该冷编译参数，不要盲目重跑 daemon 增量编译。
+- 2026-08-22：另一会话在同一工作区运行 Gradle 时并行启动 `assembleAppC`，`processAppCResources` 报 `Couldn't delete ...\R.jar` 失败（跨进程文件锁，非源码错误）。同一检出目录同时只允许一个构建；正式编译前必须确认无其他活跃 `GradleWrapperMain` / 临时编译脚本，发现冲突先协调等待，不得擅自杀死不属于本次构建的进程。另外：经 PowerShell 管道截断（如 `Select-Object -First N`）读取 `.bat` 包装工具输出会污染 `$LASTEXITCODE`，校验退出码必须完整执行后读取。
 
 ### 产物验证
 
@@ -266,6 +267,6 @@ uiautomator2 / ADB
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- `3.26.082203c` / `10704`，2026-08-22（UTC），`own` 主线（代码提交 `27a0c89`）。本次为用户要求正式编译：启动前检测到另一会话正在活跃提交（曾出现数秒内分支头从 `f177837` 前移到 `27a0c89`、预编译 stash 截获对方未跟踪文件后立即还原的情况），经用户确认对方提交完毕后才基于最终头 `27a0c89` 开始编译。构建前 `git stash -u` 移出全部未跟踪文件并确认工作区与 HEAD 完全一致，构建后原样恢复并复查分支头未移动。正式后台 `:app:assembleAppC` 冷编译（`--no-daemon --max-workers=1 -Dkotlin.incremental=false -Dksp.incremental=false -Dkotlin.compiler.execution.strategy=in-process`）一次通过无需修复，退出码 0（BUILD SUCCESSFUL in 2m 52s）；`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.082203c` / `10704`、中文名 `阅读 C`（zh locale）、架构 `arm64-v8a`；`apksigner` 退出码 0（仅 META-INF 未签名条目警告，可接受）。构建收尾执行 `gradlew --stop` 并确认无残留 Gradle 守护进程与 JVM。未安装到模拟器、未做正式回归（用户仅要求编译）。`origin/own` 为 `7112f39`，本地领先为评论修复提交与本基线记录提交。
+- `3.26.082204c` / `10705`，2026-08-22（UTC），`own` 主线（代码提交 `0a8d28e`，含 `ddc4182` 评论打开方式三模式等全部已提交改动）。本次编译一波三折：第一次尝试因另一会话的常驻 Gradle 进程持有文件锁而失败（`processAppCResources` 报 `Couldn't delete R.jar`），无产物未交付；等待对方构建退出并恢复 stash 后，发现对方已把全部工作提交为 `ddc4182`/`0a8d28e` 并消化了原 stash。第二次启动前确认工作区仅剩未跟踪文件且无活跃外部构建，`git stash -u` 移出后基于干净 HEAD 冷编译一次通过（BUILD SUCCESSFUL in 2m 40s，退出码 0）；构建后复查分支头仍为 `0a8d28e` 未移动，stash 原样恢复。`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.082204c` / `10705`、中文名 `阅读 C`（zh locale）、架构 `arm64-v8a`；`apksigner` 完整执行复核退出码 0（仅 META-INF 未签名条目警告，可接受）。构建收尾 `gradlew --stop` 无守护进程、无残留构建 JVM。未安装到模拟器、未做正式回归（用户仅要求编译）。`origin/own` 为 `0a8d28e`，本地领先为基线记录提交。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
