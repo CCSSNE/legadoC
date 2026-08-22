@@ -769,9 +769,8 @@ object ReadBook : CoroutineScope by MainScope() {
      * 与 CacheBook 下载路径的出口语义一致；缓存命中不下发，避免无意义入队。
      */
     private fun notifyChapterDownloaded(book: Book, chapter: BookChapter) {
-        val source = appDb.bookSourceDao.getBookSource(book.origin) ?: return
-        ReviewWorkerAdapter.enqueueLegacyIfEnabled(
-            source, book, chapter,
+        ReviewWorkerAdapter.enqueueReaderReviewIfEnabled(
+            book, chapter,
             force = io.legado.app.help.review.ReviewSnapshotManager
                 .isUserRefreshActive(book.bookUrl, chapter.index)
         )

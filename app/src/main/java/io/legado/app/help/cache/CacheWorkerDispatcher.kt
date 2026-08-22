@@ -1,6 +1,6 @@
 package io.legado.app.help.cache
 
-/** Internal command port between the coordinator and legacy worker adapters. */
+/** Internal command port between the coordinator and worker adapters. */
 internal interface CacheWorkerDispatcher {
     fun start(submission: CacheSubmission)
     fun resume(submission: CacheSubmission, lease: CacheWorkerLease)
@@ -104,8 +104,9 @@ internal class CacheWorkerDispatcherImpl(
         val task = CacheCoordinator.currentTask(submission)
         if (task == null) {
             recordDispatchFailure(submission, "task_missing")
-            workerPort.finish(lease, CacheResult.FAILED, "task missing while dispatching")
-            CacheCoordinator.notifyTaskFinished(lease, CacheResult.FAILED, "task missing while dispatching")
+            if (workerPort.finish(lease, CacheResult.FAILED, "task missing while dispatching")) {
+                CacheCoordinator.notifyTaskFinished(lease, CacheResult.FAILED, "task missing while dispatching")
+            }
             return
         }
         try {
@@ -122,8 +123,9 @@ internal class CacheWorkerDispatcherImpl(
                 else -> {
                     val message = "no worker adapter for kind=${task.kind} phase=${task.phase}"
                     recordDispatchFailure(submission, message)
-                    workerPort.finish(lease, CacheResult.FAILED, message)
-                    CacheCoordinator.notifyTaskFinished(lease, CacheResult.FAILED, message)
+                    if (workerPort.finish(lease, CacheResult.FAILED, message)) {
+                        CacheCoordinator.notifyTaskFinished(lease, CacheResult.FAILED, message)
+                    }
                 }
             }
         } catch (error: Throwable) {
@@ -136,8 +138,9 @@ internal class CacheWorkerDispatcherImpl(
                     "$message cause=${error::class.simpleName}",
                 )
             )
-            workerPort.finish(lease, CacheResult.FAILED, message)
-            CacheCoordinator.notifyTaskFinished(lease, CacheResult.FAILED, message)
+            if (workerPort.finish(lease, CacheResult.FAILED, message)) {
+                CacheCoordinator.notifyTaskFinished(lease, CacheResult.FAILED, message)
+            }
         }
     }
 

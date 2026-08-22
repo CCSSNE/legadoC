@@ -272,30 +272,73 @@ internal class CacheTaskStore(
             "cancelled tasks must use beginCancel/confirmCancelled"
         }
         var aggregateResult: CacheResult? = null
+        var autoFailedUnits: List<CacheUnitKey> = emptyList()
         synchronized(lock) {
             val task = requireTaskLocked(lease.sessionId, lease.taskId)
             if (!isCurrentLease(task, lease) || task.status != CacheLifecycle.RUNNING) {
                 logStaleUpdate(lease, "finish=$result")
                 return false
             }
+            val unfinished = task.units.any {
+                it.status == CacheUnitStatus.PENDING ||
+                    it.status == CacheUnitStatus.RUNNING ||
+                    it.status == CacheUnitStatus.REVIEW_ELIGIBLE
+            }
+            check(!unfinished || result == CacheResult.FAILED) {
+                "cannot finish cache task with unfinished units: task=${task.taskId} result=$result"
+            }
             check(task.status == CacheLifecycle.RUNNING) {
                 "task is not running: ${task.status}"
             }
-            val finalResult = aggregateTaskResult(task, result)
+            val normalizedTask = if (result == CacheResult.FAILED && unfinished) {
+                val failure = error ?: "task failed before unit completion"
+                val failedKeys = task.units
+                    .filter {
+                        it.status == CacheUnitStatus.PENDING ||
+                            it.status == CacheUnitStatus.RUNNING ||
+                            it.status == CacheUnitStatus.REVIEW_ELIGIBLE
+                    }
+                    .map { it.key }
+                autoFailedUnits = failedKeys
+                task.copy(
+                    units = task.units.map { unit ->
+                        if (unit.key in failedKeys) {
+                            unit.copy(
+                                status = CacheUnitStatus.FAILED,
+                                error = failure,
+                                updatedAt = System.currentTimeMillis(),
+                            )
+                        } else {
+                            unit
+                        }
+                    }
+                )
+            } else {
+                task
+            }
+            val finalResult = aggregateTaskResult(normalizedTask, result)
             aggregateResult = finalResult
-            val hasUnitFailure = task.units.any { it.status == CacheUnitStatus.FAILED }
-            val lifecycle = if (finalResult == CacheResult.FAILED && !hasUnitFailure) {
+            val hasUnitSuccess = normalizedTask.units.any { it.status == CacheUnitStatus.SUCCEEDED }
+            val lifecycle = if (finalResult == CacheResult.FAILED && !hasUnitSuccess) {
                 CacheLifecycle.FAILED
             } else {
                 CacheLifecycle.COMPLETED
             }
-            replaceTaskLocked(task.copy(
+            replaceTaskLocked(normalizedTask.copy(
                 status = lifecycle,
                 result = finalResult,
                 error = error,
                 updatedAt = System.currentTimeMillis(),
             ))
             publishLocked()
+        }
+        autoFailedUnits.forEach { key ->
+            record(
+                CacheLogEventType.UNIT_FAILED,
+                lease.sessionId,
+                lease.taskId,
+                "chapter=${key.chapterIndex} status=${CacheUnitStatus.FAILED} reason=task_finish",
+            )
         }
         record(
             CacheLogEventType.TASK_FINISHED,
@@ -327,13 +370,6 @@ internal class CacheTaskStore(
     fun currentTask(sessionId: String, taskId: String): CacheTaskState? = synchronized(lock) {
         sessions[sessionId]?.tasks?.firstOrNull { it.taskId == taskId }
     }
-
-    fun hasTask(sessionId: String, kind: CacheKind, phase: CachePhase, bookUrl: String): Boolean =
-        synchronized(lock) {
-            sessions[sessionId]?.tasks?.any {
-                it.kind == kind && it.phase == phase && it.bookUrl == bookUrl
-            } == true
-        }
 
     fun findTask(sessionId: String, kind: CacheKind, phase: CachePhase, bookUrl: String): CacheTaskState? =
         synchronized(lock) {

@@ -380,7 +380,7 @@ object CacheBook {
                 // 用户重新缓存该章，直接补/覆盖评论（force）
                 onSuccess(chapter, executionLease)
                 waitDownloadSet.remove(chapterIndex)
-                reviewEnqueue(bookSource, book, chapter, force = true, executionLease = executionLease)
+                reviewEnqueue(book, chapter, force = true, executionLease = executionLease)
                 onFinally(executionLease)
                 return
             }
@@ -394,7 +394,7 @@ object CacheBook {
                     }
                 }.onSuccess {
                     onSuccess(chapter, executionLease)
-                    reviewEnqueue(bookSource, book, chapter, force = true, executionLease = executionLease)
+                    reviewEnqueue(book, chapter, force = true, executionLease = executionLease)
                 }.onError {
                     onPreError(chapter, it)
                     //出现错误等待一秒后重新加入待下载列表
@@ -507,7 +507,6 @@ object CacheBook {
          * 只允许在各下载路径的成功收尾调用；评论任务本身低优先级、失败不影响正文。
          */
         private fun reviewEnqueue(
-            bookSource: BookSource,
             book: Book,
             chapter: BookChapter,
             force: Boolean,
@@ -517,9 +516,7 @@ object CacheBook {
             if (io.legado.app.help.cache.CacheBodyWorkerRegistry.isCoordinatorManaged(book.bookUrl)) {
                 return
             }
-            ReviewWorkerAdapter.enqueueLegacyIfEnabled(
-                bookSource, book, chapter, force = force
-            )
+            ReviewWorkerAdapter.enqueueReaderReviewIfEnabled(book, chapter, force = force)
         }
 
         /**
@@ -539,7 +536,7 @@ object CacheBook {
         ) {
             val enqueueAfterFinish = {
                 reviewEnqueue(
-                    bookSource, book, chapter,
+                    book, chapter,
                     force = io.legado.app.help.review.ReviewSnapshotManager
                         .isUserRefreshActive(book.bookUrl, chapter.index),
                     executionLease = executionLease,

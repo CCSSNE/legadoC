@@ -54,8 +54,14 @@ internal object CacheNotificationBridge {
     }
 
     fun finished(task: CacheTaskState?, result: CacheResult, error: String? = null) {
-        val title = task?.bookName ?: "Cache task"
-        val text = when (result) {
+        val session = task?.let { finishedTask ->
+            CacheCoordinator.snapshot.value.sessions.firstOrNull {
+                it.sessionId == finishedTask.sessionId
+            }
+        }
+        val finalResult = session?.result ?: task?.result ?: result
+        val title = session?.title ?: task?.bookName ?: "Cache task"
+        val text = when (finalResult) {
             CacheResult.SUCCEEDED -> "Cache completed"
             CacheResult.PARTIAL -> "Cache partially completed"
             CacheResult.FAILED -> "Cache failed${error?.let { ": $it" }.orEmpty()}"

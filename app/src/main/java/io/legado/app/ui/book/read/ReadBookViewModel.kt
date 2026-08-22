@@ -26,6 +26,7 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalModified
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.simulatedTotalChapterNum
+import io.legado.app.help.cache.CacheCoordinator
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.ImageProvider
@@ -411,8 +412,7 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
     }
 
     fun refreshContentDur(book: Book) {
-        io.legado.app.help.review.ReviewSnapshotManager
-            .markUserRefresh(book.bookUrl, ReadBook.durChapterIndex)
+        CacheCoordinator.markReviewRefresh(book.bookUrl, ReadBook.durChapterIndex)
         execute {
             appDb.bookChapterDao.getChapter(book.bookUrl, ReadBook.durChapterIndex)
                 ?.let { chapter ->
@@ -429,8 +429,7 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
             ReadBook.durChapterIndex,
             book.totalChapterNum
         ).forEach { chapter ->
-            io.legado.app.help.review.ReviewSnapshotManager
-                .markUserRefresh(book.bookUrl, chapter.index)
+            CacheCoordinator.markReviewRefresh(book.bookUrl, chapter.index)
         }
         execute {
             appDb.bookChapterDao.getChapterList(
@@ -447,8 +446,7 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
     fun refreshContentAll(book: Book) {
         // 全书刷新：按章节逐个打强制重抓标记
         appDb.bookChapterDao.getChapterList(book.bookUrl).forEach { chapter ->
-            io.legado.app.help.review.ReviewSnapshotManager
-                .markUserRefresh(book.bookUrl, chapter.index)
+            CacheCoordinator.markReviewRefresh(book.bookUrl, chapter.index)
         }
         execute {
             BookHelp.clearCache(book)
