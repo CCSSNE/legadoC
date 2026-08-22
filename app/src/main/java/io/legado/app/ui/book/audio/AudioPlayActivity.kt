@@ -527,12 +527,14 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
                 normalizedText = normalizedText,
                 isTitle = item.isTitle,
                 normalAlpha = normalAlpha,
+                reviewCount = item.segments.count { it is ParagraphSegment.Review },
                 spannable = if (hasReview) {
                     buildListeningSpannable(item, view)
                 } else {
                     null
                 },
             )
+            updateListeningReviewCentering(row)
             view.text = row.displayText()
             listeningTextRows += row
             listeningTextContent.addView(
@@ -560,10 +562,10 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     }
 
     private fun updateListeningTextIndentation() {
-        val availableWidth = binding.listeningTextContent.width
-        if (availableWidth <= 0) return
         val currentPx = AppConfig.audioPlayTextSize * AppConfig.audioPlayTextZoom / 100f
         listeningTextRows.forEach { row ->
+            val availableWidth = row.view.width - row.view.paddingLeft - row.view.paddingRight
+            if (availableWidth <= 0) return@forEach
             val shouldIndent = !row.isTitle &&
                     row.normalizedText.isNotEmpty() &&
                     listeningTextLineCount(
@@ -657,6 +659,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
                 TypedValue.COMPLEX_UNIT_PX,
                 if (selected) currentPx else normalPx,
             )
+            updateListeningReviewCentering(row)
             row.view.setTextColor(Color.WHITE)
             row.view.alpha = when {
                 selected -> 1f
@@ -1117,6 +1120,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         val normalizedText: String,
         val isTitle: Boolean,
         val normalAlpha: Float,
+        val reviewCount: Int = 0,
         val spannable: CharSequence? = null,
         var isIndented: Boolean = false,
     ) {
