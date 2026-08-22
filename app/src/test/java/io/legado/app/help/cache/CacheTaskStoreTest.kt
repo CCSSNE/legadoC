@@ -125,6 +125,22 @@ class CacheTaskStoreTest {
         assertEquals(listOf(key(1)), store.reviewEligibleUnits(session.sessionId, task.taskId))
     }
 
+    @Test
+    fun allUnitsFailedAfterNormalExecutionIsCompletedWithFailedResult() {
+        val store = testStore()
+        val session = store.createSession("book")
+        val task = store.addTask(session.sessionId, request(CachePhase.BODY))
+        val lease = requireNotNull(store.acquireWorker(session.sessionId, task.taskId))
+
+        assertTrue(store.updateUnit(lease, key(1), CacheUnitStatus.RUNNING))
+        assertTrue(store.updateUnit(lease, key(1), CacheUnitStatus.FAILED, "body failed"))
+        assertTrue(store.finishTask(lease, CacheResult.FAILED, "body failed"))
+
+        val finished = store.snapshot.value.sessions.single().tasks.single()
+        assertEquals(CacheLifecycle.COMPLETED, finished.status)
+        assertEquals(CacheResult.FAILED, finished.result)
+    }
+
     private fun request(
         phase: CachePhase,
         reviewEnabled: Boolean = false,
