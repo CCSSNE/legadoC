@@ -14,6 +14,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.http.BackstageWebView
 import io.legado.app.help.http.StrResponse
+import io.legado.app.help.review.ReviewSnapshotCapture
 import io.legado.app.help.review.ReviewSnapshotManager
 import io.legado.app.help.review.ReviewSnapshotStore
 import io.legado.app.help.source.SourceVerificationHelp
@@ -88,7 +89,13 @@ object BookImgClick {
                             snapshotBook, source, snapshotChapter, button
                         )
                         val onlineUrl = page.url ?: return@refresh null
-                        fetchOnlineHtml(onlineUrl, source)
+                        // showBrowser 已带回渲染 HTML 且有效：直接用，不再重复请求
+                        val onlineHtml = when {
+                            !page.html.isNullOrBlank() &&
+                                ReviewSnapshotCapture.isValidCommentHtml(page.html) -> page.html
+                            else -> fetchOnlineHtml(onlineUrl, source)?.second
+                        } ?: return@refresh null
+                        onlineUrl to onlineHtml
                     }
                 }
             }
