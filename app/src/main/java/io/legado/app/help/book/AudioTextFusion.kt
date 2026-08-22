@@ -55,11 +55,17 @@ object AudioTextFusion {
     /**
      * 一条评论挂载：挂在 lyric 中第 [occurrence] 次出现（从 1 起）的
      * [anchor] 匹配正文行之后；[payload] 为完整 `<usehtml>…</usehtml>` 块。
+     *
+     * [textBookUrl]/[textChapterUrl] 记录评论按钮的来源（文字书章节）：
+     * 点击与评论快照都按文字书上下文执行，不使用有声书上下文。旧数据
+     * 无该字段时为 null，点击回退当前阅读上下文。
      */
     data class OverlayInsertion(
         val anchor: String,
         val occurrence: Int,
         val payload: String,
+        val textBookUrl: String? = null,
+        val textChapterUrl: String? = null,
     )
 
     /** 对单个音频章节的写入动作；[insertions] 为 null 表示清除 overlay */
@@ -88,6 +94,7 @@ object AudioTextFusion {
         val plan = planFusionWrites(
             textChapters = textChapters,
             audioChapters = audioChapters,
+            textBookUrl = textBook.bookUrl,
             hasTextContent = { BookHelp.hasContent(textBook, it) },
             getTextContent = { BookHelp.getContent(textBook, it) },
             hasAudioContent = { BookHelp.hasContent(audioBook, it) },
@@ -115,12 +122,20 @@ object AudioTextFusion {
 
     /**
      * 整本书 reconcile 的纯计算：先只读算出每章期望 overlay，再生成
-     * “覆盖保存 / 清除”写入计划。本次不应再有 overlay 但旧数据存在的
-     * 章节会生成清除动作。纯函数，可在 JVM 单元测试中直接验证。
+     * “覆盖保存 / 清除”写入计划。
+     *
+     * 对每个配对章节：
+     * - 文字/音频缓存或 lyric、正文无法读取 → 无法确认，保持旧 overlay
+     *   （不产生任何写入动作），绝不当作“评论已删除”清除；
+     * - 缓存齐全且 fus 后确认无评论入口 → 生成清除动作。
+     * 本次不应再有 overlay 但旧数据存在的章节才会被清。
+     *
+     * 纯函数，可在 JVM 单元测试中直接验证。
      */
     internal fun planFusionWrites(
         textChapters: List<BookChapter>,
         audioChapters: List<BookChapter>,
+        textBookUrl: String,
         hasTextContent: (BookChapter) -> Boolean,
         getTextContent: (BookChapter) -> String?,
         hasAudioContent: (BookChapter) -> Boolean,
@@ -128,15 +143,19 @@ object AudioTextFusion {
         getCurrentOverlay: (BookChapter) -> String,
     ): FusionPlan {
         val pairs = pairChapters(textChapters, audioChapters)
-        val desired = linkedMapOf<String, List<OverlayInsertion>>()
+        // identity -> 期望 overlay；null 表示确认无评论（清除），key 缺失表示保持
+        val desired = linkedMapOf<String, List<OverlayInsertion>?>()
         pairs.forEach { (textChapter, audioChapter) ->
+            // 无法确认的章节一律保持旧 overlay，不清除
             if (!hasTextContent(textChapter)) return@forEach
             if (!hasAudioContent(audioChapter)) return@forEach
             val lyric = getLyric(audioChapter)
             if (lyric.isBlank()) return@forEach
-            val textContent = getTextContent(textChapter) ?: return@forEach
-            fuseOverlay(textContent, lyric)?.let { insertions ->
-                desired[audioChapter.primaryStr()] = insertions
+            val textContent = getTextContent(textChapter)
+            if (textContent == null) return@forEach
+            // 为 null 即“确认当前无评论入口”，生成清除
+            desired[audioChapter.primaryStr()] = fuseOverlay(textContent, lyric)?.map {
+                it.copy(textBookUrl = textBookUrl, textChapterUrl = textChapter.url)
             }
         }
         val writes = buildList {
@@ -146,7 +165,9 @@ object AudioTextFusion {
                 val hasOld = getCurrentOverlay(audioChapter).isNotBlank()
                 when {
                     want != null -> add(ChapterOverlayWrite(audioChapter, want))
-                    hasOld -> add(ChapterOverlayWrite(audioChapter, null))
+                    desired.containsKey(identity) && hasOld ->
+                        add(ChapterOverlayWrite(audioChapter, null))
+                    // key 缺失（无法确认）且有旧数据：保持，不产生写入
                 }
             }
         }
@@ -272,10 +293,35 @@ object AudioTextFusion {
         }
     }
 
-    /** 卷兼容：任一侧无卷信息时不做卷约束，两侧都有时必须相等 */
+    /**
+     * 卷兼容：卷信息不一致或不明确时直接跳过（宁可少融合）。
+     * 只有两侧都能解析且相等才允许配对。
+     */
     private fun volumeCompatible(textVolume: Int?, audioVolume: Int?): Boolean {
-        if (textVolume == null || audioVolume == null) return true
+        if (textVolume == null || audioVolume == null) return false
         return textVolume == audioVolume
+    }
+
+    /**
+     * 从某章节的融合 overlay 反查评论按钮的文字书来源。
+     * 点击/评论快照按文字书上下文执行时使用；返回 null 表示该按钮
+     * 不是融合挂载（或旧数据无来源字段），调用方回退当前阅读上下文。
+     */
+    internal fun findFusionTextContext(
+        overlayJson: String,
+        src: String
+    ): Pair<String, String>? {
+        if (overlayJson.isBlank()) return null
+        return parseOverlay(overlayJson).firstNotNullOfOrNull { insertion ->
+            if (insertion.textBookUrl != null &&
+                insertion.textChapterUrl != null &&
+                insertion.payload.contains(src)
+            ) {
+                insertion.textBookUrl to insertion.textChapterUrl
+            } else {
+                null
+            }
+        }
     }
 
     /**
