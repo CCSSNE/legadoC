@@ -112,6 +112,12 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
     private var fallbackApplied = false
     private var fallbackTimeoutRunnable: Runnable? = null
 
+    /**
+     * 离线模式（仅使用快照/快照兜底已启用）：WebView 禁止一切 http/https 网络请求，
+     * 残余外部资源一律拦截，快照只允许 data:// 等内联资源离线渲染。
+     */
+    private var offlineMode = false
+
     private val mHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
     constructor(
@@ -122,10 +128,12 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         preloadJs: String? = null,
         config: String? = null,
         networkRefresher: (suspend () -> Pair<String, String>?)? = null,
-        fallbackHtml: String? = null
+        fallbackHtml: String? = null,
+        offlineOnly: Boolean = false
     ) : this() {
         this.networkRefresher = networkRefresher
         this.fallbackHtml = fallbackHtml
+        this.offlineMode = offlineOnly
         arguments = Bundle().apply {
             putString("sourceKey", sourceKey)
             putInt("bookType", bookType)
@@ -565,7 +573,20 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
                 }
                 val analyzeUrl =
                     AnalyzeUrl(url, source = source, coroutineContext = coroutineContext)
-                val html = args.getString("html") ?: analyzeUrl.getStrResponseAwait().body
+                // 网络优先兜底：WebView 启动前的网络获取若直接失败/超时，
+                // 也必须切换到快照显示，而不是显示异常文本
+                var fetchedHtml = args.getString("html")
+                if (fetchedHtml == null) {
+                    fetchedHtml = runCatching {
+                        analyzeUrl.getStrResponseAwait().body
+                    }.getOrElse { e ->
+                        fallbackHtml?.takeIf { it.isNotBlank() }?.also {
+                            // 已用快照兜底：进入离线模式，不再允许任何网络请求
+                            offlineMode = true
+                        } ?: throw e
+                    }
+                }
+                val html = fetchedHtml
                 if (html.isNullOrEmpty()) {
                     throw NoStackTraceException("html is NullOrEmpty")
                 }
@@ -693,6 +714,11 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         currentWebView.addJavascriptInterface(JSInterface(this), nameBasic)
         currentWebView.webViewClient = CustomWebViewClient()
         currentWebView.settings.userAgentString = headerMap.get(AppConst.UA_NAME, true)
+        if (offlineMode) {
+            // 仅使用快照/快照兜底：禁用一切网络加载，只渲染内联 data 资源
+            currentWebView.settings.blockNetworkLoads = true
+            currentWebView.settings.blockNetworkImage = true
+        }
         source?.let { source ->
             (activity as? AppCompatActivity)?.let { currentActivity ->
                 val webJsExtensions =
@@ -724,6 +750,10 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         if (fallbackApplied) return
         fallbackApplied = true
         cancelFallbackTimeout()
+        // 兜底快照属于离线内容：切换后禁止一切网络请求
+        offlineMode = true
+        currentWebView.settings.blockNetworkLoads = true
+        currentWebView.settings.blockNetworkImage = true
         currentWebView.loadDataWithBaseURL(
             currentWebView.url ?: "https://localhost/",
             html,
@@ -1027,6 +1057,17 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
             view: WebView, request: WebResourceRequest
         ): WebResourceResponse? {
             val url = request.url.toString()
+            // 仅使用快照/快照兜底（离线模式）：http/https 请求一律拦掉，
+            // 快照只允许 data:// 等内联资源离线渲染，残余外部资源不联网
+            if (offlineMode &&
+                (request.url.scheme == "http" || request.url.scheme == "https")
+            ) {
+                return WebResourceResponse(
+                    "text/plain",
+                    "utf-8",
+                    ByteArrayInputStream(ByteArray(0))
+                )
+            }
             if (request.isForMainFrame) {
                 if (!preloadJs.isNullOrEmpty()) {
                     jsInjected = false
