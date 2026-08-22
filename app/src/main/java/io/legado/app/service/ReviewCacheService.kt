@@ -29,7 +29,6 @@ import splitties.systemservices.notificationManager
  * - Review Phase：整批目标正文结束后，[ReviewSnapshotManager.endBodyPhase]
  *   把登记任务入队并启动本服务。本服务以低优先级通知常驻前台，
  *   4 个章节 worker 消费任务，章内评论按钮并行数由
- *   [AppConfig.reviewCacheConcurrency] 控制（含全局并发门）。
  *
  * 通知与音频缓存一致：低优先级通知 + 进度条。并发下没有“当前章”概念，
  * 进度一律按实际完成量聚合：进度条 = 已完成评论章数/本次目标章数（只增不减），
@@ -103,7 +102,6 @@ class ReviewCacheService : BaseService() {
     private fun startWork() {
         workJob?.cancel()
         // 章节 worker 只承担“取章节任务”的消费，固定 4 路足够；
-        // 真正的并发在章内按钮（reviewCacheConcurrency 控制，含全局并发门），
         // worker 多路与按钮并发相乘会暴涨 WebView 数
         val concurrency = 4
         workJob = lifecycleScope.launch(Dispatchers.IO) {
