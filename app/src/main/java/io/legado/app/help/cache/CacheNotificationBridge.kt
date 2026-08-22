@@ -5,11 +5,26 @@ import androidx.core.app.NotificationCompat
 import io.legado.app.R
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.NotificationId
+import io.legado.app.ui.book.cache.CacheActivity
+import io.legado.app.utils.activityPendingIntent
 import io.legado.app.utils.broadcastPendingIntent
 import splitties.init.appCtx
 import splitties.systemservices.notificationManager
 
 internal object CacheNotificationBridge {
+    /** The only foreground notification construction path for cache hosts. */
+    fun foregroundNotification(): Notification {
+        return NotificationCompat.Builder(appCtx, AppConst.channelIdDownload)
+            .setSmallIcon(R.drawable.ic_status_bar_r)
+            .setContentTitle(appCtx.getString(R.string.offline_cache))
+            .setContentIntent(appCtx.activityPendingIntent<CacheActivity>("cacheActivity"))
+            .setOnlyAlertOnce(true)
+            .setAutoCancel(false)
+            .setOngoing(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .build()
+    }
+
     fun started(task: CacheTaskState) {
         render(CacheCoordinator.snapshot.value)
     }

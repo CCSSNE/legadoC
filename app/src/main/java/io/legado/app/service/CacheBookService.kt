@@ -1,9 +1,7 @@
 package io.legado.app.service
 
 import android.content.Intent
-import androidx.core.app.NotificationCompat
 import androidx.lifecycle.lifecycleScope
-import io.legado.app.R
 import io.legado.app.base.BaseService
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
@@ -12,12 +10,13 @@ import io.legado.app.constant.NotificationId
 import io.legado.app.data.appDb
 import io.legado.app.help.book.update
 import io.legado.app.help.cache.CacheBodyWorkerRegistry
+import io.legado.app.help.cache.CacheCoordinator
+import io.legado.app.help.cache.CacheLifecycle
+import io.legado.app.help.cache.CacheNotificationBridge
 import io.legado.app.help.cache.CacheWorkerLease
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.CacheBook
 import io.legado.app.model.webBook.WebBook
-import io.legado.app.ui.book.cache.CacheActivity
-import io.legado.app.utils.activityPendingIntent
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.launch
@@ -44,7 +43,9 @@ class CacheBookService : BaseService() {
             val taskId = intent.getStringExtra("coordinatorTaskId")
             val generation = intent.getLongExtra("coordinatorGeneration", Long.MIN_VALUE)
             if (bookUrl != null && sessionId != null && taskId != null && generation != Long.MIN_VALUE) {
-                coordinatorLeases[bookUrl] = CacheWorkerLease(sessionId, taskId, generation)
+                synchronized(coordinatorLeases) {
+                    coordinatorLeases[bookUrl] = CacheWorkerLease(sessionId, taskId, generation)
+                }
             }
             addDownloadData(
                 bookUrl,
@@ -56,13 +57,18 @@ class CacheBookService : BaseService() {
     }
 
     override fun onDestroy() {
-        if (downloadJob?.isActive == true) {
-            failAll("正文缓存宿主异常结束")
+        val outstanding = outstandingCoordinatorLeases()
+        if (outstanding.isNotEmpty()) {
+            AppLog.put("正文缓存宿主异常结束：收敛 ${outstanding.size} 个 Coordinator 任务")
+            outstanding.forEach { (bookUrl, lease) ->
+                CacheBodyWorkerRegistry.onExecutionFailed(lease, "正文缓存宿主异常结束")
+                releaseLease(bookUrl)
+            }
         }
         stopForeground(false)
         downloadJob?.cancel()
         cachePool.close()
-        coordinatorLeases.clear()
+        synchronized(coordinatorLeases) { coordinatorLeases.clear() }
         super.onDestroy()
     }
 
@@ -119,7 +125,8 @@ class CacheBookService : BaseService() {
                 return@execute
             }
             AppLog.put("提交正文执行 ${book.name}，实际章节范围 ${start + 1}-${end2 + 1}")
-            cacheBook.addDownload(start, end2, coordinatorLeases[bookUrl])
+            val lease = synchronized(coordinatorLeases) { coordinatorLeases[bookUrl] }
+            cacheBook.addDownload(start, end2, lease)
         }.onError { error ->
             failAll("正文缓存宿初始化失败：${error.localizedMessage}", error)
             stopSelf()
@@ -139,24 +146,45 @@ class CacheBookService : BaseService() {
                 failAll("正文执行器异常：${error.localizedMessage}", error)
             } finally {
                 downloadJob = null
-                coordinatorLeases.clear()
+                synchronized(coordinatorLeases) { coordinatorLeases.clear() }
                 stopSelf()
             }
         }
     }
 
     private fun fail(bookUrl: String, message: String, error: Throwable? = null) {
-        coordinatorLeases[bookUrl]?.let { lease ->
-            CacheBodyWorkerRegistry.onWorkerFinished(lease, message)
+        synchronized(coordinatorLeases) { coordinatorLeases[bookUrl] }?.let { lease ->
+            CacheBodyWorkerRegistry.onExecutionFailed(lease, message)
         }
+        releaseLease(bookUrl)
         AppLog.put("正文缓存失败：$message", error)
     }
 
     private fun failAll(message: String, error: Throwable? = null) {
-        coordinatorLeases.values.toList().forEach { lease ->
-            CacheBodyWorkerRegistry.onWorkerFinished(lease, message)
+        outstandingCoordinatorLeases().forEach { (bookUrl, lease) ->
+            CacheBodyWorkerRegistry.onExecutionFailed(lease, message)
+            releaseLease(bookUrl)
         }
         AppLog.put("正文缓存失败：$message", error)
+    }
+
+    private fun outstandingCoordinatorLeases(): List<Pair<String, CacheWorkerLease>> {
+        return synchronized(coordinatorLeases) {
+            coordinatorLeases.entries.mapNotNull { (bookUrl, lease) ->
+                val task = CacheCoordinator.currentTask(
+                    io.legado.app.help.cache.CacheSubmission(lease.sessionId, lease.taskId)
+                )
+                if (task?.status == CacheLifecycle.RUNNING && task.generation == lease.generation) {
+                    bookUrl to lease
+                } else {
+                    null
+                }
+            }
+        }
+    }
+
+    private fun releaseLease(bookUrl: String) {
+        synchronized(coordinatorLeases) { coordinatorLeases.remove(bookUrl) }
     }
 
     private fun removeDownload(bookUrl: String) {
@@ -169,15 +197,9 @@ class CacheBookService : BaseService() {
     }
 
     override fun startForegroundNotification() {
-        val notification = NotificationCompat.Builder(this, AppConst.channelIdDownload)
-            .setSmallIcon(R.drawable.ic_status_bar_r)
-            .setContentTitle(getString(R.string.offline_cache))
-            .setContentIntent(activityPendingIntent<CacheActivity>("cacheActivity"))
-            .setOnlyAlertOnce(true)
-            .setAutoCancel(false)
-            .setOngoing(true)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .build()
-        startForeground(NotificationId.CacheCoordinator, notification)
+        startForeground(
+            NotificationId.CacheCoordinator,
+            CacheNotificationBridge.foregroundNotification(),
+        )
     }
 }

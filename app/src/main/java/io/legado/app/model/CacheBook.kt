@@ -12,6 +12,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.CacheManifestHelper
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.cache.ReviewWorkerAdapter
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.cache.CacheWorkerLease
 import io.legado.app.help.coroutine.CompositeCoroutine
@@ -516,7 +517,7 @@ object CacheBook {
             if (io.legado.app.help.cache.CacheBodyWorkerRegistry.isCoordinatorManaged(book.bookUrl)) {
                 return
             }
-            io.legado.app.help.review.ReviewSnapshotManager.enqueueIfEnabled(
+            ReviewWorkerAdapter.enqueueLegacyIfEnabled(
                 bookSource, book, chapter, force = force
             )
         }
