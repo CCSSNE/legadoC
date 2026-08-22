@@ -756,8 +756,60 @@ class AudioTextFusionTest {
         // 匹配行为不变：只有第一章能产生挂载
         assertEquals(1, plan.writes.count { it.insertions != null })
         assertEquals(0, plan.writes.count { it.insertions == null })
-        // 诊断逐章记录成功与失败原因
-        assertTrue(plan.details.any { it.contains("评论段落 1 段，匹配挂载 1 个，未匹配 0 段") })
+        // 诊断逐章记录成功与失败原因，含逐条段落 ✓/× 与截断文字
+        assertTrue(plan.details.any { it.contains("评论段落 1 段，匹配 1 个，未匹配 0 段") })
+        assertTrue(plan.details.any { it.contains("✓ ") && it.contains("第一章") })
         assertTrue(plan.details.any { it.contains("第二章 ↔ 第二章") && it.contains("跳过：文字缓存缺失") })
+    }
+
+    @Test
+    fun `diagnostics distinguish no comment from zero match`() {
+        val textChapters = listOf(chapter("t0", "第一章", 0), chapter("t1", "第二章", 1))
+        val audioChapters = listOf(chapter("a0", "第一章", 0), chapter("a1", "第二章", 1))
+
+        // 场景一：本章无评论段落（正文全是占位文本）
+        val planNoComment = AudioTextFusion.planFusionWrites(
+            textChapters.take(1), audioChapters.take(1),
+            textBookUrl = "textBookUrl",
+            hasTextContent = { true },
+            getTextContent = { "第一章横平竖直的正文" },
+            hasAudioContent = { true },
+            getLyric = { "[00:01.00]第一章" },
+            getCurrentOverlay = { "" },
+        )
+        assertTrue(planNoComment.details.any { it.contains("本章无评论") })
+
+        // 场景二：有 1 个评论但匹配 0 个（锚点文字完全不同）
+        val planZeroMatch = AudioTextFusion.planFusionWrites(
+            textChapters.take(1), audioChapters.take(1),
+            textBookUrl = "textBookUrl",
+            hasTextContent = { true },
+            getTextContent = { "第一章横平竖直$reviewImg" },
+            hasAudioContent = { true },
+            getLyric = { "[00:01.00]完全对不上的字幕" },
+            getCurrentOverlay = { "" },
+        )
+        assertTrue(planZeroMatch.details.any { it.contains("有 1 个评论但匹配 0 个") })
+        assertTrue(planZeroMatch.details.any { it.contains("× 第一章横平竖直") })
+
+        // 场景三：部分匹配——✓ 与 × 按原文顺序逐条列出
+        val imgA = """<img src="https://a.test/1.png,{"style":"TEXT"}">"""
+        val imgB = """<img src="https://a.test/2.png,{"style":"TEXT"}">"""
+        val planPartial = AudioTextFusion.planFusionWrites(
+            textChapters, audioChapters,
+            textBookUrl = "textBookUrl",
+            hasTextContent = { true },
+            getTextContent = { if (it.url == "t0") "第一句原文$imgA\n第二句别的内容$imgB" else "第二章无评论" },
+            hasAudioContent = { true },
+            getLyric = { if (it.url == "a0") "[00:01.00]第一句原文" else "[00:01.00]第二章" },
+            getCurrentOverlay = { "" },
+        )
+        val partialLine = planPartial.details.firstOrNull { it.contains("评论段落 2 段") }
+        assertNotNull(partialLine)
+        assertTrue(partialLine!!.contains("匹配 1 个，未匹配 1 段"))
+        assertTrue(planPartial.details.any { it.contains("✓ 第一句原文") })
+        assertTrue(planPartial.details.any { it.contains("× 第二句别的内容") })
+        assertTrue(planPartial.details.indexOfFirst { it.contains("✓ 第一句原文") } <
+            planPartial.details.indexOfFirst { it.contains("× 第二句别的内容") })
     }
 }

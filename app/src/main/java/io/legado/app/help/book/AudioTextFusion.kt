@@ -184,16 +184,28 @@ object AudioTextFusion {
                 return@forEach
             }
             // 为 null 即“确认当前无评论入口”，生成清除
-            val insertions = fuseOverlay(textContent, lyric)
-            if (insertions == null) {
-                details.add("  $pairLabel → 确认无评论入口")
-            } else {
-                // 统计段落匹配：评论段总数 = 有评论入口的有效段落数（与匹配算法无关）
-                val commentCount = parseCommentParagraphs(textContent).count { it.payload.isNotEmpty() }
-                val unmatched = (commentCount - insertions.size).coerceAtLeast(0)
-                details.add(
-                    "  $pairLabel → 评论段落 $commentCount 段，匹配挂载 ${insertions.size} 个，未匹配 $unmatched 段"
-                )
+            val (insertions, matches) = fuseOverlayDetailed(textContent, lyric)
+            when {
+                matches.isEmpty() ->
+                    details.add("  $pairLabel → 本章无评论")
+
+                insertions == null -> {
+                    details.add("  $pairLabel → 有 ${matches.size} 个评论但匹配 0 个")
+                    matches.forEach { details.add("      × ${it.text.take(40)}") }
+                }
+
+                else -> {
+                    val matched = matches.count { it.matched }
+                    val unmatched = matches.size - matched
+                    details.add(
+                        "  $pairLabel → 评论段落 ${matches.size} 段，匹配 $matched 个，未匹配 $unmatched 段"
+                    )
+                    matches.forEach { match ->
+                        details.add(
+                            "      ${if (match.matched) "✓" else "×"} ${match.text.take(40)}"
+                        )
+                    }
+                }
             }
             desired[audioChapter.primaryStr()] = insertions?.map {
                 it.copy(textBookUrl = textBookUrl, textChapterUrl = textChapter.url)
@@ -381,12 +393,34 @@ object AudioTextFusion {
      * 无任何挂载时返回 null。lyric 保持不变。
      */
     internal fun fuseOverlay(textContent: String, lyric: String): List<OverlayInsertion>? {
+        return fuseOverlayDetailed(textContent, lyric).first
+    }
+
+    /** 诊断用：一条评论段落原文及其是否在音频字幕中匹配到锚点（只读统计，不参与匹配） */
+    internal data class ParagraphMatch(
+        val text: String,
+        val matched: Boolean,
+    )
+
+    /**
+     * 与 [fuseOverlay] 同一匹配实现（单一来源），额外返回逐条评论段落的
+     * 匹配明细供诊断日志使用：返回 (挂载列表, 按原文顺序的段落匹配列表)。
+     * matches 为空表示本章没有评论段落；matches 非空但挂载列表为 null
+     * 表示“有评论但 0 匹配”，由调用方在日志中区分。
+     */
+    internal fun fuseOverlayDetailed(
+        textContent: String,
+        lyric: String
+    ): Pair<List<OverlayInsertion>?, List<ParagraphMatch>> {
         val entries = parseCommentParagraphs(textContent)
-        if (entries.isEmpty()) return null
+        if (entries.isEmpty()) return null to emptyList()
         val pendingByKey = linkedMapOf<String, ArrayDeque<FusionEntry>>()
         entries.forEach { entry ->
             pendingByKey.getOrPut(entry.key) { ArrayDeque() }.addLast(entry)
         }
+        // 按原文顺序的所有评论段落（有载荷）
+        val commentEntries = entries.filter { it.payload.isNotEmpty() }
+        val matchedEntries = hashSetOf<FusionEntry>()
         val counts = hashMapOf<String, Int>()
         val insertions = ArrayList<OverlayInsertion>()
         // 与 applyOverlay 共用同一份“块外正文行”序列，锚点计数语义一致
@@ -399,12 +433,14 @@ object AudioTextFusion {
             val entry = queue.removeFirstOrNull() ?: return@forEach
             // 无评论段落只占位置，不生成挂载
             if (entry.payload.isNotEmpty()) {
+                matchedEntries.add(entry)
                 insertions.add(
                     OverlayInsertion(anchor = key, occurrence = count, payload = entry.payload)
                 )
             }
         }
-        return insertions.takeIf { it.isNotEmpty() }
+        val matches = commentEntries.map { ParagraphMatch(it.text, it in matchedEntries) }
+        return insertions.takeIf { it.isNotEmpty() } to matches
     }
 
     /**
@@ -517,7 +553,9 @@ object AudioTextFusion {
                 val (textWithoutButtons, buttons) = splitInlineCommentButtons(line)
                 val key = normalizeKey(textWithoutButtons)
                 if (key.isEmpty() && buttons.isEmpty()) return@forEach
-                paragraphs.add(FusionEntry(key, joinButtonPayload(buttons), lineEndAbs))
+                paragraphs.add(
+                    FusionEntry(key, textWithoutButtons, joinButtonPayload(buttons), lineEndAbs)
+                )
             }
         }
         var lastEnd = 0
@@ -613,9 +651,11 @@ object AudioTextFusion {
     /** 统一按 \n 切分并保留结尾空串，避免不同 stdlib 行序词语义差异 */
     private fun splitRawLines(text: String): List<String> = text.split('\n')
 
-    /** 一个待迁移段落：归一化文字 key、usehtml 载荷（解析期可追加）、原始行尾 offset */
+    /** 一个待迁移段落：归一化文字 key、原始段落文字（去评论图后，供诊断日志）、
+     *  usehtml 载荷（解析期可追加）、原始行尾 offset */
     internal data class FusionEntry(
         val key: String,
+        val text: String,
         var payload: String,
         val endOffset: Int,
     )
