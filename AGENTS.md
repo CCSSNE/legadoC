@@ -323,6 +323,6 @@ uiautomator2 / ADB
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- `3.26.082213c` / `10710`，2026-08-22（UTC），`own` 主线（代码提交 `cea7eaf`，含带评论 TXT-ZIP 导出导入闭环修复、并发通知进度聚合、原子 update 防丢失等最新已提交改动）。本次编译顺利：启动前确认工作区仅剩未跟踪文件、无外部活跃构建，`git stash -u` 移出后基于干净 HEAD 冷编译一次通过（BUILD SUCCESSFUL in 2m 12s，退出码 0）；构建后复查分支头未移动，stash 原样恢复。`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.082213c` / `10710`、中文名 `阅读 C`（zh locale）、架构 `arm64-v8a`；`apksigner` 完整执行退出码 0（仅 META-INF 未签名条目警告，可接受）。收尾 `gradlew --stop` 停掉标准 home 守护进程；残留检查中的两个 kotlin compile daemon（`-iso` home 与标准 home 各一）均早于本次构建创建、非本构建残留，未予清理。未安装到模拟器、未做正式回归（用户仅要求编译）。`origin/own` 为 `cea7eaf`，本地领先为基线记录提交。
+- `3.26.082217c` / `10713`，2026-08-22（UTC），`own` 主线（基于 `2396265` 编译：fix(review) 快照 HTML 落盘 + 删除乱码 schema 导出；版本号在先前产出 `10712` 之上单调递增）。本次编译顺利：先清理上次构建残留的 Gradle 8.14.4 与 Kotlin 编译守护进程（可用内存 1.76 → 5.8 GB），删除乱码的 `105.json` 提交后，基于干净 HEAD 冷编译一次通过（BUILD SUCCESSFUL in 3m 43s，退出码 0，`--no-daemon --max-workers=1` 冷参数）；构建中 Room 按当前实体自动重新生成正确的 `105.json`（无乱码，identityHash `cfb60129…`），随本次交付提交。`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.082217c` / `10713`、中文名 `阅读 C`（zh locale）、架构 `arm64-v8a`；`apksigner` 完整执行退出码 0（仅 META-INF 未签名条目警告，可接受）。收尾 `gradlew --stop` 无运行中守护进程，无残留 java 进程。未安装到模拟器、未做正式回归（用户仅要求编译）。推送后 `origin/own` 与本地 `own` 同步。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
