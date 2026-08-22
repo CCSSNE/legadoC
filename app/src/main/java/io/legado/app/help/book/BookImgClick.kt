@@ -53,14 +53,17 @@ object BookImgClick {
     private fun openMode(): String = AppConfig.reviewOpenMode
 
     /**
-     * 打开评论快照；refreshToNetwork=true（快照优先）时后台刷新为最新网络评论页。
+     * 打开评论快照。
+     * @param refreshToNetwork 快照优先：后台刷新为最新网络评论页（成功后覆盖）
+     * @param offlineOnly 仅使用快照：WebView 禁止一切 http/https 网络请求
      * @return true 表示已用快照打开
      */
     private fun openSnapshotIfCached(
         context: AppCompatActivity,
         src: String,
         hostChapter: BookChapter?,
-        refreshToNetwork: Boolean
+        refreshToNetwork: Boolean,
+        offlineOnly: Boolean
     ): Boolean {
         val chapter = hostChapter
             ?: ReadBook.book?.let {
@@ -97,7 +100,8 @@ object BookImgClick {
                     BookType.text,
                     snapshot.url.ifBlank { "about:blank" },
                     snapshot.html,
-                    networkRefresher = refresher
+                    networkRefresher = refresher,
+                    offlineOnly = offlineOnly
                 )
             )
         }
@@ -145,12 +149,21 @@ object BookImgClick {
     ) {
         when (openMode()) {
             AppConfig.ReviewOpenMode.SNAPSHOT_ONLY -> {
-                if (!openSnapshotIfCached(context, src, hostChapter, refreshToNetwork = false)) {
+                // 仅使用快照：绝不执行 click/js，也绝不允许快照内残留资源联网
+                if (!openSnapshotIfCached(
+                        context, src, hostChapter,
+                        refreshToNetwork = false, offlineOnly = true
+                    )
+                ) {
                     context.toastOnUi(R.string.review_no_cached_snapshot)
                 }
             }
             AppConfig.ReviewOpenMode.SNAPSHOT_FIRST -> {
-                if (openSnapshotIfCached(context, src, hostChapter, refreshToNetwork = true)) {
+                if (openSnapshotIfCached(
+                        context, src, hostChapter,
+                        refreshToNetwork = true, offlineOnly = false
+                    )
+                ) {
                     return
                 }
                 // 无快照 → 直接按正常网络评论打开
@@ -177,12 +190,20 @@ object BookImgClick {
         if (click.isNullOrBlank() && js.isNullOrBlank()) return false
         when (openMode()) {
             AppConfig.ReviewOpenMode.SNAPSHOT_ONLY -> {
-                if (!openSnapshotIfCached(context, src, hostChapter, refreshToNetwork = false)) {
+                if (!openSnapshotIfCached(
+                        context, src, hostChapter,
+                        refreshToNetwork = false, offlineOnly = true
+                    )
+                ) {
                     context.toastOnUi(R.string.review_no_cached_snapshot)
                 }
             }
             AppConfig.ReviewOpenMode.SNAPSHOT_FIRST -> {
-                if (!openSnapshotIfCached(context, src, hostChapter, refreshToNetwork = true)) {
+                if (!openSnapshotIfCached(
+                        context, src, hostChapter,
+                        refreshToNetwork = true, offlineOnly = false
+                    )
+                ) {
                     openNetwork(context, scope, click, js, urlNoOption, src, hostChapter)
                 }
             }
