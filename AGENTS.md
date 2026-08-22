@@ -323,6 +323,6 @@ uiautomator2 / ADB
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- `3.26.082219c` / `10717`，2026-08-22（UTC），`own` 主线（基于 `a47830a` 编译：refactor(cache) add task contract and generation store；版本号在先前产出 `10716` 之上单调递增）。提交监视自动化第二轮：监视任务检测到本地新提交且工作区干净后自动触发（该提交当时仅存在于本地、尚未推送，编译按"包含分支全部已提交改动"规则直接基于本地 HEAD 执行，不代为推送）。冷编译一次通过（BUILD SUCCESSFUL in 2m 50s，退出码 0）。`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.082219c` / `10717`（与 10716 同 UTC 小时故版本名同名，仅展示用，升级判断以 versionCode 为准）、中文名 `阅读 C`（zh locale）、架构 `arm64-v8a`、compileSdk/targetSdk 36；`apksigner` 完整执行退出码 0（仅 META-INF 未签名条目警告，可接受）。构建期间分支无新提交（HEAD 保持 `a47830a`），无需重编。收尾 `gradlew --stop` 无运行中守护进程，无残留 java 进程。基线记录提交因位于用户未推送的 `a47830a` 之上而暂缓推送，待用户自行推送时一并同步；未安装到模拟器、未做正式回归。
+- `3.26.082219c` / `10718`，2026-08-22（UTC），`own` 主线（基于 `f0a214e` 编译：refactor(cache) harden session recovery and worker ports；版本号在先前产出 `10717` 之上单调递增）。提交监视自动化第三轮：监视任务（改进后触发逻辑：本地 HEAD 移动或远端领先）检测到新提交且已推送、工作区无跟踪改动（仅一个未跟踪笔记 md，非源码不进构建）后自动触发。冷编译一次通过（BUILD SUCCESSFUL in 2m 42s，退出码 0）。`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.082219c` / `10718`（连续第三次同 UTC 小时故版本名同名，仅展示用，升级判断以 versionCode 为准）、中文名 `阅读 C`（zh locale）、架构 `arm64-v8a`、compileSdk/targetSdk 36；`apksigner` 完整执行退出码 0（仅 META-INF 未签名条目警告，可接受）。构建期间分支无新提交（HEAD 保持 `f0a214e`），无需重编。收尾 `gradlew --stop` 无运行中守护进程，无残留 java 进程。基线记录提交正常推送；未安装到模拟器、未做正式回归。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
