@@ -120,7 +120,8 @@ object CacheLifecycleRules {
         return when (from) {
             CacheLifecycle.QUEUED -> to == CacheLifecycle.RUNNING ||
                 to == CacheLifecycle.CANCELLING ||
-                to == CacheLifecycle.CANCELLED
+                to == CacheLifecycle.CANCELLED ||
+                to == CacheLifecycle.FAILED
             CacheLifecycle.RUNNING -> to == CacheLifecycle.PAUSING ||
                 to == CacheLifecycle.CANCELLING ||
                 to == CacheLifecycle.COMPLETED ||

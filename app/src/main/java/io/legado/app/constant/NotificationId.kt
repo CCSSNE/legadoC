@@ -16,5 +16,6 @@ object NotificationId {
     const val Download = 10000
     const val ExportBook = 201
     const val AudioCache = 202
+    const val CacheCoordinator = 203
 
 }

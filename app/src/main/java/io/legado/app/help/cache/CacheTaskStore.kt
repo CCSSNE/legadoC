@@ -17,6 +17,7 @@ import java.util.UUID
 internal class CacheTaskStore(
     private val logSink: CacheLogSink = AppLogCacheLogSink,
     private val persistence: CacheTaskPersistence = AppFileCacheTaskPersistence,
+    private val onPublished: (CacheSnapshot) -> Unit = {},
 ) {
 
     private val lock = Any()
@@ -104,6 +105,25 @@ internal class CacheTaskStore(
             record(CacheLogEventType.TASK_STARTED, sessionId, taskId, "generation=${lease.generation}")
             return lease
         }
+    }
+
+    fun failQueuedTask(sessionId: String, taskId: String, error: String): Boolean {
+        synchronized(lock) {
+            val task = requireTaskLocked(sessionId, taskId)
+            if (task.status != CacheLifecycle.QUEUED) return false
+            check(CacheLifecycleRules.canTransition(task.status, CacheLifecycle.FAILED)) {
+                "invalid cache transition ${task.status} -> ${CacheLifecycle.FAILED}"
+            }
+            replaceTaskLocked(task.copy(
+                status = CacheLifecycle.FAILED,
+                result = CacheResult.FAILED,
+                error = error,
+                updatedAt = System.currentTimeMillis(),
+            ))
+            publishLocked()
+        }
+        record(CacheLogEventType.TASK_FINISHED, sessionId, taskId, "result=FAILED error=$error")
+        return true
     }
 
     /** Reclaim a task after a worker/service restart. This invalidates the old lease. */
@@ -293,6 +313,13 @@ internal class CacheTaskStore(
             } == true
         }
 
+    fun findTask(sessionId: String, kind: CacheKind, phase: CachePhase, bookUrl: String): CacheTaskState? =
+        synchronized(lock) {
+            sessions[sessionId]?.tasks?.firstOrNull {
+                it.kind == kind && it.phase == phase && it.bookUrl == bookUrl
+            }
+        }
+
     fun reviewEligibleUnits(sessionId: String, bodyTaskId: String): List<CacheUnitKey> =
         synchronized(lock) {
             val task = requireTaskLocked(sessionId, bodyTaskId)
@@ -452,6 +479,7 @@ internal class CacheTaskStore(
 
     private fun publishLocked(persist: Boolean = true) {
         _snapshot.value = CacheSnapshot(sessions.values.toList())
+        onPublished(_snapshot.value)
         val version = ++persistenceVersion
         if (!persist) {
             scheduleCheckpointLocked(version)
