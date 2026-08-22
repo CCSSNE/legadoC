@@ -318,8 +318,7 @@ internal class CacheTaskStore(
             }
             val finalResult = aggregateTaskResult(normalizedTask, result)
             aggregateResult = finalResult
-            val hasUnitSuccess = normalizedTask.units.any { it.status == CacheUnitStatus.SUCCEEDED }
-            val lifecycle = if (finalResult == CacheResult.FAILED && !hasUnitSuccess) {
+            val lifecycle = if (unfinished) {
                 CacheLifecycle.FAILED
             } else {
                 CacheLifecycle.COMPLETED
