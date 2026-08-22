@@ -122,7 +122,7 @@ object CacheBook {
 
     private fun notifyResult(context: Context, titleRes: Int, message: String) {
         notificationManager.notify(
-            NotificationId.CacheBookResult,
+            NotificationId.CacheBookService,
             NotificationCompat.Builder(context, AppConst.channelIdDownload)
                 .setSmallIcon(R.drawable.ic_status_bar_r)
                 .setContentTitle(context.getString(titleRes))
