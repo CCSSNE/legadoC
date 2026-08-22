@@ -564,9 +564,6 @@
             </intent-filter>
         </receiver>
         <receiver
-            android:name=".ui.book.cache.AudioCacheActionReceiver"
-            android:exported="false" />
-        <receiver
             android:name=".help.cache.CacheCoordinatorActionReceiver"
             android:exported="false" />
         <receiver

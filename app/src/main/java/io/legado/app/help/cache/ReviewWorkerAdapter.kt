@@ -5,7 +5,7 @@ import io.legado.app.service.ReviewCacheService
 import io.legado.app.data.appDb
 import java.util.concurrent.ConcurrentHashMap
 
-/** Adapter for the existing ReviewSnapshotManager/ReviewCacheService worker. */
+/** Coordinator adapter for the review queue hosted by ReviewCacheService. */
 internal class ReviewWorkerAdapter(
     private val workerPort: CacheWorkerPort,
 ) {

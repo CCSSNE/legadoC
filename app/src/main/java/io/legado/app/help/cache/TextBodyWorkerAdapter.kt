@@ -7,7 +7,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Coordinator adapter for the existing CacheBook execution core.
- * The legacy service remains the executor; it never receives a Store lease.
+ * CacheBookService is only the Android execution host; it never owns Store state.
  */
 internal class TextBodyWorkerAdapter(
     private val workerPort: CacheWorkerPort,
@@ -66,8 +66,8 @@ internal class TextBodyWorkerAdapter(
     fun pause(submission: CacheSubmission) {
         val task = CacheCoordinator.currentTask(submission)
             ?: return
-        registry.markPaused(submission.sessionId, submission.taskId)
-        CacheBook.stop(task.bookUrl, releaseReviewPhase = false)
+        registry.remove(submission.sessionId, submission.taskId)
+        CacheBook.stop(task.bookUrl)
         CacheCoordinator.workerPort.confirmPaused(submission)
     }
 
@@ -75,7 +75,7 @@ internal class TextBodyWorkerAdapter(
         val task = CacheCoordinator.currentTask(submission)
             ?: return
         registry.remove(submission.sessionId, submission.taskId)
-        CacheBook.stop(task.bookUrl, releaseReviewPhase = false)
+        CacheBook.stop(task.bookUrl)
         if (workerPort.confirmCancelled(submission)) {
             CacheCoordinator.notifyTaskFinished(submission, CacheResult.CANCELLED)
         }
@@ -113,7 +113,6 @@ internal object CacheBodyWorkerRegistry {
     private val lock = Any()
     private val bindings = ConcurrentHashMap<String, Binding>()
     private val managedBooks = ConcurrentHashMap.newKeySet<String>()
-    private val pausedBooks = ConcurrentHashMap.newKeySet<String>()
 
     fun bind(workerPort: CacheWorkerPort) {
         this.workerPort = workerPort
@@ -125,10 +124,9 @@ internal object CacheBodyWorkerRegistry {
                 it.bookUrl == task.bookUrl && it.lease.taskId != lease.taskId
             }
             if (existing != null) return false
-            if (CacheBook.cacheBookMap[task.bookUrl]?.isRun() == true) return false
+            if (CacheBook.hasActiveBook(task.bookUrl)) return false
             bindings[taskKey(lease)] = Binding(lease, task.bookUrl, units)
             managedBooks.add(task.bookUrl)
-            pausedBooks.remove(task.bookUrl)
         }
         return true
     }
@@ -145,13 +143,7 @@ internal object CacheBodyWorkerRegistry {
     }
 
     fun remove(sessionId: String, taskId: String) {
-        val binding = bindings.remove("$sessionId/$taskId") ?: return
-        io.legado.app.help.review.ReviewSnapshotManager.endBodyPhase(binding.bookUrl)
-        managedBooks.remove(binding.bookUrl)
-    }
-
-    fun markPaused(sessionId: String, taskId: String) {
-        bindings["$sessionId/$taskId"]?.let { pausedBooks.add(it.bookUrl) }
+        bindings.remove("$sessionId/$taskId")?.let { managedBooks.remove(it.bookUrl) }
     }
 
     fun onChapterSuccess(lease: CacheWorkerLease, chapterIndex: Int) {
@@ -166,24 +158,12 @@ internal object CacheBodyWorkerRegistry {
         if (requireWorkerPort().finish(lease, CacheResult.FAILED, error)) {
             CacheCoordinator.notifyTaskFinished(lease, CacheResult.FAILED, error)
         }
-        val binding = bindings.remove(taskKey(lease))
-        binding?.let {
-            io.legado.app.help.review.ReviewSnapshotManager.endBodyPhase(it.bookUrl)
-            managedBooks.remove(it.bookUrl)
-        }
+        bindings.remove(taskKey(lease))?.let { managedBooks.remove(it.bookUrl) }
     }
 
     fun onWorkerFinished(lease: CacheWorkerLease, error: String? = null) {
         val binding = bindings[taskKey(lease)] ?: run {
             logStale(lease, "body worker finished binding missing")
-            return
-        }
-        if (pausedBooks.remove(binding.bookUrl)) {
-            if (binding.lease.generation != lease.generation) {
-                logStale(lease, "body worker finished while paused")
-            }
-            bindings.remove(taskKey(lease), binding)
-            managedBooks.remove(binding.bookUrl)
             return
         }
         if (binding.lease.generation != lease.generation) {
@@ -199,7 +179,6 @@ internal object CacheBodyWorkerRegistry {
                 error ?: "body worker ended before chapter completion",
             )
         }
-        io.legado.app.help.review.ReviewSnapshotManager.endBodyPhase(binding.bookUrl)
         managedBooks.remove(binding.bookUrl)
     }
 

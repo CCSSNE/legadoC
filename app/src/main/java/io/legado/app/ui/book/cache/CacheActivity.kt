@@ -353,8 +353,13 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
 
     override fun observeLiveBus() {
         lifecycleScope.launch {
-            CacheCoordinator.snapshot.collectLatest {
+            CacheCoordinator.snapshot.collectLatest { snapshot ->
                 updateCoordinatorDownloadMenu()
+                snapshot.sessions
+                    .flatMap { it.tasks }
+                    .map { it.bookUrl }
+                    .distinct()
+                    .forEach(::notifyItemChanged)
             }
         }
         viewModel.upAdapterLiveData.observe(this) {
@@ -362,12 +367,6 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
         }
         observeEvent<String>(EventBus.EXPORT_BOOK) {
             notifyItemChanged(it)
-        }
-        observeEvent<String>(EventBus.UP_DOWNLOAD) {
-            notifyItemChanged(it)
-        }
-        observeEvent<String>(EventBus.UP_DOWNLOAD_STATE) {
-            updateCoordinatorDownloadMenu()
         }
         observeEvent<Pair<Book, BookChapter>>(EventBus.SAVE_CONTENT) { (book, chapter) ->
             viewModel.cacheChapters[book.bookUrl]?.add(chapter.url)

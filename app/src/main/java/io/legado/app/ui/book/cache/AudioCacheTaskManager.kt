@@ -1,24 +1,16 @@
 package io.legado.app.ui.book.cache
 
-import androidx.core.app.NotificationCompat
 import io.legado.app.R
-import io.legado.app.constant.AppConst
-import io.legado.app.constant.NotificationId
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.help.book.isVideo
 import io.legado.app.utils.ConvertUtils
-import io.legado.app.utils.activityPendingIntent
-import io.legado.app.utils.broadcastPendingIntent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.runBlocking
 import splitties.init.appCtx
-import splitties.systemservices.notificationManager
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -27,9 +19,7 @@ import java.util.concurrent.ThreadFactory
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.max
 
-object AudioCacheTaskManager {
-
-    const val EXTRA_BOOK_URL = "bookUrl"
+internal object AudioCacheTaskManager {
 
     private val executor: ExecutorService = Executors.newSingleThreadExecutor(
         ThreadFactory { runnable ->
@@ -41,27 +31,20 @@ object AudioCacheTaskManager {
     )
     private val cancelFlags = ConcurrentHashMap<String, AtomicBoolean>()
     private val futures = ConcurrentHashMap<String, Future<*>>()
-    private val lastNotifyTimes = ConcurrentHashMap<String, Long>()
-    private val lastNotifyStatuses = ConcurrentHashMap<String, CacheTaskStatus>()
     private val requests = ConcurrentHashMap<String, AudioCacheTaskRequest>()
     private val pausingBookUrls = ConcurrentHashMap.newKeySet<String>()
     private val pendingResumeBookUrls = ConcurrentHashMap.newKeySet<String>()
     private val preparingResumeBookUrls = ConcurrentHashMap.newKeySet<String>()
     private val _states = MutableStateFlow<Map<String, AudioCacheTaskState>>(emptyMap())
-    val states: StateFlow<Map<String, AudioCacheTaskState>> = _states.asStateFlow()
+    internal fun snapshot(bookUrl: String): AudioCacheTaskState? = _states.value[bookUrl]
 
-    fun hasTask(bookUrl: String): Boolean = _states.value[bookUrl]?.active == true
-
-    fun snapshot(bookUrl: String): AudioCacheTaskState? = _states.value[bookUrl]
-
-    fun start(
+    internal fun start(
         book: Book,
         chapters: List<BookChapter>,
         resolver: suspend (Book, BookChapter) -> ExoPlayerHelper.MediaRequest,
         onChapterResolved: ((BookChapter, ExoPlayerHelper.MediaRequest) -> Unit)? = null,
         onChapterFinished: ((BookChapter, Boolean, String?) -> Unit)? = null,
         onFinished: (() -> Unit)? = null,
-        coordinatorManaged: Boolean = false,
     ): Boolean {
         if (chapters.isEmpty()) return false
         val existing = _states.value[book.bookUrl]
@@ -75,7 +58,6 @@ object AudioCacheTaskManager {
             onChapterResolved = onChapterResolved,
             onChapterFinished = onChapterFinished,
             onFinished = onFinished,
-            coordinatorManaged = coordinatorManaged,
             totalChapters = chapters.size
         )
         if (requests.putIfAbsent(book.bookUrl, request) != null) return false
@@ -299,19 +281,17 @@ object AudioCacheTaskManager {
                     if (finalStatus != CacheTaskStatus.PAUSED) {
                         requests.remove(book.bookUrl)
                     }
-                    if (finalStatus == CacheTaskStatus.COMPLETED || request.coordinatorManaged) {
+                    if (finalStatus != CacheTaskStatus.PAUSED) {
                         request.onFinished?.invoke()
                     }
                 }
-                lastNotifyTimes.remove(book.bookUrl)
-                lastNotifyStatuses.remove(book.bookUrl)
             }
         }
         futures[book.bookUrl] = future
         return true
     }
 
-    fun cancel(bookUrl: String) {
+    internal fun cancel(bookUrl: String) {
         requests.remove(bookUrl)
         pausingBookUrls.remove(bookUrl)
         pendingResumeBookUrls.remove(bookUrl)
@@ -320,7 +300,7 @@ object AudioCacheTaskManager {
         futures[bookUrl]?.cancel(true)
     }
 
-    fun pause(bookUrl: String) {
+    internal fun pause(bookUrl: String) {
         val state = _states.value[bookUrl] ?: return
         if (!state.active) return
         pausingBookUrls.add(bookUrl)
@@ -336,7 +316,7 @@ object AudioCacheTaskManager {
         }
     }
 
-    fun resume(
+    internal fun resume(
         bookUrl: String,
         onChapterFinished: ((BookChapter, Boolean, String?) -> Unit)? = null,
         onFinished: (() -> Unit)? = null,
@@ -373,15 +353,6 @@ object AudioCacheTaskManager {
             }
         }
         return true
-    }
-
-    fun togglePause(bookUrl: String) {
-        val state = _states.value[bookUrl] ?: return
-        if (state.status == CacheTaskStatus.PAUSED) {
-            resume(bookUrl)
-        } else if (state.active) {
-            pause(bookUrl)
-        }
     }
 
     private fun buildProgressMessage(
@@ -430,7 +401,6 @@ object AudioCacheTaskManager {
                 put(bookUrl, updated)
             }
         }
-        updatedState?.let(::notifyState)
     }
 
     private fun updateState(bookUrl: String, state: AudioCacheTaskState) {
@@ -439,63 +409,6 @@ object AudioCacheTaskManager {
                 put(bookUrl, state)
             }
         }
-        notifyState(state)
-    }
-
-    private fun notifyState(state: AudioCacheTaskState) {
-        if (requests[state.bookUrl]?.coordinatorManaged == true) return
-        val terminal = !state.active && state.status.isTerminalNotificationStatus()
-        val now = System.currentTimeMillis()
-        val last = lastNotifyTimes[state.bookUrl] ?: 0L
-        val statusChanged = lastNotifyStatuses[state.bookUrl] != state.status
-        if (!terminal && !statusChanged && now - last < NOTIFICATION_INTERVAL_MS) return
-        lastNotifyTimes[state.bookUrl] = now
-        lastNotifyStatuses[state.bookUrl] = state.status
-        val chapterPercent = state.currentChapterPercent()
-        val totalPosition = when {
-            state.status == CacheTaskStatus.COMPLETED -> state.totalChapters
-            state.currentChapterIndex > 0 -> state.currentChapterIndex
-            else -> state.completedChapters
-        }.coerceIn(0, state.totalChapters.coerceAtLeast(0))
-        val contentText = if (state.status == CacheTaskStatus.RESOLVING) {
-            state.message
-        } else {
-            appCtx.getString(
-                R.string.audio_cache_notification_progress,
-                state.bookName,
-                chapterPercent?.toString() ?: "--",
-                totalPosition,
-                state.totalChapters,
-            )
-        }
-        val builder = NotificationCompat.Builder(appCtx, AppConst.channelIdDownload)
-            .setSmallIcon(R.drawable.ic_status_bar_r)
-            .setContentTitle(appCtx.getString(R.string.offline_cache))
-            .setContentText(contentText)
-            .setOngoing(state.active)
-            .setOnlyAlertOnce(true)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setContentIntent(
-                appCtx.activityPendingIntent<CacheManageActivity>("audioCacheManage") {
-                    putExtra(CacheManageActivity.EXTRA_MODE, CacheManageActivity.MODE_AUDIO)
-                }
-            )
-        if (state.active || state.status == CacheTaskStatus.PAUSED) {
-            val paused = state.status == CacheTaskStatus.PAUSED
-            builder.addAction(
-                if (paused) R.drawable.ic_play_24dp else R.drawable.ic_pause_24dp,
-                appCtx.getString(if (paused) R.string.resume else R.string.pause),
-                appCtx.broadcastPendingIntent<AudioCacheActionReceiver>(
-                    "$ACTION_AUDIO_CACHE_TOGGLE:${state.bookUrl.hashCode()}:${state.status}"
-                ) {
-                    putExtra(EXTRA_BOOK_URL, state.bookUrl)
-                }
-            )
-        }
-        state.notificationProgress()?.let { progress ->
-            builder.setProgress(progress.max, progress.value, progress.indeterminate)
-        } ?: builder.setProgress(0, 0, false)
-        notificationManager.notify(NotificationId.AudioCache, builder.build())
     }
 }
 
@@ -516,26 +429,10 @@ private data class AudioCacheTaskRequest(
     val onChapterResolved: ((BookChapter, ExoPlayerHelper.MediaRequest) -> Unit)?,
     val onChapterFinished: ((BookChapter, Boolean, String?) -> Unit)?,
     val onFinished: (() -> Unit)?,
-    val coordinatorManaged: Boolean,
     val totalChapters: Int
 )
 
 private const val PROGRESS_STATE_INTERVAL_MS = 750L
-private const val NOTIFICATION_INTERVAL_MS = 1000L
-private const val ACTION_AUDIO_CACHE_TOGGLE = "audioCacheToggle"
-
-private data class CacheNotificationProgress(
-    val max: Int,
-    val value: Int,
-    val indeterminate: Boolean
-)
-
-private fun CacheTaskStatus.isTerminalNotificationStatus(): Boolean {
-    return this == CacheTaskStatus.COMPLETED ||
-        this == CacheTaskStatus.PAUSED ||
-        this == CacheTaskStatus.CANCELLED ||
-        this == CacheTaskStatus.FAILED
-}
 
 data class AudioCacheTaskState(
     val bookUrl: String,
@@ -553,34 +450,3 @@ data class AudioCacheTaskState(
     val message: String = "",
     val active: Boolean = true
 )
-
-private fun AudioCacheTaskState.currentChapterPercent(): Int? {
-    val total = currentChapterTotalBytes?.takeIf { it > 0L } ?: return null
-    return ((currentChapterBytes.coerceIn(0L, total) * 100L) / total)
-        .toInt()
-        .coerceIn(0, 100)
-}
-
-private fun AudioCacheTaskState.notificationProgress(): CacheNotificationProgress? {
-    val chapterPercent = currentChapterPercent()
-    if (active) {
-        return CacheNotificationProgress(
-            max = 100,
-            value = chapterPercent ?: 0,
-            indeterminate = chapterPercent == null
-        )
-    }
-    if (status != CacheTaskStatus.PAUSED) return null
-    if (chapterPercent != null) {
-        return CacheNotificationProgress(
-            max = 100,
-            value = chapterPercent,
-            indeterminate = false
-        )
-    }
-    return CacheNotificationProgress(
-        max = 100,
-        value = 0,
-        indeterminate = false
-    )
-}

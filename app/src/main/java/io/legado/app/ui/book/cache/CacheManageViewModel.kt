@@ -525,7 +525,7 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
         mode: CacheManageMode,
         knownManifest: CacheBookManifest? = null
     ): CacheBookItem? {
-        val taskState = AudioCacheTaskManager.snapshot(book.bookUrl)
+        val taskState = CacheCoordinator.snapshot.value.toMediaTaskStates()[book.bookUrl]
         if (mode.isMedia) {
             return buildMediaCacheBookItem(book, mode, knownManifest, taskState)
         }

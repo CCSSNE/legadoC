@@ -73,7 +73,6 @@ internal class MediaWorkerAdapter(
             },
             onChapterFinished = chapterFinished,
             onFinished = finished,
-            coordinatorManaged = true,
         )
         if (!started) CacheMediaWorkerRegistry.fail(lease, "media task was already active")
     }
