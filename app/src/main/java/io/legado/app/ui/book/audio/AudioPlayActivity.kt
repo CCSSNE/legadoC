@@ -1132,8 +1132,9 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     }
 
     /**
-     * 评论按钮原图 span：复用书源 src 图片（保留原样式与评论数量），
-     * 与阅读页 ImageColumn 一致——宽度固定为字符宽，高度按原图比例垂直居中。
+     * 评论按钮原图 span：复用书源 src 图片（保留原样式与评论数量）。
+     * 它在布局中是零宽的行尾附着绘制，避免改变正文的居中/换行基准；
+     * 实际可见宽度仍按字符宽，高度按原图比例垂直居中。
      * 绘制（draw）与命中测试（[reviewingSpanAt]）共用
      * [resolveBitmap] + [imageRect] 同一套取图与几何计算。
      */
@@ -1149,7 +1150,10 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             end: Int,
             fm: Paint.FontMetricsInt?,
         ): Int {
-            return (paint.textSize * REVIEW_IMAGE_WIDTH_SCALE).toInt().coerceAtLeast(1)
+            // The bubble is an attached visual affordance, not part of the text
+            // geometry. Keeping the replacement width at zero preserves the
+            // paragraph's original centering and wrapping for every other line.
+            return 0
         }
 
         override fun draw(
