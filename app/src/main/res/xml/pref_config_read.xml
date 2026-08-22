@@ -364,4 +364,10 @@
         android:defaultValue="false"
         android:key="readBarStyleFollowPage"
         android:title="@string/read_bar_style_follow_page" />
+
+    <io.legado.app.lib.prefs.SwitchPreference
+        android:defaultValue="false"
+        android:key="syncCacheReview"
+        android:summary="@string/sync_cache_review_summary"
+        android:title="@string/sync_cache_review" />
 </androidx.preference.PreferenceScreen>

@@ -1,0 +1,429 @@
+package io.legado.app.help.review
+
+import android.annotation.SuppressLint
+import android.os.Handler
+import android.os.Looper
+import android.webkit.SslErrorHandler
+import android.net.http.SslError
+import android.webkit.WebResourceRequest
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import com.script.rhino.runScriptWithContext
+import io.legado.app.constant.AppConst
+import io.legado.app.constant.BookType
+import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.BookSource
+import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.http.CookieManager as AppCookieManager
+import io.legado.app.help.http.StrResponse
+import io.legado.app.help.http.okHttpClient
+import io.legado.app.help.webView.WebViewPool
+import io.legado.app.model.analyzeRule.AnalyzeUrl
+import io.legado.app.ui.rss.read.RssJsExtensions
+import io.legado.app.utils.GSON
+import io.legado.app.utils.runOnUI
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import org.apache.commons.text.StringEscapeUtils
+import splitties.init.appCtx
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+
+/**
+ * 评论页快照抓取引擎。
+ *
+ * 两步走：
+ * 1. 在书源 JS 上下文执行评论按钮的 click 代码，通过浏览器打开钩子拦截真实评论页地址；
+ * 2. 用无头 WebView 加载该地址，循环穷尽“展开/查看回复/加载更多/懒加载”，
+ *    把样式与图片内联为 data URI 后序列化 HTML 存为快照。
+ * 快照完全离线可渲染；失败直接抛出，由调用方记日志，绝不影响正文。
+ */
+object ReviewSnapshotCapture {
+
+    private val mHandler = Handler(Looper.getMainLooper())
+
+    /** 单个按钮整体超时 */
+    private const val RESOLVE_TIMEOUT_MS = 20_000L
+    private const val PAGE_TIMEOUT_MS = 120_000L
+    /** 穷尽循环轮数上限 */
+    private const val MAX_EXPAND_ROUNDS = 40
+    /** 每轮之间的等待 */
+    private const val EXPAND_ROUND_INTERVAL_MS = 800L
+    /** 资源内联上限 */
+    private const val MAX_INLINE_RESOURCES = 200
+    private const val MAX_TOTAL_INLINE_BYTES = 30L * 1024 * 1024
+
+    /**
+     * 抓取一章某个评论按钮对应的真实评论页快照。
+     * @param clickJs 按钮 src 选项里的 click JS；为空表示无法无头解析
+     */
+    suspend fun capture(
+        bookSource: BookSource,
+        book: Book,
+        chapter: BookChapter,
+        buttonSrc: String,
+        clickJs: String
+    ): ReviewSnapshot {
+        val url = resolveCommentPageUrl(bookSource, book, chapter, buttonSrc, clickJs)
+        if (url.isBlank()) {
+            throw NoStackTraceException("未能解析评论页地址 ${chapter.title}")
+        }
+        val html = snapshotPage(url, bookSource)
+        return ReviewSnapshot(
+            bookUrl = book.bookUrl,
+            chapterIndex = chapter.index,
+            chapterTitle = chapter.title,
+            buttonSrc = buttonSrc,
+            url = url,
+            title = "",
+            html = html,
+            savedAt = System.currentTimeMillis()
+        )
+    }
+
+    /**
+     * 执行 click JS 并拦截 java.startBrowser / java.startBrowserAwait 得到评论页地址
+     */
+    private suspend fun resolveCommentPageUrl(
+        bookSource: BookSource,
+        book: Book,
+        chapter: BookChapter,
+        buttonSrc: String,
+        clickJs: String
+    ): String = withContext(Dispatchers.IO) {
+        val resolved = AtomicReference("")
+        val latch = CountDownLatch(1)
+        val jsExtensions = object : RssJsExtensions(null, bookSource, BookType.text) {
+            override fun onBrowserOpenRequested(url: String, title: String, html: String?): Boolean {
+                resolved.compareAndSet("", url)
+                latch.countDown()
+                return true
+            }
+
+            override fun onBrowserAwaitRequested(
+                url: String,
+                title: String,
+                html: String?
+            ): StrResponse {
+                resolved.compareAndSet("", url)
+                latch.countDown()
+                return StrResponse(url, "")
+            }
+        }
+        runScriptWithContext {
+            bookSource.evalJS(clickJs) {
+                put("java", jsExtensions)
+                put("book", book)
+                put("chapter", chapter)
+                put("result", buttonSrc)
+            }
+        }
+        latch.await(RESOLVE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        resolved.get()
+    }
+
+    /**
+     * 无头加载页面并穷尽展开后返回最终 HTML
+     */
+    private suspend fun snapshotPage(url: String, bookSource: BookSource): String =
+        withTimeout(PAGE_TIMEOUT_MS) {
+            val analyzeUrl = AnalyzeUrl(url, source = bookSource)
+            val headerMap = analyzeUrl.headerMap
+            suspendCancellableCoroutine { block ->
+                runOnUI {
+                    var pooledWebView: io.legado.app.help.webView.PooledWebView? = null
+                    try {
+                        pooledWebView = WebViewPool.acquire(appCtx)
+                        val webView = pooledWebView.realWebView
+                        webView.onResume()
+                        webView.setBackgroundColor(android.graphics.Color.WHITE)
+                        webView.settings.apply {
+                            blockNetworkImage = false
+                            headerMap[AppConst.UA_NAME]?.let { userAgentString = it }
+                        }
+                        AppCookieManager.applyToWebView(url)
+                        val session = SnapshotSession(webView, url) { result, error ->
+                            runOnUI {
+                                pooledWebView?.let { WebViewPool.release(it) }
+                            }
+                            if (block.isActive) {
+                                if (error != null) block.resumeWithException(error)
+                                else block.resume(result ?: "")
+                            }
+                        }
+                        webView.webViewClient = session.client
+                        webView.loadUrl(url, headerMap)
+                        block.invokeOnCancellation {
+                            runOnUI { session.destroy() }
+                        }
+                    } catch (e: Throwable) {
+                        pooledWebView?.let { WebViewPool.release(it) }
+                        if (block.isActive) block.resumeWithException(e)
+                    }
+                }
+            }
+        }
+
+    /**
+     * 一个页面的穷尽会话：onPageFinished 后循环执行展开脚本直到稳定，
+     * 再收集图片/样式资源内联，最后序列化 HTML。
+     */
+    private class SnapshotSession(
+        private val webView: WebView,
+        private val url: String,
+        private val done: (String?, Throwable?) -> Unit
+    ) {
+
+        private var destroyed = false
+        private var expandRounds = 0
+        private var stableRounds = 0
+        private var lastTextLen = -1
+
+        val client = object : WebViewClient() {
+            override fun onPageFinished(view: WebView?, finishedUrl: String?) {
+                if (destroyed) return
+                mHandler.postDelayed({ expandRound() }, 1500L)
+            }
+
+            @SuppressLint("WebViewClientOnReceivedSslError")
+            override fun onReceivedSslError(
+                view: WebView?,
+                handler: SslErrorHandler?,
+                error: SslError?
+            ) {
+                handler?.proceed()
+            }
+
+            override fun shouldOverrideUrlLoading(
+                view: WebView?,
+                request: WebResourceRequest?
+            ): Boolean {
+                // 评论页内的跳转不跟随，避免快照跑题
+                return request?.isForMainFrame == true &&
+                    !request.url.toString().startsWith(url.substringBefore("#"))
+            }
+        }
+
+        fun destroy() {
+            destroyed = true
+        }
+
+        private fun finish(html: String?) {
+            if (destroyed) return
+            destroyed = true
+            done(html, null)
+        }
+
+        private fun fail(error: Throwable) {
+            if (destroyed) return
+            destroyed = true
+            done(null, error)
+        }
+
+        private fun expandRound() {
+            if (destroyed) return
+            webView.evaluateJavascript(EXPAND_JS) { json ->
+                mHandler.post {
+                    if (destroyed) return@post
+                    val stats = parseStats(json)
+                    val textLen = stats?.second ?: -1
+                    val clicked = stats?.first ?: 0
+                    val stable = clicked == 0 && textLen == lastTextLen
+                    lastTextLen = textLen
+                    stableRounds = if (stable) stableRounds + 1 else 0
+                    expandRounds++
+                    if (stableRounds >= 2 || expandRounds >= MAX_EXPAND_ROUNDS) {
+                        inlineResources()
+                    } else {
+                        mHandler.postDelayed({ expandRound() }, EXPAND_ROUND_INTERVAL_MS)
+                    }
+                }
+            }
+        }
+
+        private fun parseStats(json: String?): Pair<Int, Int>? {
+            json ?: return null
+            return runCatching {
+                val s = StringEscapeUtils.unescapeJson(json).trim('"')
+                if (s == "null") return null
+                val obj = GSON.fromJson(s, Map::class.java)
+                val c = (obj?.get("c") as? Double)?.toInt() ?: 0
+                val t = (obj?.get("t") as? Double)?.toInt() ?: 0
+                c to t
+            }.getOrNull()
+        }
+
+        /** 收集图片与样式表并内联，然后取最终 HTML */
+        private fun inlineResources() {
+            if (destroyed) return
+            webView.evaluateJavascript(COLLECT_RESOURCES_JS) { json ->
+                mHandler.post {
+                    if (destroyed) return@post
+                    val urls = parseResourceUrls(json)
+                    Thread {
+                        runCatching {
+                            val inline = downloadResources(urls)
+                            mHandler.post { applyInline(inline) }
+                        }.onFailure {
+                            // 资源下载失败不影响快照本体
+                            mHandler.post { serialize() }
+                        }
+                    }.start()
+                }
+            }
+        }
+
+        private data class InlineResources(
+            val imgMap: Map<String, String> = emptyMap(),
+            val cssMap: Map<String, String> = emptyMap()
+        )
+
+        private fun parseResourceUrls(json: String?): Pair<List<String>, List<String>> {
+            json ?: return emptyList<String>() to emptyList()
+            return runCatching {
+                val s = StringEscapeUtils.unescapeJson(json).trim('"')
+                if (s == "null") return emptyList<String>() to emptyList()
+                @Suppress("UNCHECKED_CAST")
+                val obj = GSON.fromJson(s, Map::class.java) as? Map<String, List<String>>
+                val img = obj?.get("img").orEmpty().filter { it.startsWith("http") }.distinct()
+                val css = obj?.get("css").orEmpty().filter { it.startsWith("http") }.distinct()
+                img to css
+            }.getOrNull() ?: (emptyList<String>() to emptyList())
+        }
+
+        private fun downloadResources(urls: Pair<List<String>, List<String>>): InlineResources {
+            val (imgUrls, cssUrls) = urls
+            var totalBytes = 0L
+            val imgMap = linkedMapOf<String, String>()
+            for (rawUrl in imgUrls.take(MAX_INLINE_RESOURCES)) {
+                if (totalBytes > MAX_TOTAL_INLINE_BYTES) break
+                runCatching {
+                    fetchBytes(rawUrl)
+                }.getOrNull()?.let { bytes ->
+                    if (bytes.size <= 8L * 1024 * 1024) {
+                        val mime = guessMime(rawUrl, bytes)
+                        imgMap[rawUrl] =
+                            "data:$mime;base64," +
+                                android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                        totalBytes += bytes.size
+                    }
+                }
+            }
+            val cssMap = linkedMapOf<String, String>()
+            for (rawUrl in cssUrls.take(MAX_INLINE_RESOURCES)) {
+                if (totalBytes > MAX_TOTAL_INLINE_BYTES) break
+                runCatching {
+                    fetchBytes(rawUrl).toString(Charsets.UTF_8)
+                }.getOrNull()?.takeIf { it.isNotBlank() }?.let { cssText ->
+                    cssMap[rawUrl] = cssText
+                    totalBytes += cssText.toByteArray(Charsets.UTF_8).size
+                }
+            }
+            return InlineResources(imgMap, cssMap)
+        }
+
+        /** 同步抓取资源字节（在后台线程调用） */
+        private fun fetchBytes(resourceUrl: String): ByteArray {
+            val request = okhttp3.Request.Builder()
+                .url(resourceUrl)
+                .header("Referer", url)
+                .build()
+            okHttpClient.newCall(request).execute().use { response ->
+                check(response.isSuccessful) { "HTTP ${response.code}" }
+                return response.body.bytes()
+            }
+        }
+
+        private fun guessMime(rawUrl: String, bytes: ByteArray): String {
+            val lower = rawUrl.substringBefore('?').lowercase()
+            return when {
+                lower.endsWith(".png") -> "image/png"
+                lower.endsWith(".webp") -> "image/webp"
+                lower.endsWith(".gif") -> "image/gif"
+                lower.endsWith(".svg") -> "image/svg+xml"
+                lower.endsWith(".css") -> "text/css"
+                bytes.size > 3 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() -> "image/jpeg"
+                else -> "image/jpeg"
+            }
+        }
+
+        private fun applyInline(inline: InlineResources) {
+            if (destroyed) return
+            if (inline.imgMap.isEmpty() && inline.cssMap.isEmpty()) {
+                serialize()
+                return
+            }
+            webView.evaluateJavascript(buildApplyJs(inline)) { serialize() }
+        }
+
+        private fun serialize() {
+            if (destroyed) return
+            webView.evaluateJavascript("document.documentElement.outerHTML") { raw ->
+                val html = raw?.let {
+                    runCatching { StringEscapeUtils.unescapeJson(it).trim('"') }.getOrNull()
+                }.orEmpty()
+                if (html.isBlank()) {
+                    fail(NoStackTraceException("评论页快照序列化为空 $url"))
+                } else {
+                    finish(stripScripts(html))
+                }
+            }
+        }
+
+        private fun stripScripts(html: String): String {
+            // 快照离线渲染：去掉脚本，保留结构与内联样式/图片
+            return html
+                .replace(Regex("(?is)<script[^>]*>.*?</script>"), "")
+                .replace(Regex("(?is)<script[^>]*/>"), "")
+        }
+
+        private fun buildApplyJs(inline: InlineResources): String {
+            val imgJson = GSON.toJson(inline.imgMap)
+            val cssJson = GSON.toJson(inline.cssMap)
+            return "(function(){" +
+                "var m=$imgJson;" +
+                "var c=$cssJson;" +
+                "document.querySelectorAll('img[src]').forEach(function(el){" +
+                "var d=m[el.src];if(d)el.src=d;});" +
+                "document.querySelectorAll('link[rel=\"stylesheet\"]').forEach(function(el){" +
+                "var d=c[el.href];if(d){var s=document.createElement('style');" +
+                "s.textContent=d;el.parentNode.insertBefore(s,el);el.remove();}});" +
+                "})()"
+        }
+    }
+
+    private const val EXPAND_JS =
+        "(function(){" +
+            "var pat=/(展开|更多回复|查看回复|加载更多|查看更多|查看全部|显示全部|点击查看|继续阅读|load\\s*more|show\\s*more|view\\s*more|expand)/i;" +
+            "var clicked=0;" +
+            "var els=document.querySelectorAll('a,button,[role=\"button\"],[onclick],div,span,p');" +
+            "for(var i=0;i<els.length;i++){var el=els[i];" +
+            "var t=(el.innerText||'').trim();" +
+            "if(!t||t.length>24||!pat.test(t))continue;" +
+            "var r=el.getBoundingClientRect();" +
+            "if(r.width<1||r.height<1)continue;" +
+            "if(el.children.length>2)continue;" +
+            "el.scrollIntoView({block:'center'});" +
+            "try{el.click();}catch(e){}" +
+            "try{el.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));" +
+            "el.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));" +
+            "el.dispatchEvent(new TouchEvent('touchend',{bubbles:true}));}catch(e){}" +
+            "clicked++;if(clicked>=6)break;}" +
+            "try{window.scrollTo(0,document.body.scrollHeight);}catch(e){}" +
+            "return JSON.stringify({c:clicked,t:document.body?document.body.innerText.length:0});" +
+            "})()"
+
+    private const val COLLECT_RESOURCES_JS =
+        "(function(){" +
+            "var img=[],css=[];" +
+            "document.querySelectorAll('img[src]').forEach(function(el){img.push(el.src);});" +
+            "document.querySelectorAll('link[rel=\"stylesheet\"][href]').forEach(function(el){css.push(el.href);});" +
+            "return JSON.stringify({img:img,css:css});" +
+            "})()"
+}

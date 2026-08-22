@@ -103,6 +103,8 @@ object PreferKey {
     const val aiCurrentModel = "aiCurrentModel"
     const val aiModelList = "aiModelList"
     const val enableReview = "enableReview"
+    const val syncCacheReview = "syncCacheReview"
+    const val exportReviews = "exportReviews"
     const val showRss = "showRss"
     const val showRssPageInSettings = "showRssPageInSettings"
     const val bookshelfLayout = "bookshelfLayout"

@@ -175,6 +175,10 @@ object BookHelp {
             saveText(book, bookChapter, content)
             //saveImages(bookSource, book, bookChapter, content)
             CacheManifestHelper.refresh(book)
+            // 正文完成后低优先级补抓评论页快照（失败不影响正文）
+            io.legado.app.help.review.ReviewSnapshotManager.enqueueIfEnabled(
+                bookSource, book, bookChapter
+            )
             postEvent(EventBus.SAVE_CONTENT, Pair(book, bookChapter))
         } catch (e: Exception) {
             e.printStackTrace()

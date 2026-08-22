@@ -1040,6 +1040,20 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefBoolean(PreferKey.enableReview, value)
         }
 
+    /** 刷新/下载(缓存)章节时同步抓取评论页快照 */
+    var syncCacheReview: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.syncCacheReview, false)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.syncCacheReview, value)
+        }
+
+    /** TXT-ZIP 导出时附带评论页快照 */
+    var exportReviews: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.exportReviews, true)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.exportReviews, value)
+        }
+
     var threadCount: Int
         get() = appCtx.getPrefInt(PreferKey.threadCount, 16)
         set(value) {

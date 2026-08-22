@@ -14,6 +14,7 @@ import io.legado.app.model.analyzeRule.AnalyzeUrl.Companion.paramPattern
 import io.legado.app.ui.login.SourceLoginJsExtensions
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
+import io.legado.app.utils.showDialogFragment
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 
@@ -25,6 +26,33 @@ import kotlinx.coroutines.Dispatchers
  * click 代码（通常由它弹出评论页），两端行为完全一致，不各自实现一套。
  */
 object BookImgClick {
+
+    /**
+     * 评论快照离线优先：该书该章该按钮已有快照时直接本地渲染，不再联网。
+     * @return true 表示已用快照打开
+     */
+    private fun openSnapshotIfCached(
+        context: AppCompatActivity,
+        chapterIndex: Int,
+        src: String
+    ): Boolean {
+        val book = ReadBook.book ?: return false
+        val snapshot = io.legado.app.help.review.ReviewSnapshotStore.get(
+            book, chapterIndex, src.trim()
+        ) ?: return false
+        context.runOnUiThread {
+            if (context.isFinishing || context.isDestroyed) return@runOnUiThread
+            context.showDialogFragment(
+                io.legado.app.ui.widget.dialog.BottomWebViewDialog(
+                    ReadBook.bookSource?.getKey().orEmpty(),
+                    BookType.text,
+                    snapshot.url.ifBlank { "about:blank" },
+                    snapshot.html
+                )
+            )
+        }
+        return true
+    }
 
     /**
      * 执行 src 附带的 click JS。
@@ -40,6 +68,11 @@ object BookImgClick {
         click: String,
         src: String,
     ) {
+        val book = ReadBook.book
+        val durIndex = ReadBook.durChapterIndex
+        if (book != null && openSnapshotIfCached(context, durIndex, src)) {
+            return
+        }
         Coroutine.async(scope, Dispatchers.IO) {
             val source = ReadBook.bookSource ?: return@async
             val java = SourceLoginJsExtensions(context, source, BookType.text)
@@ -75,6 +108,11 @@ object BookImgClick {
             val urlOptionMap = GSON.fromJsonObject<Map<String, String>>(urlOptionStr).getOrNull()
             val click = urlOptionMap?.get("click")
             if (click != null) {
+                val book = ReadBook.book
+                val durIndex = ReadBook.durChapterIndex
+                if (book != null && openSnapshotIfCached(context, durIndex, src)) {
+                    return true
+                }
                 Coroutine.async(scope, Dispatchers.IO) {
                     val source = ReadBook.bookSource ?: return@async
                     val java = SourceLoginJsExtensions(context, source, BookType.text)

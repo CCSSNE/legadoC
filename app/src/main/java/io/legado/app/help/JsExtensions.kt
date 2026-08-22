@@ -316,6 +316,21 @@ interface JsExtensions : JsEncodeUtils {
     }
 
     /**
+     * 浏览器打开请求拦截钩子（评论快照抓取等无界面场景）。
+     * 返回 true 表示调用方已处理本次打开请求，不再启动内置浏览器。
+     */
+    fun onBrowserOpenRequested(url: String, title: String, html: String?): Boolean = false
+
+    /**
+     * [startBrowserAwait] 的拦截钩子，返回非 null 表示已处理并直接以该响应返回。
+     */
+    fun onBrowserAwaitRequested(
+        url: String,
+        title: String,
+        html: String?
+    ): StrResponse? = null
+
+    /**
      * 使用内置浏览器打开链接，手动验证网站防爬
      * @param url 要打开的链接
      * @param title 浏览器页面的标题
@@ -326,6 +341,7 @@ interface JsExtensions : JsEncodeUtils {
 
     fun startBrowser(url: String, title: String, html: String?) {
         rhinoContext.ensureActive()
+        if (onBrowserOpenRequested(url, title, html)) return
         SourceVerificationHelp.startBrowser(getSource(), url, title, html=html)
     }
 
@@ -342,6 +358,7 @@ interface JsExtensions : JsEncodeUtils {
 
     fun startBrowserAwait(url: String, title: String, refetchAfterSuccess: Boolean, html: String?): StrResponse {
         rhinoContext.ensureActive()
+        onBrowserAwaitRequested(url, title, html)?.let { return it }
         val pair = SourceVerificationHelp.getVerificationResult(
             getSource(), url, title, true, refetchAfterSuccess, html
         )

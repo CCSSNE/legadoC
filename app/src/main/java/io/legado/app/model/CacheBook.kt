@@ -340,12 +340,20 @@ object CacheBook {
                 return
             }
             if (BookHelp.hasImageContent(book, chapter)) {
+                // 正文已缓存：仍需判断是否要补评论页快照
+                io.legado.app.help.review.ReviewSnapshotManager.enqueueIfEnabled(
+                    bookSource, book, chapter
+                )
                 waitDownloadSet.remove(chapterIndex)
                 return
             }
             waitDownloadSet.remove(chapterIndex)
             onDownloadSet.add(chapterIndex)
             if (BookHelp.hasContent(book, chapter)) {
+                // 正文已缓存：仍需判断是否要补评论页快照（不能跳过补评论判断）
+                io.legado.app.help.review.ReviewSnapshotManager.enqueueIfEnabled(
+                    bookSource, book, chapter
+                )
                 Coroutine.async(scope, context, executeContext = context) {
                     BookHelp.getContent(book, chapter)?.let {
                         BookHelp.saveImages(bookSource, book, chapter, it, 1)

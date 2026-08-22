@@ -118,6 +118,7 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
         val exportNoChapterName: Boolean = AppConfig.exportNoChapterName,
         val exportPictureFile: Boolean = AppConfig.exportPictureFile,
         val exportBookmarks: Boolean = AppConfig.exportBookmarks,
+        val exportReviews: Boolean = AppConfig.exportReviews,
         val parallelExportBook: Boolean = AppConfig.parallelExportBook,
         val bookExportFileName: String? = AppConfig.bookExportFileName,
         val enableCustomExport: Boolean = AppConfig.enableCustomExport,
@@ -392,6 +393,7 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
             tvNoChapterNameValue.setBooleanValue(AppConfig.exportNoChapterName)
             tvExportPicsFileValue.setBooleanValue(AppConfig.exportPictureFile)
             tvExportBookmarksValue.setBooleanValue(AppConfig.exportBookmarks)
+            tvExportReviewsValue.setBooleanValue(AppConfig.exportReviews)
             tvCustomExportValue.setBooleanValue(false)
             tvEpubFilenameValue.text = AppConfig.episodeExportFileName
             tvEpubSizeValue.text = "1"
@@ -421,6 +423,8 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
                 // 书签选项仅在 txt_zip 显示
                 rowExportPicsFile.visibility = View.GONE
                 rowExportBookmarks.visibility = if (isTxtZip) View.VISIBLE else View.GONE
+                // 评论快照同样是 txt_zip sidecar 能力，仅 txt_zip 显示
+                rowExportReviews.visibility = if (isTxtZip) View.VISIBLE else View.GONE
                 rowCustomExport.visibility = View.GONE
                 showExportConfigTab(ExportConfigTab.BASE, isEpub)
                 llCustomExport.visibility = View.GONE
@@ -550,6 +554,7 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
             rowNoChapterName.setOnClickListener { tvNoChapterNameValue.toggleBooleanValue() }
             rowExportPicsFile.setOnClickListener { tvExportPicsFileValue.toggleBooleanValue() }
             rowExportBookmarks.setOnClickListener { tvExportBookmarksValue.toggleBooleanValue() }
+            rowExportReviews.setOnClickListener { tvExportReviewsValue.toggleBooleanValue() }
             rowEpubFilename.setOnClickListener {
                 showTextInputDialog(
                     title = getString(R.string.export_file_name),
@@ -627,6 +632,7 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
             exportNoChapterName = tvNoChapterNameValue.booleanValue(),
             exportPictureFile = tvExportPicsFileValue.booleanValue(),
             exportBookmarks = tvExportBookmarksValue.booleanValue(),
+            exportReviews = tvExportReviewsValue.booleanValue(),
             parallelExportBook = tvParallelExportValue.booleanValue(),
             bookExportFileName = tvBookFilenameValue.text?.toString(),
             enableCustomExport = customExport,
@@ -695,6 +701,7 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
         AppConfig.exportNoChapterName = exportConfig.exportNoChapterName
         AppConfig.exportPictureFile = exportConfig.exportPictureFile
         AppConfig.exportBookmarks = exportConfig.exportBookmarks
+        AppConfig.exportReviews = exportConfig.exportReviews
         AppConfig.parallelExportBook = exportConfig.parallelExportBook
         AppConfig.bookExportFileName = exportConfig.bookExportFileName
         AppConfig.enableCustomExport = exportConfig.enableCustomExport
@@ -778,6 +785,7 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
                 putExtra("exportNoChapterName", exportConfig.exportNoChapterName)
                 putExtra("exportPictureFile", exportConfig.exportPictureFile)
                 putExtra("exportBookmarks", exportConfig.exportBookmarks)
+                putExtra("exportReviews", exportConfig.exportReviews)
                 putExtra("parallelExportBook", exportConfig.parallelExportBook)
                 putExtra("bookExportFileName", exportConfig.bookExportFileName)
                 putExtra("episodeExportFileName", exportConfig.episodeExportFileName)
