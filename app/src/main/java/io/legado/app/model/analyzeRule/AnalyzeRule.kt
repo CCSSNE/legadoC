@@ -6,6 +6,7 @@ import com.google.gson.internal.LinkedTreeMap
 import com.script.CompiledScript
 import com.script.buildScriptBindings
 import com.script.rhino.RhinoScriptEngine
+import com.script.rhino.rhinoContext
 import io.legado.app.constant.AppPattern.JS_PATTERN
 import io.legado.app.constant.AppPattern.WebJS_PATTERN
 import io.legado.app.data.entities.BaseBook
@@ -102,6 +103,36 @@ class AnalyzeRule(
         html: String?
     ): StrResponse? {
         return onBrowserAwaitRequestedHook?.invoke(url, title, html)
+    }
+
+    /**
+     * 评论“网络优先”兜底快照：网络加载失败/超时时 WebView 切换到的本地 HTML。
+     * 仅评论打开链路设置，默认为空不改变任何默认行为。
+     */
+    var fallbackBrowserHtml: String? = null
+
+    override fun startBrowser(url: String, title: String, html: String?) {
+        rhinoContext.ensureActive()
+        if (onBrowserOpenRequested(url, title, html)) return
+        io.legado.app.help.source.SourceVerificationHelp.startBrowser(
+            getSource(), url, title, html = html, fallbackHtml = fallbackBrowserHtml
+        )
+    }
+
+    override fun startBrowserAwait(
+        url: String,
+        title: String,
+        refetchAfterSuccess: Boolean,
+        html: String?
+    ): StrResponse {
+        rhinoContext.ensureActive()
+        onBrowserAwaitRequested(url, title, html)?.let { return it }
+        val pair = io.legado.app.help.source.SourceVerificationHelp.getVerificationResult(
+            getSource(), url, title, true, refetchAfterSuccess, html,
+            fallbackHtml = fallbackBrowserHtml
+        )
+        val (url2, body) = pair
+        return StrResponse(url2.ifEmpty { url }, body)
     }
 
     private var loggedNonStandardJSON = false

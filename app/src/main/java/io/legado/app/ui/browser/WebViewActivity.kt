@@ -70,6 +70,8 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
     companion object {
         // 是否输出日志
         var sessionShowWebLog = false
+        /** 评论“网络优先”兜底：主框架加载超过该时长未完成即切换本地快照 */
+        private const val FALLBACK_TIMEOUT_MS = 60_000L
     }
 
     private lateinit var pooledWebView: PooledWebView
@@ -84,6 +86,10 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
     private var isfullscreen = false
     private var wasScreenOff = false
     private var needClearHistory = true
+    /** 评论“网络优先”兜底快照：网络加载失败/超时时自动切换到本地快照 */
+    private var fallbackHtml: String? = null
+    private var fallbackApplied = false
+    private var loadStartedAt = 0L
     private val saveImage = registerForActivityResult(HandleFileContract()) {
         it.uri?.let { uri ->
             ACache.get().put(imagePathKey, uri.toString())
@@ -93,6 +99,24 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
 
     private fun refresh() {
         currentWebView.reload()
+    }
+
+    /**
+     * 评论“网络优先”兜底：网络加载失败/超时后切换为本地评论快照。
+     * 只影响携带 fallbackHtml 的评论打开链路，其余 WebView 行为不变。
+     */
+    private fun applyFallbackSnapshot() {
+        val html = fallbackHtml ?: return
+        if (fallbackApplied) return
+        fallbackApplied = true
+        currentWebView.loadDataWithBaseURL(
+            viewModel.baseUrl.ifBlank { "https://localhost/" },
+            html,
+            "text/html",
+            "utf-8",
+            null
+        )
+        binding.progressBar.gone()
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
@@ -105,6 +129,7 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
         }
         binding.titleBar.title = intent.getStringExtra("title") ?: getString(R.string.loading)
         binding.titleBar.subtitle = intent.getStringExtra("sourceName")
+        fallbackHtml = intent.getStringExtra("fallbackHtml")
         viewModel.initData(intent) {
             val url = viewModel.baseUrl
             val headerMap = viewModel.headerMap
@@ -384,6 +409,13 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
             super.onProgressChanged(view, newProgress)
             binding.progressBar.setDurProgress(newProgress)
             binding.progressBar.gone(newProgress == 100)
+            // 评论“网络优先”兜底：页面加载超时（60s 未完成）且有快照 → 切换快照
+            if (fallbackHtml != null && !fallbackApplied && newProgress < 100) {
+                val startedAt = loadStartedAt
+                if (startedAt > 0 && System.currentTimeMillis() - startedAt > FALLBACK_TIMEOUT_MS) {
+                    applyFallbackSnapshot()
+                }
+            }
         }
 
         override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
@@ -445,12 +477,27 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
         }
 
         override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+            loadStartedAt = System.currentTimeMillis()
             if (needClearHistory) {
                 needClearHistory = false
                 currentWebView.clearHistory() //清除历史
             }
             super.onPageStarted(view, url, favicon)
             currentWebView.evaluateJavascript(basicJs, null)
+        }
+
+        override fun onReceivedError(
+            view: WebView?,
+            request: WebResourceRequest?,
+            error: android.webkit.WebResourceError?
+        ) {
+            super.onReceivedError(view, request, error)
+            // 评论“网络优先”兜底：主框架加载失败/超时错误且有快照 → 切换快照
+            if (fallbackHtml != null && !fallbackApplied &&
+                request?.isForMainFrame == true
+            ) {
+                applyFallbackSnapshot()
+            }
         }
         
         override fun onPageFinished(view: WebView?, url: String?) {

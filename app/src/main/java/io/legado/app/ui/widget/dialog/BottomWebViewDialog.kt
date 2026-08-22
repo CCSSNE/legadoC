@@ -98,14 +98,22 @@ import kotlin.math.min
 
 class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view), WebJsExtensions.Callback {
 
+    /**
+     * “快照优先”模式的后台网络刷新器：返回最新在线评论页 (url, html)，
+     * 加载成功后覆盖当前快照；失败/超时返回 null 则继续停留快照。
+     */
+    private var networkRefresher: (suspend () -> Pair<String, String>?)? = null
+
     constructor(
         sourceKey: String,
         bookType: Int,
         url: String,
         html: String? = null,
         preloadJs: String? = null,
-        config: String? = null
+        config: String? = null,
+        networkRefresher: (suspend () -> Pair<String, String>?)? = null
     ) : this() {
+        this.networkRefresher = networkRefresher
         arguments = Bundle().apply {
             putString("sourceKey", sourceKey)
             putInt("bookType", bookType)
@@ -580,6 +588,22 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
                     currentWebView.onResume() //缓存库拿的需要激活
                     initWebView(analyzeUrl.url, spliceHtml, analyzeUrl.headerMap, bookType)
                     currentWebView.clearHistory()
+                    // “快照优先”：快照先显示，后台刷新真实网络评论页成功后覆盖
+                    val refresher = networkRefresher
+                    if (refresher != null) {
+                        lifecycleScope.launch {
+                            val refreshed = runCatching { refresher() }.getOrNull()
+                            if (refreshed != null && isAdded && !isHidden && currentWebView.url != null) {
+                                currentWebView.loadDataWithBaseURL(
+                                    refreshed.first.ifBlank { analyzeUrl.url },
+                                    refreshed.second,
+                                    "text/html",
+                                    "utf-8",
+                                    refreshed.first.ifBlank { analyzeUrl.url }
+                                )
+                            }
+                        }
+                    }
                 }
             }.onFailure {
                 currentWebView.post {
