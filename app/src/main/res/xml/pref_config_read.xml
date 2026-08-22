@@ -366,10 +366,16 @@
         android:title="@string/read_bar_style_follow_page" />
 
     <io.legado.app.lib.prefs.SwitchPreference
-        android:defaultValue="false"
+        android:defaultValue="true"
         android:key="syncCacheReview"
         android:summary="@string/sync_cache_review_summary"
         android:title="@string/sync_cache_review" />
+
+    <io.legado.app.lib.prefs.Preference
+        android:key="reviewCacheConcurrency"
+        android:summary="@string/comment_cache_concurrency_summary"
+        android:title="@string/comment_cache_concurrency"
+        app:iconSpaceReserved="false" />
 
     <io.legado.app.lib.prefs.NameListPreference
         android:defaultValue="network"

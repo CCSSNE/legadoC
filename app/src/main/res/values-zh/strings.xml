@@ -1270,6 +1270,8 @@
     <string name="export_bookmarks">导出书签</string>
     <string name="sync_cache_review">缓存评论</string>
     <string name="sync_cache_review_summary">正文缓存完成后，在后台抓取真实评论页快照；评论失败不影响正文</string>
+    <string name="comment_cache_concurrency">评论缓存并行数</string>
+    <string name="comment_cache_concurrency_summary">单章同时抓取的评论按钮数，默认 16</string>
     <string name="export_reviews">导出评论</string>
     <string name="export_reviews_summary">TXT-ZIP 压缩包内附带已缓存的评论页快照</string>
     <string name="review_sync_running">正在缓存评论页快照</string>

@@ -1522,6 +1522,8 @@
     <string name="export_bookmarks">Export bookmarks</string>
     <string name="sync_cache_review">Cache comments</string>
     <string name="sync_cache_review_summary">After body caching, fetch real comment-page snapshots in the background; comment failures never affect body content</string>
+    <string name="comment_cache_concurrency">Comment cache concurrency</string>
+    <string name="comment_cache_concurrency_summary">Comment buttons fetched in parallel within one chapter, default 16</string>
     <string name="export_reviews">Export comments</string>
     <string name="export_reviews_summary">Include cached comment page snapshots in the TXT-ZIP archive</string>
     <string name="review_sync_running">Caching comment-page snapshots</string>

@@ -413,7 +413,8 @@ object ReviewSnapshotManager {
         var hasFailure = false
         // 按钮级并发：本章提取到的全部评论按钮都进入统一队列，不人为截断数量。
         // 空章不进入 mapAsyncIndexed；这里保持正数以满足并发 API 的契约。
-        val buttonConcurrency = buttons.size.coerceAtLeast(1)
+        val buttonConcurrency = AppConfig.reviewCacheConcurrency
+            .coerceIn(1, buttons.size.coerceAtLeast(1))
         val outcomes = buttons
             .asFlow()
             .mapAsyncIndexed(buttonConcurrency) { index, button ->
