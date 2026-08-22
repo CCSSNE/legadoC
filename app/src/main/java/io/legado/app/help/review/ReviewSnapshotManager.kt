@@ -301,15 +301,76 @@ object ReviewSnapshotManager {
     }
 
     private suspend fun processTask(key: String, force: Boolean) {
+        // 一章一次评论缓存任务 = 日志一条（多行详情），进入 AppLog 日志页可展开查看
+        val sb = StringBuilder()
+        val unexpected = runCatching {
+            processTaskWithLog(key, force, sb)
+        }.exceptionOrNull()
+        if (unexpected != null) {
+            sb.append("\n异常：").append(unexpected.stackTraceToString())
+        }
+        if (sb.isNotBlank()) {
+            AppLog.put(sb.toString())
+        }
+    }
+
+    private suspend fun processTaskWithLog(key: String, force: Boolean, sb: StringBuilder) {
         val bookUrl = key.substringBefore('|')
-        val chapterIndex = key.substringAfter('|').toIntOrNull() ?: return
-        val book = appDb.bookDao.getBook(bookUrl) ?: return
-        val bookSource = appDb.bookSourceDao.getBookSource(book.origin) ?: return
+        val chapterIndex = key.substringAfter('|').toIntOrNull()
+        val book = appDb.bookDao.getBook(bookUrl)
+        if (chapterIndex == null || book == null) {
+            sb.append("[评论缓存] 任务无法处理 bookUrl=$bookUrl chapterIndex=$chapterIndex\n找不到书籍")
+            return
+        }
+        val bookSource = appDb.bookSourceDao.getBookSource(book.origin)
+        if (bookSource == null) {
+            sb.append("[评论缓存] 第").append(chapterIndex + 1).append("章 ").append(book.name)
+                .append("\n书籍：").append(book.name).append("\n找不到书源 origin=").append(book.origin)
+            return
+        }
+        val chapter = appDb.bookChapterDao.getChapter(bookUrl, chapterIndex)
+        if (chapter == null) {
+            sb.append("[评论缓存] ").append(book.name).append(" chapterIndex=").append(chapterIndex)
+                .append("\n章节不存在")
+            return
+        }
+        sb.append("[评论缓存] 第").append(chapter.index + 1).append("章 ").append(chapter.title).append('\n')
+        sb.append("书籍：").append(book.name).append('\n')
+        sb.append("章节URL：").append(chapter.url).append('\n')
+        sb.append("force：").append(if (force) "true" else "false").append('\n')
         // 处理时再查一次开关：入队后关闭开关不应继续抓取
-        if (!AppConfig.syncCacheReview) return
-        val chapter = appDb.bookChapterDao.getChapter(bookUrl, chapterIndex) ?: return
-        val content = BookHelp.getContent(book, chapter) ?: return
-        val buttons = extractReviewButtons(content).take(MAX_BUTTONS_PER_CHAPTER)
+        if (!AppConfig.syncCacheReview) {
+            sb.append("开关“刷新时同步缓存评论”已关闭，跳过")
+            return
+        }
+        val content = BookHelp.getContent(book, chapter)
+        if (content == null) {
+            sb.append("1. 读取正文：失败（未找到缓存正文，可能正文未下载或已删除）")
+            return
+        }
+        sb.append("1. 读取正文：成功\n")
+        val extraction = extractReviewButtonsWithStats(content)
+        sb.append("2. 找到 style=TEXT 评论按钮：").append(extraction.buttons.size).append(" 个")
+        when {
+            extraction.imgCount == 0 ->
+                sb.append("（正文没有找到任何 <img> 标签：不是评论样式、或正文本身不含评论按钮）")
+            extraction.optionParseFailed > 0 || extraction.nonTextStyle > 0 || extraction.noAction > 0 -> {
+                sb.append("（共 ").append(extraction.imgCount).append(" 个 img；")
+                if (extraction.optionParseFailed > 0) {
+                    sb.append("src 选项 JSON 解析失败 ").append(extraction.optionParseFailed).append("，")
+                }
+                if (extraction.nonTextStyle > 0) {
+                    sb.append("找到了 img 但 style 不是 TEXT ").append(extraction.nonTextStyle).append("，")
+                }
+                if (extraction.noAction > 0) {
+                    sb.append("click/js 都为空 ").append(extraction.noAction).append("，")
+                }
+                sb.setLength(sb.length - 1)
+                sb.append("）")
+            }
+        }
+        sb.append('\n')
+        val buttons = extraction.buttons.take(MAX_BUTTONS_PER_CHAPTER)
         val needProcess = buttons.filter {
             it.hasAction && (force || !ReviewSnapshotStore.has(book, chapter, it.src))
         }
@@ -322,42 +383,70 @@ object ReviewSnapshotManager {
             completedButtons = 0
         )
         var completedButtons = 0
+        var failedButtons = 0
         // force=true（用户明确刷新）时，任何一个需要刷新的按钮失败都保留待刷新标记，
         // 不能“一个成功就算整章成功”
         var hasFailure = false
+        var index = 0
         for (button in buttons) {
+            index++
             if (!button.hasAction) continue
             // 普通触发有快照可跳过；force（明确重新缓存/刷新）必须重抓覆盖
-            if (!force && ReviewSnapshotStore.has(book, chapter, button.src)) continue
-            var buttonOk = false
+            if (!force && ReviewSnapshotStore.has(book, chapter, button.src)) {
+                sb.append("3. 按钮").append(index).append("：src=").append(button.src)
+                    .append("\n   已有有效快照，跳过\n")
+                continue
+            }
+            sb.append("3. 按钮").append(index).append("：\n")
+            sb.append("   src=").append(button.src).append('\n')
+            sb.append("   click=").append(if (button.click.isNullOrBlank()) "无" else "有")
+                .append("  js=").append(if (button.js.isNullOrBlank()) "无" else "有").append('\n')
             val url = runCatching {
                 resolveReviewPageUrl(book, bookSource, chapter, button)
-            }.onFailure {
+            }.onFailure { e ->
                 hasFailure = true
-                AppLog.put(
-                    "解析评论页地址失败 ${book.name} ${chapter.title}\n${it.localizedMessage}", it
-                )
+                failedButtons++
+                sb.append("   解析真实评论页 URL：失败\n").append("   ").append(e.stackTraceToString()).append('\n')
             }.getOrNull()
             if (url.isNullOrBlank()) {
+                // resolveReviewPageUrl 无异常但没等到地址
                 hasFailure = true
-            } else {
-                // 失败只记日志：重新缓存/刷新会再次入队重试，绝不影响正文
-                runCatching {
-                    val snapshot = ReviewSnapshotCapture.capture(
-                        bookSource, book, chapter, button.src, url
-                    )
-                    ReviewSnapshotStore.put(book, snapshot)
-                    buttonOk = true
-                }.onFailure {
-                    hasFailure = true
-                    AppLog.put(
-                        "评论快照抓取失败 ${book.name} ${chapter.title}\n${it.localizedMessage}", it
-                    )
-                }
+                failedButtons++
+                sb.append("   解析真实评论页 URL：失败（click/js 执行了，但没有触发 browser open，")
+                    .append(RESOLVE_TIMEOUT_MS / 1000).append("s 超时）\n")
+                continue
             }
-            if (buttonOk) {
-                completedButtons++
-                _syncState.value = _syncState.value.copy(completedButtons = completedButtons)
+            sb.append("   解析真实评论页 URL：成功\n")
+            sb.append("   URL=").append(url).append('\n')
+            val outcome = runCatching {
+                ReviewSnapshotCapture.capture(bookSource, book, chapter, button.src, url)
+            }
+            if (outcome.isFailure) {
+                hasFailure = true
+                failedButtons++
+                val e = outcome.exceptionOrNull()!!
+                val reason = when {
+                    e is kotlinx.coroutines.TimeoutCancellationException -> "WebView 抓取超时(120s)"
+                    e is kotlinx.coroutines.CancellationException -> "任务被取消"
+                    e.localizedMessage?.contains("序列化为空") == true -> "页面 HTML 为空"
+                    else -> (e.localizedMessage ?: "未知错误")
+                }
+                sb.append("4. 打开评论页/抓取快照：失败（").append(reason).append("）\n")
+                sb.append("   ").append(e.stackTraceToString()).append('\n')
+            } else {
+                val capture = outcome.getOrNull()!!
+                sb.append("4. 打开评论页：成功\n")
+                sb.append("5. 展开评论/回复/加载更多：执行了 ").append(capture.expandRounds).append(" 次\n")
+                sb.append("6. 最终 HTML：").append(capture.snapshot.html.length / 1024).append(" KB\n")
+                val putOk = runCatching { ReviewSnapshotStore.put(book, capture.snapshot) }.isSuccess
+                sb.append("7. SnapshotStore.put：").append(if (putOk) "成功" else "失败").append('\n')
+                if (putOk) {
+                    completedButtons++
+                    _syncState.value = _syncState.value.copy(completedButtons = completedButtons)
+                } else {
+                    hasFailure = true
+                    failedButtons++
+                }
             }
             delay(BUTTON_INTERVAL_MS)
         }
@@ -384,6 +473,10 @@ object ReviewSnapshotManager {
                 Triple(book.bookUrl, chapter.url, true)
             )
         }
+        sb.append("8. 最终结果：\n")
+        sb.append("   成功快照 ").append(completedButtons).append("/").append(needProcess.size).append('\n')
+        sb.append("   失败 ").append(failedButtons).append("/").append(needProcess.size).append('\n')
+        sb.append("   本章是否计入“评论已缓存”：").append(if (chapterHasSnapshot) "是" else "否")
     }
 
     /**
@@ -439,29 +532,58 @@ object ReviewSnapshotManager {
     /**
      * 提取正文里的评论按钮：img 标签选项 JSON 带 style=TEXT 的评论泡。
      * click 与旧源 js 原样带出，交给与用户点击共用的执行逻辑。
+     * 附带诊断统计：img 总数、选项 JSON 解析失败数、style 非 TEXT 数、click/js 都为空数。
      */
     fun extractReviewButtons(content: String): List<ReviewButton> {
-        if (!content.contains("<img", ignoreCase = true)) return emptyList()
+        return extractReviewButtonsWithStats(content).buttons
+    }
+
+    data class ButtonExtraction(
+        val buttons: List<ReviewButton>,
+        val imgCount: Int,
+        val optionParseFailed: Int,
+        val nonTextStyle: Int,
+        val noAction: Int
+    )
+
+    fun extractReviewButtonsWithStats(content: String): ButtonExtraction {
+        if (!content.contains("<img", ignoreCase = true)) {
+            return ButtonExtraction(emptyList(), 0, 0, 0, 0)
+        }
+        var imgCount = 0
+        var optionParseFailed = 0
+        var nonTextStyle = 0
+        var noAction = 0
         val result = linkedMapOf<String, ReviewButton>()
         val matcher = AppPattern.imgPattern.matcher(content)
         while (matcher.find()) {
             val src = matcher.group(1) ?: continue
-            val options = extractUrlOptions(src) ?: continue
-            val style = options["style"] ?: continue
-            if (!style.equals("TEXT", ignoreCase = true)) continue
+            imgCount++
+            val options = extractUrlOptions(src)
+            if (options == null) {
+                optionParseFailed++
+                continue
+            }
+            val style = options["style"]
+            if (style == null || !style.equals("TEXT", ignoreCase = true)) {
+                nonTextStyle++
+                continue
+            }
             val key = src.trim()
             if (result.containsKey(key)) continue
             val urlNoOption = AnalyzeUrl.paramPattern.matcher(src).let { m ->
                 if (m.find()) src.take(m.start()) else null
             }
-            result[key] = ReviewButton(
+            val button = ReviewButton(
                 src = key,
                 click = options["click"]?.takeIf { it.isNotBlank() },
                 js = options["js"]?.takeIf { it.isNotBlank() },
                 urlNoOption = urlNoOption
             )
+            if (!button.hasAction) noAction++
+            result[key] = button
         }
-        return result.values.toList()
+        return ButtonExtraction(result.values.toList(), imgCount, optionParseFailed, nonTextStyle, noAction)
     }
 
     /** 与 AnalyzeUrl.paramPattern 一致：URL 后第一个 `,` 到 `{` 的选项 JSON */

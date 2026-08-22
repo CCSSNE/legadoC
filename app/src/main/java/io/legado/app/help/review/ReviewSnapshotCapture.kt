@@ -52,6 +52,14 @@ object ReviewSnapshotCapture {
     private const val MAX_TOTAL_INLINE_BYTES = 30L * 1024 * 1024
 
     /**
+     * 抓取结果（供诊断日志）：快照 + 展开循环实际执行轮数。
+     */
+    data class CaptureOutcome(
+        val snapshot: ReviewSnapshot,
+        val expandRounds: Int
+    )
+
+    /**
      * 抓取真实评论页快照并序列化。
      * @param url 真实评论页地址（由调度器经与用户点击共用的执行逻辑解析）
      */
@@ -61,28 +69,31 @@ object ReviewSnapshotCapture {
         chapter: BookChapter,
         buttonSrc: String,
         url: String
-    ): ReviewSnapshot {
-        val html = snapshotPage(url, bookSource)
-        return ReviewSnapshot(
-            bookUrl = book.bookUrl,
-            chapterUrl = chapter.url,
-            chapterIndex = chapter.index,
-            chapterTitle = chapter.title,
-            buttonSrc = buttonSrc,
-            url = url,
-            title = "",
-            html = html,
-            savedAt = System.currentTimeMillis()
+    ): CaptureOutcome {
+        val (html, expandRounds) = snapshotPage(url, bookSource)
+        return CaptureOutcome(
+            snapshot = ReviewSnapshot(
+                bookUrl = book.bookUrl,
+                chapterUrl = chapter.url,
+                chapterIndex = chapter.index,
+                chapterTitle = chapter.title,
+                buttonSrc = buttonSrc,
+                url = url,
+                title = "",
+                html = html,
+                savedAt = System.currentTimeMillis()
+            ),
+            expandRounds = expandRounds
         )
     }
 
     /**
-     * 无头加载页面并穷尽展开后返回最终 HTML。
+     * 无头加载页面并穷尽展开后返回最终 HTML 与展开轮数。
      *
      * WebView 生命周期唯一化：成功/失败/超时/cancel 四条路径都只释放一次，
      * 通过 [java.util.concurrent.atomic.AtomicReference] + [AtomicBoolean] 保证。
      */
-    private suspend fun snapshotPage(url: String, bookSource: BookSource): String =
+    private suspend fun snapshotPage(url: String, bookSource: BookSource): Pair<String, Int> =
         withTimeout(PAGE_TIMEOUT_MS) {
             val analyzeUrl = AnalyzeUrl(url, source = bookSource)
             val headerMap = analyzeUrl.headerMap
@@ -108,11 +119,11 @@ object ReviewSnapshotCapture {
                             headerMap[AppConst.UA_NAME]?.let { userAgentString = it }
                         }
                         AppCookieManager.applyToWebView(url)
-                        val session = SnapshotSession(webView, url) { result, error ->
+                        val session = SnapshotSession(webView, url) { result, error, rounds ->
                             releaseOnce()
                             if (block.isActive) {
                                 if (error != null) block.resumeWithException(error)
-                                else block.resume(result ?: "")
+                                else block.resume((result ?: "") to rounds)
                             }
                         }
                         webView.webViewClient = session.client
@@ -137,7 +148,7 @@ object ReviewSnapshotCapture {
     private class SnapshotSession(
         private val webView: WebView,
         private val url: String,
-        private val done: (String?, Throwable?) -> Unit
+        private val done: (String?, Throwable?, Int) -> Unit
     ) {
 
         private var destroyed = false
@@ -179,13 +190,13 @@ object ReviewSnapshotCapture {
         private fun finish(html: String?) {
             if (destroyed) return
             destroyed = true
-            done(html, null)
+            done(html, null, expandRounds)
         }
 
         private fun fail(error: Throwable) {
             if (destroyed) return
             destroyed = true
-            done(null, error)
+            done(null, error, expandRounds)
         }
 
         private data class PageStats(val clicked: Int, val textLen: Int, val height: Int, val nodes: Int)
