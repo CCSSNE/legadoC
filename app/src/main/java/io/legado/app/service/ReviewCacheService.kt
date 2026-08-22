@@ -10,6 +10,7 @@ import io.legado.app.constant.NotificationId
 import io.legado.app.help.review.ReviewSnapshotManager
 import io.legado.app.utils.activityPendingIntent
 import io.legado.app.utils.startService
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -80,19 +81,25 @@ class ReviewCacheService : BaseService() {
 
     private fun startWork() {
         workJob?.cancel()
-        workJob = lifecycleScope.launch {
+        workJob = lifecycleScope.launch(Dispatchers.IO) {
             while (isActive) {
-                val task = ReviewSnapshotManager.tryTakeTask()
+                // 先取出任务再判断，绝不用“取任务的函数”当“看看有没有”：
+                // 取出来的任务必须被处理，否则任务会永久丢失
+                var task = ReviewSnapshotManager.tryTakeTask()
                 if (task == null) {
-                    // 队列空：短暂缓冲后再次确认，避免与并发入队竞态误停
                     delay(1500)
-                    if (ReviewSnapshotManager.tryTakeTask() == null) {
+                    task = ReviewSnapshotManager.tryTakeTask()
+                    if (task == null) {
                         stopSelf()
                         break
                     }
-                    continue
                 }
-                ReviewSnapshotManager.processTask(task)
+                // 单任务异常隔离：一个任务失败只记日志，绝不打死整个 Review Phase
+                runCatching { ReviewSnapshotManager.processTask(task) }.onFailure {
+                    io.legado.app.constant.AppLog.put(
+                        "评论快照任务处理失败 ${task.key}\n${it.localizedMessage}", it
+                    )
+                }
             }
         }
     }

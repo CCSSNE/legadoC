@@ -129,6 +129,8 @@ object CacheBook {
         cacheBookMap.clear()
         successDownloadSet.clear()
         errorDownloadMap.clear()
+        // 兜底清掉所有残留 Body Phase，异常退出也不留“只登记不执行”状态
+        io.legado.app.help.review.ReviewSnapshotManager.cancelAllBodyPhases()
     }
 
     fun setWorkingState(value: Boolean) {
@@ -243,6 +245,9 @@ object CacheBook {
             tasks.clear()
             isStopped = true
             isLoading = false
+            // 用户取消批量缓存：同样必须收掉 Body Phase，否则该书后续评论任务
+            // 会一直“只登记不执行”；已登记任务（正文已完成）照常进入 Review Phase
+            io.legado.app.help.review.ReviewSnapshotManager.cancelBodyPhase(book.bookUrl)
             postEvent(EventBus.UP_DOWNLOAD, book.bookUrl)
         }
 
@@ -327,6 +332,11 @@ object CacheBook {
             if (chapterIndex == null) {
                 if (!isLoading && onDownloadSet.isEmpty()) {
                     cacheBookMap.remove(book.bookUrl)
+                    // 整批结束（可能是“全部已缓存命中，无任何正文任务”）：同样必须收掉
+                    // Body Phase，否则后补评论场景（正文已缓存，重新缓存即补评论）会卡死；
+                    // 仅在活跃批量下收尾，阅读页单章 model 不被误收
+                    io.legado.app.help.review.ReviewSnapshotManager
+                        .endBodyPhaseIfActive(book.bookUrl)
                 }
                 return
             }
