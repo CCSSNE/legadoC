@@ -1520,6 +1520,7 @@
     <string name="sync_cache_review_summary">When downloading (caching) chapters, also snapshot the real comment page in the background; text always downloads first and comment failures never affect text</string>
     <string name="export_reviews">Export comments</string>
     <string name="export_reviews_summary">Include cached comment page snapshots in the TXT-ZIP archive</string>
+    <string name="review_sync_running">Syncing cached comment snapshots in the background</string>
     <!-- string end -->
     <string name="error_decode_bitmap">Fail to decode bitmap</string>
     <string name="error_image_url_empty">Image url is empty, check replacement rules</string>
