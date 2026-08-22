@@ -169,22 +169,21 @@ class CacheBookService : BaseService() {
         }
     }
 
-    /** 通知文字：正文 x/y · 评论 a/b（总进度）；无活跃书时回退下载摘要 */
+    /** 通知文字：正文 x/y · 评论 a/b（y = 本次缓存目标章数，不是全书总章数）；无活跃书时回退下载摘要 */
     private fun upNotificationContent(): String {
-        val book = CacheBook.activeCachingBook()
-        if (book == null) {
-            return CacheBook.downloadSummary
-        }
-        val cachedText = io.legado.app.help.book.BookHelp.getChapterFiles(book)
-            .count { it.endsWith(".nb") }
-        val cachedReview = io.legado.app.help.review.ReviewSnapshotManager
-            .cachedReviewChapterCount(book)
+        val book = CacheBook.activeCachingBook() ?: return CacheBook.downloadSummary
+        val progress = CacheBook.activeBodyProgress()
+        val target = progress?.second ?: book.totalChapterNum
+        val bodyDone = progress?.first
+            ?: io.legado.app.help.book.BookHelp.getChapterFiles(book).count { it.endsWith(".nb") }
+        val cachedReview = (io.legado.app.help.review.ReviewSnapshotManager
+            .cachedReviewChapterCount(book)).coerceAtMost(target)
         return getString(
             R.string.download_count_review,
-            cachedText,
-            book.totalChapterNum,
+            bodyDone,
+            target,
             cachedReview,
-            book.totalChapterNum
+            target
         )
     }
 
