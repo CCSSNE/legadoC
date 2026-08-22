@@ -52,11 +52,14 @@ object ReviewSnapshotCapture {
     private const val MAX_TOTAL_INLINE_BYTES = 30L * 1024 * 1024
 
     /**
-     * 抓取结果（供诊断日志）：快照 + 展开循环实际执行轮数。
+     * 抓取结果（供诊断日志）：快照 + 展开检测轮数 + 实际点击“展开/加载更多”次数。
      */
     data class CaptureOutcome(
         val snapshot: ReviewSnapshot,
-        val expandRounds: Int
+        /** 展开检测轮询轮数（包含“没点按钮”的稳定轮） */
+        val expandRounds: Int,
+        /** 实际点击“展开/回复/加载更多”按钮的次数（stats.clicked 累计） */
+        val expandClickCount: Int
     )
 
     /**
@@ -70,7 +73,7 @@ object ReviewSnapshotCapture {
         buttonSrc: String,
         url: String
     ): CaptureOutcome {
-        val (html, expandRounds) = snapshotPage(url, bookSource)
+        val (html, expandRounds, expandClickCount) = snapshotPage(url, bookSource)
         return CaptureOutcome(
             snapshot = ReviewSnapshot(
                 bookUrl = book.bookUrl,
@@ -83,17 +86,21 @@ object ReviewSnapshotCapture {
                 html = html,
                 savedAt = System.currentTimeMillis()
             ),
-            expandRounds = expandRounds
+            expandRounds = expandRounds,
+            expandClickCount = expandClickCount
         )
     }
 
     /**
-     * 无头加载页面并穷尽展开后返回最终 HTML 与展开轮数。
+     * 无头加载页面并穷尽展开后返回最终 HTML 与展开诊断数据。
      *
      * WebView 生命周期唯一化：成功/失败/超时/cancel 四条路径都只释放一次，
      * 通过 [java.util.concurrent.atomic.AtomicReference] + [AtomicBoolean] 保证。
      */
-    private suspend fun snapshotPage(url: String, bookSource: BookSource): Pair<String, Int> =
+    private suspend fun snapshotPage(
+        url: String,
+        bookSource: BookSource
+    ): Triple<String, Int, Int> =
         withTimeout(PAGE_TIMEOUT_MS) {
             val analyzeUrl = AnalyzeUrl(url, source = bookSource)
             val headerMap = analyzeUrl.headerMap
@@ -119,11 +126,11 @@ object ReviewSnapshotCapture {
                             headerMap[AppConst.UA_NAME]?.let { userAgentString = it }
                         }
                         AppCookieManager.applyToWebView(url)
-                        val session = SnapshotSession(webView, url) { result, error, rounds ->
+                        val session = SnapshotSession(webView, url) { result, error, rounds, clicks ->
                             releaseOnce()
                             if (block.isActive) {
                                 if (error != null) block.resumeWithException(error)
-                                else block.resume((result ?: "") to rounds)
+                                else block.resume(Triple(result ?: "", rounds, clicks))
                             }
                         }
                         webView.webViewClient = session.client
@@ -148,11 +155,12 @@ object ReviewSnapshotCapture {
     private class SnapshotSession(
         private val webView: WebView,
         private val url: String,
-        private val done: (String?, Throwable?, Int) -> Unit
+        private val done: (String?, Throwable?, Int, Int) -> Unit
     ) {
 
         private var destroyed = false
         private var expandRounds = 0
+        private var totalExpandClicks = 0
         private var stableRounds = 0
         private var lastTextLen = -1
         private var lastHeight = -1
@@ -190,13 +198,13 @@ object ReviewSnapshotCapture {
         private fun finish(html: String?) {
             if (destroyed) return
             destroyed = true
-            done(html, null, expandRounds)
+            done(html, null, expandRounds, totalExpandClicks)
         }
 
         private fun fail(error: Throwable) {
             if (destroyed) return
             destroyed = true
-            done(null, error, expandRounds)
+            done(null, error, expandRounds, totalExpandClicks)
         }
 
         private data class PageStats(val clicked: Int, val textLen: Int, val height: Int, val nodes: Int)
@@ -222,6 +230,8 @@ object ReviewSnapshotCapture {
                         stats.textLen == lastTextLen &&
                         stats.height == lastHeight &&
                         stats.nodes == lastNodes
+                    // 累计“实际点击展开/回复/加载更多”次数
+                    totalExpandClicks += stats.clicked
                     lastTextLen = stats.textLen
                     lastHeight = stats.height
                     lastNodes = stats.nodes
