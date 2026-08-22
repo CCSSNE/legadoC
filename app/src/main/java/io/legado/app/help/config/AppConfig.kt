@@ -1513,7 +1513,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             ?.takeIf { it in 0f..1f }
 
     var preDownloadNum
-        get() = appCtx.getPrefInt(PreferKey.preDownloadNum, 10)
+        get() = appCtx.getPrefInt(PreferKey.preDownloadNum, 0)
         set(value) {
             appCtx.putPrefInt(PreferKey.preDownloadNum, value)
         }
@@ -1839,7 +1839,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
     //漫画预加载数量
     var mangaPreDownloadNum
-        get() = appCtx.getPrefInt(PreferKey.mangaPreDownloadNum, 10)
+        get() = appCtx.getPrefInt(PreferKey.mangaPreDownloadNum, 0)
         set(value) {
             appCtx.putPrefInt(PreferKey.mangaPreDownloadNum, value)
         }
