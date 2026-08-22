@@ -411,7 +411,8 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
     }
 
     fun refreshContentDur(book: Book) {
-        io.legado.app.help.review.ReviewSnapshotManager.markUserRefresh(book.bookUrl)
+        io.legado.app.help.review.ReviewSnapshotManager
+            .markUserRefresh(book.bookUrl, ReadBook.durChapterIndex)
         execute {
             appDb.bookChapterDao.getChapter(book.bookUrl, ReadBook.durChapterIndex)
                 ?.let { chapter ->
@@ -422,7 +423,15 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
     }
 
     fun refreshContentAfter(book: Book) {
-        io.legado.app.help.review.ReviewSnapshotManager.markUserRefresh(book.bookUrl)
+        // 当前章及之后全部章节：按章节逐个打强制重抓标记
+        appDb.bookChapterDao.getChapterList(
+            book.bookUrl,
+            ReadBook.durChapterIndex,
+            book.totalChapterNum
+        ).forEach { chapter ->
+            io.legado.app.help.review.ReviewSnapshotManager
+                .markUserRefresh(book.bookUrl, chapter.index)
+        }
         execute {
             appDb.bookChapterDao.getChapterList(
                 book.bookUrl,
@@ -436,7 +445,11 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
     }
 
     fun refreshContentAll(book: Book) {
-        io.legado.app.help.review.ReviewSnapshotManager.markUserRefresh(book.bookUrl)
+        // 全书刷新：按章节逐个打强制重抓标记
+        appDb.bookChapterDao.getChapterList(book.bookUrl).forEach { chapter ->
+            io.legado.app.help.review.ReviewSnapshotManager
+                .markUserRefresh(book.bookUrl, chapter.index)
+        }
         execute {
             BookHelp.clearCache(book)
             ReadBook.loadContent(false)

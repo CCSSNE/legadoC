@@ -32,6 +32,11 @@ import kotlin.coroutines.coroutineContext
  * - 旧源 js 分支：AnalyzeRule + setBaseUrl(chapter.url) + setChapter(chapter) + evalJS，
  *   与书源规则引擎同一语义。
  *
+ * 融合挂载的评论按钮（来自文字书）点击时按文字书上下文执行：
+ * 通过当前展示章节的融合 overlay 反查来源文字书/章节/书源，
+ * 点击 JS 与评论快照读写都按文字书走，不使用有声书上下文；
+ * 原生按钮（无 overlay 命中）回退当前阅读上下文。
+ *
  * 同一套执行逻辑同时服务用户点击与后台评论快照抓取：
  * 抓取时传入拦截宿主（click 分支替换 java 宿主；js 分支挂 AnalyzeRule 钩子），
  * 把“打开评论页”替换为“记录评论页地址”，其余环境完全一致。
@@ -40,21 +45,34 @@ object BookImgClick {
 
     /**
      * 评论快照离线优先：该书该章该按钮已有快照时直接本地渲染，不再联网。
+     * 融合按钮按文字书上下文查快照。
      * @return true 表示已用快照打开
      */
     private fun openSnapshotIfCached(
         context: AppCompatActivity,
-        src: String
+        src: String,
+        hostChapter: BookChapter?
     ): Boolean {
-        val book = ReadBook.book ?: return false
-        val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, ReadBook.durChapterIndex)
+        val chapter = hostChapter
+            ?: ReadBook.book?.let {
+                appDb.bookChapterDao.getChapter(it.bookUrl, ReadBook.durChapterIndex)
+            }
             ?: return false
-        val snapshot = ReviewSnapshotStore.get(book, chapter, src.trim()) ?: return false
+        val execution = resolveExecutionContext(chapter, src)
+            ?: run {
+                val book = ReadBook.book ?: return false
+                Triple(book, ReadBook.bookSource, chapter)
+            }
+        val snapshotBook = execution.first
+        val snapshotSource = execution.second
+        val snapshotChapter = execution.third
+        val snapshot = ReviewSnapshotStore.get(snapshotBook, snapshotChapter, src.trim())
+            ?: return false
         context.runOnUiThread {
             if (context.isFinishing || context.isDestroyed) return@runOnUiThread
             context.showDialogFragment(
                 BottomWebViewDialog(
-                    ReadBook.bookSource?.getKey().orEmpty(),
+                    snapshotSource?.getKey().orEmpty(),
                     BookType.text,
                     snapshot.url.ifBlank { "about:blank" },
                     snapshot.html
@@ -65,22 +83,54 @@ object BookImgClick {
     }
 
     /**
+     * 解析点击执行上下文：当前章节的融合 overlay 命中该 src 时，返回
+     * 文字书来源的 (book, source, chapter)；否则返回 null（调用方回退
+     * 当前阅读上下文）。融合按钮的点击与评论快照都按文字书上下文走。
+     */
+    private fun resolveExecutionContext(
+        hostChapter: BookChapter,
+        src: String
+    ): Triple<Book, BookSource, BookChapter>? {
+        val textContext = AudioTextFusion.findFusionTextContext(
+            hostChapter.getVariable(AudioTextFusion.OVERLAY_KEY),
+            src
+        ) ?: return null
+        val (textBookUrl, textChapterUrl) = textContext
+        val textBook = appDb.bookDao.getBook(textBookUrl) ?: return null
+        val textChapter = appDb.bookChapterDao.getChapterByUrl(textBookUrl, textChapterUrl)
+            ?: return null
+        val textSource = appDb.bookSourceDao.getBookSource(textBook.origin) ?: return null
+        return Triple(textBook, textSource, textChapter)
+    }
+
+    /**
      * 执行 src 附带的 click JS（用户点击路径）。
+     * @param hostChapter 当前展示章节；融合挂载的评论按钮据此反查文字书
+     * 上下文执行；为 null 时按当前阅读上下文（ReadBook）执行。
      */
     fun clickImg(
         context: AppCompatActivity,
         scope: CoroutineScope,
         click: String,
         src: String,
+        hostChapter: BookChapter? = null,
     ) {
-        if (openSnapshotIfCached(context, src)) return
+        if (openSnapshotIfCached(context, src, hostChapter)) return
         Coroutine.async(scope, Dispatchers.IO) {
-            val source = ReadBook.bookSource ?: return@async
-            val book = ReadBook.book ?: return@async
-            val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, ReadBook.durChapterIndex)
-                ?: throw Exception("no find chapter")
-            executeClick(book, source, chapter, click, src) {
-                SourceLoginJsExtensions(context, source, BookType.text)
+            val chapter = hostChapter
+                ?: ReadBook.book?.let {
+                    appDb.bookChapterDao.getChapter(it.bookUrl, ReadBook.durChapterIndex)
+                }
+                ?: return@async
+            val (book, source, execChapter) = resolveExecutionContext(chapter, src)
+                ?: run {
+                    val book = ReadBook.book ?: return@async
+                    val source = ReadBook.bookSource ?: return@async
+                    Triple(book, source, chapter)
+                }
+            val execSource = source ?: return@async
+            executeClick(book, execSource, execChapter, click, src) {
+                SourceLoginJsExtensions(context, execSource, BookType.text)
             }
         }.onError {
             AppLog.put("执行图片链接click键值出错\n${it.localizedMessage}", it, true)
@@ -89,29 +139,38 @@ object BookImgClick {
 
     /**
      * 兼容旧源：click/js 写在 src 的 url 选项里（无独立 click 字段时走此入口）。
-     *
+     * @param hostChapter 当前展示章节；融合挂载的评论按钮据此反查文字书上下文。
      * @return true 表示已处理
      */
     fun oldClickImg(
         context: AppCompatActivity,
         scope: CoroutineScope,
         src: String,
+        hostChapter: BookChapter? = null,
     ): Boolean {
         val (urlNoOption, options) = parseSrcOptions(src) ?: return false
         val click = options["click"]
         val js = options["js"]
         if (click.isNullOrBlank() && js.isNullOrBlank()) return false
-        if (openSnapshotIfCached(context, src)) return true
+        if (openSnapshotIfCached(context, src, hostChapter)) return true
         Coroutine.async(scope, Dispatchers.IO) {
-            val source = ReadBook.bookSource ?: return@async
-            val book = ReadBook.book ?: return@async
-            val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, ReadBook.durChapterIndex)
-                ?: throw Exception("no find chapter")
-            when {
-                !click.isNullOrBlank() -> executeClick(book, source, chapter, click, src) {
-                    SourceLoginJsExtensions(context, source, BookType.text)
+            val chapter = hostChapter
+                ?: ReadBook.book?.let {
+                    appDb.bookChapterDao.getChapter(it.bookUrl, ReadBook.durChapterIndex)
                 }
-                else -> executeJs(book, source, chapter, js.orEmpty(), urlNoOption)
+                ?: return@async
+            val (book, source, execChapter) = resolveExecutionContext(chapter, src)
+                ?: run {
+                    val book = ReadBook.book ?: return@async
+                    val source = ReadBook.bookSource ?: return@async
+                    Triple(book, source, chapter)
+                }
+            val execSource = source ?: return@async
+            when {
+                !click.isNullOrBlank() -> executeClick(book, execSource, execChapter, click, src) {
+                    SourceLoginJsExtensions(context, execSource, BookType.text)
+                }
+                else -> executeJs(book, execSource, execChapter, js.orEmpty(), urlNoOption)
             }
         }.onError {
             AppLog.put("执行图片链接click/js键值出错\n${it.localizedMessage}", it, true)

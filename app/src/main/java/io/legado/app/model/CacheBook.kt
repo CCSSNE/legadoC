@@ -340,11 +340,10 @@ object CacheBook {
                 return
             }
             if (BookHelp.hasImageContent(book, chapter)) {
-                // 正文已缓存（图片也齐）：用户重新缓存该章，直接补/覆盖评论
+                // 正文已缓存（图片也齐），无任何正文工作在进行：
+                // 用户重新缓存该章，直接补/覆盖评论（force）
                 waitDownloadSet.remove(chapterIndex)
-                io.legado.app.help.review.ReviewSnapshotManager.enqueueIfEnabled(
-                    bookSource, book, chapter, force = true
-                )
+                reviewEnqueue(bookSource, book, chapter, force = true)
                 return
             }
             waitDownloadSet.remove(chapterIndex)
@@ -357,9 +356,7 @@ object CacheBook {
                     }
                 }.onSuccess {
                     onSuccess(chapter)
-                    io.legado.app.help.review.ReviewSnapshotManager.enqueueIfEnabled(
-                        bookSource, book, chapter, force = true
-                    )
+                    reviewEnqueue(bookSource, book, chapter, force = true)
                 }.onError {
                     onPreError(chapter, it)
                     //出现错误等待一秒后重新加入待下载列表
@@ -385,11 +382,11 @@ object CacheBook {
             ).onSuccess { content ->
                 onSuccess(chapter)
                 downloadFinish(chapter, content)
-                // 正文全部结束后再入队评论（用户刷新标记期内强制重抓覆盖）
-                io.legado.app.help.review.ReviewSnapshotManager.enqueueIfEnabled(
+                // 正文全部结束（成功状态 + 刷新状态）之后再入队评论
+                reviewEnqueue(
                     bookSource, book, chapter,
                     force = io.legado.app.help.review.ReviewSnapshotManager
-                        .isUserRefreshActive(book.bookUrl)
+                        .isUserRefreshActive(book.bookUrl, chapter.index)
                 )
             }.onError {
                 onPreError(chapter, it)
@@ -416,12 +413,8 @@ object CacheBook {
                 onSuccess(chapter)
                 ReadBook.downloadedChapters.add(chapter.index)
                 ReadBook.downloadFailChapters.remove(chapter.index)
-                // 正文成功状态结束后再入队评论
-                io.legado.app.help.review.ReviewSnapshotManager.enqueueIfEnabled(
-                    bookSource, book, chapter,
-                    force = io.legado.app.help.review.ReviewSnapshotManager
-                        .isUserRefreshActive(book.bookUrl)
-                )
+                // 注意：这里不提前入队评论——downloadAwait 调用方拿到正文后
+                // 还要做正文排版/刷新状态收尾，由 ReadBook 在真正完成后入队
                 return content
             } catch (e: Exception) {
                 if (e is CancellationException) {
@@ -461,11 +454,11 @@ object CacheBook {
                 ReadBook.downloadedChapters.add(chapter.index)
                 ReadBook.downloadFailChapters.remove(chapter.index)
                 downloadFinish(chapter, content, resetPageOffset)
-                // 正文全部结束后再入队评论（用户刷新标记期内强制重抓覆盖）
-                io.legado.app.help.review.ReviewSnapshotManager.enqueueIfEnabled(
+                // 正文全部结束（成功状态 + 刷新状态）之后再入队评论
+                reviewEnqueue(
                     bookSource, book, chapter,
                     force = io.legado.app.help.review.ReviewSnapshotManager
-                        .isUserRefreshActive(book.bookUrl)
+                        .isUserRefreshActive(book.bookUrl, chapter.index)
                 )
             }.onError {
                 onError(chapter, it)
@@ -478,6 +471,21 @@ object CacheBook {
             }.onFinally {
                 postEvent(EventBus.UP_DOWNLOAD, book.bookUrl)
             }.start()
+        }
+
+        /**
+         * 该章正文全部完成（文本/图片/成功状态/正文刷新状态）之后的统一评论入队出口。
+         * 只允许在各下载路径的成功回调最后调用；评论任务本身低优先级、失败不影响正文。
+         */
+        private fun reviewEnqueue(
+            bookSource: BookSource,
+            book: Book,
+            chapter: BookChapter,
+            force: Boolean
+        ) {
+            io.legado.app.help.review.ReviewSnapshotManager.enqueueIfEnabled(
+                bookSource, book, chapter, force = force
+            )
         }
 
         private fun downloadFinish(

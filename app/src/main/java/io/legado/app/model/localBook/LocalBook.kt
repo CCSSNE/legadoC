@@ -576,22 +576,43 @@ object LocalBook {
                     AppLog.put("导入替换规则失败\n${e.localizedMessage}", e)
                 }
             }
-            // 评论页快照：reviews/r_*.json 原样还原进该书缓存目录，
-            // 之后点击评论按钮即可离线打开快照。
+            // 评论页快照：reviews/r_*.json 还原进该书缓存目录，之后点击评论按钮即可离线打开。
+            // 快照主键是导出时的在线 chapterUrl；导入后书变成本地书、章节 URL 已重解析，
+            // 必须按 sidecar 里的 chapterIndex / chapterTitle 把主键 remap 到本地章节，
+            // 否则点击时按本地 chapterUrl 查不到快照。
             // 注意放在 illustrations.json 存在性判断之前：无配图的书可能只有评论快照
-            files.filter { it.name.startsWith("r_") && it.name.endsWith(".json") }
-                .forEach { snapshotFile ->
-                    kotlin.runCatching {
-                        val snapshot = GSON.fromJsonObject<io.legado.app.help.review.ReviewSnapshot>(
-                            snapshotFile.readText()
-                        ).getOrNull() ?: return@runCatching
-                        importedBooks.firstOrNull()?.let { book ->
-                            io.legado.app.help.review.ReviewSnapshotStore.put(book, snapshot)
+            val importedBook = importedBooks.firstOrNull()
+            if (importedBook != null) {
+                val localChapters = appDb.bookChapterDao.getChapterList(importedBook.bookUrl)
+                files.filter { it.name.startsWith("r_") && it.name.endsWith(".json") }
+                    .forEach { snapshotFile ->
+                        kotlin.runCatching {
+                            val snapshot =
+                                GSON.fromJsonObject<io.legado.app.help.review.ReviewSnapshot>(
+                                    snapshotFile.readText()
+                                ).getOrNull() ?: return@runCatching
+                            // 先按 index 精确匹配，再按 title 兜底（本地重新分章后 index 可能漂移）
+                            val localChapter = localChapters.firstOrNull {
+                                it.index == snapshot.chapterIndex
+                            } ?: localChapters.firstOrNull {
+                                it.title == snapshot.chapterTitle && it.title.isNotBlank()
+                            } ?: return@runCatching
+                            val remapped = snapshot.copy(
+                                bookUrl = importedBook.bookUrl,
+                                chapterUrl = localChapter.url,
+                                chapterIndex = localChapter.index,
+                                chapterTitle = localChapter.title
+                            )
+                            io.legado.app.help.review.ReviewSnapshotStore.put(
+                                importedBook, remapped
+                            )
+                        }.onFailure { e ->
+                            AppLog.put(
+                                "导入评论快照失败 ${snapshotFile.name}\n${e.localizedMessage}", e
+                            )
                         }
-                    }.onFailure { e ->
-                        AppLog.put("导入评论快照失败 ${snapshotFile.name}\n${e.localizedMessage}", e)
                     }
-                }
+            }
             val jsonFile = files.firstOrNull { it.name == IllustrationHelp.EXPORT_JSON_NAME }
                 ?: return
             val json = kotlin.runCatching {
