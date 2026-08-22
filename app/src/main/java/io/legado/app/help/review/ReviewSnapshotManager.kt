@@ -58,6 +58,7 @@ object ReviewSnapshotManager {
      * 进度条 = 当前章的评论按钮进度（done/total），与音频缓存“单章进度”决策一致。
      */
     data class ReviewSyncState(
+        val bookUrl: String = "",
         val bookName: String = "",
         val currentChapterTitle: String = "",
         val totalButtons: Int = 0,
@@ -67,6 +68,25 @@ object ReviewSnapshotManager {
 
     private val _syncState = MutableStateFlow(ReviewSyncState())
     val syncState: StateFlow<ReviewSyncState> = _syncState.asStateFlow()
+
+    /**
+     * 进程内存计数：bookUrl → 有评论快照的章 url 集合。
+     * 用于通知/缓存页显示的“评论 x/y”，只统计真实存在至少一个有效快照的章。
+     */
+    private val cachedReviewChaptersMap = ConcurrentHashMap<String, MutableSet<String>>()
+
+    /**
+     * 该书有评论快照的章数（内存计数，缺失时惰性扫描文件补齐）。
+     */
+    fun cachedReviewChapterCount(book: Book): Int {
+        return cachedReviewChaptersMap.computeIfAbsent(book.bookUrl) {
+            ReviewSnapshotStore.listAll(book)
+                .asSequence()
+                .map { it.chapterUrl }
+                .filter { it.isNotBlank() }
+                .toCollection(mutableSetOf())
+        }.size
+    }
 
     private data class Task(val key: String)
 
@@ -295,6 +315,7 @@ object ReviewSnapshotManager {
         }
         // 通知进度：进度条=当前章的评论按钮进度（参照音频缓存“单章进度”的决策逻辑）
         _syncState.value = _syncState.value.copy(
+            bookUrl = book.bookUrl,
             bookName = book.name,
             currentChapterTitle = chapter.title,
             totalButtons = needProcess.size,
@@ -344,19 +365,25 @@ object ReviewSnapshotManager {
         if (force && !hasFailure) {
             clearUserRefresh(bookUrl, chapterIndex)
         }
-        // 本章结束：进度计数收尾，通知切回“已完成 n 章”；
-        // 广播事件让离线缓存页增量更新“评论 x/y”统计
+        // 本章结束：进度计数收尾，通知切回“已完成 n 章”
         _syncState.value = _syncState.value.copy(
+            bookUrl = book.bookUrl,
             bookName = book.name,
             currentChapterTitle = "",
             totalButtons = 0,
             completedButtons = 0,
             completedChapters = _syncState.value.completedChapters + 1
         )
-        io.legado.app.utils.postEvent(
-            io.legado.app.constant.EventBus.REVIEW_CACHE_SAVED,
-            chapter.bookUrl to chapter.url
-        )
+        // 只有本章真实存在至少一个有效评论快照时，才计入“有评论快照的章数”
+        // 并广播事件，避免抓失败的章虚增“评论 x/y”（事件载荷带 hasSnapshot）
+        val chapterHasSnapshot = buttons.any { ReviewSnapshotStore.has(book, chapter, it.src) }
+        if (chapterHasSnapshot) {
+            cachedReviewChaptersMap.computeIfAbsent(bookUrl) { mutableSetOf() }.add(chapter.url)
+            io.legado.app.utils.postEvent(
+                io.legado.app.constant.EventBus.REVIEW_CACHE_SAVED,
+                Triple(book.bookUrl, chapter.url, true)
+            )
+        }
     }
 
     /**

@@ -285,9 +285,8 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
         booksFlowJob?.cancel()
         booksFlowJob = lifecycleScope.launch {
             appDb.bookDao.flowByGroup(groupId).map { books ->
-                val booksDownload = books.filter {
-                    !it.isAudio
-                }
+                // 有声书也必须出现在离线缓存页（喇叭图标跟在书名后显示）
+                val booksDownload = books
                 when (AppConfig.getBookSortByGroupId(groupId)) {
                     1 -> booksDownload.sortedByDescending { it.latestChapterTime }
                     2 -> booksDownload.sortedWith { o1, o2 ->
@@ -366,7 +365,7 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
             viewModel.cacheChapters[book.bookUrl]?.add(chapter.url)
             notifyItemChanged(book.bookUrl)
         }
-        observeEvent<Pair<String, String>>(EventBus.REVIEW_CACHE_SAVED) { (bookUrl, chapterUrl) ->
+        observeEvent<Triple<String, String, Boolean>>(EventBus.REVIEW_CACHE_SAVED) { (bookUrl, chapterUrl, _) ->
             viewModel.reviewChapters[bookUrl]?.add(chapterUrl)
             notifyItemChanged(bookUrl)
         }

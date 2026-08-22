@@ -370,6 +370,35 @@ object BookImgClick {
             val (url2, body) = pair
             return StrResponse(url2.ifEmpty { url }, body)
         }
+
+        /** 评论底部弹窗路径同样支持“网络优先”：失败/超时切快照 */
+        override fun showBrowser(
+            url: String,
+            html: String?,
+            preloadJs: String?,
+            config: String?
+        ) {
+            val activity = activityRef.get() ?: return
+            val source = getSource() ?: return
+            if (callbackRef.get()?.showBrowser(url, html, preloadJs, config) == true) {
+                return
+            }
+            activity.runOnUiThread {
+                if (activity.isFinishing || activity.isDestroyed) return@runOnUiThread
+                activity.showDialogFragment(
+                    BottomWebViewDialog(
+                        source.getKey(),
+                        bookType,
+                        url,
+                        html,
+                        preloadJs,
+                        config,
+                        networkRefresher = null,
+                        fallbackHtml = fallbackHtml
+                    )
+                )
+            }
+        }
     }
 
     private const val FETCH_TIMEOUT_MS = 60_000L

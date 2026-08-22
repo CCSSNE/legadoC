@@ -172,13 +172,11 @@ object CacheBook {
             return "正在下载:${onDownloadCount}|等待中:${waitCount}|失败:${errorDownloadMap.count()}|成功:${successDownloadSet.size}"
         }
 
-    /** 正文缓存进度（已成功章数, 目标总章数）；空表示暂无目标 */
-    val downloadProgress: Pair<Int, Int>?
-        get() {
-            val done = successDownloadSet.size
-            val total = done + waitCount + onDownloadCount
-            return if (total <= 0) null else done to total
-        }
+    /** 当前正在缓存的书（多本时取第一本活跃的），通知展示“正文 x/y · 评论 a/b”用 */
+    fun activeCachingBook(): Book? {
+        cacheBookMap.values.firstOrNull { it.isRun() }?.book?.let { return it }
+        return null
+    }
 
     val isRun: Boolean
         get() {
