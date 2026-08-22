@@ -177,7 +177,7 @@ internal object CacheNotificationBridge {
     private data class Progress(
         val max: Int,
         val current: Int,
-        val indeterminate: Boolean,
+        val indeterminate: Boolean = false,
     )
 
     private fun actionIntent(

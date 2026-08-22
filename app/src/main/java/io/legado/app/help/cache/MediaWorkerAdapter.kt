@@ -37,7 +37,7 @@ internal class MediaWorkerAdapter(
                     "chapter not found: ${key.chapterIndex}",
                 )
             }
-        if (!CacheMediaWorkerRegistry.register(task, lease, validKeys)) {
+        if (!CacheMediaWorkerRegistry.register(task, lease, validKeys.toList())) {
             CacheMediaWorkerRegistry.fail(lease, "another media task is active for this book")
             return
         }
@@ -97,6 +97,7 @@ internal class MediaWorkerAdapter(
 private object CacheMediaWorkerRegistry {
     private data class Binding(
         var lease: CacheWorkerLease,
+        val bookUrl: String,
         val expected: List<CacheUnitKey>,
     )
 
@@ -114,7 +115,7 @@ private object CacheMediaWorkerRegistry {
     ): Boolean {
         val existing = bindings[task.bookUrl]
         if (existing != null && existing.lease.taskId != lease.taskId) return false
-        bindings[task.bookUrl] = Binding(lease, expected)
+        bindings[task.bookUrl] = Binding(lease, task.bookUrl, expected)
         return true
     }
 

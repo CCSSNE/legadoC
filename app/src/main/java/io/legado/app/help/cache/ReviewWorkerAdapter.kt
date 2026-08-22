@@ -4,6 +4,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.review.ReviewSnapshotManager
 import io.legado.app.data.appDb
+import io.legado.app.service.ReviewCacheService
 import java.util.concurrent.ConcurrentHashMap
 
 /** Coordinator adapter for the review queue hosted by ReviewCacheService. */
