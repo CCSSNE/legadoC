@@ -105,7 +105,6 @@ object PreferKey {
     const val enableReview = "enableReview"
     const val syncCacheReview = "syncCacheReview"
     const val reviewCacheConcurrency = "reviewCacheConcurrency"
-    const val reviewButtonConcurrency = "reviewButtonConcurrency"
     const val exportReviews = "exportReviews"
     const val reviewOpenMode = "reviewOpenMode"
     const val showRss = "showRss"

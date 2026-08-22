@@ -114,6 +114,16 @@ object ReviewSnapshotManager {
 
     private val channel = Channel<Task>(Channel.UNLIMITED)
 
+    /**
+     * 全局按钮并发门：限制所有章节 worker 同时抓取的评论按钮总数，
+     * 避免“章节 worker 数 × 章内按钮数”相乘导致 WebView 数量暴涨。
+     * 许可数 = [AppConfig.reviewCacheConcurrency]（默认 16）；设置改动后
+     * 下次进程任务生效（与其他运行时配置一致）。
+     */
+    private val buttonGate = java.util.concurrent.Semaphore(
+        AppConfig.reviewCacheConcurrency.coerceIn(1, 32)
+    )
+
     /** 批量缓存进行中的书（Body Phase）：该书已登记任务只入 pendingForce，暂不执行 */
     private val bodyPhaseBooks = ConcurrentHashMap.newKeySet<String>()
 
@@ -410,13 +420,19 @@ object ReviewSnapshotManager {
         // force=true（用户明确刷新）时，任何一个需要刷新的按钮失败都保留待刷新标记，
         // 不能“一个成功就算整章成功”
         var hasFailure = false
-        // 按钮级并发：单章内多个评论按钮并行抓取（叠在章节并行之上），
+        // 按钮级并发：单章内多个评论按钮并行抓取（reviewCacheConcurrency，默认 16），
         // 日志按原按钮序号归位，进度/计数跨并发原子累计
-        val buttonConcurrency = AppConfig.reviewButtonConcurrency.coerceIn(1, 32)
+        val buttonConcurrency = AppConfig.reviewCacheConcurrency.coerceIn(1, 32)
         val outcomes = buttons
             .asFlow()
             .mapAsyncIndexed(buttonConcurrency) { index, button ->
-                processButton(book, bookSource, chapter, index, button, force)
+                // 全局并发门：跨章节 worker 累计最多 buttonConcurrency 个按钮在途
+                buttonGate.acquire()
+                try {
+                    processButton(book, bookSource, chapter, index, button, force)
+                } finally {
+                    buttonGate.release()
+                }
             }
             .toList()
             .sortedBy { it.index }
