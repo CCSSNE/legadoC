@@ -311,6 +311,7 @@ class AudioTextFusionTest {
         // 第一轮：文字书有评论 → 期望保存 overlay
         val plan1 = AudioTextFusion.planFusionWrites(
             textChapters, audioChapters,
+            textBookUrl = "textBookUrl",
             hasTextContent = { true },
             getTextContent = { "第一章$reviewImg" },
             hasAudioContent = { true },
@@ -323,6 +324,7 @@ class AudioTextFusionTest {
         // 第二轮：文字书评论被删除 → 旧 overlay 必须被清除，而不是残留
         val plan2 = AudioTextFusion.planFusionWrites(
             textChapters, audioChapters,
+            textBookUrl = "textBookUrl",
             hasTextContent = { true },
             getTextContent = { "第一章" },
             hasAudioContent = { true },
@@ -341,6 +343,7 @@ class AudioTextFusionTest {
         // 第一轮：两章都有评论
         val plan1 = AudioTextFusion.planFusionWrites(
             textChapters, audioChapters,
+            textBookUrl = "textBookUrl",
             hasTextContent = { true },
             getTextContent = { if (it.url == "t0") "第一章$reviewImg" else "第二章$reviewImg" },
             hasAudioContent = { true },
@@ -352,6 +355,7 @@ class AudioTextFusionTest {
         // 第二轮：第一章还有评论、第二章评论被删除 → 第二章旧 overlay 被清
         val plan2 = AudioTextFusion.planFusionWrites(
             textChapters, audioChapters,
+            textBookUrl = "textBookUrl",
             hasTextContent = { true },
             getTextContent = { if (it.url == "t0") "第一章$reviewImg" else "第二章" },
             hasAudioContent = { true },
@@ -364,13 +368,14 @@ class AudioTextFusionTest {
     }
 
     @Test
-    fun `chapter no longer paired keeps no overlay`() {
+    fun `chapter no longer paired keeps old overlay`() {
         val textChapters = listOf(chapter("t0", "第一章", 0))
         val audioChapters = listOf(chapter("a0", "第一章", 0))
 
         // 第一轮正常融合
         val plan1 = AudioTextFusion.planFusionWrites(
             textChapters, audioChapters,
+            textBookUrl = "textBookUrl",
             hasTextContent = { true },
             getTextContent = { "第一章$reviewImg" },
             hasAudioContent = { true },
@@ -379,10 +384,12 @@ class AudioTextFusionTest {
         )
         assertNotNull(plan1.writes.single().insertions)
 
-        // 第二轮：章节无法再配对（标题与章节号都对不上）→ 旧 overlay 不残留
+        // 第二轮：章节无法再配对（标题与章节号都对不上）→ 无法确认，
+        // 旧 overlay 必须保持，不能被当作“评论已删除”清掉
         val renamedText = listOf(chapter("t0", "番外", 0))
         val plan2 = AudioTextFusion.planFusionWrites(
             renamedText, audioChapters,
+            textBookUrl = "textBookUrl",
             hasTextContent = { true },
             getTextContent = { "第一章$reviewImg" },
             hasAudioContent = { true },
@@ -390,8 +397,7 @@ class AudioTextFusionTest {
             getCurrentOverlay = { fakeOverlayJson },
         )
         assertEquals(0, plan2.pairedChapters)
-        assertEquals(1, plan2.writes.size)
-        assertNull(plan2.writes.single().insertions)
+        assertTrue(plan2.writes.isEmpty())
     }
 
     @Test
@@ -400,6 +406,7 @@ class AudioTextFusionTest {
         val audioChapters = listOf(chapter("a0", "第一章", 0))
         fun plan() = AudioTextFusion.planFusionWrites(
             textChapters, audioChapters,
+            textBookUrl = "textBookUrl",
             hasTextContent = { true },
             getTextContent = { "第一章$reviewImg" },
             hasAudioContent = { true },
@@ -419,17 +426,18 @@ class AudioTextFusionTest {
     fun `chapters pair by normalized title then by chapter number`() {
         val textChapters = listOf(
             chapter("t0", "第一章 开端", 0),
-            chapter("t1", "第2章：冲突", 1),
+            chapter("t1", "第一卷 第2章：冲突", 1),
         )
         val audioChapters = listOf(
             chapter("a0", "第一章　开端", 0),
-            chapter("a1", "第二章 冲突", 1),
+            chapter("a1", "第一卷 第二章 冲突", 1),
         )
 
         val pairs = AudioTextFusion.pairChapters(textChapters, audioChapters)
 
         assertEquals(2, pairs.size)
         assertEquals("a0", pairs.first { it.first.url == "t0" }.second.url)
+        // 标题不同但卷一致、章节号相等（2 == 二）
         assertEquals("a1", pairs.first { it.first.url == "t1" }.second.url)
     }
 
@@ -550,5 +558,171 @@ class AudioTextFusionTest {
         assertEquals(2, ChapterTitle.volume("第2卷 第1章"))
         assertNull(ChapterTitle.volume("第2章：冲突"))
         assertNull(ChapterTitle.volume("序章"))
+    }
+
+    @Test
+    fun `unclear volume skips number fallback`() {
+        // 两侧都无卷信息（不明确）：宁可不配，也不做全书章节号硬配
+        val textChapters = listOf(chapter("t0", "第一章 A", 0))
+        val audioChapters = listOf(chapter("a0", "第一章 A2", 0))
+
+        val pairs = AudioTextFusion.pairChapters(textChapters, audioChapters)
+
+        assertTrue(pairs.isEmpty())
+    }
+
+    // ---------- 评论按钮来源上下文 ----------
+
+    @Test
+    fun `planFusionWrites fills text book context into overlay`() {
+        val textChapters = listOf(chapter("t0", "第一章", 0))
+        val audioChapters = listOf(chapter("a0", "第一章", 0))
+
+        val plan = AudioTextFusion.planFusionWrites(
+            textChapters, audioChapters,
+            textBookUrl = "textBookUrl",
+            hasTextContent = { true },
+            getTextContent = { "第一章$reviewImg" },
+            hasAudioContent = { true },
+            getLyric = { "[00:01.00]第一章" },
+            getCurrentOverlay = { "" },
+        )
+
+        val insertion = plan.writes.single().insertions!!.single()
+        assertEquals("textBookUrl", insertion.textBookUrl)
+        assertEquals("t0", insertion.textChapterUrl)
+    }
+
+    @Test
+    fun `findFusionTextContext resolves overlay payload to text book context`() {
+        val src = """https://a.test/btn.png,{"style":"TEXT","click":"showReview()"}"""
+        val insertions = listOf(
+            AudioTextFusion.OverlayInsertion(
+                anchor = "第一句", occurrence = 1,
+                payload = "<usehtml><img src=\"$src\"></usehtml>",
+                textBookUrl = "textBookUrl",
+                textChapterUrl = "textChapterUrl",
+            )
+        )
+        val json = AudioTextFusion.buildOverlay(insertions)
+
+        assertEquals(
+            "textBookUrl" to "textChapterUrl",
+            AudioTextFusion.findFusionTextContext(json, src)
+        )
+        // 非该 overlay 的 src 命中不到
+        assertNull(AudioTextFusion.findFusionTextContext(json, "https://other.test/x.png"))
+        // 旧数据无来源字段：回退当前阅读上下文（返回 null）
+        val legacyJson =
+            """[{"anchor":"第一句","occurrence":1,"payload":"<usehtml>legacy</usehtml>"}]"""
+        assertNull(AudioTextFusion.findFusionTextContext(legacyJson, src))
+        // 空 overlay
+        assertNull(AudioTextFusion.findFusionTextContext("", src))
+    }
+
+    @Test
+    fun `overlay json roundtrip keeps text book context`() {
+        val insertions = listOf(
+            AudioTextFusion.OverlayInsertion(
+                anchor = "第一句", occurrence = 1,
+                payload = "<usehtml>x</usehtml>",
+                textBookUrl = "textBookUrl",
+                textChapterUrl = "textChapterUrl",
+            ),
+        )
+        assertEquals(insertions, AudioTextFusion.parseOverlay(AudioTextFusion.buildOverlay(insertions)))
+    }
+
+    // ---------- reconcile：无法确认时保持旧 overlay ----------
+
+    @Test
+    fun `missing text cache keeps old overlay`() {
+        val textChapters = listOf(chapter("t0", "第一章", 0))
+        val audioChapters = listOf(chapter("a0", "第一章", 0))
+
+        val plan = AudioTextFusion.planFusionWrites(
+            textChapters, audioChapters,
+            textBookUrl = "textBookUrl",
+            hasTextContent = { false },   // 文字缓存没了：无法确认，不清除
+            getTextContent = { "第一章" },
+            hasAudioContent = { true },
+            getLyric = { "[00:01.00]第一章" },
+            getCurrentOverlay = { fakeOverlayJson },
+        )
+
+        assertTrue(plan.writes.isEmpty())
+    }
+
+    @Test
+    fun `missing audio cache keeps old overlay`() {
+        val textChapters = listOf(chapter("t0", "第一章", 0))
+        val audioChapters = listOf(chapter("a0", "第一章", 0))
+
+        val plan = AudioTextFusion.planFusionWrites(
+            textChapters, audioChapters,
+            textBookUrl = "textBookUrl",
+            hasTextContent = { true },
+            getTextContent = { "第一章$reviewImg" },
+            hasAudioContent = { false },  // 音频缓存没了：无法确认，不清除
+            getLyric = { "[00:01.00]第一章" },
+            getCurrentOverlay = { fakeOverlayJson },
+        )
+
+        assertTrue(plan.writes.isEmpty())
+    }
+
+    @Test
+    fun `blank lyric keeps old overlay`() {
+        val textChapters = listOf(chapter("t0", "第一章", 0))
+        val audioChapters = listOf(chapter("a0", "第一章", 0))
+
+        val plan = AudioTextFusion.planFusionWrites(
+            textChapters, audioChapters,
+            textBookUrl = "textBookUrl",
+            hasTextContent = { true },
+            getTextContent = { "第一章$reviewImg" },
+            hasAudioContent = { true },
+            getLyric = { "" },           // lyric 缺失：无法确认，不清除
+            getCurrentOverlay = { fakeOverlayJson },
+        )
+
+        assertTrue(plan.writes.isEmpty())
+    }
+
+    @Test
+    fun `null text content keeps old overlay`() {
+        val textChapters = listOf(chapter("t0", "第一章", 0))
+        val audioChapters = listOf(chapter("a0", "第一章", 0))
+
+        val plan = AudioTextFusion.planFusionWrites(
+            textChapters, audioChapters,
+            textBookUrl = "textBookUrl",
+            hasTextContent = { true },
+            getTextContent = { null },   // 正文读取失败：无法确认，不清除
+            hasAudioContent = { true },
+            getLyric = { "[00:01.00]第一章" },
+            getCurrentOverlay = { fakeOverlayJson },
+        )
+
+        assertTrue(plan.writes.isEmpty())
+    }
+
+    @Test
+    fun `confirmed no comments still clears old overlay`() {
+        val textChapters = listOf(chapter("t0", "第一章", 0))
+        val audioChapters = listOf(chapter("a0", "第一章", 0))
+
+        val plan = AudioTextFusion.planFusionWrites(
+            textChapters, audioChapters,
+            textBookUrl = "textBookUrl",
+            hasTextContent = { true },
+            getTextContent = { "第一章" },   // 缓存齐全且确认无评论入口
+            hasAudioContent = { true },
+            getLyric = { "[00:01.00]第一章" },
+            getCurrentOverlay = { fakeOverlayJson },
+        )
+
+        assertEquals(1, plan.writes.size)
+        assertNull(plan.writes.single().insertions)
     }
 }
