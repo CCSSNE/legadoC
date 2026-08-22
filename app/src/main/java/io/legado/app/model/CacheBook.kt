@@ -3,13 +3,14 @@ package io.legado.app.model
 import android.content.Context
 import io.legado.app.R
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.AppConst
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.IntentAction
+import io.legado.app.constant.NotificationId
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
-import io.legado.app.exception.ConcurrentException
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.CacheManifestHelper
 import io.legado.app.help.book.isLocal
@@ -40,6 +41,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import androidx.core.app.NotificationCompat
+import splitties.systemservices.notificationManager
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.CoroutineContext
 
@@ -92,7 +95,13 @@ object CacheBook {
     }
 
     fun start(context: Context, book: Book, start: Int, end: Int) {
-        if (book.isLocal) return
+        AppLog.put("开始离线缓存 ${book.name}，章节范围 ${start + 1}-${end + 1}")
+        if (book.isLocal) {
+            val error = IllegalArgumentException("local book cannot be cached from network")
+            AppLog.put("离线缓存拒绝：${book.name} 是本地书", error, true)
+            notifyResult(context, R.string.cache_download_failed, "${book.name}: local book")
+            return
+        }
         NotificationPermission.ensure(
             context,
             onGranted = {
@@ -104,8 +113,25 @@ object CacheBook {
                 }
             },
             onDenied = {
+                AppLog.put("离线缓存拒绝：通知权限未授予，${book.name}")
                 context.toastOnUi(R.string.notification_permission_required_for_download)
+                notifyResult(context, R.string.cache_download_failed, context.getString(R.string.notification_permission_required_for_download))
             }
+        )
+    }
+
+    private fun notifyResult(context: Context, titleRes: Int, message: String) {
+        notificationManager.notify(
+            NotificationId.CacheBookResult,
+            NotificationCompat.Builder(context, AppConst.channelIdDownload)
+                .setSmallIcon(R.drawable.ic_status_bar_r)
+                .setContentTitle(context.getString(titleRes))
+                .setContentText(message)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+                .setAutoCancel(false)
+                .setOngoing(false)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .build()
         )
     }
 
@@ -219,6 +245,12 @@ object CacheBook {
     val successDownloadSet = linkedSetOf<String>()
     val errorDownloadMap = hashMapOf<String, Int>()
 
+    val successDownloadCount: Int
+        get() = successDownloadSet.size
+
+    val failedDownloadCount: Int
+        get() = errorDownloadMap.size
+
     class CacheBookModel(var bookSource: BookSource, var book: Book) {
 
         private val waitDownloadSet = linkedSetOf<Int>()
@@ -301,15 +333,15 @@ object CacheBook {
             successDownloadSet.add(chapter.primaryStr())
             errorDownloadMap.remove(chapter.primaryStr())
             successUrls.add(chapter.url)
+            AppLog.put("离线缓存成功 ${book.name}-${chapter.title} (index=${chapter.index})")
         }
 
         @Synchronized
         private fun onPreError(chapter: BookChapter, error: Throwable) {
             waitingRetry = true
-            if (error !is ConcurrentException) {
-                errorDownloadMap[chapter.primaryStr()] =
-                    (errorDownloadMap[chapter.primaryStr()] ?: 0) + 1
-            }
+            errorDownloadMap[chapter.primaryStr()] =
+                (errorDownloadMap[chapter.primaryStr()] ?: 0) + 1
+            AppLog.put("离线缓存尝试失败 ${book.name}-${chapter.title}：${error.localizedMessage}", error)
             onDownloadSet.remove(chapter.index)
         }
 
@@ -337,6 +369,7 @@ object CacheBook {
         private fun onCancel(index: Int) {
             onDownloadSet.remove(index)
             if (!isStopped) waitDownloadSet.add(index)
+            AppLog.put("离线缓存取消 ${book.name} index=$index")
         }
 
         @Synchronized
@@ -376,19 +409,27 @@ object CacheBook {
             }
             val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, chapterIndex) ?: let {
                 waitDownloadSet.remove(chapterIndex)
+                val error = IllegalStateException("chapter index $chapterIndex is missing")
+                errorDownloadMap["${book.bookUrl}#$chapterIndex"] = 1
+                AppLog.put("离线缓存失败 ${book.name}：找不到章节索引 $chapterIndex", error)
+                onFinally()
                 return
             }
             if (chapter.isVolume) {
                 /** 修正下载计数 */
+                onSuccess(chapter)
                 postEvent(EventBus.SAVE_CONTENT, Pair(book, chapter))
                 waitDownloadSet.remove(chapterIndex)
+                onFinally()
                 return
             }
             if (BookHelp.hasImageContent(book, chapter)) {
                 // 正文已缓存（图片也齐），无任何正文工作在进行：
                 // 用户重新缓存该章，直接补/覆盖评论（force）
+                onSuccess(chapter)
                 waitDownloadSet.remove(chapterIndex)
                 reviewEnqueue(bookSource, book, chapter, force = true)
+                onFinally()
                 return
             }
             waitDownloadSet.remove(chapterIndex)
