@@ -1047,11 +1047,18 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefBoolean(PreferKey.enableReview, value)
         }
 
-    /** 刷新/下载(缓存)章节时同步抓取评论页快照 */
+    /** 缓存评论时抓取评论页快照 */
     var syncCacheReview: Boolean
-        get() = appCtx.getPrefBoolean(PreferKey.syncCacheReview, false)
+        get() = appCtx.getPrefBoolean(PreferKey.syncCacheReview, true)
         set(value) {
             appCtx.putPrefBoolean(PreferKey.syncCacheReview, value)
+        }
+
+    /** 缓存评论按钮的并发数 */
+    var reviewCacheConcurrency: Int
+        get() = appCtx.getPrefInt(PreferKey.reviewCacheConcurrency, 16)
+        set(value) {
+            appCtx.putPrefInt(PreferKey.reviewCacheConcurrency, value)
         }
 
     /** 评论打开方式：network / snapshot_first / snapshot_only */
