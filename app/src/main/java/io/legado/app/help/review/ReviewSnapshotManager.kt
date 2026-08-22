@@ -10,6 +10,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.BookImgClick
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.cache.CacheWorkerLease
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.StrResponse
 import io.legado.app.model.CacheBook
@@ -52,9 +53,10 @@ import java.util.concurrent.atomic.AtomicReference
 object ReviewSnapshotManager {
 
     /** 对外任务（key = bookUrl|chapterIndex；force 为消费时聚合值） */
-    data class QueueTask internal constructor(
+    internal data class QueueTask(
         val key: String,
-        val force: Boolean
+        val force: Boolean,
+        internal val executionLease: CacheWorkerLease?,
     )
 
     /**
@@ -100,7 +102,15 @@ object ReviewSnapshotManager {
         }.size
     }
 
-    private data class Task(val key: String)
+    private data class Task(
+        val key: String,
+        val executionLease: CacheWorkerLease?,
+    )
+
+    private data class PendingReview(
+        val force: Boolean,
+        val executionLease: CacheWorkerLease?,
+    )
 
     /** 评论按钮模型：click / 旧源 js 二选一 */
     data class ReviewButton(
@@ -126,7 +136,7 @@ object ReviewSnapshotManager {
      * 入队与消费的读取/删除都持有 [queueLock]，消除 putIfAbsent→replace 与
      * remove(key) 之间的并发窗口。
      */
-    private val pendingForce = ConcurrentHashMap<String, Boolean>()
+    private val pendingForce = ConcurrentHashMap<String, PendingReview>()
     /** 已被 worker 取出但尚未完成的任务，不能只看 pendingForce。 */
     private val activeTaskKeys = ConcurrentHashMap.newKeySet<String>()
     private val taskOutcomes = ConcurrentHashMap<String, Boolean>()
@@ -177,22 +187,42 @@ object ReviewSnapshotManager {
      * 因此缓存流程在跳过正文下载前调用本方法直接入队。
      */
     fun enqueue(book: Book, chapter: BookChapter, force: Boolean = false) {
+        enqueue(book, chapter, force, executionLease = null)
+    }
+
+    internal fun enqueue(
+        book: Book,
+        chapter: BookChapter,
+        force: Boolean,
+        executionLease: CacheWorkerLease?,
+    ) {
         cancelledBooks.remove(book.bookUrl)
         var shouldStartService = false
         refreshBodyState(book)
         synchronized(queueLock) {
-            val existed = pendingForce.putIfAbsent(keyOf(book, chapter), force)
+            val key = keyOf(book, chapter)
+            val existed = pendingForce.putIfAbsent(
+                key,
+                PendingReview(force, executionLease),
+            )
             if (existed == null) {
                 if (bodyPhaseBooks.contains(book.bookUrl)) {
                     // Body Phase：只登记待抓任务，绝不在批量正文结束前启动 WebView 抓取
                 } else {
-                    channel.trySend(Task(keyOf(book, chapter)))
+                    channel.trySend(Task(key, executionLease))
                     _syncState.update { it.copy(totalChapters = it.totalChapters + 1) }
                     shouldStartService = true
                 }
-            } else if (force && existed != true) {
+            } else if (force && !existed.force) {
                 // force 合并：已排队任务升级为强制重抓，不丢 true
-                pendingForce.replace(keyOf(book, chapter), existed, true)
+                pendingForce.replace(
+                    key,
+                    existed,
+                    existed.copy(
+                        force = true,
+                        executionLease = executionLease ?: existed.executionLease,
+                    ),
+                )
             }
         }
         if (shouldStartService) {
@@ -234,7 +264,7 @@ object ReviewSnapshotManager {
             pendingForce.keys
                 .filter { it.substringBefore('|') == bookUrl }
                 .forEach { key ->
-                    channel.trySend(Task(key))
+                    channel.trySend(Task(key, pendingForce[key]?.executionLease))
                     _syncState.update { it.copy(totalChapters = it.totalChapters + 1) }
                     sentAny = true
                 }
@@ -269,14 +299,14 @@ object ReviewSnapshotManager {
     }
 
     /** 评论服务消费：取一个任务（无任务返回 null）。force 取聚合值并原子移除 */
-    fun tryTakeTask(): QueueTask? {
+    internal fun tryTakeTask(): QueueTask? {
         val task = synchronized(queueLock) {
             val t = channel.tryReceive().getOrNull() ?: return null
-            val force = pendingForce.remove(t.key) ?: false
+            val pending = pendingForce.remove(t.key) ?: PendingReview(false, null)
             activeTaskKeys.add(t.key)
-            t to force
+            t to pending
         }
-        return QueueTask(task.first.key, task.second)
+        return QueueTask(task.first.key, task.second.force, task.second.executionLease)
     }
 
     /** Cancel only one book's review work; other books remain queued and runnable. */
@@ -318,13 +348,16 @@ object ReviewSnapshotManager {
     }
 
     /** 评论服务处理任务（suspend：内部解析 URL、WebView 抓取、落盘） */
-    suspend fun processTask(task: QueueTask): Boolean {
+    internal suspend fun processTask(task: QueueTask): Boolean {
+        val outcomeKey = task.executionLease?.let {
+            "${task.key}|${it.sessionId}/${it.taskId}/${it.generation}"
+        } ?: task.key
         try {
-            processTask(task.key, task.force)
+            processTask(task.key, task.force, outcomeKey)
         } finally {
             activeTaskKeys.remove(task.key)
         }
-        return taskOutcomes.remove(task.key) == true
+        return taskOutcomes.remove(outcomeKey) == true
     }
 
     private fun keyOf(book: Book, chapter: BookChapter) = "${book.bookUrl}|${chapter.index}"
@@ -379,22 +412,29 @@ object ReviewSnapshotManager {
         }
     }
 
-    private suspend fun processTask(key: String, force: Boolean) {
-        taskOutcomes[key] = false
+    private suspend fun processTask(key: String, force: Boolean, outcomeKey: String = key) {
+        taskOutcomes[outcomeKey] = false
         if (cancelledBooks.contains(key.substringBefore('|'))) return
         // 一章一次评论缓存任务 = 日志一条（多行详情），进入 AppLog 日志页可展开查看
         val sb = StringBuilder()
-        val unexpected = runCatching { processTaskWithLog(key, force, sb) }.exceptionOrNull()
+        val unexpected = runCatching {
+            processTaskWithLog(key, force, sb, outcomeKey)
+        }.exceptionOrNull()
         if (unexpected != null) {
             sb.append("\n异常：").append(unexpected.stackTraceToString())
         }
         if (sb.isNotBlank()) {
             AppLog.put(sb.toString())
         }
-        taskOutcomes[key] = unexpected == null && taskOutcomes[key] == true
+        taskOutcomes[outcomeKey] = unexpected == null && taskOutcomes[outcomeKey] == true
     }
 
-    private suspend fun processTaskWithLog(key: String, force: Boolean, sb: StringBuilder) {
+    private suspend fun processTaskWithLog(
+        key: String,
+        force: Boolean,
+        sb: StringBuilder,
+        outcomeKey: String,
+    ) {
         val bookUrl = key.substringBefore('|')
         val chapterIndex = key.substringAfter('|').toIntOrNull()
         val book = appDb.bookDao.getBook(bookUrl)
@@ -508,7 +548,7 @@ object ReviewSnapshotManager {
                 Triple(book.bookUrl, chapter.url, true)
             )
         }
-        taskOutcomes[key] = !hasFailure
+        taskOutcomes[outcomeKey] = !hasFailure
         sb.append("8. 最终结果：\n")
         sb.append("   成功快照 ").append(completedButtons).append("/").append(needProcess.size).append('\n')
         sb.append("   失败 ").append(failedButtons).append("/").append(needProcess.size).append('\n')

@@ -13,6 +13,8 @@ import io.legado.app.constant.NotificationId
 import io.legado.app.data.appDb
 import io.legado.app.help.book.update
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.cache.CacheCoordinator
+import io.legado.app.help.cache.CacheWorkerLease
 import io.legado.app.help.review.ReviewSnapshotManager
 import io.legado.app.model.CacheBook
 import io.legado.app.model.webBook.WebBook
@@ -57,7 +59,7 @@ class CacheBookService : BaseService() {
     private var resultNotified = false
     private var stopRequested = false
     private var bodyCompleted = false
-    private val coordinatorBookUrls = linkedSetOf<String>()
+    private val coordinatorLeases = linkedMapOf<String, CacheWorkerLease>()
     private var mutex = Mutex()
     private fun notificationBuilder(): NotificationCompat.Builder {
         val builder = NotificationCompat.Builder(this, AppConst.channelIdDownload)
@@ -66,26 +68,36 @@ class CacheBookService : BaseService() {
             .setOnlyAlertOnce(true)
             .setContentTitle(getString(R.string.offline_cache))
             .setContentIntent(activityPendingIntent<CacheActivity>("cacheActivity"))
-        if (CacheBook.isDownloadPaused) {
+        if (!coordinatorNotificationMode()) {
+            if (CacheBook.isDownloadPaused) {
+                builder.addAction(
+                    R.drawable.ic_play_24dp,
+                    getString(R.string.resume),
+                    servicePendingIntent<CacheBookService>(IntentAction.resume)
+                )
+            } else {
+                builder.addAction(
+                    R.drawable.ic_pause_24dp,
+                    getString(R.string.pause),
+                    servicePendingIntent<CacheBookService>(IntentAction.pause)
+                )
+            }
             builder.addAction(
-                R.drawable.ic_play_24dp,
-                getString(R.string.resume),
-                servicePendingIntent<CacheBookService>(IntentAction.resume)
-            )
-        } else {
-            builder.addAction(
-                R.drawable.ic_pause_24dp,
-                getString(R.string.pause),
-                servicePendingIntent<CacheBookService>(IntentAction.pause)
+                R.drawable.ic_stop_black_24dp,
+                getString(R.string.stop),
+                servicePendingIntent<CacheBookService>(IntentAction.stop)
             )
         }
-        builder.addAction(
-            R.drawable.ic_stop_black_24dp,
-            getString(R.string.stop),
-            servicePendingIntent<CacheBookService>(IntentAction.stop)
-        )
         builder.setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
         return builder
+    }
+
+    private fun coordinatorNotificationMode(): Boolean = coordinatorLeases.isNotEmpty()
+
+    private fun notificationId(): Int = if (coordinatorNotificationMode()) {
+        NotificationId.CacheCoordinator
+    } else {
+        NotificationId.CacheBookService
     }
 
     override fun onCreate() {
@@ -106,11 +118,18 @@ class CacheBookService : BaseService() {
         intent?.action?.let { action ->
             when (action) {
                 IntentAction.start -> {
-                    if (intent.getStringExtra("coordinatorSessionId") != null) {
-                        intent.getStringExtra("bookUrl")?.let(coordinatorBookUrls::add)
+                    val bookUrl = intent.getStringExtra("bookUrl")
+                    val sessionId = intent.getStringExtra("coordinatorSessionId")
+                    val taskId = intent.getStringExtra("coordinatorTaskId")
+                    val generation = intent.getLongExtra("coordinatorGeneration", Long.MIN_VALUE)
+                    if (bookUrl != null && sessionId != null && taskId != null && generation != Long.MIN_VALUE) {
+                        coordinatorLeases[bookUrl] = CacheWorkerLease(sessionId, taskId, generation)
+                        notificationManager.cancel(NotificationId.CacheBookService)
+                    } else if (bookUrl != null) {
+                        coordinatorLeases.remove(bookUrl)
                     }
                     addDownloadData(
-                        intent.getStringExtra("bookUrl"),
+                        bookUrl,
                         intent.getIntExtra("start", 0),
                         intent.getIntExtra("end", 0)
                     )
@@ -146,7 +165,13 @@ class CacheBookService : BaseService() {
     }
 
     override fun onDestroy() {
-        if (!bodyCompleted && !stopRequested && !resultNotified && !ReviewCacheService.isRun) {
+        if (coordinatorLeases.isNotEmpty() && !bodyCompleted && !stopRequested) {
+            val message = "正文缓存服务异常结束，未产生完成结果"
+            coordinatorLeases.values.forEach { lease ->
+                io.legado.app.help.cache.CacheBodyWorkerRegistry.onWorkerFinished(lease, message)
+            }
+            AppLog.put(message, IllegalStateException(message))
+        } else if (!bodyCompleted && !stopRequested && !resultNotified && !ReviewCacheService.isRun) {
             val message = "正文缓存服务异常结束，未产生完成结果"
             terminalFailure = message
             AppLog.put(message, IllegalStateException(message))
@@ -155,6 +180,7 @@ class CacheBookService : BaseService() {
         stopForeground(false)
         isRun = false
         cachePool.close()
+        coordinatorLeases.clear()
         stopRequestedGlobal = false
         super.onDestroy()
         postEvent(EventBus.UP_DOWNLOAD, "")
@@ -176,11 +202,11 @@ class CacheBookService : BaseService() {
                 stopSelf()
                 return@execute
             }
-            if (coordinatorBookUrls.contains(bookUrl) &&
+            if (coordinatorLeases.containsKey(bookUrl) &&
                 !io.legado.app.help.cache.CacheBodyWorkerRegistry.isCoordinatorManaged(bookUrl)
             ) {
                 AppLog.put("忽略已失效的正文缓存服务启动：$bookUrl")
-                coordinatorBookUrls.remove(bookUrl)
+                coordinatorLeases.remove(bookUrl)
                 removeDownload(bookUrl)
                 return@execute
             }
@@ -228,7 +254,7 @@ class CacheBookService : BaseService() {
                 return@execute
             }
             AppLog.put("提交离线缓存 ${book.name}，实际章节范围 ${start + 1}-${end2 + 1}")
-            cacheBook.addDownload(start, end2)
+            cacheBook.addDownload(start, end2, coordinatorLeases[bookUrl])
             notificationContent = CacheBook.downloadSummary
             upCacheBookNotification()
         }.onError { error ->
@@ -244,8 +270,8 @@ class CacheBookService : BaseService() {
 
     private fun reportTerminalFailure(message: String, throwable: Throwable? = null) {
         terminalFailure = message
-        coordinatorBookUrls.forEach {
-            io.legado.app.help.cache.CacheBodyWorkerRegistry.onWorkerFinished(it, message)
+        coordinatorLeases.values.forEach { lease ->
+            io.legado.app.help.cache.CacheBodyWorkerRegistry.onWorkerFinished(lease, message)
         }
         AppLog.put("离线缓存失败：$message", throwable)
         notificationContent = message
@@ -274,17 +300,18 @@ class CacheBookService : BaseService() {
                 reportTerminalFailure("下载调度异常：${e.localizedMessage}", e)
             } finally {
                 bodyCompleted = true
-                coordinatorBookUrls.forEach {
-                    io.legado.app.help.cache.CacheBodyWorkerRegistry.onWorkerFinished(it)
+                coordinatorLeases.values.forEach { lease ->
+                    io.legado.app.help.cache.CacheBodyWorkerRegistry.onWorkerFinished(lease)
                 }
-                coordinatorBookUrls.clear()
                 finishNotification()
+                coordinatorLeases.clear()
                 stopSelf()
             }
         }
     }
 
     private fun finishNotification() {
+        if (coordinatorNotificationMode()) return
         if (resultNotified) return
         if (ReviewSnapshotManager.hasPendingTasks()) {
             AppLog.put("正文缓存结束，评论任务仍在队列，保留统一通知交给评论阶段")
@@ -314,11 +341,12 @@ class CacheBookService : BaseService() {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setContentIntent(activityPendingIntent<CacheActivity>("cacheActivity"))
             .build()
-        notificationManager.notify(NotificationId.CacheBookService, notification)
+        notificationManager.notify(notificationId(), notification)
     }
 
     /** 通知文字：正文 x/y · 评论 a/b（y = 本次缓存目标章数，不是全书总章数）；无活跃书时回退下载摘要 */
     private fun notifyStopped() {
+        if (coordinatorNotificationMode()) return
         if (resultNotified) return
         resultNotified = true
         val content = getString(R.string.cache_manage_task_cancelled)
@@ -334,10 +362,11 @@ class CacheBookService : BaseService() {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setContentIntent(activityPendingIntent<CacheActivity>("cacheActivity"))
             .build()
-        notificationManager.notify(NotificationId.CacheBookService, notification)
+        notificationManager.notify(notificationId(), notification)
     }
 
     private fun notifyFailure(message: String) {
+        if (coordinatorNotificationMode()) return
         if (resultNotified) return
         resultNotified = true
         val notification = NotificationCompat.Builder(this, AppConst.channelIdDownload)
@@ -351,7 +380,7 @@ class CacheBookService : BaseService() {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setContentIntent(activityPendingIntent<CacheActivity>("cacheActivity"))
             .build()
-        notificationManager.notify(NotificationId.CacheBookService, notification)
+        notificationManager.notify(notificationId(), notification)
     }
 
     private fun upNotificationContent(): String {
@@ -372,13 +401,17 @@ class CacheBookService : BaseService() {
     }
 
     private fun upCacheBookNotification() {
+        if (coordinatorNotificationMode()) {
+            CacheNotificationBridge.render(CacheCoordinator.snapshot.value)
+            return
+        }
         // 进度条 = 当前正文单章节下载进度：正文整章一次性抓取，无字节级进度，
         // 以不确定进度条表示“当前章正在缓存”（总进度只体现在文字里）
         val builder = notificationBuilder()
         builder.setProgress(0, 0, true)
         builder.setContentText(notificationContent)
         val notification = builder.build()
-        notificationManager.notify(NotificationId.CacheBookService, notification)
+        notificationManager.notify(notificationId(), notification)
     }
 
     /**
@@ -388,7 +421,10 @@ class CacheBookService : BaseService() {
         val builder = notificationBuilder()
         builder.setContentText(notificationContent)
         val notification = builder.build()
-        startForeground(NotificationId.CacheBookService, notification)
+        startForeground(notificationId(), notification)
+        if (coordinatorNotificationMode()) {
+            CacheNotificationBridge.render(CacheCoordinator.snapshot.value)
+        }
     }
 
 }

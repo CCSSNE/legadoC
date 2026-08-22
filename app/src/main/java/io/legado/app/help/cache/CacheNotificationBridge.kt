@@ -11,14 +11,7 @@ import splitties.systemservices.notificationManager
 
 internal object CacheNotificationBridge {
     fun started(task: CacheTaskState) {
-        notify(
-            title = task.bookName,
-            text = "Cache task started: ${task.phase}",
-            ongoing = true,
-            submission = CacheSubmission(task.sessionId, task.taskId),
-            paused = task.status == CacheLifecycle.PAUSED,
-            progress = progress(task),
-        )
+        render(CacheCoordinator.snapshot.value)
     }
 
     fun render(snapshot: CacheSnapshot) {
@@ -33,13 +26,15 @@ internal object CacheNotificationBridge {
         val total = active.sumOf { it.units.size }
         val names = active.map { it.bookName }.distinct().take(2).joinToString(", ")
         val task = active.first()
+        val allPaused = active.all { it.status == CacheLifecycle.PAUSED }
         notify(
             title = "Offline cache",
-            text = "$names: $done/$total",
+            text = "All cache tasks: $names: $done/$total",
             ongoing = true,
             submission = CacheSubmission(task.sessionId, task.taskId),
-            paused = task.status == CacheLifecycle.PAUSED,
+            paused = allPaused,
             progress = Progress(total, done),
+            allTasks = true,
         )
     }
 
@@ -61,13 +56,15 @@ internal object CacheNotificationBridge {
                 current.units.count { it.status == CacheUnitStatus.SUCCEEDED }
             }
             val total = active.sumOf { it.units.size }
+            val allPaused = active.all { it.status == CacheLifecycle.PAUSED }
             notify(
                 title = "Offline cache",
-                text = "$title: $text; active ${done}/${total}",
+                text = "$title: $text; all active ${done}/${total}",
                 ongoing = true,
                 submission = CacheSubmission(first.sessionId, first.taskId),
-                paused = first.status == CacheLifecycle.PAUSED,
+                paused = allPaused,
                 progress = Progress(total, done),
+                allTasks = true,
             )
             return
         }
@@ -88,6 +85,7 @@ internal object CacheNotificationBridge {
         submission: CacheSubmission?,
         paused: Boolean,
         progress: Progress? = null,
+        allTasks: Boolean = false,
     ) {
         val notification: Notification = NotificationCompat.Builder(
             appCtx,
@@ -97,7 +95,7 @@ internal object CacheNotificationBridge {
             .setContentTitle(title)
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
-            .setOnlyAlertOnce(false)
+            .setOnlyAlertOnce(true)
             .setAutoCancel(false)
             .setOngoing(ongoing)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -105,7 +103,27 @@ internal object CacheNotificationBridge {
                 progress?.let { value ->
                     setProgress(value.max, value.current, value.indeterminate)
                 }
-                submission?.let { task ->
+                if (allTasks) {
+                    addAction(
+                        if (paused) R.drawable.ic_play_24dp else R.drawable.ic_pause_24dp,
+                        appCtx.getString(if (paused) R.string.resume else R.string.pause),
+                        actionIntent(
+                            if (paused) CacheCoordinatorActionReceiver.ACTION_RESUME
+                            else CacheCoordinatorActionReceiver.ACTION_PAUSE,
+                            task = null,
+                            allTasks = true,
+                        ),
+                    )
+                    addAction(
+                        R.drawable.ic_stop_black_24dp,
+                        appCtx.getString(R.string.stop),
+                        actionIntent(
+                            CacheCoordinatorActionReceiver.ACTION_CANCEL,
+                            task = null,
+                            allTasks = true,
+                        ),
+                    )
+                } else submission?.let { task ->
                     addAction(
                         if (paused) R.drawable.ic_play_24dp else R.drawable.ic_pause_24dp,
                         appCtx.getString(if (paused) R.string.resume else R.string.pause),
@@ -141,9 +159,16 @@ internal object CacheNotificationBridge {
         val indeterminate: Boolean,
     )
 
-    private fun actionIntent(action: String, task: CacheSubmission) =
+    private fun actionIntent(
+        action: String,
+        task: CacheSubmission? = null,
+        allTasks: Boolean = false,
+    ) =
         appCtx.broadcastPendingIntent<CacheCoordinatorActionReceiver>(action) {
-            putExtra(CacheCoordinatorActionReceiver.EXTRA_SESSION_ID, task.sessionId)
-            putExtra(CacheCoordinatorActionReceiver.EXTRA_TASK_ID, task.taskId)
+            task?.let {
+                putExtra(CacheCoordinatorActionReceiver.EXTRA_SESSION_ID, it.sessionId)
+                putExtra(CacheCoordinatorActionReceiver.EXTRA_TASK_ID, it.taskId)
+            }
+            putExtra(CacheCoordinatorActionReceiver.EXTRA_ALL_TASKS, allTasks)
         }
 }

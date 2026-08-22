@@ -27,9 +27,11 @@ internal class ReviewWorkerAdapter(
                 )
                 return
             }
-        task.units.forEach { unit ->
-            workerPort.updateUnit(lease, unit.key, CacheUnitStatus.RUNNING)
-        }
+        task.units
+            .filter { it.status == CacheUnitStatus.PENDING || it.status == CacheUnitStatus.REVIEW_ELIGIBLE }
+            .forEach { unit ->
+                workerPort.updateUnit(lease, unit.key, CacheUnitStatus.RUNNING)
+            }
         val chapters = task.units.mapNotNull { unit ->
             appDb.bookChapterDao.getChapter(task.bookUrl, unit.key.chapterIndex)
                 ?.let { unit.key to it }
@@ -38,6 +40,13 @@ internal class ReviewWorkerAdapter(
         task.units.asSequence()
             .map { it.key }
             .filterNot(validKeys::contains)
+            .filter { key ->
+                task.units.first { it.key == key }.status in setOf(
+                    CacheUnitStatus.PENDING,
+                    CacheUnitStatus.REVIEW_ELIGIBLE,
+                    CacheUnitStatus.RUNNING,
+                )
+            }
             .forEach { key ->
                 workerPort.updateUnit(
                     lease,
@@ -47,7 +56,13 @@ internal class ReviewWorkerAdapter(
                 )
             }
         if (!CacheReviewWorkerRegistry.register(task, lease, validKeys)) {
-            task.units.forEach { unit ->
+            task.units
+                .filter { it.status in setOf(
+                    CacheUnitStatus.PENDING,
+                    CacheUnitStatus.REVIEW_ELIGIBLE,
+                    CacheUnitStatus.RUNNING,
+                ) }
+                .forEach { unit ->
                 workerPort.updateUnit(
                     lease,
                     unit.key,
@@ -73,7 +88,12 @@ internal class ReviewWorkerAdapter(
             return
         }
         chapters.forEach { (_, chapter) ->
-            ReviewSnapshotManager.enqueue(book, chapter, force = true)
+            ReviewSnapshotManager.enqueue(
+                book,
+                chapter,
+                force = true,
+                executionLease = lease,
+            )
         }
         ReviewCacheService.startSelf()
     }
@@ -114,6 +134,8 @@ internal object CacheReviewWorkerRegistry {
         this.workerPort = workerPort
     }
 
+    fun hasCoordinatorTasks(): Boolean = bindings.isNotEmpty()
+
     fun register(
         task: CacheTaskState,
         lease: CacheWorkerLease,
@@ -134,8 +156,18 @@ internal object CacheReviewWorkerRegistry {
     }
 
     fun fail(lease: CacheWorkerLease, keys: Set<CacheUnitKey>, error: String) {
+        val task = CacheCoordinator.currentTask(CacheSubmission(lease.sessionId, lease.taskId))
         keys.forEach { key ->
-            requireWorkerPort().updateUnit(lease, key, CacheUnitStatus.FAILED, error)
+            val status = task?.units?.firstOrNull { it.key == key }?.status
+            if (status == CacheUnitStatus.PENDING || status == CacheUnitStatus.REVIEW_ELIGIBLE) {
+                requireWorkerPort().updateUnit(lease, key, CacheUnitStatus.RUNNING)
+            }
+            if (status == CacheUnitStatus.PENDING ||
+                status == CacheUnitStatus.REVIEW_ELIGIBLE ||
+                status == CacheUnitStatus.RUNNING
+            ) {
+                requireWorkerPort().updateUnit(lease, key, CacheUnitStatus.FAILED, error)
+            }
         }
         finish(lease, failed = true, error = error)
     }
@@ -151,31 +183,26 @@ internal object CacheReviewWorkerRegistry {
         bindings.remove("$sessionId/$taskId")
     }
 
-    fun onChapterFinished(bookUrl: String, chapterIndex: Int, success: Boolean) {
-        val targets = synchronized(lock) {
-            bindings.values.filter {
-                it.bookUrl == bookUrl && it.expected.any { key -> key.chapterIndex == chapterIndex }
-            }.toList()
-        }
-        targets.forEach { binding ->
-            val key = binding.expected.first { it.chapterIndex == chapterIndex }
-            val accepted = synchronized(lock) {
-                if (binding.completed.containsKey(key)) {
-                    false
-                } else {
-                    binding.completed[key] = success
-                    true
-                }
+    fun onChapterFinished(lease: CacheWorkerLease, chapterIndex: Int, success: Boolean) {
+        val binding = bindingFor(lease, "review chapter=$chapterIndex") ?: return
+        if (!binding.expected.any { it.chapterIndex == chapterIndex }) return
+        val key = binding.expected.first { it.chapterIndex == chapterIndex }
+        val accepted = synchronized(lock) {
+            if (binding.completed.containsKey(key)) {
+                false
+            } else {
+                binding.completed[key] = success
+                true
             }
-            if (!accepted) return@forEach
-            requireWorkerPort().updateUnit(
-                binding.lease,
-                key,
-                if (success) CacheUnitStatus.SUCCEEDED else CacheUnitStatus.FAILED,
-                if (success) null else "review worker reported failure",
-            )
-            finishIfComplete(binding)
         }
+        if (!accepted) return
+        requireWorkerPort().updateUnit(
+            binding.lease,
+            key,
+            if (success) CacheUnitStatus.SUCCEEDED else CacheUnitStatus.FAILED,
+            if (success) null else "review worker reported failure",
+        )
+        finishIfComplete(binding)
     }
 
     /** A normal empty queue means chapters had no review work and therefore completed. */
@@ -184,7 +211,7 @@ internal object CacheReviewWorkerRegistry {
         targets.forEach { binding ->
             val unfinished = synchronized(lock) { binding.expected - binding.completed.keys }
             unfinished.forEach { key ->
-                onChapterFinished(binding.bookUrl, key.chapterIndex, success = !cancelled)
+                onChapterFinished(binding.lease, key.chapterIndex, success = !cancelled)
             }
         }
     }
@@ -209,6 +236,32 @@ internal object CacheReviewWorkerRegistry {
     }
 
     private fun taskKey(lease: CacheWorkerLease): String = "${lease.sessionId}/${lease.taskId}"
+
+    private fun bindingFor(lease: CacheWorkerLease, detail: String): Binding? {
+        val binding = bindings[taskKey(lease)] ?: run {
+            AppLogCacheLogSink.record(
+                CacheLogEvent(
+                    CacheLogEventType.STALE_UPDATE_DROPPED,
+                    lease.sessionId,
+                    lease.taskId,
+                    "$detail binding missing",
+                )
+            )
+            return null
+        }
+        if (binding.lease.generation != lease.generation) {
+            AppLogCacheLogSink.record(
+                CacheLogEvent(
+                    CacheLogEventType.STALE_UPDATE_DROPPED,
+                    lease.sessionId,
+                    lease.taskId,
+                    "$detail generation=${lease.generation}",
+                )
+            )
+            return null
+        }
+        return binding
+    }
 
     private fun requireWorkerPort(): CacheWorkerPort =
         checkNotNull(workerPort) { "cache review worker registry is not bound" }
