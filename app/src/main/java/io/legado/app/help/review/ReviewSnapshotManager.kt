@@ -130,6 +130,7 @@ object ReviewSnapshotManager {
     /** 已被 worker 取出但尚未完成的任务，不能只看 pendingForce。 */
     private val activeTaskKeys = ConcurrentHashMap.newKeySet<String>()
     private val taskOutcomes = ConcurrentHashMap<String, Boolean>()
+    private val cancelledBooks = ConcurrentHashMap.newKeySet<String>()
     private val queueLock = Any()
 
     /**
@@ -176,6 +177,7 @@ object ReviewSnapshotManager {
      * 因此缓存流程在跳过正文下载前调用本方法直接入队。
      */
     fun enqueue(book: Book, chapter: BookChapter, force: Boolean = false) {
+        cancelledBooks.remove(book.bookUrl)
         var shouldStartService = false
         refreshBodyState(book)
         synchronized(queueLock) {
@@ -277,6 +279,24 @@ object ReviewSnapshotManager {
         return QueueTask(task.first.key, task.second)
     }
 
+    /** Cancel only one book's review work; other books remain queued and runnable. */
+    fun cancelBookTasks(bookUrl: String) {
+        cancelledBooks.add(bookUrl)
+        synchronized(queueLock) {
+            pendingForce.keys.toList()
+                .filter { it.substringBefore('|') == bookUrl }
+                .forEach { pendingForce.remove(it) }
+            val retained = ArrayList<Task>()
+            while (true) {
+                val task = channel.tryReceive().getOrNull() ?: break
+                if (task.key.substringBefore('|') != bookUrl) retained += task
+            }
+            retained.forEach { channel.trySend(it) }
+            bodyPhaseBooks.remove(bookUrl)
+        }
+        AppLog.put("评论缓存取消单书任务：$bookUrl")
+    }
+
     fun hasPendingTasks(): Boolean = synchronized(queueLock) {
         pendingForce.isNotEmpty() || activeTaskKeys.isNotEmpty()
     }
@@ -361,6 +381,7 @@ object ReviewSnapshotManager {
 
     private suspend fun processTask(key: String, force: Boolean) {
         taskOutcomes[key] = false
+        if (cancelledBooks.contains(key.substringBefore('|'))) return
         // 一章一次评论缓存任务 = 日志一条（多行详情），进入 AppLog 日志页可展开查看
         val sb = StringBuilder()
         val unexpected = runCatching { processTaskWithLog(key, force, sb) }.exceptionOrNull()

@@ -176,6 +176,14 @@ class CacheBookService : BaseService() {
                 stopSelf()
                 return@execute
             }
+            if (coordinatorBookUrls.contains(bookUrl) &&
+                !io.legado.app.help.cache.CacheBodyWorkerRegistry.isCoordinatorManaged(bookUrl)
+            ) {
+                AppLog.put("忽略已失效的正文缓存服务启动：$bookUrl")
+                coordinatorBookUrls.remove(bookUrl)
+                removeDownload(bookUrl)
+                return@execute
+            }
             val chapterCount = appDb.bookChapterDao.getChapterCount(bookUrl)
             val book = cacheBook.book
             if (chapterCount == 0) {

@@ -21,6 +21,7 @@ interface CacheUiPort {
 internal interface CacheWorkerPort {
     fun acquire(submission: CacheSubmission): CacheWorkerLease?
     fun reclaim(submission: CacheSubmission): CacheWorkerLease?
+    fun failQueued(submission: CacheSubmission, error: String): Boolean
     fun confirmPaused(submission: CacheSubmission): Boolean
     fun updateUnit(
         lease: CacheWorkerLease,
@@ -42,7 +43,7 @@ internal interface CacheWorkerPort {
  */
 object CacheCoordinator : CacheUiPort {
 
-    private val store = CacheTaskStore()
+    private val store = CacheTaskStore(onPublished = CacheNotificationBridge::render)
     override val snapshot: StateFlow<CacheSnapshot> = store.snapshot
 
     internal val workerPort: CacheWorkerPort = object : CacheWorkerPort {
@@ -52,6 +53,10 @@ object CacheCoordinator : CacheUiPort {
 
         override fun reclaim(submission: CacheSubmission): CacheWorkerLease? {
             return store.reclaimWorker(submission.sessionId, submission.taskId)
+        }
+
+        override fun failQueued(submission: CacheSubmission, error: String): Boolean {
+            return store.failQueuedTask(submission.sessionId, submission.taskId, error)
         }
 
         override fun confirmPaused(submission: CacheSubmission): Boolean {
@@ -82,6 +87,10 @@ object CacheCoordinator : CacheUiPort {
 
     private val workerDispatcher: CacheWorkerDispatcher =
         CacheWorkerDispatcherImpl(workerPort)
+
+    init {
+        workerDispatcher.recover(snapshot.value)
+    }
 
     override fun submit(request: CacheRequest): CacheSubmission {
         validateUiRequest(request)
@@ -132,8 +141,8 @@ object CacheCoordinator : CacheUiPort {
         require(
             body.status == CacheLifecycle.COMPLETED || body.status == CacheLifecycle.FAILED
         ) { "review task cannot be appended before BODY task completion" }
-        require(!store.hasTask(sessionId, CacheKind.TEXT, CachePhase.REVIEW, body.bookUrl)) {
-            "review task already exists for session=$sessionId book=${body.bookUrl}"
+        store.findTask(sessionId, CacheKind.TEXT, CachePhase.REVIEW, body.bookUrl)?.let {
+            return CacheSubmission(sessionId, it.taskId)
         }
         val eligible = store.reviewEligibleUnits(sessionId, bodyTaskId)
         if (eligible.isEmpty()) return null

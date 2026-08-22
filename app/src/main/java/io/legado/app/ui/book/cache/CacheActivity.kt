@@ -38,14 +38,16 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.cache.CacheCoordinator
 import io.legado.app.help.cache.CacheKind
+import io.legado.app.help.cache.CacheLifecycle
+import io.legado.app.help.cache.CacheLifecycleRules
 import io.legado.app.help.cache.CachePhase
 import io.legado.app.help.cache.CacheRequest
 import io.legado.app.help.cache.CacheRequestSource
+import io.legado.app.help.cache.CacheSubmission
 import io.legado.app.help.cache.CacheUnitKey
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
-import io.legado.app.model.CacheBook
 import io.legado.app.service.ExportBookService
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.file.HandleFileContract
@@ -75,6 +77,7 @@ import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -239,22 +242,22 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.menu_download_after -> {
-                if (!CacheBook.isRun) sureCacheBook {
+                if (!hasCoordinatorTextTask()) sureCacheBook {
                     adapter.getItems().forEach { book ->
                         submitBodyCache(book, book.durChapterIndex, book.lastChapterIndex)
                     }
                 } else {
-                    CacheBook.stop(this@CacheActivity)
+                    cancelCoordinatorTextTasks()
                 }
             }
 
             R.id.menu_download_all -> {
-                if (!CacheBook.isRun) sureCacheBook {
+                if (!hasCoordinatorTextTask()) sureCacheBook {
                     adapter.getItems().forEach { book ->
                         submitBodyCache(book, 0, book.lastChapterIndex)
                     }
                 } else {
-                    CacheBook.stop(this@CacheActivity)
+                    cancelCoordinatorTextTasks()
                 }
             }
 
@@ -349,6 +352,11 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
     }
 
     override fun observeLiveBus() {
+        lifecycleScope.launch {
+            CacheCoordinator.snapshot.collectLatest {
+                updateCoordinatorDownloadMenu()
+            }
+        }
         viewModel.upAdapterLiveData.observe(this) {
             notifyItemChanged(it)
         }
@@ -359,19 +367,7 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
             notifyItemChanged(it)
         }
         observeEvent<String>(EventBus.UP_DOWNLOAD_STATE) {
-            if (!CacheBook.isRun) {
-                menu?.findItem(R.id.menu_download)?.let { item ->
-                    item.setIconCompat(R.drawable.ic_play_24dp)
-                    item.setTitle(R.string.download_start)
-                }
-                menu?.applyUiMenuStyle(this)
-            } else {
-                menu?.findItem(R.id.menu_download)?.let { item ->
-                    item.setIconCompat(R.drawable.ic_stop_black_24dp)
-                    item.setTitle(R.string.stop)
-                }
-                menu?.applyUiMenuStyle(this)
-            }
+            updateCoordinatorDownloadMenu()
         }
         observeEvent<Pair<Book, BookChapter>>(EventBus.SAVE_CONTENT) { (book, chapter) ->
             viewModel.cacheChapters[book.bookUrl]?.add(chapter.url)
@@ -381,6 +377,43 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
             viewModel.reviewChapters[bookUrl]?.add(chapterUrl)
             notifyItemChanged(bookUrl)
         }
+    }
+
+    private fun hasCoordinatorTextTask(): Boolean {
+        return CacheCoordinator.snapshot.value.sessions.any { session ->
+            session.tasks.any {
+                it.kind == CacheKind.TEXT &&
+                    (it.phase == CachePhase.BODY || it.phase == CachePhase.REVIEW) &&
+                    it.status in setOf(
+                        CacheLifecycle.QUEUED,
+                        CacheLifecycle.RUNNING,
+                        CacheLifecycle.PAUSING,
+                        CacheLifecycle.PAUSED,
+                        CacheLifecycle.INTERRUPTED,
+                        CacheLifecycle.CANCELLING,
+                    )
+            }
+        }
+    }
+
+    private fun cancelCoordinatorTextTasks() {
+        CacheCoordinator.snapshot.value.sessions
+            .flatMap { it.tasks }
+            .filter {
+                it.kind == CacheKind.TEXT &&
+                    (it.phase == CachePhase.BODY || it.phase == CachePhase.REVIEW) &&
+                    !CacheLifecycleRules.isTerminal(it.status)
+            }
+            .forEach { CacheCoordinator.cancel(CacheSubmission(it.sessionId, it.taskId)) }
+    }
+
+    private fun updateCoordinatorDownloadMenu() {
+        val active = hasCoordinatorTextTask()
+        menu?.findItem(R.id.menu_download)?.let { item ->
+            item.setIconCompat(if (active) R.drawable.ic_stop_black_24dp else R.drawable.ic_play_24dp)
+            item.setTitle(if (active) R.string.stop else R.string.download_start)
+        }
+        menu?.applyUiMenuStyle(this)
     }
 
     override fun export(position: Int) {

@@ -121,17 +121,35 @@ object CacheBook {
         NotificationPermission.ensure(
             context,
             onGranted = {
-                runCatching {
-                    context.startService<CacheBookService> {
-                        action = IntentAction.start
-                        putExtra("bookUrl", book.bookUrl)
-                        putExtra("start", start)
-                        putExtra("end", end)
-                        putExtra("coordinatorSessionId", coordinatorSessionId)
-                        putExtra("coordinatorTaskId", coordinatorTaskId)
-                        coordinatorGeneration?.let { putExtra("coordinatorGeneration", it) }
-                    }
-                }.onFailure {
+                val leaseActive = if (
+                    coordinatorSessionId == null ||
+                    coordinatorTaskId == null ||
+                    coordinatorGeneration == null
+                ) {
+                    true
+                } else {
+                    io.legado.app.help.cache.CacheBodyWorkerRegistry.isLeaseActive(
+                        io.legado.app.help.cache.CacheWorkerLease(
+                            coordinatorSessionId,
+                            coordinatorTaskId,
+                            coordinatorGeneration,
+                        )
+                    )
+                }
+                if (!leaseActive) {
+                    AppLog.put("忽略已失效的正文缓存启动：${book.bookUrl}")
+                } else {
+                    runCatching {
+                        context.startService<CacheBookService> {
+                            action = IntentAction.start
+                            putExtra("bookUrl", book.bookUrl)
+                            putExtra("start", start)
+                            putExtra("end", end)
+                            putExtra("coordinatorSessionId", coordinatorSessionId)
+                            putExtra("coordinatorTaskId", coordinatorTaskId)
+                            coordinatorGeneration?.let { putExtra("coordinatorGeneration", it) }
+                        }
+                    }.onFailure {
                     val message = "${book.name}: 启动正文缓存服务失败：${it.localizedMessage}"
                     AppLog.put(message, it, true)
                     notifyCoordinatorStartFailure(
@@ -140,7 +158,8 @@ object CacheBook {
                         coordinatorGeneration,
                         message,
                     )
-                    notifyResult(context, R.string.cache_download_failed, message)
+                        notifyResult(context, R.string.cache_download_failed, message)
+                    }
                 }
             },
             onDenied = {
@@ -206,6 +225,13 @@ object CacheBook {
         if (!requested) {
             AppLog.put("停止离线缓存：当前没有运行中的缓存服务")
         }
+    }
+
+    /** Stop one coordinator-owned book without touching other cache books. */
+    fun stop(bookUrl: String, releaseReviewPhase: Boolean = false) {
+        cacheBookMap[bookUrl]?.stop(releaseReviewPhase)
+        cacheBookMap.remove(bookUrl)
+        postEvent(EventBus.UP_DOWNLOAD, bookUrl)
     }
 
     /** 清理正文任务状态；评论队列由 ReviewSnapshotManager 单独管理。 */
@@ -473,8 +499,11 @@ object CacheBook {
                     CacheManifestHelper.refresh(book)
                 }
                 cacheBookMap.remove(book.bookUrl)
-                io.legado.app.help.review.ReviewSnapshotManager.endBodyPhase(book.bookUrl)
-                io.legado.app.help.cache.CacheBodyWorkerRegistry.onWorkerFinished(book.bookUrl)
+                if (io.legado.app.help.cache.CacheBodyWorkerRegistry.isCoordinatorManaged(book.bookUrl)) {
+                    io.legado.app.help.cache.CacheBodyWorkerRegistry.onWorkerFinished(book.bookUrl)
+                } else {
+                    io.legado.app.help.review.ReviewSnapshotManager.endBodyPhase(book.bookUrl)
+                }
                 // 整批目标正文结束（Review Phase 开始）：登记过的评论任务正式执行，
                 // 评论进度不参与正文下载状态
             }
@@ -493,8 +522,10 @@ object CacheBook {
                     // 整批结束（可能是“全部已缓存命中，无任何正文任务”）：同样必须收掉
                     // Body Phase，否则后补评论场景（正文已缓存，重新缓存即补评论）会卡死；
                     // 仅在活跃批量下收尾，阅读页单章 model 不被误收
-                    io.legado.app.help.review.ReviewSnapshotManager
-                        .endBodyPhaseIfActive(book.bookUrl)
+                    if (!io.legado.app.help.cache.CacheBodyWorkerRegistry.isCoordinatorManaged(book.bookUrl)) {
+                        io.legado.app.help.review.ReviewSnapshotManager
+                            .endBodyPhaseIfActive(book.bookUrl)
+                    }
                 }
                 return
             }
@@ -657,6 +688,9 @@ object CacheBook {
             chapter: BookChapter,
             force: Boolean
         ) {
+            if (io.legado.app.help.cache.CacheBodyWorkerRegistry.isCoordinatorManaged(book.bookUrl)) {
+                return
+            }
             io.legado.app.help.review.ReviewSnapshotManager.enqueueIfEnabled(
                 bookSource, book, chapter, force = force
             )

@@ -6,6 +6,7 @@ internal interface CacheWorkerDispatcher {
     fun resume(submission: CacheSubmission, lease: CacheWorkerLease)
     fun pause(submission: CacheSubmission)
     fun cancel(submission: CacheSubmission)
+    fun recover(snapshot: CacheSnapshot)
 }
 
 internal class CacheWorkerDispatcherImpl(
@@ -14,16 +15,16 @@ internal class CacheWorkerDispatcherImpl(
 
     private val bodyAdapter = TextBodyWorkerAdapter(workerPort)
     private val reviewAdapter = ReviewWorkerAdapter(workerPort)
+    private val mediaAdapter = MediaWorkerAdapter(workerPort)
 
     override fun start(submission: CacheSubmission) {
         val lease = workerPort.acquire(submission)
         if (lease == null) {
+            val error = "worker lease was not acquired"
             recordDispatchFailure(submission, "lease_not_acquired")
-            CacheNotificationBridge.finished(
-                CacheCoordinator.currentTask(submission),
-                CacheResult.FAILED,
-                "worker lease was not acquired",
-            )
+            if (workerPort.failQueued(submission, error)) {
+                CacheCoordinator.notifyTaskFinished(submission, CacheResult.FAILED, error)
+            }
             return
         }
         dispatch(submission, lease)
@@ -34,27 +35,69 @@ internal class CacheWorkerDispatcherImpl(
     }
 
     override fun pause(submission: CacheSubmission) {
-        val task = CacheCoordinator.currentTask(submission) ?: return
-        if (task.kind == CacheKind.TEXT) {
-            when (task.phase) {
-                CachePhase.BODY -> bodyAdapter.pause(submission)
-                CachePhase.REVIEW -> reviewAdapter.pause(submission)
-                CachePhase.MEDIA -> Unit
+        val task = CacheCoordinator.currentTask(submission) ?: run {
+            recordDispatchFailure(submission, "pause_task_missing")
+            return
+        }
+        when {
+            task.kind == CacheKind.TEXT && task.phase == CachePhase.BODY -> {
+                bodyAdapter.pause(submission)
+            }
+            task.kind == CacheKind.TEXT && task.phase == CachePhase.REVIEW -> {
+                reviewAdapter.pause(submission)
+            }
+            task.phase == CachePhase.MEDIA -> {
+                mediaAdapter.pause(submission)
+            }
+            else -> {
+                val error = "no pause adapter for kind=${task.kind} phase=${task.phase}"
+                recordDispatchFailure(submission, error)
             }
         }
     }
 
     override fun cancel(submission: CacheSubmission) {
-        val task = CacheCoordinator.currentTask(submission) ?: return
-        if (task.kind == CacheKind.TEXT) {
-            when (task.phase) {
-                CachePhase.BODY -> bodyAdapter.cancel(submission)
-                CachePhase.REVIEW -> reviewAdapter.cancel(submission)
-                CachePhase.MEDIA -> workerPort.confirmCancelled(submission)
-            }
-        } else {
-            workerPort.confirmCancelled(submission)
+        val task = CacheCoordinator.currentTask(submission) ?: run {
+            recordDispatchFailure(submission, "cancel_task_missing")
+            return
         }
+        when {
+            task.kind == CacheKind.TEXT && task.phase == CachePhase.BODY -> {
+                bodyAdapter.cancel(submission)
+            }
+            task.kind == CacheKind.TEXT && task.phase == CachePhase.REVIEW -> {
+                reviewAdapter.cancel(submission)
+            }
+            task.phase == CachePhase.MEDIA -> {
+                mediaAdapter.cancel(submission)
+            }
+            else -> {
+                val error = "no cancel adapter for kind=${task.kind} phase=${task.phase}"
+                recordDispatchFailure(submission, error)
+                if (workerPort.confirmCancelled(submission)) {
+                    CacheCoordinator.notifyTaskFinished(submission, CacheResult.CANCELLED, error)
+                }
+            }
+        }
+    }
+
+    override fun recover(snapshot: CacheSnapshot) {
+        snapshot.sessions.asSequence()
+            .flatMap { it.tasks.asSequence() }
+            .filter { it.status == CacheLifecycle.QUEUED || it.status == CacheLifecycle.INTERRUPTED }
+            .forEach { task ->
+                val submission = CacheSubmission(task.sessionId, task.taskId)
+                if (task.status == CacheLifecycle.QUEUED) {
+                    start(submission)
+                } else {
+                    val lease = workerPort.reclaim(submission)
+                    if (lease == null) {
+                        recordDispatchFailure(submission, "reclaim_failed")
+                    } else {
+                        dispatch(submission, lease)
+                    }
+                }
+            }
     }
 
     private fun dispatch(submission: CacheSubmission, lease: CacheWorkerLease) {
@@ -72,6 +115,9 @@ internal class CacheWorkerDispatcherImpl(
                 }
                 task.kind == CacheKind.TEXT && task.phase == CachePhase.REVIEW -> {
                     reviewAdapter.start(task, lease)
+                }
+                task.phase == CachePhase.MEDIA -> {
+                    mediaAdapter.start(task, lease)
                 }
                 else -> {
                     val message = "no worker adapter for kind=${task.kind} phase=${task.phase}"

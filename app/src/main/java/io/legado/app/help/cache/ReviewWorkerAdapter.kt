@@ -18,31 +18,82 @@ internal class ReviewWorkerAdapter(
         require(task.kind == CacheKind.TEXT && task.phase == CachePhase.REVIEW) {
             "review adapter received ${task.kind}/${task.phase}"
         }
+        val book = appDb.bookDao.getBook(task.bookUrl)
+            ?: run {
+                CacheReviewWorkerRegistry.fail(
+                    lease,
+                    task.units.map { it.key }.toSet(),
+                    "book not found: ${task.bookUrl}",
+                )
+                return
+            }
         task.units.forEach { unit ->
             workerPort.updateUnit(lease, unit.key, CacheUnitStatus.RUNNING)
         }
-        CacheReviewWorkerRegistry.register(task, lease)
-        task.units.forEach { unit ->
-            val chapter = appDb.bookChapterDao.getChapter(task.bookUrl, unit.key.chapterIndex)
-            val book = appDb.bookDao.getBook(task.bookUrl)
-            if (chapter != null && book != null) {
-                ReviewSnapshotManager.enqueue(book, chapter, force = true)
+        val chapters = task.units.mapNotNull { unit ->
+            appDb.bookChapterDao.getChapter(task.bookUrl, unit.key.chapterIndex)
+                ?.let { unit.key to it }
+        }
+        val validKeys = chapters.mapTo(linkedSetOf()) { it.first }
+        task.units.asSequence()
+            .map { it.key }
+            .filterNot(validKeys::contains)
+            .forEach { key ->
+                workerPort.updateUnit(
+                    lease,
+                    key,
+                    CacheUnitStatus.FAILED,
+                    "chapter not found: ${key.chapterIndex}",
+                )
             }
+        if (!CacheReviewWorkerRegistry.register(task, lease, validKeys)) {
+            task.units.forEach { unit ->
+                workerPort.updateUnit(
+                    lease,
+                    unit.key,
+                    CacheUnitStatus.FAILED,
+                    "another review task is active for this book",
+                )
+            }
+            if (workerPort.finish(lease, CacheResult.FAILED, "another review task is active for this book")) {
+                CacheCoordinator.notifyTaskFinished(
+                    lease,
+                    CacheResult.FAILED,
+                    "another review task is active for this book",
+                )
+            }
+            return
+        }
+        if (validKeys.isEmpty()) {
+            CacheReviewWorkerRegistry.finish(
+                lease,
+                failed = true,
+                error = "no review chapters found",
+            )
+            return
+        }
+        chapters.forEach { (_, chapter) ->
+            ReviewSnapshotManager.enqueue(book, chapter, force = true)
         }
         ReviewCacheService.startSelf()
     }
 
     fun cancel(submission: CacheSubmission) {
         CacheReviewWorkerRegistry.remove(submission.sessionId, submission.taskId)
-        ReviewSnapshotManager.clearAllTasks()
-        ReviewCacheService.requestStop()
+        val task = CacheCoordinator.currentTask(submission)
+        if (task != null) {
+            ReviewSnapshotManager.cancelBookTasks(task.bookUrl)
+        }
         if (workerPort.confirmCancelled(submission)) {
             CacheCoordinator.notifyTaskFinished(submission, CacheResult.CANCELLED)
         }
     }
 
     fun pause(submission: CacheSubmission) {
-        io.legado.app.model.CacheBook.pauseDownload()
+        val task = CacheCoordinator.currentTask(submission)
+            ?: return
+        CacheReviewWorkerRegistry.remove(submission.sessionId, submission.taskId)
+        ReviewSnapshotManager.cancelBookTasks(task.bookUrl)
         workerPort.confirmPaused(submission)
     }
 }
@@ -63,13 +114,36 @@ internal object CacheReviewWorkerRegistry {
         this.workerPort = workerPort
     }
 
-    fun register(task: CacheTaskState, lease: CacheWorkerLease) {
+    fun register(
+        task: CacheTaskState,
+        lease: CacheWorkerLease,
+        expected: Set<CacheUnitKey> = task.units.map { it.key }.toSet(),
+    ): Boolean {
         synchronized(lock) {
+            val existing = bindings.values.firstOrNull {
+                it.bookUrl == task.bookUrl && it.lease.taskId != lease.taskId
+            }
+            if (existing != null) return false
             bindings[taskKey(lease)] = Binding(
                 lease = lease,
                 bookUrl = task.bookUrl,
-                expected = task.units.map { it.key }.toSet(),
+                expected = expected,
             )
+        }
+        return true
+    }
+
+    fun fail(lease: CacheWorkerLease, keys: Set<CacheUnitKey>, error: String) {
+        keys.forEach { key ->
+            requireWorkerPort().updateUnit(lease, key, CacheUnitStatus.FAILED, error)
+        }
+        finish(lease, failed = true, error = error)
+    }
+
+    fun finish(lease: CacheWorkerLease, failed: Boolean, error: String?) {
+        val result = if (failed) CacheResult.FAILED else CacheResult.SUCCEEDED
+        if (requireWorkerPort().finish(lease, result, error)) {
+            CacheCoordinator.notifyTaskFinished(lease, result, error)
         }
     }
 
