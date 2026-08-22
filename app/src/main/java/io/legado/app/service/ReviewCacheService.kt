@@ -8,6 +8,7 @@ import io.legado.app.base.BaseService
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.NotificationId
 import io.legado.app.help.review.ReviewSnapshotManager
+import io.legado.app.help.review.ReviewSnapshotManager.ReviewSyncState
 import io.legado.app.utils.activityPendingIntent
 import io.legado.app.utils.startService
 import kotlinx.coroutines.Dispatchers
@@ -28,6 +29,10 @@ import splitties.systemservices.notificationManager
  *   把登记任务入队并启动本服务。本服务以低优先级通知常驻前台，
  *   单线程串行抓取评论页快照，失败只记日志。
  *
+ * 通知与音频缓存一致：低优先级通知 + 进度条，进度条 = 当前章的评论按钮进度
+ * （done/total，未解析时 indeterminate），文本显示当前章与已完成章数，
+ * 1 秒节流；一个任务失败只记日志，绝不打死整个 Review Phase。
+ *
  * 生命周期保障：
  * - 评论进度不算正文下载进度，正文下载状态（CacheBookService）结束后才启动；
  * - 队列空时短暂重试确认后 stopSelf；App 被杀后下一次入队会重新拉起；
@@ -38,6 +43,9 @@ class ReviewCacheService : BaseService() {
     companion object {
         var isRun = false
             private set
+
+        /** 与音频缓存相同的通知更新节流 */
+        private const val NOTIFICATION_INTERVAL_MS = 1000L
 
         /** 评论任务入队/批量结束（Review Phase 开始）时拉起本服务 */
         fun startSelf() {
@@ -54,6 +62,8 @@ class ReviewCacheService : BaseService() {
     }
 
     private var workJob: Job? = null
+    private var notifyJob: Job? = null
+    private var lastNotifyTime = 0L
 
     private val notificationBuilder by lazy {
         NotificationCompat.Builder(this, AppConst.channelIdReview)
@@ -70,6 +80,12 @@ class ReviewCacheService : BaseService() {
         super.onCreate()
         isRun = true
         startWork()
+        // 订阅进度：参照音频缓存 notifyState，1 秒节流更新通知与进度条
+        notifyJob = lifecycleScope.launch(Dispatchers.IO) {
+            ReviewSnapshotManager.syncState.collect { state ->
+                upNotification(state)
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -106,6 +122,7 @@ class ReviewCacheService : BaseService() {
 
     override fun onDestroy() {
         workJob?.cancel()
+        notifyJob?.cancel()
         isRun = false
         super.onDestroy()
     }
@@ -114,5 +131,33 @@ class ReviewCacheService : BaseService() {
         val notification = notificationBuilder.build()
         startForeground(NotificationId.ReviewCacheService, notification)
         notificationManager.notify(NotificationId.ReviewCacheService, notification)
+    }
+
+    /** 进度通知：当前章按钮进度（进度条），文本带书名/当前章/已完成章数 */
+    private fun upNotification(state: ReviewSyncState) {
+        val now = System.currentTimeMillis()
+        if (now - lastNotifyTime < NOTIFICATION_INTERVAL_MS) return
+        lastNotifyTime = now
+        val chapterText = state.currentChapterTitle.ifBlank { getString(R.string.review_sync_waiting) }
+        val contentText = getString(
+            R.string.review_sync_notification_progress,
+            state.bookName.ifBlank { getString(R.string.sync_cache_review) },
+            chapterText,
+            state.completedButtons,
+            state.totalButtons,
+            state.completedChapters
+        )
+        val builder = notificationBuilder.setContentText(contentText)
+        if (state.totalButtons > 0) {
+            builder.setProgress(
+                state.totalButtons,
+                state.completedButtons.coerceIn(0, state.totalButtons),
+                false
+            )
+        } else {
+            // 当前章按钮数未知（未解析/章与章之间）：不固定进度
+            builder.setProgress(0, 0, true)
+        }
+        notificationManager.notify(NotificationId.ReviewCacheService, builder.build())
     }
 }
