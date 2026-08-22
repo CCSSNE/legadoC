@@ -2262,11 +2262,11 @@ class ReadBookActivity : BaseReadBookActivity(),
      * 点击图片（评论/图片点击统一入口，阅读页与沉浸听书页共用）
      */
     override fun oldClickImg(src: String): Boolean {
-        return BookImgClick.oldClickImg(this, lifecycleScope, src)
+        return BookImgClick.oldClickImg(this, lifecycleScope, src, ReadBook.curTextChapter?.chapter)
     }
 
     override fun clickImg(click: String, src: String) {
-        BookImgClick.clickImg(this, lifecycleScope, click, src)
+        BookImgClick.clickImg(this, lifecycleScope, click, src, ReadBook.curTextChapter?.chapter)
     }
 
     /**
