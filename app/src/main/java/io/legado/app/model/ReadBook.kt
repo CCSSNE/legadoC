@@ -862,6 +862,9 @@ object ReadBook : CoroutineScope by MainScope() {
     ) {
         removeLoading(chapter.index)
         if (canceled || chapter.index !in durChapterIndex - 1..durChapterIndex + 1) {
+            // 取消不入队；超窗章（如后台预下载的远景章节）正文下载已完成、
+            // 但没有排版刷新流程，按“无刷新流程的正文完成”统一入队评论
+            if (!canceled) notifyChapterDownloaded(book, chapter)
             return
         }
         chapterLoadingJobs[chapter.index]?.cancel()

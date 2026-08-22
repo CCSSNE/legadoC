@@ -382,18 +382,12 @@ object CacheBook {
             ).onSuccess { content ->
                 onSuccess(chapter)
                 downloadFinish(chapter, content)
-                // 正文全部结束（成功状态 + 刷新状态）之后再入队评论
-                reviewEnqueue(
-                    bookSource, book, chapter,
-                    force = io.legado.app.help.review.ReviewSnapshotManager
-                        .isUserRefreshActive(book.bookUrl, chapter.index)
-                )
             }.onError {
                 onPreError(chapter, it)
                 //出现错误等待一秒后重新加入待下载列表
                 delay(1000)
                 onPostError(chapter, it)
-                downloadFinish(chapter, "获取正文失败\n${it.localizedMessage}")
+                downloadFinish(chapter, "获取正文失败\n${it.localizedMessage}", success = false)
             }.onCancel {
                 onCancel(chapterIndex)
             }.onFinally {
@@ -454,20 +448,14 @@ object CacheBook {
                 ReadBook.downloadedChapters.add(chapter.index)
                 ReadBook.downloadFailChapters.remove(chapter.index)
                 downloadFinish(chapter, content, resetPageOffset)
-                // 正文全部结束（成功状态 + 刷新状态）之后再入队评论
-                reviewEnqueue(
-                    bookSource, book, chapter,
-                    force = io.legado.app.help.review.ReviewSnapshotManager
-                        .isUserRefreshActive(book.bookUrl, chapter.index)
-                )
             }.onError {
                 onError(chapter, it)
                 ReadBook.downloadFailChapters[chapter.index] =
                     (ReadBook.downloadFailChapters[chapter.index] ?: 0) + 1
-                downloadFinish(chapter, "获取正文失败\n${it.localizedMessage}", resetPageOffset)
+                downloadFinish(chapter, "获取正文失败\n${it.localizedMessage}", resetPageOffset, success = false)
             }.onCancel {
                 onCancel(chapter.index)
-                downloadFinish(chapter, "download canceled", resetPageOffset, true)
+                downloadFinish(chapter, "download canceled", resetPageOffset, true, success = false)
             }.onFinally {
                 postEvent(EventBus.UP_DOWNLOAD, book.bookUrl)
             }.start()
@@ -475,7 +463,7 @@ object CacheBook {
 
         /**
          * 该章正文全部完成（文本/图片/成功状态/正文刷新状态）之后的统一评论入队出口。
-         * 只允许在各下载路径的成功回调最后调用；评论任务本身低优先级、失败不影响正文。
+         * 只允许在各下载路径的成功收尾调用；评论任务本身低优先级、失败不影响正文。
          */
         private fun reviewEnqueue(
             bookSource: BookSource,
@@ -486,6 +474,41 @@ object CacheBook {
             io.legado.app.help.review.ReviewSnapshotManager.enqueueIfEnabled(
                 bookSource, book, chapter, force = force
             )
+        }
+
+        /**
+         * 下载收尾的统一出口：
+         * - 当前阅读中的书：正文刷新（异步排版 job 完成、callBack 通知后）真正结束，
+         *   contentLoadFinish 的 success 回调才入队评论；
+         * - 非当前书（批量缓存等）：无排版流程，正文下载完成即入队；
+         * - 失败/取消不传 success，绝不入队评论。
+         */
+        private fun downloadFinish(
+            chapter: BookChapter,
+            content: String,
+            resetPageOffset: Boolean = false,
+            canceled: Boolean = false,
+            success: Boolean = true
+        ) {
+            val enqueueAfterFinish = {
+                reviewEnqueue(
+                    bookSource, book, chapter,
+                    force = io.legado.app.help.review.ReviewSnapshotManager
+                        .isUserRefreshActive(book.bookUrl, chapter.index)
+                )
+            }
+            if (ReadBook.book?.bookUrl == book.bookUrl) {
+                ReadBook.contentLoadFinish(
+                    book, chapter, content,
+                    resetPageOffset = resetPageOffset,
+                    canceled = canceled,
+                    success = {
+                        if (success && !canceled) enqueueAfterFinish()
+                    }
+                )
+            } else if (success && !canceled) {
+                enqueueAfterFinish()
+            }
         }
 
         private fun downloadFinish(
