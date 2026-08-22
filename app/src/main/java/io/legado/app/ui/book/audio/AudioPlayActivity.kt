@@ -1055,10 +1055,12 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
      * 只有点击气泡触发评论，正文点击仍走行点击跳转朗读位置。
      */
     private fun onListeningReviewClick(click: String?, src: String) {
+        // 融合挂载的评论按钮按文字书上下文执行点击（宿主章节=当前听书章节）
+        val hostChapter = ReadBook.curTextChapter?.chapter
         if (click.isNullOrBlank()) {
-            BookImgClick.oldClickImg(this, lifecycleScope, src)
+            BookImgClick.oldClickImg(this, lifecycleScope, src, hostChapter)
         } else {
-            BookImgClick.clickImg(this, lifecycleScope, click, src)
+            BookImgClick.clickImg(this, lifecycleScope, click, src, hostChapter)
         }
     }
 
