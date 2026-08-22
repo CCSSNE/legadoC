@@ -2,6 +2,7 @@ package io.legado.app.help.book
 
 import io.legado.app.data.entities.BookChapter
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -12,6 +13,10 @@ class AudioTextFusionTest {
     // 与缓存正文一致的形态：URL 后跟选项 JSON（选项 JSON 内嵌引号，与排版层可解析范围一致）
     private val reviewImg =
         """<img src="https://a.test/btn.png,{"style":"TEXT","click":"showReview()"}">"""
+
+    // 迁移后渲染端可识别形态：src 去选项，style/click 转成 data-legado-* 属性
+    private val migratedReviewImg =
+        """<img src="https://a.test/btn.png" data-legado-style="TEXT" data-legado-click="showReview()">"""
 
     private fun chapter(url: String, title: String, index: Int) =
         BookChapter(url = url, title = title, index = index)
@@ -66,6 +71,43 @@ class AudioTextFusionTest {
         assertEquals("这一段有评论", insertions[0].anchor)
     }
 
+    @Test
+    fun `migrated button carries legado attributes instead of huge unfocusable img`() {
+        // 书源评论泡：src 带单引号 JSON 选项，点击 JS 内含双引号参数
+        val svg = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjx0ZXh0PjE8L3RleHQ+PC9zdmc+"
+        val click = """showCmt("7369127130480774169","7371011775312970265","0","105195")"""
+        val img = """<img src="$svg,{'click':'$click','style':'TEXT'}">"""
+        val line = "这一段有评论$img"
+
+        val insertions = AudioTextFusion.fuseOverlay(line, "[00:01.00]这一段有评论")!!
+        val payload = insertions[0].payload
+        // src 去选项后缀，style/click 转 data-legado-* 属性（渲染端 usehtml 路径才可识别）
+        assertTrue("actual: $payload", payload.contains("""<img src="$svg""""))
+        assertFalse(payload.contains("'style'"))
+        assertTrue("actual: $payload", payload.contains("""data-legado-style="TEXT""""))
+        // 点击 JS 中双引号转义为 &quot;，属性不会被截断
+        assertTrue(
+            "actual: $payload",
+            payload.contains("""data-legado-click="showCmt(&quot;7369127130480774169&quot;,&quot;7371011775312970265&quot;,&quot;0&quot;,&quot;105195&quot;)""""),
+        )
+        assertEquals(
+            """<usehtml><img src="$svg" data-legado-style="TEXT" data-legado-click="showCmt(&quot;7369127130480774169&quot;,&quot;7371011775312970265&quot;,&quot;0&quot;,&quot;105195&quot;)"></usehtml>""",
+            payload
+        )
+    }
+
+    @Test
+    fun `usehtml block inner comment img is converted as well`() {
+        val svg = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjx0ZXh0PjE8L3RleHQ+PC9zdmc+"
+        val img = """<img src="$svg,{'click':'showCmt("a","b")','style':'TEXT'}">"""
+        val content = "　　这一段$reviewImg\n<usehtml>$img</usehtml>"
+
+        val entries = AudioTextFusion.parseCommentParagraphs(content)
+        val payload = entries.first { it.key == "这一段" }.payload
+        assertTrue("actual: $payload", payload.contains("""data-legado-style="TEXT""""))
+        assertFalse(payload.contains("'style'"))
+    }
+
     // ---------- usehtml 块归属（按原始 offset 邻接） ----------
 
     @Test
@@ -83,7 +125,7 @@ class AudioTextFusionTest {
         // 无载荷的第二段也参与占位
         assertEquals(3, entries.size)
         assertEquals("第一段", entries[0].key)
-        assertTrue(entries[0].payload.contains("<usehtml>$reviewImg</usehtml>"))
+        assertTrue(entries[0].payload.contains("<usehtml>$migratedReviewImg</usehtml>"))
         assertTrue(entries[0].payload.contains("<center>评论按钮</center>"))
         assertEquals("第二段无评论", entries[1].key)
         assertEquals("", entries[1].payload)
@@ -104,7 +146,7 @@ class AudioTextFusionTest {
         // 装饰块与第一段之间隔了空行：不归属；第二段无载荷但保留占位
         assertEquals(2, entries.size)
         assertEquals("第一段", entries[0].key)
-        assertEquals("<usehtml>$reviewImg</usehtml>", entries[0].payload)
+        assertEquals("<usehtml>$migratedReviewImg</usehtml>", entries[0].payload)
         assertEquals("第二段", entries[1].key)
         assertEquals("", entries[1].payload)
     }
@@ -120,7 +162,7 @@ class AudioTextFusionTest {
         assertEquals(1, insertions.size)
         assertEquals("第一句", insertions[0].anchor)
         assertEquals(1, insertions[0].occurrence)
-        assertEquals("<usehtml>$reviewImg</usehtml>", insertions[0].payload)
+        assertEquals("<usehtml>$migratedReviewImg</usehtml>", insertions[0].payload)
 
         val fused = AudioTextFusion.applyOverlay(lyric, AudioTextFusion.buildOverlay(insertions))
         val mapping = AudioTextMapping.parse(fused)
@@ -129,7 +171,7 @@ class AudioTextFusionTest {
         assertEquals(
             listOf(
                 "第一句",
-                "<usehtml>$reviewImg</usehtml>",
+                "<usehtml>$migratedReviewImg</usehtml>",
                 "第二句",
             ),
             mapping.displayContents()
@@ -162,7 +204,7 @@ class AudioTextFusionTest {
         val insertions = AudioTextFusion.fuseOverlay(textContent, lyric)!!
         val fused = AudioTextFusion.applyOverlay(lyric, AudioTextFusion.buildOverlay(insertions))
         assertTrue(
-            fused.contains("[00:05.000][00:07.00]第一章开端\n<usehtml>$reviewImg</usehtml>")
+            fused.contains("[00:05.000][00:07.00]第一章开端\n<usehtml>$migratedReviewImg</usehtml>")
         )
     }
 
@@ -242,7 +284,7 @@ class AudioTextFusionTest {
 
         val refreshed = "[00:00.500]第一句\r\n[00:04.00]第二句"
         val fused = AudioTextFusion.applyOverlay(refreshed, overlayJson)
-        assertTrue(fused.contains("[00:00.500]第一句\r\n<usehtml>$reviewImg</usehtml>"))
+        assertTrue(fused.contains("[00:00.500]第一句\r\n<usehtml>$migratedReviewImg</usehtml>"))
 
         val changed = "[00:01.00]第一句（修订）\n[00:03.00]第二句"
         assertEquals(changed, AudioTextFusion.applyOverlay(changed, overlayJson))
@@ -315,7 +357,7 @@ class AudioTextFusionTest {
         val insertions = AudioTextFusion.fuseOverlay(textContent, lyric)!!
         val fused = AudioTextFusion.applyOverlay(lyric, AudioTextFusion.buildOverlay(insertions))
         assertTrue(fused.contains("<usehtml>[12:34]原生评论区按钮</usehtml>"))
-        assertTrue(fused.contains("<usehtml>$reviewImg</usehtml>"))
+        assertTrue(fused.contains("<usehtml>$migratedReviewImg</usehtml>"))
     }
 
     // ---------- P0 整本书 reconcile ----------
