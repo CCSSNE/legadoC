@@ -65,15 +65,18 @@ object ReviewSnapshotCapture {
     /**
      * 抓取真实评论页快照并序列化。
      * @param url 真实评论页地址（由调度器经与用户点击共用的执行逻辑解析）
+     * @param initialHtml 书源 showBrowser 已用 ajax 取回的渲染 HTML；
+     *        非空时作为 WebView 初始页面（不再发起网络请求），仍继续展开/内联/序列化
      */
     suspend fun capture(
         bookSource: BookSource,
         book: Book,
         chapter: BookChapter,
         buttonSrc: String,
-        url: String
+        url: String,
+        initialHtml: String? = null
     ): CaptureOutcome {
-        val (html, expandRounds, expandClickCount) = snapshotPage(url, bookSource)
+        val (html, expandRounds, expandClickCount) = snapshotPage(url, bookSource, initialHtml)
         return CaptureOutcome(
             snapshot = ReviewSnapshot(
                 bookUrl = book.bookUrl,
@@ -99,7 +102,8 @@ object ReviewSnapshotCapture {
      */
     private suspend fun snapshotPage(
         url: String,
-        bookSource: BookSource
+        bookSource: BookSource,
+        initialHtml: String? = null
     ): Triple<String, Int, Int> =
         withTimeout(PAGE_TIMEOUT_MS) {
             val analyzeUrl = AnalyzeUrl(url, source = bookSource)
@@ -134,7 +138,13 @@ object ReviewSnapshotCapture {
                             }
                         }
                         webView.webViewClient = session.client
-                        webView.loadUrl(url, headerMap)
+                        if (!initialHtml.isNullOrBlank()) {
+                            // 书源 showBrowser 已取回渲染 HTML：直接作为初始页面，
+                            // 仍走 onPageFinished → 展开/内联/序列化全流程
+                            webView.loadDataWithBaseURL(url, initialHtml, "text/html", "utf-8", url)
+                        } else {
+                            webView.loadUrl(url, headerMap)
+                        }
                         // 超时/cancel（withTimeout 抛 TimeoutCancellationException）路径
                         block.invokeOnCancellation {
                             runOnUI { session.destroy() }
