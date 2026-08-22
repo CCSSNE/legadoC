@@ -28,11 +28,15 @@ import io.legado.app.help.webView.WebViewPool
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.utils.GSON
 import io.legado.app.utils.runOnUI
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeout
 import org.apache.commons.text.StringEscapeUtils
 import splitties.init.appCtx
 import java.io.ByteArrayInputStream
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -50,7 +54,7 @@ object ReviewSnapshotCapture {
 
     private val mHandler = Handler(Looper.getMainLooper())
 
-    private const val PAGE_TIMEOUT_MS = 120_000L
+    private const val PAGE_TIMEOUT_MS = 60_000L
     /** 穷尽循环轮数上限 */
     private const val MAX_EXPAND_ROUNDS = 40
     /** 每轮之间的等待 */
@@ -60,6 +64,8 @@ object ReviewSnapshotCapture {
     /** 资源内联上限 */
     private const val MAX_INLINE_RESOURCES = 200
     private const val MAX_TOTAL_INLINE_BYTES = 30L * 1024 * 1024
+    /** 单个内联资源抓取超时：内联失败只丢该资源，不拖整章 */
+    private const val RESOURCE_FETCH_TIMEOUT_MS = 8_000L
 
     /**
      * 抓取结果（供诊断日志）：快照 + 展开检测轮数 + 实际点击“展开/加载更多”次数。
@@ -271,6 +277,40 @@ object ReviewSnapshotCapture {
                 handler?.proceed()
             }
 
+            override fun onReceivedError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                error: WebResourceError?
+            ) {
+                // 主框架加载失败（DNS/连接/超时等）立即失败，不再干等到 60s 超时：
+                // 部分评论页域名在本机网络解析/连接不通，串行等待会拖死整章
+                if (request?.isForMainFrame == true) {
+                    fail(NoStackTraceException("评论页加载失败 code=${error?.errorCode} ${error?.description}"))
+                }
+            }
+
+            @Deprecated("API 23 以下")
+            override fun onReceivedError(
+                view: WebView?,
+                errorCode: Int,
+                description: String?,
+                failingUrl: String?
+            ) {
+                if (failingUrl == url || failingUrl == url.substringBefore("#")) {
+                    fail(NoStackTraceException("评论页加载失败 code=$errorCode $description"))
+                }
+            }
+
+            override fun onReceivedHttpError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                errorResponse: WebResourceResponse?
+            ) {
+                if (request?.isForMainFrame == true) {
+                    fail(NoStackTraceException("评论页 HTTP 错误 ${errorResponse?.statusCode}"))
+                }
+            }
+
             override fun shouldOverrideUrlLoading(
                 view: WebView?,
                 request: WebResourceRequest?
@@ -414,45 +454,58 @@ object ReviewSnapshotCapture {
 
         private fun downloadResources(urls: Pair<List<String>, List<String>>): InlineResources {
             val (imgUrls, cssUrls) = urls
-            var totalBytes = 0L
             val imgMap = linkedMapOf<String, String>()
-            for (rawUrl in imgUrls.take(MAX_INLINE_RESOURCES)) {
-                if (totalBytes > MAX_TOTAL_INLINE_BYTES) break
-                runCatching {
-                    fetchBytes(rawUrl)
-                }.getOrNull()?.let { bytes ->
-                    if (bytes.size <= 8L * 1024 * 1024) {
-                        val mime = guessMime(rawUrl, bytes)
-                        imgMap[rawUrl] =
-                            "data:$mime;base64," +
-                                android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-                        totalBytes += bytes.size
-                    }
-                }
-            }
             val cssMap = linkedMapOf<String, String>()
-            for (rawUrl in cssUrls.take(MAX_INLINE_RESOURCES)) {
-                if (totalBytes > MAX_TOTAL_INLINE_BYTES) break
-                runCatching {
-                    fetchBytes(rawUrl).toString(Charsets.UTF_8)
-                }.getOrNull()?.takeIf { it.isNotBlank() }?.let { cssText ->
-                    cssMap[rawUrl] = cssText
-                    totalBytes += cssText.toByteArray(Charsets.UTF_8).size
+            // 图片/CSS 并发抓取内联：同一批资源并行下载，单个失败（含连接不通）只跳过自身；
+            // 运行于普通 Thread（非协程），故用 runBlocking + async 并发
+            runBlocking(Dispatchers.IO) {
+                val totalBytes = java.util.concurrent.atomic.AtomicLong(0L)
+                imgUrls.take(MAX_INLINE_RESOURCES).map { rawUrl ->
+                    async {
+                        if (totalBytes.get() > MAX_TOTAL_INLINE_BYTES) return@async null
+                        val entry = runCatching {
+                            fetchBytes(rawUrl).takeIf { it.size <= 8L * 1024 * 1024 }?.let { bytes ->
+                                val mime = guessMime(rawUrl, bytes)
+                                rawUrl to ("data:$mime;base64," +
+                                    android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP))
+                            }
+                        }.getOrNull()
+                        if (entry != null) totalBytes.addAndGet(entry.second.length.toLong())
+                        entry
+                    }
+                }.map { it.await() }.filterNotNull().forEach { (rawUrl, data) ->
+                    imgMap[rawUrl] = data
+                }
+                cssUrls.take(MAX_INLINE_RESOURCES).map { rawUrl ->
+                    async {
+                        if (totalBytes.get() > MAX_TOTAL_INLINE_BYTES) return@async null
+                        val text = runCatching {
+                            fetchBytes(rawUrl).toString(Charsets.UTF_8).takeIf { it.isNotBlank() }
+                        }.getOrNull()
+                        if (text != null) totalBytes.addAndGet(text.toByteArray(Charsets.UTF_8).size.toLong())
+                        text?.let { rawUrl to it }
+                    }
+                }.map { it.await() }.filterNotNull().forEach { (rawUrl, text) ->
+                    cssMap[rawUrl] = text
                 }
             }
             return InlineResources(imgMap, cssMap)
         }
 
-        /** 同步抓取资源字节（在后台线程调用） */
+        /** 同步抓取资源字节（在后台线程调用），单请求 8s 超时避免连不通的地址长期卡死 */
         private fun fetchBytes(resourceUrl: String): ByteArray {
             val request = okhttp3.Request.Builder()
                 .url(resourceUrl)
                 .header("Referer", url)
                 .build()
-            okHttpClient.newCall(request).execute().use { response ->
-                check(response.isSuccessful) { "HTTP ${response.code}" }
-                return response.body.bytes()
-            }
+            okHttpClient.newBuilder()
+                .connectTimeout(RESOURCE_FETCH_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                .readTimeout(RESOURCE_FETCH_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                .build()
+                .newCall(request).execute().use { response ->
+                    check(response.isSuccessful) { "HTTP ${response.code}" }
+                    return response.body.bytes()
+                }
         }
 
         private fun guessMime(rawUrl: String, bytes: ByteArray): String {

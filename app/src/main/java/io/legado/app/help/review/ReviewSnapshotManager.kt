@@ -18,12 +18,14 @@ import io.legado.app.service.ReviewCacheService
 import io.legado.app.ui.login.SourceLoginJsExtensions
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
+import io.legado.app.utils.mapAsyncIndexed
 import io.legado.app.utils.startService
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.flow.update
 import splitties.init.appCtx
 import java.io.File
@@ -146,9 +148,6 @@ object ReviewSnapshotManager {
     }
     @Volatile
     private var refreshPendingLoaded = false
-
-    /** 按钮之间的间隔，把网络与 WebView 占用压到最低 */
-    private const val BUTTON_INTERVAL_MS = 800L
 
     /** 单章最多处理的评论按钮数，防止异常书源拖垮后台 */
     private const val MAX_BUTTONS_PER_CHAPTER = 30
@@ -411,90 +410,23 @@ object ReviewSnapshotManager {
         // force=true（用户明确刷新）时，任何一个需要刷新的按钮失败都保留待刷新标记，
         // 不能“一个成功就算整章成功”
         var hasFailure = false
-        var index = 0
-        for (button in buttons) {
-            index++
-            if (!button.hasAction) continue
-            // 普通触发有快照可跳过；force（明确重新缓存/刷新）必须重抓覆盖
-            if (!force && ReviewSnapshotStore.has(book, chapter, button.src)) {
-                sb.append("3. 按钮").append(index).append("：src=").append(button.src)
-                    .append("\n   已有有效快照，跳过\n")
-                continue
+        // 按钮级并发：单章内多个评论按钮并行抓取（叠在章节并行之上），
+        // 日志按原按钮序号归位，进度/计数跨并发原子累计
+        val buttonConcurrency = AppConfig.reviewButtonConcurrency.coerceIn(1, 32)
+        val outcomes = buttons
+            .asFlow()
+            .mapAsyncIndexed(buttonConcurrency) { index, button ->
+                processButton(book, bookSource, chapter, index, button, force)
             }
-            sb.append("3. 按钮").append(index).append("：\n")
-            sb.append("   src=").append(button.src).append('\n')
-            sb.append("   click=").append(if (button.click.isNullOrBlank()) "无" else "有")
-                .append("  js=").append(if (button.js.isNullOrBlank()) "无" else "有").append('\n')
-            // 计数拆分：抛异常记一次并 continue；无异常但 URL 为空才记 browser open 超时
-            val resolveResult = runCatching {
-                resolveReviewPageUrl(book, bookSource, chapter, button)
-            }
-            if (resolveResult.isFailure) {
+            .toList()
+            .sortedBy { it.index }
+        outcomes.forEach { o ->
+            sb.append(o.log)
+            if (o.success) completedButtons++
+            if (o.failed) {
                 hasFailure = true
                 failedButtons++
-                sb.append("   解析真实评论页 URL：失败（JS 执行异常）\n")
-                sb.append("   ").append(resolveResult.exceptionOrNull()!!.stackTraceToString()).append('\n')
-                continue
             }
-            val page = resolveResult.getOrNull()!!
-            val url = page.url
-            if (url.isNullOrBlank()) {
-                // resolveReviewPageUrl 无异常但没等到地址
-                hasFailure = true
-                failedButtons++
-                sb.append("   解析真实评论页 URL：失败（click/js 执行了，但没有触发 browser open/showBrowser，")
-                    .append(RESOLVE_TIMEOUT_MS / 1000).append("s 超时）\n")
-                continue
-            }
-            sb.append("   解析真实评论页 URL：成功")
-            if (!page.html.isNullOrBlank()) {
-                sb.append("（showBrowser 已带回渲染 HTML ")
-                    .append(page.html.length / 1024).append(" KB")
-                    .append(if (page.preloadJs.isNullOrBlank()) "" else " + preloadJs ${page.preloadJs.length} 字符")
-                    .append("，作为初始页面）")
-            }
-            sb.append('\n')
-            sb.append("   URL=").append(url).append('\n')
-            val outcome = runCatching {
-                ReviewSnapshotCapture.capture(
-                    bookSource, book, chapter, button.src, url, page.html, page.preloadJs
-                )
-            }
-            if (outcome.isFailure) {
-                hasFailure = true
-                failedButtons++
-                val e = outcome.exceptionOrNull()!!
-                val reason = when {
-                    e is kotlinx.coroutines.TimeoutCancellationException -> "WebView 抓取超时(120s)"
-                    e is kotlinx.coroutines.CancellationException -> "任务被取消"
-                    e.localizedMessage?.contains("序列化为空") == true -> "页面 HTML 为空"
-                    else -> (e.localizedMessage ?: "未知错误")
-                }
-                sb.append("4. 打开评论页/抓取快照：失败（").append(reason).append("）\n")
-                sb.append("   ").append(e.stackTraceToString()).append('\n')
-            } else {
-                val capture = outcome.getOrNull()!!
-                sb.append("4. 打开评论页：成功\n")
-                sb.append("5. 展开检测轮次：").append(capture.expandRounds)
-                    .append(" 次；实际点击“展开/加载更多”按钮：").append(capture.expandClickCount).append(" 次\n")
-                sb.append("6. 最终 HTML：").append(capture.snapshot.html.length / 1024).append(" KB\n")
-                // 诊断日志：put 失败必须留下原因
-                val putResult = runCatching { ReviewSnapshotStore.put(book, capture.snapshot) }
-                if (putResult.isSuccess) {
-                    sb.append("7. SnapshotStore.put：成功\n")
-                    completedButtons++
-                    // 实际完成一个快照：跨并发章原子累计，只增不减（不可读-改-写共享值）
-                    _syncState.update {
-                        it.copy(completedSnapshots = it.completedSnapshots + 1)
-                    }
-                } else {
-                    hasFailure = true
-                    failedButtons++
-                    sb.append("7. SnapshotStore.put：失败\n")
-                    sb.append("   ").append(putResult.exceptionOrNull()!!.stackTraceToString()).append('\n')
-                }
-            }
-            delay(BUTTON_INTERVAL_MS)
         }
         // 该章所有需要刷新的评论按钮全部成功处理，才清除“评论待刷新”持久标记
         if (force && !hasFailure) {
@@ -522,6 +454,102 @@ object ReviewSnapshotManager {
         sb.append("   成功快照 ").append(completedButtons).append("/").append(needProcess.size).append('\n')
         sb.append("   失败 ").append(failedButtons).append("/").append(needProcess.size).append('\n')
         sb.append("   本章是否计入“评论已缓存”：").append(if (chapterHasSnapshot) "是" else "否")
+    }
+
+    /** 单按钮处理结果：日志按原序号归位，成功/失败供整章统计 */
+    private data class ButtonOutcome(
+        val index: Int,
+        val log: String,
+        val success: Boolean = false,
+        val failed: Boolean = false
+    )
+
+    /**
+     * 处理单个评论按钮：解析真实评论页 URL → 抓取快照 → 落盘。
+     * 与旧的串行循环体逐步骤等价，仅去掉按钮间强制等待；
+     * 多个按钮可跨 [processButton] 并发执行（WebView 池按需扩容）。
+     */
+    private suspend fun processButton(
+        book: Book,
+        bookSource: BookSource,
+        chapter: BookChapter,
+        buttonIndex: Int,
+        button: ReviewButton,
+        force: Boolean
+    ): ButtonOutcome {
+        if (!button.hasAction) return ButtonOutcome(buttonIndex, "")
+        val sb = StringBuilder()
+        // 普通触发有快照可跳过；force（明确重新缓存/刷新）必须重抓覆盖
+        if (!force && ReviewSnapshotStore.has(book, chapter, button.src)) {
+            sb.append("3. 按钮").append(buttonIndex + 1).append("：src=").append(button.src)
+                .append("\n   已有有效快照，跳过\n")
+            return ButtonOutcome(buttonIndex, sb.toString())
+        }
+        sb.append("3. 按钮").append(buttonIndex + 1).append("：\n")
+        sb.append("   src=").append(button.src).append('\n')
+        sb.append("   click=").append(if (button.click.isNullOrBlank()) "无" else "有")
+            .append("  js=").append(if (button.js.isNullOrBlank()) "无" else "有").append('\n')
+        // 计数拆分：抛异常记一次并 continue；无异常但 URL 为空才记 browser open 超时
+        val resolveResult = runCatching {
+            resolveReviewPageUrl(book, bookSource, chapter, button)
+        }
+        if (resolveResult.isFailure) {
+            sb.append("   解析真实评论页 URL：失败（JS 执行异常）\n")
+            sb.append("   ").append(resolveResult.exceptionOrNull()!!.stackTraceToString()).append('\n')
+            return ButtonOutcome(buttonIndex, sb.toString(), failed = true)
+        }
+        val page = resolveResult.getOrNull()!!
+        val url = page.url
+        if (url.isNullOrBlank()) {
+            // resolveReviewPageUrl 无异常但没等到地址
+            sb.append("   解析真实评论页 URL：失败（click/js 执行了，但没有触发 browser open/showBrowser，")
+                .append(RESOLVE_TIMEOUT_MS / 1000).append("s 超时）\n")
+            return ButtonOutcome(buttonIndex, sb.toString(), failed = true)
+        }
+        sb.append("   解析真实评论页 URL：成功")
+        if (!page.html.isNullOrBlank()) {
+            sb.append("（showBrowser 已带回渲染 HTML ")
+                .append(page.html.length / 1024).append(" KB")
+                .append(if (page.preloadJs.isNullOrBlank()) "" else " + preloadJs ${page.preloadJs.length} 字符")
+                .append("，作为初始页面）")
+        }
+        sb.append('\n')
+        sb.append("   URL=").append(url).append('\n')
+        val outcome = runCatching {
+            ReviewSnapshotCapture.capture(
+                bookSource, book, chapter, button.src, url, page.html, page.preloadJs
+            )
+        }
+        if (outcome.isFailure) {
+            val e = outcome.exceptionOrNull()!!
+            val reason = when {
+                e is kotlinx.coroutines.TimeoutCancellationException -> "WebView 抓取超时(60s)"
+                e is kotlinx.coroutines.CancellationException -> "任务被取消"
+                e.localizedMessage?.contains("序列化为空") == true -> "页面 HTML 为空"
+                else -> (e.localizedMessage ?: "未知错误")
+            }
+            sb.append("4. 打开评论页/抓取快照：失败（").append(reason).append("）\n")
+            sb.append("   ").append(e.stackTraceToString()).append('\n')
+            return ButtonOutcome(buttonIndex, sb.toString(), failed = true)
+        }
+        val capture = outcome.getOrNull()!!
+        sb.append("4. 打开评论页：成功\n")
+        sb.append("5. 展开检测轮次：").append(capture.expandRounds)
+            .append(" 次；实际点击“展开/加载更多”按钮：").append(capture.expandClickCount).append(" 次\n")
+        sb.append("6. 最终 HTML：").append(capture.snapshot.html.length / 1024).append(" KB\n")
+        // 诊断日志：put 失败必须留下原因
+        val putResult = runCatching { ReviewSnapshotStore.put(book, capture.snapshot) }
+        if (putResult.isSuccess) {
+            sb.append("7. SnapshotStore.put：成功\n")
+            // 实际完成一个快照：跨并发章/按钮原子累计，只增不减（不可读-改-写共享值）
+            _syncState.update {
+                it.copy(completedSnapshots = it.completedSnapshots + 1)
+            }
+            return ButtonOutcome(buttonIndex, sb.toString(), success = true)
+        }
+        sb.append("7. SnapshotStore.put：失败\n")
+        sb.append("   ").append(putResult.exceptionOrNull()!!.stackTraceToString()).append('\n')
+        return ButtonOutcome(buttonIndex, sb.toString(), failed = true)
     }
 
     /**
