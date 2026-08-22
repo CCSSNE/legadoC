@@ -9,11 +9,13 @@ import io.legado.app.help.book.getBookSource
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.model.analyzeRule.AnalyzeUrl
+import io.legado.app.model.analyzeRule.AnalyzeUrl.Companion.getMediaRequest
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.isJsonArray
 import io.legado.app.utils.MD5Utils
+import io.legado.app.utils.externalCache
 import kotlinx.coroutines.currentCoroutineContext
 import splitties.init.appCtx
 import java.io.File
