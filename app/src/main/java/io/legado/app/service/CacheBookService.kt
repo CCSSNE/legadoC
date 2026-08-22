@@ -13,6 +13,7 @@ import io.legado.app.constant.NotificationId
 import io.legado.app.data.appDb
 import io.legado.app.help.book.update
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.review.ReviewSnapshotManager
 import io.legado.app.model.CacheBook
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.book.cache.CacheActivity
@@ -39,6 +40,12 @@ class CacheBookService : BaseService() {
     companion object {
         var isRun = false
             private set
+
+        @Volatile
+        private var stopRequestedGlobal = false
+
+        val isStopRequested: Boolean
+            get() = stopRequestedGlobal
     }
 
     private val threadCount = AppConfig.threadCount
@@ -48,6 +55,8 @@ class CacheBookService : BaseService() {
     private var notificationContent = appCtx.getString(R.string.service_starting)
     private var terminalFailure: String? = null
     private var resultNotified = false
+    private var stopRequested = false
+    private var bodyCompleted = false
     private var mutex = Mutex()
     private fun notificationBuilder(): NotificationCompat.Builder {
         val builder = NotificationCompat.Builder(this, AppConst.channelIdDownload)
@@ -79,6 +88,7 @@ class CacheBookService : BaseService() {
 
     override fun onCreate() {
         super.onCreate()
+        stopRequestedGlobal = false
         isRun = true
         lifecycleScope.launch {
             while (isActive) {
@@ -111,8 +121,16 @@ class CacheBookService : BaseService() {
                     upCacheBookNotification()
                 }
                 IntentAction.stop -> {
+                    stopRequested = true
+                    stopRequestedGlobal = true
                     AppLog.put("用户停止离线缓存")
-                    finishNotification()
+                    CacheBook.stopAll()
+                    if (ReviewCacheService.isRun && !ReviewCacheService.isStopRequested) {
+                        ReviewCacheService.requestStop()
+                    } else {
+                        ReviewSnapshotManager.clearAllTasks()
+                        notifyStopped()
+                    }
                     stopSelf()
                 }
             }
@@ -121,11 +139,16 @@ class CacheBookService : BaseService() {
     }
 
     override fun onDestroy() {
-        finishNotification()
+        if (!bodyCompleted && !stopRequested && !resultNotified && !ReviewCacheService.isRun) {
+            val message = "正文缓存服务异常结束，未产生完成结果"
+            terminalFailure = message
+            AppLog.put(message, IllegalStateException(message))
+            notifyFailure(message)
+        }
         stopForeground(false)
         isRun = false
         cachePool.close()
-        CacheBook.close()
+        stopRequestedGlobal = false
         super.onDestroy()
         postEvent(EventBus.UP_DOWNLOAD, "")
     }
@@ -232,6 +255,7 @@ class CacheBookService : BaseService() {
             } catch (e: Throwable) {
                 reportTerminalFailure("下载调度异常：${e.localizedMessage}", e)
             } finally {
+                bodyCompleted = true
                 finishNotification()
                 stopSelf()
             }
@@ -240,7 +264,7 @@ class CacheBookService : BaseService() {
 
     private fun finishNotification() {
         if (resultNotified) return
-        if (io.legado.app.help.review.ReviewSnapshotManager.hasPendingTasks()) {
+        if (ReviewSnapshotManager.hasPendingTasks()) {
             AppLog.put("正文缓存结束，评论任务仍在队列，保留统一通知交给评论阶段")
             return
         }
@@ -272,6 +296,42 @@ class CacheBookService : BaseService() {
     }
 
     /** 通知文字：正文 x/y · 评论 a/b（y = 本次缓存目标章数，不是全书总章数）；无活跃书时回退下载摘要 */
+    private fun notifyStopped() {
+        if (resultNotified) return
+        resultNotified = true
+        val content = getString(R.string.cache_manage_task_cancelled)
+        AppLog.put("离线缓存已停止：$content")
+        val notification = NotificationCompat.Builder(this, AppConst.channelIdDownload)
+            .setSmallIcon(R.drawable.ic_status_bar_r)
+            .setContentTitle(getString(R.string.offline_cache))
+            .setContentText(content)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(content))
+            .setOnlyAlertOnce(false)
+            .setAutoCancel(false)
+            .setOngoing(false)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setContentIntent(activityPendingIntent<CacheActivity>("cacheActivity"))
+            .build()
+        notificationManager.notify(NotificationId.CacheBookService, notification)
+    }
+
+    private fun notifyFailure(message: String) {
+        if (resultNotified) return
+        resultNotified = true
+        val notification = NotificationCompat.Builder(this, AppConst.channelIdDownload)
+            .setSmallIcon(R.drawable.ic_status_bar_r)
+            .setContentTitle(getString(R.string.cache_download_failed))
+            .setContentText(message)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setOnlyAlertOnce(false)
+            .setAutoCancel(false)
+            .setOngoing(false)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setContentIntent(activityPendingIntent<CacheActivity>("cacheActivity"))
+            .build()
+        notificationManager.notify(NotificationId.CacheBookService, notification)
+    }
+
     private fun upNotificationContent(): String {
         val book = CacheBook.activeCachingBook() ?: return CacheBook.downloadSummary
         val progress = CacheBook.activeBodyProgress()
