@@ -561,9 +561,21 @@ class AudioTextFusionTest {
     }
 
     @Test
-    fun `unclear volume skips number fallback`() {
-        // 两侧都无卷信息（不明确）：宁可不配，也不做全书章节号硬配
+    fun `number fallback allowed when both sides lack volume`() {
+        // 两边都无卷号：章节号 fallback 允许
         val textChapters = listOf(chapter("t0", "第一章 A", 0))
+        val audioChapters = listOf(chapter("a0", "第一章 A2", 0))
+
+        val pairs = AudioTextFusion.pairChapters(textChapters, audioChapters)
+
+        assertEquals(1, pairs.size)
+        assertEquals("a0", pairs.single().second.url)
+    }
+
+    @Test
+    fun `number fallback skipped when only one side has volume`() {
+        // 只有一边有卷号（不明确）：跳过，不做章节号硬配
+        val textChapters = listOf(chapter("t0", "第一卷 第一章 A", 0))
         val audioChapters = listOf(chapter("a0", "第一章 A2", 0))
 
         val pairs = AudioTextFusion.pairChapters(textChapters, audioChapters)

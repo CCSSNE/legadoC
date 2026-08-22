@@ -294,11 +294,10 @@ object AudioTextFusion {
     }
 
     /**
-     * 卷兼容：卷信息不一致或不明确时直接跳过（宁可少融合）。
-     * 只有两侧都能解析且相等才允许配对。
+     * 卷兼容：两边都无卷号时允许 fallback；只有一边有卷号时跳过；
+     * 两边都有卷号时要求一致（宁可少融合）。
      */
     private fun volumeCompatible(textVolume: Int?, audioVolume: Int?): Boolean {
-        if (textVolume == null || audioVolume == null) return false
         return textVolume == audioVolume
     }
 
