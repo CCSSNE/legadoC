@@ -746,6 +746,12 @@ class ExportBookService : BaseService() {
         config: ExportConfig
     ): Pair<String, ArrayList<SrcData>?> {
         val content = BookHelp.getContent(book, chapter).withoutReadableContentVersionFlag()
+        // 未缓存章节直接跳过，不写 "null" 占位：占位章会让重新导入时分章规则
+        // 误判（标题间距<100字被计为误识别），导致规则整体被拒、章节标题丢失、
+        // 评论快照 remap 失败。卷章节（isVolume）无正文属正常结构，仍保留标题。
+        if (content == null && !chapter.isVolume) {
+            return Pair("", null)
+        }
         val content1 = contentProcessor
             .getContent(
                 book,
@@ -757,7 +763,7 @@ class ExportBookService : BaseService() {
                 chineseConvert = false,
                 reSegment = false
             ).toString()
-            .let(ExportImageSanitizer::cleanSvgUrlOptionImages)
+            .let { ExportImageSanitizer.cleanSvgUrlOptionImages(it, keepReviewButtons = true) }
         if (config.pictureFile) {
             //txt导出图片文件
             val srcList = arrayListOf<SrcData>()
