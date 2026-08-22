@@ -265,6 +265,6 @@ uiautomator2 / ADB
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- `3.26.082017c` / `10702`，2026-08-20（UTC），`own` 主线（代码提交 `885719d`）。本次为拉取远程更新后编译：快进合并 `b951508..885719d`，含 PR #8 `fix/import-dialog-visible`（`f9e096a`：透明宿主跳过 PixelCopy 不再把窗口 alpha 置 0；`ImportBookSourceDialog` 保留标题栏并改为 90% 屏高，避免导入书源列表高度为 0 被玻璃模糊藏起——`ImportBookSourceDialog.kt` 覆写 `chromeMode = ChromeMode.FULL_SCREEN_TOOL`、`setLayout(MATCH_PARENT, 0.9f)`，`DialogExtensions.kt` 增加 `isTranslucentActivity()` 跳过取图）及 README 更新。已通过正式后台 `:app:assembleAppC` 冷编译（`--no-daemon --max-workers=1` 关增量），一次通过无需修复，退出码为 0；`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.082017c` / `10702`、中文名 `阅读 C`（zh locale）、架构 `arm64-v8a`，`apksigner` 退出码为 0。`own` 与 `origin/own` 均为 `885719d`（已同步，无本地独有提交）。未安装到模拟器、未做正式回归（用户仅要求拉取并编译）。
+- `3.26.082200c` / `10703`，2026-08-22（UTC），`own` 主线（代码提交 `852014e`）。本次为拉取远程 PR #9、#10 后编译：变基同步 `885719d..7112f39`，含 PR #9 `fix/import-parse-and-media-null`（书源解析统一化与媒体通知 null 标题修复）与 PR #10 `fix/glass-timeout-direct-open`（毛玻璃截图超时兜底 + 入口直进阅读页）。编译严格排除工作区未提交改动：构建前 `git stash -u` 移出全部未提交/未跟踪文件并确认工作区与 HEAD 完全一致，构建后原样恢复。正式后台 `:app:assembleAppC` 冷编译（`--no-daemon --max-workers=1` 关增量）一次通过无需修复，退出码 0；`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.082200c` / `10703`、中文名 `阅读 C`（zh locale）、架构 `arm64-v8a`；`apksigner` 退出码 0（仅 META-INF 未签名条目警告，可接受）。未安装到模拟器、未做正式回归（用户仅要求按已提交代码编译）。`origin/own` 为 `7112f39`，本地领先为基线记录提交。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
