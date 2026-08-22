@@ -51,6 +51,7 @@ object CacheBook {
     val cacheBookMap = ConcurrentHashMap<String, CacheBookModel>()
 
     private val workingState = MutableStateFlow(true)
+    private val downloadPauseState = MutableStateFlow(true)
     private val mutex = Mutex()
 
     @Synchronized
@@ -153,6 +154,7 @@ object CacheBook {
     fun close() {
         cacheBookMap.forEach { it.value.stop() }
         cacheBookMap.clear()
+        downloadPauseState.value = true
         successDownloadSet.clear()
         errorDownloadMap.clear()
         // 兜底清掉所有残留 Body Phase，异常退出也不留“只登记不执行”状态
@@ -161,6 +163,25 @@ object CacheBook {
 
     fun setWorkingState(value: Boolean) {
         workingState.value = value
+    }
+
+    val isDownloadPaused: Boolean
+        get() = !downloadPauseState.value
+
+    fun pauseDownload() {
+        downloadPauseState.value = false
+        AppLog.put("离线缓存已暂停")
+        postEvent(EventBus.UP_DOWNLOAD_STATE, "")
+    }
+
+    fun resumeDownload() {
+        downloadPauseState.value = true
+        AppLog.put("离线缓存已继续")
+        postEvent(EventBus.UP_DOWNLOAD_STATE, "")
+    }
+
+    suspend fun awaitDownloadResumed() {
+        downloadPauseState.first { it }
     }
 
     suspend fun startProcessJob(context: CoroutineContext) = mutex.withLock {
@@ -175,6 +196,7 @@ object CacheBook {
                         emitted = true
                     }
                     workingState.first { it }
+                    downloadPauseState.first { it }
                 }
 
                 if (!emitted) {

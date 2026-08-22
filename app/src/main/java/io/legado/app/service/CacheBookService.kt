@@ -49,16 +49,29 @@ class CacheBookService : BaseService() {
     private var terminalFailure: String? = null
     private var resultNotified = false
     private var mutex = Mutex()
-    private val notificationBuilder by lazy {
+    private fun notificationBuilder(): NotificationCompat.Builder {
         val builder = NotificationCompat.Builder(this, AppConst.channelIdDownload)
             .setSmallIcon(R.drawable.ic_status_bar_r)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentTitle(getString(R.string.offline_cache))
             .setContentIntent(activityPendingIntent<CacheActivity>("cacheActivity"))
+        if (CacheBook.isDownloadPaused) {
+            builder.addAction(
+                R.drawable.ic_play_24dp,
+                getString(R.string.resume),
+                servicePendingIntent<CacheBookService>(IntentAction.resume)
+            )
+        } else {
+            builder.addAction(
+                R.drawable.ic_pause_24dp,
+                getString(R.string.pause),
+                servicePendingIntent<CacheBookService>(IntentAction.pause)
+            )
+        }
         builder.addAction(
             R.drawable.ic_stop_black_24dp,
-            getString(R.string.cancel),
+            getString(R.string.stop),
             servicePendingIntent<CacheBookService>(IntentAction.stop)
         )
         builder.setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -87,6 +100,16 @@ class CacheBookService : BaseService() {
                 )
 
                 IntentAction.remove -> removeDownload(intent.getStringExtra("bookUrl"))
+                IntentAction.pause -> {
+                    CacheBook.pauseDownload()
+                    notificationContent = upNotificationContent()
+                    upCacheBookNotification()
+                }
+                IntentAction.resume -> {
+                    CacheBook.resumeDownload()
+                    notificationContent = upNotificationContent()
+                    upCacheBookNotification()
+                }
                 IntentAction.stop -> {
                     AppLog.put("用户停止离线缓存")
                     finishNotification()
@@ -269,9 +292,10 @@ class CacheBookService : BaseService() {
     private fun upCacheBookNotification() {
         // 进度条 = 当前正文单章节下载进度：正文整章一次性抓取，无字节级进度，
         // 以不确定进度条表示“当前章正在缓存”（总进度只体现在文字里）
-        notificationBuilder.setProgress(0, 0, true)
-        notificationBuilder.setContentText(notificationContent)
-        val notification = notificationBuilder.build()
+        val builder = notificationBuilder()
+        builder.setProgress(0, 0, true)
+        builder.setContentText(notificationContent)
+        val notification = builder.build()
         notificationManager.notify(NotificationId.CacheBookService, notification)
     }
 
@@ -279,8 +303,9 @@ class CacheBookService : BaseService() {
      * 更新通知
      */
     override fun startForegroundNotification() {
-        notificationBuilder.setContentText(notificationContent)
-        val notification = notificationBuilder.build()
+        val builder = notificationBuilder()
+        builder.setContentText(notificationContent)
+        val notification = builder.build()
         startForeground(NotificationId.CacheBookService, notification)
     }
 

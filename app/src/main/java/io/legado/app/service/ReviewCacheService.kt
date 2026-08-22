@@ -8,9 +8,11 @@ import io.legado.app.base.BaseService
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.NotificationId
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.IntentAction
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.review.ReviewSnapshotManager
 import io.legado.app.help.review.ReviewSnapshotManager.ReviewSyncState
+import io.legado.app.model.CacheBook
 import io.legado.app.utils.activityPendingIntent
 import io.legado.app.utils.startService
 import kotlinx.coroutines.Dispatchers
@@ -70,8 +72,8 @@ class ReviewCacheService : BaseService() {
     /** 正在执行任务的 worker 数：队列空时需全部 idle 才停服务 */
     private val activeCount = java.util.concurrent.atomic.AtomicInteger(0)
 
-    private val notificationBuilder by lazy {
-            NotificationCompat.Builder(this, AppConst.channelIdDownload)
+    private fun notificationBuilder(): NotificationCompat.Builder {
+        NotificationCompat.Builder(this, AppConst.channelIdDownload)
             .setSmallIcon(R.drawable.ic_status_bar_r)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -79,6 +81,28 @@ class ReviewCacheService : BaseService() {
             .setContentText(getString(R.string.review_sync_running))
             .setContentIntent(activityPendingIntent<io.legado.app.ui.book.cache.CacheActivity>("cacheActivity"))
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .also { builder -> addNotificationActions(builder) }
+    }
+
+    private fun addNotificationActions(builder: NotificationCompat.Builder) {
+        if (CacheBook.isDownloadPaused) {
+            builder.addAction(
+                R.drawable.ic_play_24dp,
+                getString(R.string.resume),
+                servicePendingIntent<ReviewCacheService>(IntentAction.resume)
+            )
+        } else {
+            builder.addAction(
+                R.drawable.ic_pause_24dp,
+                getString(R.string.pause),
+                servicePendingIntent<ReviewCacheService>(IntentAction.pause)
+            )
+        }
+        builder.addAction(
+            R.drawable.ic_stop_black_24dp,
+            getString(R.string.stop),
+            servicePendingIntent<ReviewCacheService>(IntentAction.stop)
+        )
     }
 
     override fun onCreate() {
@@ -94,6 +118,23 @@ class ReviewCacheService : BaseService() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            IntentAction.pause -> {
+                CacheBook.pauseDownload()
+                lastNotifyTime = 0L
+                upNotification(ReviewSnapshotManager.syncState.value)
+            }
+            IntentAction.resume -> {
+                CacheBook.resumeDownload()
+                lastNotifyTime = 0L
+                upNotification(ReviewSnapshotManager.syncState.value)
+            }
+            IntentAction.stop -> {
+                AppLog.put("用户从评论缓存通知停止下载")
+                appCtx.startService<CacheBookService> { action = IntentAction.stop }
+                stopSelf()
+            }
+        }
         if (workJob?.isActive != true) {
             startWork()
         }
@@ -109,6 +150,7 @@ class ReviewCacheService : BaseService() {
             repeat(concurrency) {
                 launch {
                     while (isActive) {
+                        CacheBook.awaitDownloadResumed()
                         // 先取出任务再判断，绝不用“取任务的函数”当“看看有没有”：
                         // 取出来的任务必须被处理，否则任务会永久丢失
                         var task = ReviewSnapshotManager.tryTakeTask()
@@ -145,7 +187,7 @@ class ReviewCacheService : BaseService() {
         val state = ReviewSnapshotManager.syncState.value
         val finalText = totalProgressText(state)
         AppLog.put("评论缓存结束：$finalText")
-        val finalNotification = notificationBuilder
+        val finalNotification = notificationBuilder()
             .setContentText(finalText)
             .setOngoing(false)
             .setAutoCancel(false)
@@ -159,7 +201,7 @@ class ReviewCacheService : BaseService() {
     }
 
     override fun startForegroundNotification() {
-        val notification = notificationBuilder.build()
+        val notification = notificationBuilder().build()
         startForeground(NotificationId.CacheBookService, notification)
         notificationManager.notify(NotificationId.CacheBookService, notification)
     }
@@ -195,7 +237,7 @@ class ReviewCacheService : BaseService() {
         lastNotifyTime = now
         // 文字显示总进度（正文 x/y · 评论 a/b · 评论快照 c/d）
         val contentText = totalProgressText(state)
-        val builder = notificationBuilder.setContentText(contentText)
+        val builder = notificationBuilder().setContentText(contentText)
         // 进度条 = 评论任务实际完成量（已完成章数/本次目标章数）：
         // 并发 worker 下只按完成数累计，绝不显示在途章节位置，避免前后跳动
         val reviewTotal = state.totalChapters.takeIf { it > 0 } ?: state.bodyTotal
