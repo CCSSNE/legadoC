@@ -344,13 +344,18 @@ object ReviewSnapshotManager {
         if (force && !hasFailure) {
             clearUserRefresh(bookUrl, chapterIndex)
         }
-        // 本章结束：进度计数收尾，通知切回“已完成 n 章”
+        // 本章结束：进度计数收尾，通知切回“已完成 n 章”；
+        // 广播事件让离线缓存页增量更新“评论 x/y”统计
         _syncState.value = _syncState.value.copy(
             bookName = book.name,
             currentChapterTitle = "",
             totalButtons = 0,
             completedButtons = 0,
             completedChapters = _syncState.value.completedChapters + 1
+        )
+        io.legado.app.utils.postEvent(
+            io.legado.app.constant.EventBus.REVIEW_CACHE_SAVED,
+            chapter.bookUrl to chapter.url
         )
     }
 

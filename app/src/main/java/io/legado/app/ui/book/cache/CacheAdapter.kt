@@ -11,6 +11,7 @@ import io.legado.app.base.adapter.DiffRecyclerAdapter
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ItemDownloadBinding
+import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isLocal
 import io.legado.app.model.CacheBook
 import io.legado.app.utils.gone
@@ -49,29 +50,35 @@ class CacheAdapter(context: Context, private val callBack: CallBack) :
                 if (item.isLocal) {
                     tvDownload.setText(R.string.local_book)
                 } else {
-                    val cs = callBack.cacheChapters[item.bookUrl]
-                    if (cs == null) {
-                        tvDownload.setText(R.string.loading)
-                    } else {
-                        tvDownload.text =
-                            context.getString(
-                                R.string.download_count,
-                                cs.size,
-                                item.totalChapterNum
-                            )
-                    }
+                    upDownloadCount(item)
                 }
             } else {
                 if (item.isLocal) {
                     tvDownload.setText(R.string.local_book)
                 } else {
-                    val cacheSize = callBack.cacheChapters[item.bookUrl]?.size ?: 0
-                    tvDownload.text =
-                        context.getString(R.string.download_count, cacheSize, item.totalChapterNum)
+                    upDownloadCount(item)
                 }
             }
+            if (item.isAudio) ivAudio.visible() else ivAudio.gone()
             upDownloadIv(ivDownload, item)
             upExportInfo(tvMsg, progressExport, item)
+        }
+    }
+
+    /** 正文/评论双统计：正文 x/y · 评论 a/y */
+    private fun ItemDownloadBinding.upDownloadCount(item: Book) {
+        val cacheSize = callBack.cacheChapters[item.bookUrl]?.size
+        if (cacheSize == null) {
+            tvDownload.setText(R.string.loading)
+        } else {
+            val reviewSize = callBack.reviewChapters[item.bookUrl]?.size ?: 0
+            tvDownload.text = context.getString(
+                R.string.download_count_review,
+                cacheSize,
+                item.totalChapterNum,
+                reviewSize,
+                item.totalChapterNum
+            )
         }
     }
 
@@ -138,6 +145,7 @@ class CacheAdapter(context: Context, private val callBack: CallBack) :
 
     interface CallBack {
         val cacheChapters: HashMap<String, HashSet<String>>
+        val reviewChapters: HashMap<String, HashSet<String>>
         fun sureCacheBook(action: () -> Unit)
         fun export(position: Int)
         fun exportProgress(bookUrl: String): Int?
