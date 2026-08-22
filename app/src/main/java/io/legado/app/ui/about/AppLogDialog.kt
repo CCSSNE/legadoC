@@ -43,6 +43,12 @@ class AppLogDialog : BaseLogDialogFragment() {
         adapter.setItems(AppLog.logs)
     }
 
+    override fun observeLiveBus() {
+        observeEvent<Int>(io.legado.app.constant.EventBus.APP_LOG_CHANGED) {
+            adapter.setItems(AppLog.logs)
+        }
+    }
+
     override fun clearLogs(onCleared: () -> Unit) {
         AppLog.clear()
         onCleared()

@@ -7,6 +7,7 @@ import io.legado.app.R
 import io.legado.app.base.BaseService
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.NotificationId
+import io.legado.app.constant.AppLog
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.review.ReviewSnapshotManager
 import io.legado.app.help.review.ReviewSnapshotManager.ReviewSyncState
@@ -70,7 +71,7 @@ class ReviewCacheService : BaseService() {
     private val activeCount = java.util.concurrent.atomic.AtomicInteger(0)
 
     private val notificationBuilder by lazy {
-        NotificationCompat.Builder(this, AppConst.channelIdReview)
+            NotificationCompat.Builder(this, AppConst.channelIdDownload)
             .setSmallIcon(R.drawable.ic_status_bar_r)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -141,6 +142,16 @@ class ReviewCacheService : BaseService() {
     }
 
     override fun onDestroy() {
+        val state = ReviewSnapshotManager.syncState.value
+        val finalText = totalProgressText(state)
+        AppLog.put("评论缓存结束：$finalText")
+        val finalNotification = notificationBuilder
+            .setContentText(finalText)
+            .setOngoing(false)
+            .setAutoCancel(false)
+            .build()
+        notificationManager.notify(NotificationId.CacheBookService, finalNotification)
+        stopForeground(false)
         workJob?.cancel()
         notifyJob?.cancel()
         isRun = false
@@ -149,8 +160,8 @@ class ReviewCacheService : BaseService() {
 
     override fun startForegroundNotification() {
         val notification = notificationBuilder.build()
-        startForeground(NotificationId.ReviewCacheService, notification)
-        notificationManager.notify(NotificationId.ReviewCacheService, notification)
+        startForeground(NotificationId.CacheBookService, notification)
+        notificationManager.notify(NotificationId.CacheBookService, notification)
     }
 
     /** 通知文字：正文 x/y · 评论 a/b（y = 本次缓存目标章数），有已登记快照时附“评论快照 c/d” */
@@ -198,6 +209,6 @@ class ReviewCacheService : BaseService() {
             // 总章数未知（任务尚未登记完成）：不定进度
             builder.setProgress(0, 0, true)
         }
-        notificationManager.notify(NotificationId.ReviewCacheService, builder.build())
+        notificationManager.notify(NotificationId.CacheBookService, builder.build())
     }
 }

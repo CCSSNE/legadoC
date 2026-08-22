@@ -263,6 +263,10 @@ object ReviewSnapshotManager {
         return QueueTask(task.first.key, task.second)
     }
 
+    fun hasPendingTasks(): Boolean = synchronized(queueLock) {
+        pendingForce.isNotEmpty() || _syncState.value.completedChapters < _syncState.value.totalChapters
+    }
+
     /** 评论服务处理任务（suspend：内部解析 URL、WebView 抓取、落盘） */
     suspend fun processTask(task: QueueTask) {
         processTask(task.key, task.force)
@@ -360,7 +364,7 @@ object ReviewSnapshotManager {
         sb.append("force：").append(if (force) "true" else "false").append('\n')
         // 处理时再查一次开关：入队后关闭开关不应继续抓取
         if (!AppConfig.syncCacheReview) {
-            sb.append("开关“刷新时同步缓存评论”已关闭，跳过")
+            sb.append("开关“缓存评论”已关闭，跳过")
             return
         }
         val content = BookHelp.getContent(book, chapter)

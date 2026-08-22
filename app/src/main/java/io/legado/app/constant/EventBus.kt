@@ -29,6 +29,7 @@ object EventBus {
     const val WEB_SERVICE = "webService"
     const val UP_DOWNLOAD = "upDownload"
     const val UP_DOWNLOAD_STATE = "upDownloadState"
+    const val APP_LOG_CHANGED = "appLogChanged"
     const val SAVE_CONTENT = "saveContent"
     const val REVIEW_CACHE_SAVED = "reviewCacheSaved"
     const val CHECK_SOURCE = "checkSource"
