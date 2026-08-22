@@ -377,12 +377,6 @@
         android:title="@string/comment_cache_concurrency"
         app:iconSpaceReserved="false" />
 
-    <io.legado.app.lib.prefs.Preference
-        android:key="reviewButtonConcurrency"
-        android:summary="@string/comment_button_concurrency_summary"
-        android:title="@string/comment_button_concurrency"
-        app:iconSpaceReserved="false" />
-
     <io.legado.app.lib.prefs.NameListPreference
         android:defaultValue="network"
         android:entries="@array/review_open_mode_title"
