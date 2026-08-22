@@ -323,6 +323,6 @@ uiautomator2 / ADB
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- `3.26.082217c` / `10713`，2026-08-22（UTC），`own` 主线（基于 `2396265` 编译：fix(review) 快照 HTML 落盘 + 删除乱码 schema 导出；版本号在先前产出 `10712` 之上单调递增）。本次编译顺利：先清理上次构建残留的 Gradle 8.14.4 与 Kotlin 编译守护进程（可用内存 1.76 → 5.8 GB），删除乱码的 `105.json` 提交后，基于干净 HEAD 冷编译一次通过（BUILD SUCCESSFUL in 3m 43s，退出码 0，`--no-daemon --max-workers=1` 冷参数）；构建中 Room 按当前实体自动重新生成正确的 `105.json`（无乱码，identityHash `cfb60129…`），随本次交付提交。`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.082217c` / `10713`、中文名 `阅读 C`（zh locale）、架构 `arm64-v8a`；`apksigner` 完整执行退出码 0（仅 META-INF 未签名条目警告，可接受）。收尾 `gradlew --stop` 无运行中守护进程，无残留 java 进程。未安装到模拟器、未做正式回归（用户仅要求编译）。推送后 `origin/own` 与本地 `own` 同步。
+- `3.26.082217c` / `10714`，2026-08-22（UTC），`own` 主线（基于 `e08294e` 编译：fix(cache) report download failures and keep result notifications；版本号在先前产出 `10713` 之上单调递增）。本次编译顺利：编译前清理输出目录中对应的旧 APK、确认无其他活跃 GradleWrapperMain/临时构建脚本，基于干净工作区（HEAD `e08294e`）用冷编译参数后台隐藏编译一次通过（BUILD SUCCESSFUL in 4m 56s，退出码 0，`--no-daemon --max-workers=1 -Dkotlin.incremental=false -Dksp.incremental=false -Dkotlin.compiler.execution.strategy=in-process`）；构建期间分支无新提交，无需重编。`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.082217c` / `10714`（UTC 编译时间为 08-22 17 时，versionName 与上次同名仅作展示，升级判断以 versionCode 为准）、中文名 `阅读 C`（zh locale）、架构 `arm64-v8a`、compileSdk/targetSdk 36；`apksigner` 完整执行退出码 0（仅 META-INF 未签名条目警告，可接受）。收尾 `gradlew --stop` 无运行中守护进程，无残留 java 进程（--no-daemon 已随构建退出）。未安装到模拟器、未做正式回归（用户仅要求编译）。推送后 `origin/own` 与本地 `own` 同步。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
