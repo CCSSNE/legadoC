@@ -58,11 +58,7 @@ object BookImgClick {
                 appDb.bookChapterDao.getChapter(it.bookUrl, ReadBook.durChapterIndex)
             }
             ?: return false
-        val execution = resolveExecutionContext(chapter, src)
-            ?: run {
-                val book = ReadBook.book ?: return false
-                Triple(book, ReadBook.bookSource, chapter)
-            }
+        val execution = executionContext(chapter, src) ?: return false
         val snapshotBook = execution.first
         val snapshotSource = execution.second
         val snapshotChapter = execution.third
@@ -83,21 +79,27 @@ object BookImgClick {
     }
 
     /**
-     * 解析点击执行上下文：当前章节的融合 overlay 命中该 src 时，返回
-     * 文字书来源的 (book, source, chapter)；否则返回 null（调用方回退
-     * 当前阅读上下文）。融合按钮的点击与评论快照都按文字书上下文走。
+     * 解析点击执行上下文：
+     * - 当前章节的融合 overlay 未命中该 src → 原生按钮，回退当前阅读
+     *   上下文（ReadBook）；
+     * - 命中融合来源 → 必须解析出文字书、章节、书源，任一不存在返回
+     *   null（直接失效，不回退到有声书上下文执行）。
      */
-    private fun resolveExecutionContext(
-        hostChapter: BookChapter,
+    private fun executionContext(
+        chapter: BookChapter,
         src: String
-    ): Triple<Book, BookSource, BookChapter>? {
+    ): Triple<Book, BookSource?, BookChapter>? {
         val textContext = AudioTextFusion.findFusionTextContext(
-            hostChapter.getVariable(AudioTextFusion.OVERLAY_KEY),
+            chapter.getVariable(AudioTextFusion.OVERLAY_KEY),
             src
-        ) ?: return null
-        val (textBookUrl, textChapterUrl) = textContext
-        val textBook = appDb.bookDao.getBook(textBookUrl) ?: return null
-        val textChapter = appDb.bookChapterDao.getChapterByUrl(textBookUrl, textChapterUrl)
+        ) ?: run {
+            // 未命中：原生按钮，走当前阅读上下文
+            val book = ReadBook.book ?: return null
+            return Triple(book, ReadBook.bookSource, chapter)
+        }
+        // 命中融合来源但书/章节/书源已不存在：直接失效，不回退
+        val textBook = appDb.bookDao.getBook(textContext.first) ?: return null
+        val textChapter = appDb.bookChapterDao.getChapterByUrl(textContext.first, textContext.second)
             ?: return null
         val textSource = appDb.bookSourceDao.getBookSource(textBook.origin) ?: return null
         return Triple(textBook, textSource, textChapter)
@@ -122,12 +124,8 @@ object BookImgClick {
                     appDb.bookChapterDao.getChapter(it.bookUrl, ReadBook.durChapterIndex)
                 }
                 ?: return@async
-            val (book, source, execChapter) = resolveExecutionContext(chapter, src)
-                ?: run {
-                    val book = ReadBook.book ?: return@async
-                    val source = ReadBook.bookSource ?: return@async
-                    Triple(book, source, chapter)
-                }
+            // null = 融合来源实体缺失，直接失效不执行
+            val (book, source, execChapter) = executionContext(chapter, src) ?: return@async
             val execSource = source ?: return@async
             executeClick(book, execSource, execChapter, click, src) {
                 SourceLoginJsExtensions(context, execSource, BookType.text)
@@ -159,12 +157,8 @@ object BookImgClick {
                     appDb.bookChapterDao.getChapter(it.bookUrl, ReadBook.durChapterIndex)
                 }
                 ?: return@async
-            val (book, source, execChapter) = resolveExecutionContext(chapter, src)
-                ?: run {
-                    val book = ReadBook.book ?: return@async
-                    val source = ReadBook.bookSource ?: return@async
-                    Triple(book, source, chapter)
-                }
+            // null = 融合来源实体缺失，直接失效不执行
+            val (book, source, execChapter) = executionContext(chapter, src) ?: return@async
             val execSource = source ?: return@async
             when {
                 !click.isNullOrBlank() -> executeClick(book, execSource, execChapter, click, src) {
