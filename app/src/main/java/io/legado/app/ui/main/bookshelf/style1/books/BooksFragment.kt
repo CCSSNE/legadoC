@@ -543,8 +543,9 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     /**
-     * 「融合」：把文字书里已有的段落评论入口挂载到同名同作者的有声书。
+     * 「融合」：把文字书里已有的段落评论入口挂载到对应的有声书。
      * Audio = 主体（音频与字幕不变），Text 只提供评论元数据；
+     * 书名/作者不需一致（书源别名常见），章节配对由引擎按标题/章节号匹配；
      * 仅处理双方已缓存的章节，不联网下载。融合结果单独保存为 overlay，
      * 不覆盖有声书原始字幕，支持重新融合与取消融合。
      */
@@ -570,15 +571,6 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
                     toastOnUi(
                         getString(R.string.fusion_type_invalid) +
                             "\n" + books.joinToString(" / ") { "${it.name}（${typeTag(it)}）" }
-                    )
-                    return
-                }
-                if (audioBook.name.trim() != textBook.name.trim() ||
-                    audioBook.author.trim() != textBook.author.trim()
-                ) {
-                    toastOnUi(
-                        getString(R.string.fusion_info_mismatch) +
-                            "\n音频：${audioBook.name}｜${audioBook.author}\n文本：${textBook.name}｜${textBook.author}"
                     )
                     return
                 }
