@@ -19,6 +19,7 @@ import io.legado.app.model.localBook.LocalBook
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.ImageUtils
+import io.legado.app.utils.ImageSource
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.StringUtils
@@ -270,14 +271,15 @@ object BookHelp {
     }
 
     fun getImage(book: Book, src: String): File {
-        if (src.startsWith(IllustrationHelp.SRC_PREFIX)) {
-            return IllustrationHelp.getImageFile(book, src)
+        val storageSrc = ImageSource.normalizeForStorage(src)
+        if (storageSrc.startsWith(IllustrationHelp.SRC_PREFIX)) {
+            return IllustrationHelp.getImageFile(book, storageSrc)
         }
         return downloadDir.getFile(
             cacheFolderName,
             book.getFolderName(),
             cacheImageFolderName,
-            "${MD5Utils.md5Encode16(src)}.${getImageSuffix(src)}"
+            "${MD5Utils.md5Encode16(storageSrc)}.${getImageSuffix(storageSrc)}"
         )
     }
 
