@@ -401,13 +401,18 @@ object ReviewSnapshotManager {
             sb.append("   src=").append(button.src).append('\n')
             sb.append("   click=").append(if (button.click.isNullOrBlank()) "无" else "有")
                 .append("  js=").append(if (button.js.isNullOrBlank()) "无" else "有").append('\n')
-            val url = runCatching {
+            // 计数拆分：抛异常记一次并 continue；无异常但 URL 为空才记 browser open 超时
+            val resolveResult = runCatching {
                 resolveReviewPageUrl(book, bookSource, chapter, button)
-            }.onFailure { e ->
+            }
+            if (resolveResult.isFailure) {
                 hasFailure = true
                 failedButtons++
-                sb.append("   解析真实评论页 URL：失败\n").append("   ").append(e.stackTraceToString()).append('\n')
-            }.getOrNull()
+                sb.append("   解析真实评论页 URL：失败（JS 执行异常）\n")
+                sb.append("   ").append(resolveResult.exceptionOrNull()!!.stackTraceToString()).append('\n')
+                continue
+            }
+            val url = resolveResult.getOrNull()
             if (url.isNullOrBlank()) {
                 // resolveReviewPageUrl 无异常但没等到地址
                 hasFailure = true
@@ -436,16 +441,20 @@ object ReviewSnapshotManager {
             } else {
                 val capture = outcome.getOrNull()!!
                 sb.append("4. 打开评论页：成功\n")
-                sb.append("5. 展开评论/回复/加载更多：执行了 ").append(capture.expandRounds).append(" 次\n")
+                sb.append("5. 展开检测轮次：").append(capture.expandRounds)
+                    .append(" 次；实际点击“展开/加载更多”按钮：").append(capture.expandClickCount).append(" 次\n")
                 sb.append("6. 最终 HTML：").append(capture.snapshot.html.length / 1024).append(" KB\n")
-                val putOk = runCatching { ReviewSnapshotStore.put(book, capture.snapshot) }.isSuccess
-                sb.append("7. SnapshotStore.put：").append(if (putOk) "成功" else "失败").append('\n')
-                if (putOk) {
+                // 诊断日志：put 失败必须留下原因
+                val putResult = runCatching { ReviewSnapshotStore.put(book, capture.snapshot) }
+                if (putResult.isSuccess) {
+                    sb.append("7. SnapshotStore.put：成功\n")
                     completedButtons++
                     _syncState.value = _syncState.value.copy(completedButtons = completedButtons)
                 } else {
                     hasFailure = true
                     failedButtons++
+                    sb.append("7. SnapshotStore.put：失败\n")
+                    sb.append("   ").append(putResult.exceptionOrNull()!!.stackTraceToString()).append('\n')
                 }
             }
             delay(BUTTON_INTERVAL_MS)

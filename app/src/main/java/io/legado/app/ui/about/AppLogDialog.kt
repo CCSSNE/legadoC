@@ -68,9 +68,14 @@ class AppLogDialog : BaseLogDialogFragment() {
         override fun registerListener(holder: ItemViewHolder, binding: ItemAppLogBinding) {
             binding.root.onClick {
                 getItem(holder.layoutPosition)?.let { item ->
-                    item.third?.let {
-                        showDialogFragment(TextDialog("Log", it.stackTraceToString()))
+                    // 点击任意一条日志：弹窗显示完整内容（列表只展示一两行摘要）
+                    val full = buildString {
+                        append(item.second)
+                        item.third?.let {
+                            append("\n").append(it.stackTraceToString())
+                        }
                     }
+                    showDialogFragment(TextDialog("Log", full))
                 }
             }
         }
