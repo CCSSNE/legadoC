@@ -750,7 +750,7 @@ class AnalyzeUrl(
     }
 
     companion object {
-        val paramPattern: Pattern = Pattern.compile("\\s*,\\s*(?=\\{)")
+        val paramPattern: Pattern get() = AppPattern.urlOptionPattern
         private val pagePattern = Pattern.compile("<(.*?)>")
         private val queryEncoder =
             RFC3986.UNRESERVED.orNew(PercentCodec.of("!$%&()*+,/:;=?@[\\]^`{|}"))

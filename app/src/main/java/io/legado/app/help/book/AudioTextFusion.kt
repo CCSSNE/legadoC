@@ -20,28 +20,30 @@ import io.legado.app.utils.StringUtils
  * 因此音频书源刷新章节、重新下载副内容（`putLyric` 覆盖 lyric）不会冲掉
  * 融合数据；并天然支持“取消融合/重新融合”。
  *
+ * 重新融合按整本书 reconcile：先只读计算整本书的期望 overlay 并生成写入
+ * 计划，再在一个 Room 事务里一次性提交；本次不应再有 overlay 的章节会
+ * 清除旧数据，计算阶段任何失败都不会把书改成半新半旧状态。
+ *
  * 两层匹配：
- * - 第一层章节匹配：标题归一化相等优先；其次章节号相等（中文/阿拉伯数字
- *   统一解析，如“第2章”↔“第二章”）；最后做邻章一致性验证——按正文顺序
- *   Audio 章序号必须严格递增，违反者直接丢弃。不做同 index 兜底，宁可
- *   少融合也不能错融合。
- * - 第二层段落匹配：Text 段落文字 ↔ Audio 章节字幕行文字
- *   （块外正文行），锚点归一化对全角/半角、空白与标点不敏感，并按
- *   “字幕锚点 + 第几次出现”记录挂载位置；audio 源更新字幕文本后，
- *   不再匹配的锚点自动不挂载，匹配的锚点仍按原次序生效。
+ * - 第一层章节匹配：标题归一化相等做高置信度锚点；未命中章节的章节号
+ *   fallback（中文/阿拉伯数字统一解析）只在“相邻锚点划分的局部区间内、
+ *   卷信息一致”时生效，最后做邻章一致性验证——按正文顺序 Audio 章序号
+ *   必须严格递增，违反者直接丢弃。低置信度直接跳过，宁可少融合也不串卷。
+ * - 第二层段落匹配：Text 全部有效正文段落都参与“第几次出现”计数，没有
+ *   评论的段落只占位置不生成挂载；挂载按“字幕锚点 + 第几次出现”记录，
+ *   音频源更新字幕文本后，不再匹配的锚点自动不挂载。
  *
  * 迁移对象不是 Text 正文，而是段落关联的评论入口：段落内 TEXT 样式
- * 评论小图（`<img src="…,{"style":"TEXT","click":…}">`，与排版层共用
- * [AppPattern.imgPattern] 解析口径）与紧随段落（按原始 offset 邻接）的
- * `<usehtml>…</usehtml>` 块。统一以 usehtml 块插入 Audio 章节字幕行之后，
- * 与原生有声书源添加评论按钮的形态一致，cue 时间轴不受影响。
+ * 评论小图（`<img src="…,{…}">`，与排版层共用 [AppPattern.imgPattern]
+ * 解析口径；URL 选项 JSON 分隔共用 [AppPattern.urlOptionPattern]）与
+ * 紧随段落（按原始 offset 邻接，空行即断开）的 `<usehtml>…</usehtml>` 块。
  */
 object AudioTextFusion {
 
     /** 融合 overlay 在章节 variable 中的键；原始 lyric 保持不变 */
     const val OVERLAY_KEY = "audioTextFusion"
 
-    /** 融合汇总：配对章节数、实际写入 overlay 的音频章节数、挂载的评论入口数 */
+    /** 融合汇总：配对章节数、本次写入 overlay 的音频章节数、挂载的评论入口数 */
     data class Result(
         val pairedChapters: Int,
         val fusedChapters: Int,
@@ -60,32 +62,95 @@ object AudioTextFusion {
         val payload: String,
     )
 
+    /** 对单个音频章节的写入动作；[insertions] 为 null 表示清除 overlay */
+    data class ChapterOverlayWrite(
+        val chapter: BookChapter,
+        val insertions: List<OverlayInsertion>?,
+    )
+
+    /** 整本书融合计划：配对章数与写入动作列表（先计算后写入） */
+    data class FusionPlan(
+        val pairedChapters: Int,
+        val writes: List<ChapterOverlayWrite>,
+    )
+
     /**
-     * 遍历两本书配对的已缓存章节并执行融合，把挂载列表写入 Audio 章节的
-     * overlay 变量（不触碰原始 lyric）。调用方需在 IO 线程执行；
-     * 本函数只读缓存文件与数据库，不发起网络请求。重复融合以文字书当前
-     * 内容重新生成并替换旧 overlay。
+     * 遍历两本书配对的已缓存章节并执行整本书 reconcile。调用方需在 IO
+     * 线程执行；本函数只读缓存文件与数据库，不发起网络请求。
+     * 计算阶段失败时直接抛出，数据库保持原状；写入阶段在一个 Room 事务
+     * 内一次性提交。
      */
     fun fuseBooks(textBook: Book, audioBook: Book): Result {
         val textChapters = appDb.bookChapterDao.getChapterList(textBook.bookUrl)
             .filterNot { it.isVolume }
         val audioChapters = appDb.bookChapterDao.getChapterList(audioBook.bookUrl)
             .filterNot { it.isVolume }
-        val pairs = pairChapters(textChapters, audioChapters)
-        var fusedChapters = 0
-        var migratedEntries = 0
-        pairs.forEach { (textChapter, audioChapter) ->
-            if (!BookHelp.hasContent(textBook, textChapter)) return@forEach
-            if (!BookHelp.hasContent(audioBook, audioChapter)) return@forEach
-            val lyric = audioChapter.getVariable("lyric")
-            if (lyric.isBlank()) return@forEach
-            val textContent = BookHelp.getContent(textBook, textChapter) ?: return@forEach
-            val insertions = fuseOverlay(textContent, lyric) ?: return@forEach
-            saveOverlay(audioChapter, insertions)
-            fusedChapters++
-            migratedEntries += insertions.size
+        val plan = planFusionWrites(
+            textChapters = textChapters,
+            audioChapters = audioChapters,
+            hasTextContent = { BookHelp.hasContent(textBook, it) },
+            getTextContent = { BookHelp.getContent(textBook, it) },
+            hasAudioContent = { BookHelp.hasContent(audioBook, it) },
+            getLyric = { it.getVariable("lyric") },
+            getCurrentOverlay = { it.getVariable(OVERLAY_KEY) },
+        )
+        if (plan.writes.isNotEmpty()) {
+            appDb.runInTransaction {
+                plan.writes.forEach { write ->
+                    if (write.insertions == null) {
+                        write.chapter.putVariable(OVERLAY_KEY, null)
+                        write.chapter.update()
+                    } else {
+                        saveOverlay(write.chapter, write.insertions)
+                    }
+                }
+            }
         }
-        return Result(pairs.size, fusedChapters, migratedEntries)
+        return Result(
+            pairedChapters = plan.pairedChapters,
+            fusedChapters = plan.writes.count { it.insertions != null },
+            migratedEntries = plan.writes.sumOf { it.insertions?.size ?: 0 },
+        )
+    }
+
+    /**
+     * 整本书 reconcile 的纯计算：先只读算出每章期望 overlay，再生成
+     * “覆盖保存 / 清除”写入计划。本次不应再有 overlay 但旧数据存在的
+     * 章节会生成清除动作。纯函数，可在 JVM 单元测试中直接验证。
+     */
+    internal fun planFusionWrites(
+        textChapters: List<BookChapter>,
+        audioChapters: List<BookChapter>,
+        hasTextContent: (BookChapter) -> Boolean,
+        getTextContent: (BookChapter) -> String?,
+        hasAudioContent: (BookChapter) -> Boolean,
+        getLyric: (BookChapter) -> String,
+        getCurrentOverlay: (BookChapter) -> String,
+    ): FusionPlan {
+        val pairs = pairChapters(textChapters, audioChapters)
+        val desired = linkedMapOf<String, List<OverlayInsertion>>()
+        pairs.forEach { (textChapter, audioChapter) ->
+            if (!hasTextContent(textChapter)) return@forEach
+            if (!hasAudioContent(audioChapter)) return@forEach
+            val lyric = getLyric(audioChapter)
+            if (lyric.isBlank()) return@forEach
+            val textContent = getTextContent(textChapter) ?: return@forEach
+            fuseOverlay(textContent, lyric)?.let { insertions ->
+                desired[audioChapter.primaryStr()] = insertions
+            }
+        }
+        val writes = buildList {
+            audioChapters.forEach { audioChapter ->
+                val identity = audioChapter.primaryStr()
+                val want = desired[identity]
+                val hasOld = getCurrentOverlay(audioChapter).isNotBlank()
+                when {
+                    want != null -> add(ChapterOverlayWrite(audioChapter, want))
+                    hasOld -> add(ChapterOverlayWrite(audioChapter, null))
+                }
+            }
+        }
+        return FusionPlan(pairedChapters = pairs.size, writes = writes)
     }
 
     /** 取消融合：清除该书全部章节的 overlay，恢复为原始 lyric；返回清理章节数 */
@@ -130,20 +195,22 @@ object AudioTextFusion {
 
     /**
      * 第一层章节匹配：
-     * 1. 标题归一化相等（保持 Text 顺序，重复标题按出现顺序消费）；
-     * 2. 章节号相等（中文/阿拉伯数字统一解析，如“第2章”↔“第二章”）；
-     * 3. 邻章一致性验证：按正文顺序，Audio 章序号必须严格递增，
-     *    违反者丢弃——不做同 index 兜底，宁可少融合也不能错融合。
+     * 1. 标题归一化相等（高置信度锚点，重复标题按出现顺序消费）；
+     * 2. 章节号相等（中文/阿拉伯数字统一解析）fallback：只取相邻锚点划分
+     *    的局部区间内的未配对音频章节，且卷信息一致（两侧都能解析时）；
+     *    没有相邻锚点约束时退化为“同卷 + 邻章一致性”约束；
+     * 3. 邻章一致性验证：按正文顺序 Audio 章序号严格递增，违反者丢弃。
+     * 不做同 index 兜底，宁可少融合也不能错融合。
      */
     internal fun pairChapters(
         textChapters: List<BookChapter>,
         audioChapters: List<BookChapter>
     ): List<Pair<BookChapter, BookChapter>> {
-        val result = ArrayList<Pair<BookChapter, BookChapter>>(textChapters.size)
+        val anchors = ArrayList<Pair<BookChapter, BookChapter>>()
         val usedAudio = hashSetOf<BookChapter>()
         val pendingText = ArrayList<BookChapter>()
 
-        // 1. 标题归一化相等
+        // 1. 标题归一化相等（高置信度锚点）
         val audioByTitleKey = linkedMapOf<String, ArrayDeque<BookChapter>>()
         audioChapters.forEach { chapter ->
             val key = normalizeKey(chapter.title)
@@ -158,28 +225,44 @@ object AudioTextFusion {
             if (matched == null) {
                 pendingText.add(chapter)
             } else {
-                result.add(chapter to matched)
+                anchors.add(chapter to matched)
             }
         }
 
-        // 2. 章节号相等（解析失败即跳过，不用同 index 兜底）
-        val audioByNum = linkedMapOf<Int, ArrayDeque<BookChapter>>()
-        audioChapters.filterNot { it in usedAudio }.forEach { chapter ->
-            val num = ChapterTitle.num(chapter.title)
-            if (num >= 0) {
-                audioByNum.getOrPut(num) { ArrayDeque() }.addLast(chapter)
+        // 2. 章节号 fallback：只允许在相邻锚点划定的局部区间内、卷一致时配对
+        val fallbackPairs = ArrayList<Pair<BookChapter, BookChapter>>()
+        if (pendingText.isNotEmpty()) {
+            val orderedAnchors = anchors.sortedBy { it.first.index }
+            val unmatchedAudio = audioChapters
+                .filterNot { it in usedAudio }
+                .toMutableList()
+            for (textChapter in pendingText.sortedBy { it.index }) {
+                val num = ChapterTitle.num(textChapter.title)
+                if (num < 0) continue
+                val volume = ChapterTitle.volume(textChapter.title)
+                val previousAnchor = orderedAnchors.asReversed()
+                    .firstOrNull { it.first.index < textChapter.index }
+                val nextAnchor = orderedAnchors
+                    .firstOrNull { it.first.index > textChapter.index }
+                val audioLo = previousAnchor?.second?.index ?: Int.MIN_VALUE
+                val audioHi = nextAnchor?.second?.index ?: Int.MAX_VALUE
+                val candidate = unmatchedAudio.firstOrNull { audio ->
+                    audio.index > audioLo && audio.index < audioHi &&
+                        ChapterTitle.num(audio.title) == num &&
+                        volumeCompatible(volume, ChapterTitle.volume(audio.title))
+                }
+                if (candidate != null) {
+                    unmatchedAudio.remove(candidate)
+                    usedAudio.add(candidate)
+                    fallbackPairs.add(textChapter to candidate)
+                }
             }
-        }
-        pendingText.forEach { chapter ->
-            val num = ChapterTitle.num(chapter.title)
-            if (num < 0) return@forEach
-            val matched = audioByNum[num]?.removeFirstOrNull()?.also(usedAudio::add) ?: return@forEach
-            result.add(chapter to matched)
         }
 
         // 3. 邻章一致性：Audio 序号随正文顺序严格递增，违反者丢弃
+        val allPairs = anchors + fallbackPairs
         var lastAudioIndex = -1
-        return result.sortedBy { it.first.index }.filter { (_, audio) ->
+        return allPairs.sortedBy { it.first.index }.filter { (_, audio) ->
             if (audio.index > lastAudioIndex) {
                 lastAudioIndex = audio.index
                 true
@@ -189,9 +272,16 @@ object AudioTextFusion {
         }
     }
 
+    /** 卷兼容：任一侧无卷信息时不做卷约束，两侧都有时必须相等 */
+    private fun volumeCompatible(textVolume: Int?, audioVolume: Int?): Boolean {
+        if (textVolume == null || audioVolume == null) return true
+        return textVolume == audioVolume
+    }
+
     /**
-     * 第二层匹配：从文字书章节正文提取带评论入口的段落，计算与 lyric
-     * 块外正文行的锚点挂载列表。无任何挂载时返回 null，lyric 保持不变。
+     * 第二层匹配：从文字书章节正文提取全部有效正文段落（无评论段落只占
+     * “第几次出现”的位置），计算与 lyric 块外正文行的锚点挂载列表。
+     * 无任何挂载时返回 null。lyric 保持不变。
      */
     internal fun fuseOverlay(textContent: String, lyric: String): List<OverlayInsertion>? {
         val entries = parseCommentParagraphs(textContent)
@@ -210,35 +300,41 @@ object AudioTextFusion {
             val count = (counts[key] ?: 0) + 1
             counts[key] = count
             val entry = queue.removeFirstOrNull() ?: return@forEach
-            insertions.add(
-                OverlayInsertion(anchor = key, occurrence = count, payload = entry.payload)
-            )
+            // 无评论段落只占位置，不生成挂载
+            if (entry.payload.isNotEmpty()) {
+                insertions.add(
+                    OverlayInsertion(anchor = key, occurrence = count, payload = entry.payload)
+                )
+            }
         }
         return insertions.takeIf { it.isNotEmpty() }
     }
 
     /**
      * 把 overlay 动态合并到 lyric：按“锚点 + 第几次出现”在对应字幕行后
-     * 插入 payload 块；已有 usehtml 块原样保留。纯函数、幂等。
+     * 插入 payload 块；已有 usehtml 块原样保留。纯函数。
+     *
+     * 输入约定为原始存储的 lyric。同时实现同位置幂等：若原始 lyric 中
+     * 该字幕行之后已经是同一 payload（例如旧版本直写或重复应用），则
+     * 跳过插入并消费该挂载，不会产生二份副本。
      */
-    internal fun applyOverlay(lyric: String, overlayJson: String): String {
+    internal fun applyOverlay(rawLyric: String, overlayJson: String): String {
         val insertions = parseOverlay(overlayJson)
-        if (insertions.isEmpty()) return lyric
+        if (insertions.isEmpty()) return rawLyric
         val pendingByKey = linkedMapOf<String, ArrayDeque<OverlayInsertion>>()
         insertions.sortedBy { it.occurrence }.forEach { insertion ->
             pendingByKey.getOrPut(insertion.anchor) { ArrayDeque() }.addLast(insertion)
         }
         val counts = hashMapOf<String, Int>()
-        val builder = StringBuilder(lyric.length + 256)
-        fun rebuildSegment(segment: String) {
+        val builder = StringBuilder(rawLyric.length + 256)
+        fun rebuildSegment(segment: String, segmentStartInLyric: Int) {
             var lineStart = 0
             while (lineStart <= segment.length) {
                 val newLineIndex = segment.indexOf('\n', lineStart)
-                val (lineText, hasFollowingNewLine) = if (newLineIndex < 0 || newLineIndex >= segment.length) {
-                    segment.substring(lineStart) to false
-                } else {
-                    segment.substring(lineStart, newLineIndex) to true
-                }
+                val atEnd = newLineIndex < 0 || newLineIndex >= segment.length
+                val lineEnd = if (atEnd) segment.length else newLineIndex
+                val lineText = segment.substring(lineStart, lineEnd)
+                val hasTrailingNewLine = !atEnd
                 builder.append(lineText)
                 var inserted = false
                 val key = subtitleKey(lineText)
@@ -249,26 +345,30 @@ object AudioTextFusion {
                     val head = queue.firstOrNull()
                     if (head != null && head.occurrence == count) {
                         queue.removeFirst()
-                        builder.append('\n').append(head.payload).append('\n')
-                        inserted = true
+                        val lineAbsEnd = segmentStartInLyric + lineEnd
+                        // 同位置幂等：该行之后（紧接换行 + payload）已是同一挂载则跳过
+                        if (!rawLyric.startsWith("\n" + head.payload, lineAbsEnd)) {
+                            builder.append('\n').append(head.payload).append('\n')
+                            inserted = true
+                        }
                     }
                 }
-                if (!inserted && hasFollowingNewLine) {
+                if (!inserted && hasTrailingNewLine) {
                     builder.append('\n')
                 }
-                if (!hasFollowingNewLine) break
+                if (atEnd) break
                 lineStart = newLineIndex + 1
                 if (lineStart == segment.length && !segment.endsWith('\n')) break
             }
         }
         var lastEnd = 0
         // 已有 usehtml 结构块原样保留；只在其外的字幕行后插入新块
-        AppPattern.useHtmlRegex.findAll(lyric).forEach { blockMatch ->
-            rebuildSegment(lyric.substring(lastEnd, blockMatch.range.first))
+        AppPattern.useHtmlRegex.findAll(rawLyric).forEach { blockMatch ->
+            rebuildSegment(rawLyric.substring(lastEnd, blockMatch.range.first), lastEnd)
             builder.append(blockMatch.value)
             lastEnd = blockMatch.range.last + 1
         }
-        rebuildSegment(lyric.substring(lastEnd))
+        rebuildSegment(rawLyric.substring(lastEnd), lastEnd)
         return builder.toString()
     }
 
@@ -303,10 +403,10 @@ object AudioTextFusion {
 
     /**
      * 解析 Text 章节正文：按 usehtml 块切分原文，每个非空正文行收集为
-     * 候选段落（归一化 key + 评论入口载荷 + 原始行尾 offset）；
-     * 只有按原始 offset 紧随段落（其间只允许段落行换行，空行即断开）的
-     * usehtml 块才归属该段落，避免章节级装饰块被误挂；无归属的块丢弃。
-     * 只返回真正携带评论入口、且文字可参与匹配的段落。
+     * 候选段落（归一化 key + 评论入口载荷 + 原始行尾 offset）。所有有效
+     * 正文段落都会被收集（无载荷段落参与后续 occurrence 占位）；只有按
+     * 原始 offset 紧随段落（其间只允许段落行换行，空行即断开）的 usehtml
+     * 块才归属该段落，避免章节级装饰块被误挂；无归属的块丢弃。
      */
     internal fun parseCommentParagraphs(content: String): List<FusionEntry> {
         val paragraphs = ArrayList<FusionEntry>()
@@ -336,7 +436,7 @@ object AudioTextFusion {
             lastEnd = blockMatch.range.last + 1
         }
         appendBodyLines(content.substring(lastEnd), lastEnd)
-        return paragraphs.filter { it.key.isNotEmpty() && it.payload.isNotEmpty() }
+        return paragraphs.filter { it.key.isNotEmpty() }
     }
 
     /** 只能与段落行尾之间隔它的换行（允许行尾空白/CRLF），出现空行即断开 */
@@ -374,24 +474,19 @@ object AudioTextFusion {
         return text.toString() to buttons
     }
 
-    /** 评论泡判定：src 携带的选项 JSON 里 style 为 TEXT（与排版层同一约定） */
+    /**
+     * 评论泡判定：src 携带的选项 JSON 里 style 为 TEXT（与排版层同一约定）。
+     * 选项 JSON 分隔复用 [AppPattern.urlOptionPattern]（AnalyzeUrl.paramPattern
+     * 同一口径），URL 自身含逗号也能正确定位。
+     */
     private fun isReviewButton(src: String?): Boolean {
         if (src.isNullOrEmpty()) return false
-        val jsonStart = findUrlOptionJsonStart(src) ?: return false
-        val optionJson = src.substring(jsonStart)
+        val optionMatcher = AppPattern.urlOptionPattern.matcher(src)
+        if (!optionMatcher.find()) return false
+        val optionJson = src.substring(optionMatcher.end())
         val style = Regex("\"style\"\\s*:\\s*\"([^\"]*)\"", RegexOption.IGNORE_CASE)
             .find(optionJson)?.groupValues?.get(1)
         return style.equals("TEXT", ignoreCase = true)
-    }
-
-    /** 与 AnalyzeUrl.paramPattern 一致：URL 后第一个 `,` 到 `{` 之间只允许空白 */
-    private fun findUrlOptionJsonStart(src: String): Int? {
-        val comma = src.indexOf(',')
-        if (comma < 0) return null
-        var index = comma + 1
-        while (index < src.length && src[index].isWhitespace()) index++
-        if (index >= src.length || src[index] != '{') return null
-        return index
     }
 
     /** 组装要写入 Audio 字幕行之后的载荷：行内评论图包进一个 usehtml 块 */
