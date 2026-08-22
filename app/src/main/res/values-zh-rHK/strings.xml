@@ -215,9 +215,8 @@
     <string name="select_all_count">全選 (%1$d/%2$d)</string>
     <string name="select_all_books_collections">全選(%1$d,%2$d)</string>
     <string name="bookshelf_fusion">融合</string>
-    <string name="fusion_need_two_books">融合需要恰好選中兩本同名同作者的書：一本有聲書、一本文字書</string>
+    <string name="fusion_need_two_books">融合需要恰好選中兩本書：一本有聲書、一本文字書</string>
     <string name="fusion_type_invalid">選中的兩本書類型相同，需要一本有聲書和一本文字書</string>
-    <string name="fusion_info_mismatch">兩本書的書名或作者不一致，無法融合</string>
     <string name="fusion_confirm_title">融合評論到有聲書</string>
     <string name="fusion_confirm_message">只處理雙方已經快取的章節，不連網下載。文字書中與聽書章節、段落符合的評論按鈕，將掛載到有聲書對應字幕位置；掛載結果單獨保存，不會覆蓋原始字幕，音頻源刷新歌詞也不會沖掉它。若之前融合過，將按文字書當前內容重新生成並取代上一次的掛載。確定繼續嗎？</string>
     <string name="fusion_done">融合完成：配對 %1$d 章，掛載 %2$d 章，遷移 %3$d 個評論入口</string>
