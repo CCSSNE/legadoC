@@ -175,10 +175,6 @@ object BookHelp {
             saveText(book, bookChapter, content)
             //saveImages(bookSource, book, bookChapter, content)
             CacheManifestHelper.refresh(book)
-            // 正文完成后低优先级补抓评论页快照（失败不影响正文）
-            io.legado.app.help.review.ReviewSnapshotManager.enqueueIfEnabled(
-                bookSource, book, bookChapter
-            )
             postEvent(EventBus.SAVE_CONTENT, Pair(book, bookChapter))
         } catch (e: Exception) {
             e.printStackTrace()
@@ -470,13 +466,15 @@ object BookHelp {
     }
 
     /**
-     * 删除单章缓存。漫画会一并删除正文中引用的图片缓存。
+     * 删除单章缓存。漫画会一并删除正文中引用的图片缓存，
+     * 同时删除该章节的评论页快照，避免删除正文重新缓存后命中旧评论。
      */
     fun delChapterCache(book: Book, bookChapter: BookChapter) {
         if (book.isImage) {
             delChapterImages(book, bookChapter)
         }
         delContent(book, bookChapter)
+        io.legado.app.help.review.ReviewSnapshotStore.deleteChapter(book, bookChapter)
     }
 
     private fun delChapterImages(book: Book, bookChapter: BookChapter) {

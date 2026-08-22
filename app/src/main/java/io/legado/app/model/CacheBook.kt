@@ -340,26 +340,26 @@ object CacheBook {
                 return
             }
             if (BookHelp.hasImageContent(book, chapter)) {
-                // 正文已缓存：仍需判断是否要补评论页快照
-                io.legado.app.help.review.ReviewSnapshotManager.enqueueIfEnabled(
-                    bookSource, book, chapter
-                )
+                // 正文已缓存（图片也齐）：用户重新缓存该章，直接补/覆盖评论
                 waitDownloadSet.remove(chapterIndex)
+                io.legado.app.help.review.ReviewSnapshotManager.enqueueIfEnabled(
+                    bookSource, book, chapter, force = true
+                )
                 return
             }
             waitDownloadSet.remove(chapterIndex)
             onDownloadSet.add(chapterIndex)
             if (BookHelp.hasContent(book, chapter)) {
-                // 正文已缓存：仍需判断是否要补评论页快照（不能跳过补评论判断）
-                io.legado.app.help.review.ReviewSnapshotManager.enqueueIfEnabled(
-                    bookSource, book, chapter
-                )
+                // 正文已缓存但缺图片：先补完图片、成功状态结束，再入队补评论（force）
                 Coroutine.async(scope, context, executeContext = context) {
                     BookHelp.getContent(book, chapter)?.let {
                         BookHelp.saveImages(bookSource, book, chapter, it, 1)
                     }
                 }.onSuccess {
                     onSuccess(chapter)
+                    io.legado.app.help.review.ReviewSnapshotManager.enqueueIfEnabled(
+                        bookSource, book, chapter, force = true
+                    )
                 }.onError {
                     onPreError(chapter, it)
                     //出现错误等待一秒后重新加入待下载列表
@@ -385,6 +385,12 @@ object CacheBook {
             ).onSuccess { content ->
                 onSuccess(chapter)
                 downloadFinish(chapter, content)
+                // 正文全部结束后再入队评论（用户刷新标记期内强制重抓覆盖）
+                io.legado.app.help.review.ReviewSnapshotManager.enqueueIfEnabled(
+                    bookSource, book, chapter,
+                    force = io.legado.app.help.review.ReviewSnapshotManager
+                        .isUserRefreshActive(book.bookUrl)
+                )
             }.onError {
                 onPreError(chapter, it)
                 //出现错误等待一秒后重新加入待下载列表
@@ -410,6 +416,12 @@ object CacheBook {
                 onSuccess(chapter)
                 ReadBook.downloadedChapters.add(chapter.index)
                 ReadBook.downloadFailChapters.remove(chapter.index)
+                // 正文成功状态结束后再入队评论
+                io.legado.app.help.review.ReviewSnapshotManager.enqueueIfEnabled(
+                    bookSource, book, chapter,
+                    force = io.legado.app.help.review.ReviewSnapshotManager
+                        .isUserRefreshActive(book.bookUrl)
+                )
                 return content
             } catch (e: Exception) {
                 if (e is CancellationException) {
@@ -449,6 +461,12 @@ object CacheBook {
                 ReadBook.downloadedChapters.add(chapter.index)
                 ReadBook.downloadFailChapters.remove(chapter.index)
                 downloadFinish(chapter, content, resetPageOffset)
+                // 正文全部结束后再入队评论（用户刷新标记期内强制重抓覆盖）
+                io.legado.app.help.review.ReviewSnapshotManager.enqueueIfEnabled(
+                    bookSource, book, chapter,
+                    force = io.legado.app.help.review.ReviewSnapshotManager
+                        .isUserRefreshActive(book.bookUrl)
+                )
             }.onError {
                 onError(chapter, it)
                 ReadBook.downloadFailChapters[chapter.index] =

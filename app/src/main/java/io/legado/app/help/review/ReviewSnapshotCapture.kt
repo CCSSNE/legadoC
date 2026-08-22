@@ -3,34 +3,26 @@ package io.legado.app.help.review
 import android.annotation.SuppressLint
 import android.os.Handler
 import android.os.Looper
-import android.webkit.SslErrorHandler
 import android.net.http.SslError
+import android.webkit.SslErrorHandler
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import com.script.rhino.runScriptWithContext
 import io.legado.app.constant.AppConst
-import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.http.CookieManager as AppCookieManager
-import io.legado.app.help.http.StrResponse
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.help.webView.WebViewPool
 import io.legado.app.model.analyzeRule.AnalyzeUrl
-import io.legado.app.ui.rss.read.RssJsExtensions
 import io.legado.app.utils.GSON
 import io.legado.app.utils.runOnUI
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.apache.commons.text.StringEscapeUtils
 import splitties.init.appCtx
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -48,35 +40,32 @@ object ReviewSnapshotCapture {
 
     private val mHandler = Handler(Looper.getMainLooper())
 
-    /** 单个按钮整体超时 */
-    private const val RESOLVE_TIMEOUT_MS = 20_000L
     private const val PAGE_TIMEOUT_MS = 120_000L
     /** 穷尽循环轮数上限 */
     private const val MAX_EXPAND_ROUNDS = 40
     /** 每轮之间的等待 */
     private const val EXPAND_ROUND_INTERVAL_MS = 800L
+    /** 连续几轮稳定才判定完成（含慢加载评论） */
+    private const val STABLE_ROUNDS_TO_FINISH = 3
     /** 资源内联上限 */
     private const val MAX_INLINE_RESOURCES = 200
     private const val MAX_TOTAL_INLINE_BYTES = 30L * 1024 * 1024
 
     /**
-     * 抓取一章某个评论按钮对应的真实评论页快照。
-     * @param clickJs 按钮 src 选项里的 click JS；为空表示无法无头解析
+     * 抓取真实评论页快照并序列化。
+     * @param url 真实评论页地址（由调度器经与用户点击共用的执行逻辑解析）
      */
     suspend fun capture(
         bookSource: BookSource,
         book: Book,
         chapter: BookChapter,
         buttonSrc: String,
-        clickJs: String
+        url: String
     ): ReviewSnapshot {
-        val url = resolveCommentPageUrl(bookSource, book, chapter, buttonSrc, clickJs)
-        if (url.isBlank()) {
-            throw NoStackTraceException("未能解析评论页地址 ${chapter.title}")
-        }
         val html = snapshotPage(url, bookSource)
         return ReviewSnapshot(
             bookUrl = book.bookUrl,
+            chapterUrl = chapter.url,
             chapterIndex = chapter.index,
             chapterTitle = chapter.title,
             buttonSrc = buttonSrc,
@@ -88,59 +77,30 @@ object ReviewSnapshotCapture {
     }
 
     /**
-     * 执行 click JS 并拦截 java.startBrowser / java.startBrowserAwait 得到评论页地址
-     */
-    private suspend fun resolveCommentPageUrl(
-        bookSource: BookSource,
-        book: Book,
-        chapter: BookChapter,
-        buttonSrc: String,
-        clickJs: String
-    ): String = withContext(Dispatchers.IO) {
-        val resolved = AtomicReference("")
-        val latch = CountDownLatch(1)
-        val jsExtensions = object : RssJsExtensions(null, bookSource, BookType.text) {
-            override fun onBrowserOpenRequested(url: String, title: String, html: String?): Boolean {
-                resolved.compareAndSet("", url)
-                latch.countDown()
-                return true
-            }
-
-            override fun onBrowserAwaitRequested(
-                url: String,
-                title: String,
-                html: String?
-            ): StrResponse {
-                resolved.compareAndSet("", url)
-                latch.countDown()
-                return StrResponse(url, "")
-            }
-        }
-        runScriptWithContext {
-            bookSource.evalJS(clickJs) {
-                put("java", jsExtensions)
-                put("book", book)
-                put("chapter", chapter)
-                put("result", buttonSrc)
-            }
-        }
-        latch.await(RESOLVE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-        resolved.get()
-    }
-
-    /**
-     * 无头加载页面并穷尽展开后返回最终 HTML
+     * 无头加载页面并穷尽展开后返回最终 HTML。
+     *
+     * WebView 生命周期唯一化：成功/失败/超时/cancel 四条路径都只释放一次，
+     * 通过 [java.util.concurrent.atomic.AtomicReference] + [AtomicBoolean] 保证。
      */
     private suspend fun snapshotPage(url: String, bookSource: BookSource): String =
         withTimeout(PAGE_TIMEOUT_MS) {
             val analyzeUrl = AnalyzeUrl(url, source = bookSource)
             val headerMap = analyzeUrl.headerMap
             suspendCancellableCoroutine { block ->
+                val pooledRef = AtomicReference<io.legado.app.help.webView.PooledWebView?>()
+                val released = java.util.concurrent.atomic.AtomicBoolean(false)
+                // 唯一释放点：重复调用被 AtomicBoolean 挡住
+                fun releaseOnce() {
+                    val pooled = pooledRef.getAndSet(null) ?: return
+                    if (released.compareAndSet(false, true)) {
+                        runOnUI { WebViewPool.release(pooled) }
+                    }
+                }
                 runOnUI {
-                    var pooledWebView: io.legado.app.help.webView.PooledWebView? = null
                     try {
-                        pooledWebView = WebViewPool.acquire(appCtx)
-                        val webView = pooledWebView.realWebView
+                        val pooled = WebViewPool.acquire(appCtx)
+                        pooledRef.set(pooled)
+                        val webView = pooled.realWebView
                         webView.onResume()
                         webView.setBackgroundColor(android.graphics.Color.WHITE)
                         webView.settings.apply {
@@ -149,9 +109,7 @@ object ReviewSnapshotCapture {
                         }
                         AppCookieManager.applyToWebView(url)
                         val session = SnapshotSession(webView, url) { result, error ->
-                            runOnUI {
-                                pooledWebView?.let { WebViewPool.release(it) }
-                            }
+                            releaseOnce()
                             if (block.isActive) {
                                 if (error != null) block.resumeWithException(error)
                                 else block.resume(result ?: "")
@@ -159,11 +117,13 @@ object ReviewSnapshotCapture {
                         }
                         webView.webViewClient = session.client
                         webView.loadUrl(url, headerMap)
+                        // 超时/cancel（withTimeout 抛 TimeoutCancellationException）路径
                         block.invokeOnCancellation {
                             runOnUI { session.destroy() }
+                            releaseOnce()
                         }
                     } catch (e: Throwable) {
-                        pooledWebView?.let { WebViewPool.release(it) }
+                        releaseOnce()
                         if (block.isActive) block.resumeWithException(e)
                     }
                 }
@@ -184,6 +144,8 @@ object ReviewSnapshotCapture {
         private var expandRounds = 0
         private var stableRounds = 0
         private var lastTextLen = -1
+        private var lastHeight = -1
+        private var lastNodes = -1
 
         val client = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, finishedUrl: String?) {
@@ -226,19 +188,35 @@ object ReviewSnapshotCapture {
             done(null, error)
         }
 
+        private data class PageStats(val clicked: Int, val textLen: Int, val height: Int, val nodes: Int)
+
         private fun expandRound() {
             if (destroyed) return
             webView.evaluateJavascript(EXPAND_JS) { json ->
                 mHandler.post {
                     if (destroyed) return@post
                     val stats = parseStats(json)
-                    val textLen = stats?.second ?: -1
-                    val clicked = stats?.first ?: 0
-                    val stable = clicked == 0 && textLen == lastTextLen
-                    lastTextLen = textLen
+                    if (stats == null) {
+                        // 页面还未就绪：下一轮再试
+                        expandRounds++
+                        if (expandRounds >= MAX_EXPAND_ROUNDS) {
+                            inlineResources()
+                        } else {
+                            mHandler.postDelayed({ expandRound() }, EXPAND_ROUND_INTERVAL_MS)
+                        }
+                        return@post
+                    }
+                    // 稳定要求：本轮没点过展开按钮，且 文本长度/页面高度/DOM 节点数 全部一致
+                    val stable = stats.clicked == 0 &&
+                        stats.textLen == lastTextLen &&
+                        stats.height == lastHeight &&
+                        stats.nodes == lastNodes
+                    lastTextLen = stats.textLen
+                    lastHeight = stats.height
+                    lastNodes = stats.nodes
                     stableRounds = if (stable) stableRounds + 1 else 0
                     expandRounds++
-                    if (stableRounds >= 2 || expandRounds >= MAX_EXPAND_ROUNDS) {
+                    if (stableRounds >= STABLE_ROUNDS_TO_FINISH || expandRounds >= MAX_EXPAND_ROUNDS) {
                         inlineResources()
                     } else {
                         mHandler.postDelayed({ expandRound() }, EXPAND_ROUND_INTERVAL_MS)
@@ -247,15 +225,18 @@ object ReviewSnapshotCapture {
             }
         }
 
-        private fun parseStats(json: String?): Pair<Int, Int>? {
+        private fun parseStats(json: String?): PageStats? {
             json ?: return null
             return runCatching {
                 val s = StringEscapeUtils.unescapeJson(json).trim('"')
                 if (s == "null") return null
                 val obj = GSON.fromJson(s, Map::class.java)
-                val c = (obj?.get("c") as? Double)?.toInt() ?: 0
-                val t = (obj?.get("t") as? Double)?.toInt() ?: 0
-                c to t
+                PageStats(
+                    clicked = (obj?.get("c") as? Double)?.toInt() ?: 0,
+                    textLen = (obj?.get("t") as? Double)?.toInt() ?: 0,
+                    height = (obj?.get("h") as? Double)?.toInt() ?: 0,
+                    nodes = (obj?.get("n") as? Double)?.toInt() ?: 0
+                )
             }.getOrNull()
         }
 
@@ -415,8 +396,10 @@ object ReviewSnapshotCapture {
             "el.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));" +
             "el.dispatchEvent(new TouchEvent('touchend',{bubbles:true}));}catch(e){}" +
             "clicked++;if(clicked>=6)break;}" +
-            "try{window.scrollTo(0,document.body.scrollHeight);}catch(e){}" +
-            "return JSON.stringify({c:clicked,t:document.body?document.body.innerText.length:0});" +
+            "try{window.scrollTo(0,document.body?document.body.scrollHeight:0);}catch(e){}" +
+            "var h=document.body?document.body.scrollHeight:0;" +
+            "var n=document.getElementsByTagName('*').length;" +
+            "return JSON.stringify({c:clicked,t:document.body?document.body.innerText.length:0,h:h,n:n});" +
             "})()"
 
     private const val COLLECT_RESOURCES_JS =

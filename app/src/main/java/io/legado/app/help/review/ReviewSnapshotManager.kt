@@ -2,15 +2,19 @@ package io.legado.app.help.review
 
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
+import io.legado.app.constant.BookType
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.BookImgClick
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.http.StrResponse
 import io.legado.app.model.analyzeRule.AnalyzeUrl
+import io.legado.app.ui.rss.read.RssJsExtensions
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 import kotlinx.coroutines.CoroutineScope
@@ -19,25 +23,47 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * 评论快照抓取调度器。
  *
- * 正文永远优先：这里只在章节正文保存完成后入队，由单条低优先级协程串行处理，
- * 每个按钮之间主动让出（delay），失败只记日志，绝不影响正文下载与刷新体验。
- * “正文已缓存”不跳过补评论：是否需要抓取以 [ReviewSnapshotStore] 中
- * 章节每个评论按钮的快照是否存在为准，重新缓存/刷新会再次入队补齐缺失快照。
+ * 正文永远优先：这里只在章节正文全部完成（文本/图片/成功状态/刷新状态）之后由
+ * [CacheBook] 入队，由单条低优先级协程串行处理，每个按钮之间主动让出（delay），
+ * 失败只记日志，绝不影响正文下载与刷新体验。
+ *
+ * 快照刷新语义：
+ * - 普通后台重复触发（force=false）：已有快照可跳过；
+ * - 用户明确重新缓存/刷新该章节（force=true 或 [markUserRefresh] 标记有效期内）：
+ *   重新抓取并覆盖旧快照，不依赖 has()。
  */
 object ReviewSnapshotManager {
 
     private data class Task(
         val bookUrl: String,
-        val chapterIndex: Int
+        val chapterIndex: Int,
+        val force: Boolean
     )
+
+    /** 评论按钮模型：click / 旧源 js 二选一 */
+    data class ReviewButton(
+        val src: String,
+        val click: String? = null,
+        val js: String? = null,
+        val urlNoOption: String? = null
+    ) {
+        val hasAction: Boolean get() = !click.isNullOrBlank() || !js.isNullOrBlank()
+    }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val channel = Channel<Task>(Channel.UNLIMITED)
     private val pendingKeys = ConcurrentHashMap.newKeySet<String>()
+
+    /** 用户刷新标记：menu 刷新/重新缓存期间置位，有效期内下载成功都强制重抓评论 */
+    private val userRefreshMarks = ConcurrentHashMap<String, Long>()
+    private const val MARK_TTL_MS = 15 * 60 * 1000L
 
     /** 按钮之间的间隔，把网络与 WebView 占用压到最低 */
     private const val BUTTON_INTERVAL_MS = 800L
@@ -45,28 +71,57 @@ object ReviewSnapshotManager {
     /** 单章最多处理的评论按钮数，防止异常书源拖垮后台 */
     private const val MAX_BUTTONS_PER_CHAPTER = 30
 
+    /** 单个按钮解析评论页地址的超时 */
+    private const val RESOLVE_TIMEOUT_MS = 20_000L
+
     @Volatile
     private var workerStarted = false
 
     /**
-     * 正文保存成功后调用：开关打开时该章入队，由工作协程判断哪些按钮缺快照。
+     * 正文保存/成功状态结束后调用。
+     * @param force true = 用户明确重新缓存/刷新该章节，忽略旧快照直接重抓
      */
-    fun enqueueIfEnabled(bookSource: BookSource?, book: Book, chapter: BookChapter) {
+    fun enqueueIfEnabled(
+        bookSource: BookSource?,
+        book: Book,
+        chapter: BookChapter,
+        force: Boolean = false
+    ) {
         if (!AppConfig.syncCacheReview) return
         if (book.isLocal) return
         if (bookSource == null) return
-        enqueue(chapter)
+        enqueue(book, chapter, force)
     }
 
     /**
      * 已缓存正文的章节在重新缓存/刷新时也必须走“是否需要补评论”的判断，
      * 因此缓存流程在跳过正文下载前调用本方法直接入队。
      */
-    fun enqueue(chapter: BookChapter) {
-        val key = "${chapter.bookUrl}|${chapter.index}"
+    fun enqueue(book: Book, chapter: BookChapter, force: Boolean = false) {
+        val key = "${book.bookUrl}|${chapter.index}"
         if (!pendingKeys.add(key)) return
-        channel.trySend(Task(chapter.bookUrl, chapter.index))
+        channel.trySend(Task(book.bookUrl, chapter.index, force))
         startWorkerIfNeeded()
+    }
+
+    /** 用户明确刷新：记录时间戳，之后该书的章节下载成功都强制重抓评论 */
+    fun markUserRefresh(bookUrl: String) {
+        userRefreshMarks[bookUrl] = System.currentTimeMillis()
+    }
+
+    /** 该书当前是否处于用户刷新标记有效期内（顺带惰性清理过期标记） */
+    fun isUserRefreshActive(bookUrl: String): Boolean {
+        val now = System.currentTimeMillis()
+        val markedAt = userRefreshMarks[bookUrl] ?: return false
+        if (now - markedAt > MARK_TTL_MS) {
+            userRefreshMarks.remove(bookUrl)
+            return false
+        }
+        return true
+    }
+
+    fun clearUserRefresh(bookUrl: String) {
+        userRefreshMarks.remove(bookUrl)
     }
 
     private fun startWorkerIfNeeded() {
@@ -95,13 +150,22 @@ object ReviewSnapshotManager {
         val chapter = appDb.bookChapterDao.getChapter(task.bookUrl, task.chapterIndex) ?: return
         val content = BookHelp.getContent(book, chapter) ?: return
         val buttons = extractReviewButtons(content).take(MAX_BUTTONS_PER_CHAPTER)
-        for ((src, clickJs) in buttons) {
-            if (clickJs.isBlank()) continue
-            if (ReviewSnapshotStore.has(book, chapter.index, src)) continue
+        for (button in buttons) {
+            if (!button.hasAction) continue
+            // 普通触发有快照可跳过；force（明确重新缓存/刷新）必须重抓覆盖
+            if (!task.force && ReviewSnapshotStore.has(book, chapter, button.src)) continue
+            val url = runCatching {
+                resolveReviewPageUrl(book, bookSource, chapter, button)
+            }.onFailure {
+                AppLog.put(
+                    "解析评论页地址失败 ${book.name} ${chapter.title}\n${it.localizedMessage}", it
+                )
+            }.getOrNull()
+            if (url.isNullOrBlank()) continue
             // 失败只记日志：重新缓存/刷新会再次入队重试，绝不影响正文
             runCatching {
                 val snapshot = ReviewSnapshotCapture.capture(
-                    bookSource, book, chapter, src, clickJs
+                    bookSource, book, chapter, button.src, url
                 )
                 ReviewSnapshotStore.put(book, snapshot)
             }.onFailure {
@@ -113,20 +177,82 @@ object ReviewSnapshotManager {
         }
     }
 
-    /** 提取正文里的评论按钮：img 标签选项 JSON 带 style=TEXT 的评论泡 → (src, clickJs) */
-    fun extractReviewButtons(content: String): List<Pair<String, String>> {
+    /**
+     * 解析评论按钮对应的真实评论页地址。
+     * 与用户点击共用 [BookImgClick.executeClick]/[executeJs]：
+     * click 分支替换 java 拦截宿主，旧源 js 分支挂 AnalyzeRule 钩子，
+     * 执行环境与真实点击完全一致。
+     */
+    private suspend fun resolveReviewPageUrl(
+        book: Book,
+        bookSource: BookSource,
+        chapter: BookChapter,
+        button: ReviewButton
+    ): String? {
+        val resolved = AtomicReference<String>()
+        val latch = CountDownLatch(1)
+        fun record(url: String): Boolean {
+            resolved.compareAndSet(null, url)
+            latch.countDown()
+            return true
+        }
+        if (!button.click.isNullOrBlank()) {
+            val host = object : RssJsExtensions(null, bookSource, BookType.text) {
+                override fun onBrowserOpenRequested(url: String, title: String, html: String?): Boolean {
+                    return record(url)
+                }
+
+                override fun onBrowserAwaitRequested(
+                    url: String,
+                    title: String,
+                    html: String?
+                ): StrResponse {
+                    record(url)
+                    return StrResponse(url, "")
+                }
+            }
+            BookImgClick.executeClick(book, bookSource, chapter, button.click, button.src) { host }
+        } else {
+            val js = button.js.orEmpty()
+            val urlNoOption = button.urlNoOption.orEmpty()
+            BookImgClick.executeJs(book, bookSource, chapter, js, urlNoOption) {
+                onBrowserOpenRequestedHook = { url, _, _ -> record(url) }
+                onBrowserAwaitRequestedHook = { url, _, _ ->
+                    record(url)
+                    StrResponse(url, "")
+                }
+            }
+        }
+        latch.await(RESOLVE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        return resolved.get()
+    }
+
+    /**
+     * 提取正文里的评论按钮：img 标签选项 JSON 带 style=TEXT 的评论泡。
+     * click 与旧源 js 原样带出，交给与用户点击共用的执行逻辑。
+     */
+    fun extractReviewButtons(content: String): List<ReviewButton> {
         if (!content.contains("<img", ignoreCase = true)) return emptyList()
-        val result = linkedMapOf<String, String>()
+        val result = linkedMapOf<String, ReviewButton>()
         val matcher = AppPattern.imgPattern.matcher(content)
         while (matcher.find()) {
             val src = matcher.group(1) ?: continue
             val options = extractUrlOptions(src) ?: continue
             val style = options["style"] ?: continue
             if (!style.equals("TEXT", ignoreCase = true)) continue
-            val click = options["click"].orEmpty().ifBlank { options["js"].orEmpty() }
-            result.putIfAbsent(src.trim(), click)
+            val key = src.trim()
+            if (result.containsKey(key)) continue
+            val urlNoOption = AnalyzeUrl.paramPattern.matcher(src).let { m ->
+                if (m.find()) src.take(m.start()) else null
+            }
+            result[key] = ReviewButton(
+                src = key,
+                click = options["click"]?.takeIf { it.isNotBlank() },
+                js = options["js"]?.takeIf { it.isNotBlank() },
+                urlNoOption = urlNoOption
+            )
         }
-        return result.map { it.key to it.value }
+        return result.values.toList()
     }
 
     /** 与 AnalyzeUrl.paramPattern 一致：URL 后第一个 `,` 到 `{` 的选项 JSON */
