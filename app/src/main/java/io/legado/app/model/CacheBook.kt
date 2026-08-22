@@ -178,6 +178,16 @@ object CacheBook {
         return null
     }
 
+    /** 当前活跃批量模型的目标正文进度（已缓存章, 目标章数）；空表示无活跃批量 */
+    fun activeBodyProgress(): Pair<Int, Int>? {
+        cacheBookMap.values.firstOrNull { it.isRun() }?.let { m ->
+            if (m.bodyTarget > 0) {
+                return m.bodyDone to m.bodyTarget
+            }
+        }
+        return null
+    }
+
     val isRun: Boolean
         get() {
             cacheBookMap.forEach {
@@ -214,9 +224,17 @@ object CacheBook {
         private val waitDownloadSet = linkedSetOf<Int>()
         private val onDownloadSet = linkedSetOf<Int>()
         private val tasks = CompositeCoroutine()
+        private val successUrls = linkedSetOf<String>()
         private var isStopped = false
         private var waitingRetry = false
         private var isLoading = false
+
+        /** 本次批量缓存的目标章数（addDownload 新增的章累计，停止后重置） */
+        private var targetChapterCount = 0
+
+        /** 已完成缓存的正文章数（按章 url 去重） */
+        val bodyDone: Int get() = successUrls.size
+        val bodyTarget: Int get() = targetChapterCount
 
         val waitCount get() = waitDownloadSet.size
         val onDownloadCount get() = onDownloadSet.size
@@ -251,6 +269,7 @@ object CacheBook {
             tasks.clear()
             isStopped = true
             isLoading = false
+            targetChapterCount = 0
             // 用户取消批量缓存：同样必须收掉 Body Phase，否则该书后续评论任务
             // 会一直“只登记不执行”；已登记任务（正文已完成）照常进入 Review Phase
             io.legado.app.help.review.ReviewSnapshotManager.cancelBodyPhase(book.bookUrl)
@@ -259,10 +278,14 @@ object CacheBook {
 
         @Synchronized
         fun addDownload(start: Int, end: Int) {
+            if (isStopped) targetChapterCount = 0
             isStopped = false
             for (i in start..end) {
                 if (!onDownloadSet.contains(i)) {
-                    waitDownloadSet.add(i)
+                    // 新加入目标队列的章才算本次目标；重复 addDownload 不重复计数
+                    if (waitDownloadSet.add(i)) {
+                        targetChapterCount++
+                    }
                 }
             }
             cacheBookMap[book.bookUrl] = this
@@ -277,6 +300,7 @@ object CacheBook {
             onDownloadSet.remove(chapter.index)
             successDownloadSet.add(chapter.primaryStr())
             errorDownloadMap.remove(chapter.primaryStr())
+            successUrls.add(chapter.url)
         }
 
         @Synchronized
