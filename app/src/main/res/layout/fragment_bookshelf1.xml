@@ -69,6 +69,26 @@
     </FrameLayout>
 
     <TextView
+        android:id="@+id/btn_fusion"
+        android:layout_width="wrap_content"
+        android:layout_height="@dimen/bookshelf_action_button_size"
+        android:layout_marginEnd="4dp"
+        android:background="@drawable/bg_discover_embedded_action"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center"
+        android:minWidth="@dimen/bookshelf_action_button_size"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:text="@string/bookshelf_fusion"
+        android:textColor="@color/primaryText"
+        android:textSize="15sp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/title_row"
+        app:layout_constraintEnd_toStartOf="@id/btn_select_all"
+        app:layout_constraintTop_toTopOf="@id/title_row" />
+
+    <TextView
         android:id="@+id/btn_select_all"
         android:layout_width="wrap_content"
         android:layout_height="@dimen/bookshelf_action_button_size"

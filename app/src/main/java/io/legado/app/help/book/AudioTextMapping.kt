@@ -141,6 +141,19 @@ data class AudioTextMapping(
         private val metadataTag = Regex("^\\[[A-Za-z][^]]*]$")
         private val inlineTimeTag = Regex("<\\d{1,3}:\\d{1,2}(?:[.:]\\d{1,3})?>")
 
+        /**
+         * 剥离一行中的 [mm:ss] 时间标签与行内 <mm:ss> 标签，供音频文本融合等
+         * 场景与 [parse] 共用同一套时间轴语义；不 trim，调用方按需处理。
+         */
+        fun stripTimelineMarks(line: String): String {
+            return line.replace(timeTag, "").replace(inlineTimeTag, "")
+        }
+
+        /** 是否为 LRC 元数据行（如 [ar:作者]），不参与正文段落匹配 */
+        fun isMetadataLine(line: String): Boolean {
+            return metadataTag.matches(line.trim())
+        }
+
         private fun normalizeParagraph(text: String): String {
             return text.trim { it.isWhitespace() || it == '\u00A0' }
         }
