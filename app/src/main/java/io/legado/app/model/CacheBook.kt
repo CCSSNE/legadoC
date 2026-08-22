@@ -256,6 +256,8 @@ object CacheBook {
             }
             cacheBookMap[book.bookUrl] = this
             isLoading = false
+            // 批量缓存开始（Body Phase）：该批正文下载期间评论任务只登记不执行
+            io.legado.app.help.review.ReviewSnapshotManager.beginBodyPhase(book.bookUrl)
             postEvent(EventBus.UP_DOWNLOAD, book.bookUrl)
         }
 
@@ -309,6 +311,9 @@ object CacheBook {
                     CacheManifestHelper.refresh(book)
                 }
                 cacheBookMap.remove(book.bookUrl)
+                // 整批目标正文结束（Review Phase 开始）：登记过的评论任务正式执行，
+                // 评论进度不参与正文下载状态
+                io.legado.app.help.review.ReviewSnapshotManager.endBodyPhase(book.bookUrl)
             }
             postEvent(EventBus.UP_DOWNLOAD, book.bookUrl)
         }
