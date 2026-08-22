@@ -310,10 +310,13 @@
     <string name="fusion_type_invalid">The two selected books are of the same type; pick one audiobook and one text book</string>
     <string name="fusion_info_mismatch">The two books differ in name or author and cannot be fused</string>
     <string name="fusion_confirm_title">Fuse reviews into audiobook</string>
-    <string name="fusion_confirm_message">Only chapters already cached on both books are processed, no downloading. Comment buttons found on matched paragraphs of the text book will be attached to the corresponding subtitles of the audiobook. Continue?</string>
+    <string name="fusion_confirm_message">Only chapters already cached on both books are processed, no downloading. Comment buttons found on matched paragraphs of the text book will be attached to the corresponding subtitles of the audiobook; the overlay is stored separately and never overwrites the original subtitles, so refreshing the audio source will not remove it. If fused before, this regenerates from the current text content and replaces the previous overlay. Continue?</string>
     <string name="fusion_done">Fusion finished: %1$d chapters paired, %2$d chapters updated, %3$d comment buttons migrated</string>
     <string name="fusion_nothing">Fusion finished: no paragraph comment buttons to migrate were found in cached chapters</string>
     <string name="fusion_failed">Fusion failed: %1$s</string>
+    <string name="fusion_cancel_confirm_title">Remove fused comments</string>
+    <string name="fusion_cancel_confirm_message">This audiobook has fused comment buttons attached. Removing them restores the original subtitles. Continue?</string>
+    <string name="fusion_cancel_done">Fusion removed: %1$d chapters cleaned</string>
     <string name="select_cancel_count">Cancel select all(%1$d/%2$d)</string>
     <string name="dark_theme">Dark mode</string>
     <string name="welcome">Welcome page</string>
@@ -1513,6 +1516,10 @@
     <string name="image_retain_number">Number of manga reservations</string>
     <string name="export_pics_file">Export Picture Files</string>
     <string name="export_bookmarks">Export bookmarks</string>
+    <string name="sync_cache_review">Cache comment snapshots on refresh</string>
+    <string name="sync_cache_review_summary">When downloading (caching) chapters, also snapshot the real comment page in the background; text always downloads first and comment failures never affect text</string>
+    <string name="export_reviews">Export comments</string>
+    <string name="export_reviews_summary">Include cached comment page snapshots in the TXT-ZIP archive</string>
     <!-- string end -->
     <string name="error_decode_bitmap">Fail to decode bitmap</string>
     <string name="error_image_url_empty">Image url is empty, check replacement rules</string>

@@ -543,28 +543,55 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     /**
-     * 「融合」：把文字书里已有的段落评论入口迁移到同名同作者的有声书。
+     * 「融合」：把文字书里已有的段落评论入口挂载到同名同作者的有声书。
      * Audio = 主体（音频与字幕不变），Text 只提供评论元数据；
-     * 仅处理双方已缓存的章节，不联网下载。
+     * 仅处理双方已缓存的章节，不联网下载。融合结果单独保存为 overlay，
+     * 不覆盖有声书原始字幕，支持重新融合与取消融合。
      */
     fun fuseSelectedBooks() {
-        if (selectedCollections.isNotEmpty() || selectedBooks.size != 2) {
+        if (selectedCollections.isNotEmpty()) {
             toastOnUi(R.string.fusion_need_two_books)
             return
         }
-        val books = selectedBookList()
-        val audioBook = books.singleOrNull { it.isAudio }
-        val textBook = books.singleOrNull { !it.isAudio && !it.isVideo && !it.isImage }
-        if (audioBook == null || textBook == null) {
-            toastOnUi(R.string.fusion_type_invalid)
-            return
+        when (selectedBooks.size) {
+            2 -> {
+                val books = selectedBookList()
+                val audioBook = books.singleOrNull { it.isAudio }
+                val textBook = books.singleOrNull { !it.isAudio && !it.isVideo && !it.isImage }
+                if (audioBook == null || textBook == null) {
+                    toastOnUi(R.string.fusion_type_invalid)
+                    return
+                }
+                if (audioBook.name.trim() != textBook.name.trim() ||
+                    audioBook.author.trim() != textBook.author.trim()
+                ) {
+                    toastOnUi(R.string.fusion_info_mismatch)
+                    return
+                }
+                confirmFusion(audioBook, textBook)
+            }
+
+            1 -> confirmCancelFusion(selectedBookList().single().takeIf { it.isAudio })
+
+            else -> toastOnUi(R.string.fusion_need_two_books)
         }
-        val sameName = audioBook.name.trim() == textBook.name.trim()
-        val sameAuthor = audioBook.author.trim() == textBook.author.trim()
-        if (!sameName || !sameAuthor) {
-            toastOnUi(R.string.fusion_info_mismatch)
-            return
+    }
+
+    /** 当前选择能否触发有效操作：合法两本，或单个有声书（可能取消融合） */
+    fun fusionActionAvailable(): Boolean {
+        if (selectedCollections.isNotEmpty() || selectedBooks.isEmpty()) return false
+        if (selectedBooks.size == 2) {
+            val books = selectedBookList()
+            val audioBook = books.singleOrNull { it.isAudio }
+            val textBook = books.singleOrNull { !it.isAudio && !it.isVideo && !it.isImage }
+            if (audioBook == null || textBook == null) return false
+            return audioBook.name.trim() == textBook.name.trim() &&
+                audioBook.author.trim() == textBook.author.trim()
         }
+        return selectedBooks.size == 1 && selectedBookList().single().isAudio
+    }
+
+    private fun confirmFusion(audioBook: Book, textBook: Book) {
         alert(
             titleResource = R.string.fusion_confirm_title,
             messageResource = R.string.fusion_confirm_message
@@ -590,7 +617,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             if (result.migratedAnything) {
                 AppLog.put(
                     "融合评论完成 ${textBook.name} -> ${audioBook.name}：" +
-                        "配对 ${result.pairedChapters} 章，写入 ${result.fusedChapters} 章，" +
+                        "配对 ${result.pairedChapters} 章，挂载 ${result.fusedChapters} 章，" +
                         "迁移 ${result.migratedEntries} 个评论入口"
                 )
                 toastOnUi(
@@ -605,6 +632,47 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
                 toastOnUi(R.string.fusion_nothing)
             }
             clearSelection()
+        }
+    }
+
+    /** 单个有声书：已有融合 overlay 时确认取消；否则提示需要两本书 */
+    private fun confirmCancelFusion(audioBook: Book?) {
+        if (audioBook == null) {
+            toastOnUi(R.string.fusion_need_two_books)
+            return
+        }
+        viewLifecycleOwner.lifecycleScope.launch {
+            val hasOverlay = withContext(Dispatchers.IO) {
+                appDb.bookChapterDao.getChapterList(audioBook.bookUrl)
+                    .any { it.getVariable(AudioTextFusion.OVERLAY_KEY).isNotBlank() }
+            }
+            if (!hasOverlay) {
+                toastOnUi(R.string.fusion_need_two_books)
+                return@launch
+            }
+            alert(
+                titleResource = R.string.fusion_cancel_confirm_title,
+                messageResource = R.string.fusion_cancel_confirm_message
+            ) {
+                okButton {
+                    viewLifecycleOwner.lifecycleScope.launch {
+                        val removed = try {
+                            withContext(Dispatchers.IO) {
+                                AudioTextFusion.removeFusionOverlay(audioBook)
+                            }
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            AppLog.put("取消融合失败 ${audioBook.name}", e)
+                            toastOnUi(getString(R.string.fusion_failed, e.localizedMessage ?: "unknown"))
+                            return@launch
+                        }
+                        toastOnUi(getString(R.string.fusion_cancel_done, removed))
+                        clearSelection()
+                    }
+                }
+                noButton()
+            }
         }
     }
 

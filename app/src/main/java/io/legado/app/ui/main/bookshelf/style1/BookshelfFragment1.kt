@@ -215,6 +215,9 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
         val selecting = currentFragment?.isSelecting() == true
         binding.btnSelectAll.visibility = if (selecting) View.VISIBLE else View.GONE
         binding.btnFusion.visibility = if (selecting) View.VISIBLE else View.GONE
+        val fusionAvailable = currentFragment?.fusionActionAvailable() == true
+        binding.btnFusion.isEnabled = fusionAvailable
+        binding.btnFusion.alpha = if (fusionAvailable) 1f else 0.38f
         if (selecting) {
             binding.btnSecondaryTagsExpand.visibility = View.GONE
         } else {
