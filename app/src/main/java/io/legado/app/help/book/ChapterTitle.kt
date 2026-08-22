@@ -25,6 +25,11 @@ object ChapterTitle {
         Pattern.compile("^(?:$NUMBER_CHARS[,:、])*($NUMBER_CHARS)(?:[,:、]|\\.[^\\d])")
     }
 
+    private val volumePattern by lazy {
+        // 支持“第N卷/部/册”与“卷N/部N/册N”两种习惯写法；中文前后无 \w 边界，不能加 \b
+        Pattern.compile("(?:第?($NUMBER_CHARS)[卷部册]|[卷部册]($NUMBER_CHARS))")
+    }
+
     /** 解析章节名中的章节号（“第N章/回/集……”“N、标题”等形态）；解析失败返回 -1 */
     fun num(chapterName: String?): Int {
         chapterName ?: return -1
@@ -36,5 +41,16 @@ object ChapterTitle {
                     )?.group(1)
                 ?: "-1"
         )
+    }
+
+    /** 解析章节名中的卷号（“第X卷/部/册”“X卷”）；无卷标记返回 null */
+    fun volume(chapterName: String?): Int? {
+        chapterName ?: return null
+        val normalized = StringUtils.fullToHalf(chapterName).replace(spaceRegex, "")
+        val matcher = volumePattern.matcher(normalized)
+        if (!matcher.find()) return null
+        val volumeText = matcher.group(1)?.takeIf { it.isNotEmpty() } ?: matcher.group(2) ?: return null
+        val volume = StringUtils.stringToInt(volumeText)
+        return volume.takeIf { it >= 0 }
     }
 }
