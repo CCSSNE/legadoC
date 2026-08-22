@@ -246,4 +246,27 @@ class AudioTextMappingTest {
             )
         )
     }
+
+    @Test
+    fun `binding tolerates inline comment img markup vs review placeholder`() {
+        // 融合行内评论泡后：字幕侧保留原始 <img> 标记，排版侧渲染成 ꧁ 占位符；
+        // 两形态归一化后仍能绑上，真实文字差异照旧拒绝
+        val mapping = AudioTextMapping.parse(
+            "[00:01.00]第一句<img src=\"https://a.test/btn.png\">\n[00:03.00]第二句"
+        )
+
+        val binding = mapping.bindLayout(
+            listOf(
+                AudioTextMapping.LayoutParagraph(0, "Chapter title", isStructural = true),
+                AudioTextMapping.LayoutParagraph(1, "\u3000\u3000第一句\uA9C1", isStructural = false),
+                AudioTextMapping.LayoutParagraph(2, "\u3000\u3000第二句", isStructural = false),
+            )
+        )
+
+        assertEquals(2, binding.paragraphCount)
+        assertEquals(1_000, binding.timeForLayoutParagraph(1))
+        assertEquals(3_000, binding.timeForLayoutParagraph(2))
+        assertEquals(1, binding.layoutParagraphAt(1_000))
+        assertEquals(2, binding.layoutParagraphAt(3_000))
+    }
 }

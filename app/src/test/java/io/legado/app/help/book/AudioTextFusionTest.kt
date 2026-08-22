@@ -14,10 +14,6 @@ class AudioTextFusionTest {
     private val reviewImg =
         """<img src="https://a.test/btn.png,{"style":"TEXT","click":"showReview()"}">"""
 
-    // 迁移后渲染端可识别形态：src 去选项，style/click 转成 data-legado-* 属性
-    private val migratedReviewImg =
-        """<img src="https://a.test/btn.png" data-legado-style="TEXT" data-legado-click="showReview()">"""
-
     private fun chapter(url: String, title: String, index: Int) =
         BookChapter(url = url, title = title, index = index)
 
@@ -72,7 +68,7 @@ class AudioTextFusionTest {
     }
 
     @Test
-    fun `migrated button carries legado attributes instead of huge unfocusable img`() {
+    fun `comment button payload keeps original src json form for inline rendering`() {
         // 书源评论泡：src 带单引号 JSON 选项，点击 JS 内含双引号参数
         val svg = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjx0ZXh0PjE8L3RleHQ+PC9zdmc+"
         val click = """showCmt("7369127130480774169","7371011775312970265","0","105195")"""
@@ -81,19 +77,16 @@ class AudioTextFusionTest {
 
         val insertions = AudioTextFusion.fuseOverlay(line, "[00:01.00]这一段有评论")!!
         val payload = insertions[0].payload
-        // src 去选项后缀，style/click 转 data-legado-* 属性（渲染端 usehtml 路径才可识别）
-        assertTrue("actual: $payload", payload.contains("""<img src="$svg""""))
-        assertFalse(payload.contains("'style'"))
-        assertTrue("actual: $payload", payload.contains("""data-legado-style="TEXT""""))
-        // 点击 JS 中双引号转义为 &quot;，属性不会被截断
-        assertTrue(
-            "actual: $payload",
-            payload.contains("""data-legado-click="showCmt(&quot;7369127130480774169&quot;,&quot;7371011775312970265&quot;,&quot;0&quot;,&quot;105195&quot;)""""),
+        // 行内评论泡保持书源原形态（src 保留选项 JSON，不包 usehtml、不改写 data-legado），
+        // 阅读页正常正文路径按 src JSON 的 TEXT 样式识别为行内评论泡
+        assertEquals("actual: $payload", img, payload)
+
+        // 行内插入：评论泡紧随字幕行文字末尾，与段落文字同行
+        val fused = AudioTextFusion.applyOverlay(
+            "[00:01.00]这一段有评论",
+            AudioTextFusion.buildOverlay(insertions)
         )
-        assertEquals(
-            """<usehtml><img src="$svg" data-legado-style="TEXT" data-legado-click="showCmt(&quot;7369127130480774169&quot;,&quot;7371011775312970265&quot;,&quot;0&quot;,&quot;105195&quot;)"></usehtml>""",
-            payload
-        )
+        assertEquals("[00:01.00]这一段有评论$img", fused)
     }
 
     @Test
@@ -125,7 +118,7 @@ class AudioTextFusionTest {
         // 无载荷的第二段也参与占位
         assertEquals(3, entries.size)
         assertEquals("第一段", entries[0].key)
-        assertTrue(entries[0].payload.contains("<usehtml>$migratedReviewImg</usehtml>"))
+        assertTrue(entries[0].payload.startsWith(reviewImg))
         assertTrue(entries[0].payload.contains("<center>评论按钮</center>"))
         assertEquals("第二段无评论", entries[1].key)
         assertEquals("", entries[1].payload)
@@ -146,7 +139,7 @@ class AudioTextFusionTest {
         // 装饰块与第一段之间隔了空行：不归属；第二段无载荷但保留占位
         assertEquals(2, entries.size)
         assertEquals("第一段", entries[0].key)
-        assertEquals("<usehtml>$migratedReviewImg</usehtml>", entries[0].payload)
+        assertEquals(reviewImg, entries[0].payload)
         assertEquals("第二段", entries[1].key)
         assertEquals("", entries[1].payload)
     }
@@ -162,16 +155,17 @@ class AudioTextFusionTest {
         assertEquals(1, insertions.size)
         assertEquals("第一句", insertions[0].anchor)
         assertEquals(1, insertions[0].occurrence)
-        assertEquals("<usehtml>$migratedReviewImg</usehtml>", insertions[0].payload)
+        assertEquals(reviewImg, insertions[0].payload)
 
         val fused = AudioTextFusion.applyOverlay(lyric, AudioTextFusion.buildOverlay(insertions))
         val mapping = AudioTextMapping.parse(fused)
-        assertEquals(listOf("第一句", "第二句"), mapping.paragraphs)
+        // 评论泡行内插入字幕行尾：同一显示段 = 字幕文字 + 原 img 标记，
+        // 不再生成独立的 usehtml 结构行
+        assertEquals(listOf("第一句$reviewImg", "第二句"), mapping.paragraphs)
         assertEquals(listOf(1_000, 3_000), mapping.cues.map { it.startMs })
         assertEquals(
             listOf(
-                "第一句",
-                "<usehtml>$migratedReviewImg</usehtml>",
+                "第一句$reviewImg",
                 "第二句",
             ),
             mapping.displayContents()
@@ -204,7 +198,7 @@ class AudioTextFusionTest {
         val insertions = AudioTextFusion.fuseOverlay(textContent, lyric)!!
         val fused = AudioTextFusion.applyOverlay(lyric, AudioTextFusion.buildOverlay(insertions))
         assertTrue(
-            fused.contains("[00:05.000][00:07.00]第一章开端\n<usehtml>$migratedReviewImg</usehtml>")
+            fused.contains("[00:05.000][00:07.00]第一章开端$reviewImg")
         )
     }
 
@@ -271,7 +265,8 @@ class AudioTextFusionTest {
         val fused = AudioTextFusion.applyOverlay(lyric, overlay)
 
         assertTrue(fused.indexOf("<usehtml>") > fused.indexOf("[00:02.00]"))
-        assertTrue(fused.startsWith("[00:01.00]重复段\n[00:02.00]重复段\n<usehtml>"))
+        // 评论入口行内插入字幕行尾：不再以独立 usehtml 行追加
+        assertTrue(fused.startsWith("[00:01.00]重复段\n[00:02.00]重复段<usehtml>"))
     }
 
     @Test
@@ -284,7 +279,7 @@ class AudioTextFusionTest {
 
         val refreshed = "[00:00.500]第一句\r\n[00:04.00]第二句"
         val fused = AudioTextFusion.applyOverlay(refreshed, overlayJson)
-        assertTrue(fused.contains("[00:00.500]第一句\r\n<usehtml>$migratedReviewImg</usehtml>"))
+        assertTrue(fused.contains("[00:00.500]第一句\r$reviewImg"))
 
         val changed = "[00:01.00]第一句（修订）\n[00:03.00]第二句"
         assertEquals(changed, AudioTextFusion.applyOverlay(changed, overlayJson))
@@ -305,8 +300,8 @@ class AudioTextFusionTest {
 
     @Test
     fun `legacy inline payload in lyric does not double mount`() {
-        // 模拟旧版本直写后的 lyric：锚点行后已紧跟同一 payload 块
-        val lyric = "[00:01.00]第一句\n<usehtml>$reviewImg</usehtml>\n[00:03.00]第二句"
+        // 模拟旧版本直写后的 lyric：锚点行行尾已紧跟同一评论入口（行内形态）
+        val lyric = "[00:01.00]第一句<usehtml>$reviewImg</usehtml>\n[00:03.00]第二句"
         val overlayJson = AudioTextFusion.buildOverlay(
             listOf(
                 AudioTextFusion.OverlayInsertion(
@@ -357,7 +352,7 @@ class AudioTextFusionTest {
         val insertions = AudioTextFusion.fuseOverlay(textContent, lyric)!!
         val fused = AudioTextFusion.applyOverlay(lyric, AudioTextFusion.buildOverlay(insertions))
         assertTrue(fused.contains("<usehtml>[12:34]原生评论区按钮</usehtml>"))
-        assertTrue(fused.contains("<usehtml>$migratedReviewImg</usehtml>"))
+        assertTrue(fused.contains(reviewImg))
     }
 
     // ---------- P0 整本书 reconcile ----------
