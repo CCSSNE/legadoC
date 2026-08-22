@@ -1268,11 +1268,11 @@
     <string name="image_retain_number">漫画保留数量</string>
     <string name="export_pics_file">导出图片</string>
     <string name="export_bookmarks">导出书签</string>
-    <string name="sync_cache_review">刷新时同步缓存评论</string>
-    <string name="sync_cache_review_summary">下载(缓存)章节时，正文完成后在后台低优先级抓取真实评论页快照；评论失败不影响正文</string>
+    <string name="sync_cache_review">缓存评论</string>
+    <string name="sync_cache_review_summary">正文缓存完成后，在后台抓取真实评论页快照；评论失败不影响正文</string>
     <string name="export_reviews">导出评论</string>
     <string name="export_reviews_summary">TXT-ZIP 压缩包内附带已缓存的评论页快照</string>
-    <string name="review_sync_running">正在后台同步缓存评论页快照</string>
+    <string name="review_sync_running">正在缓存评论页快照</string>
     <string name="review_sync_waiting">…</string>
     <string name="review_sync_notification_progress">%1$s · %2$s · 快照 %3$d/%4$d · 已完成 %5$d 章</string>
     <string name="review_open_mode">评论打开方式</string>

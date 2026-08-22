@@ -1520,11 +1520,11 @@
     <string name="image_retain_number">Number of manga reservations</string>
     <string name="export_pics_file">Export Picture Files</string>
     <string name="export_bookmarks">Export bookmarks</string>
-    <string name="sync_cache_review">Cache comment snapshots on refresh</string>
-    <string name="sync_cache_review_summary">When downloading (caching) chapters, also snapshot the real comment page in the background; text always downloads first and comment failures never affect text</string>
+    <string name="sync_cache_review">Cache comments</string>
+    <string name="sync_cache_review_summary">After body caching, fetch real comment-page snapshots in the background; comment failures never affect body content</string>
     <string name="export_reviews">Export comments</string>
     <string name="export_reviews_summary">Include cached comment page snapshots in the TXT-ZIP archive</string>
-    <string name="review_sync_running">Syncing cached comment snapshots in the background</string>
+    <string name="review_sync_running">Caching comment-page snapshots</string>
     <string name="review_sync_waiting">…</string>
     <string name="review_sync_notification_progress">%1$s · %2$s · %3$d/%4$d snapshots · %5$d chapters done</string>
     <string name="review_open_mode">Comment open mode</string>

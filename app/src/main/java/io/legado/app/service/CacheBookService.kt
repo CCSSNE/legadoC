@@ -99,6 +99,7 @@ class CacheBookService : BaseService() {
 
     override fun onDestroy() {
         finishNotification()
+        stopForeground(false)
         isRun = false
         cachePool.close()
         CacheBook.close()
@@ -216,6 +217,10 @@ class CacheBookService : BaseService() {
 
     private fun finishNotification() {
         if (resultNotified) return
+        if (io.legado.app.help.review.ReviewSnapshotManager.hasPendingTasks()) {
+            AppLog.put("正文缓存结束，评论任务仍在队列，保留统一通知交给评论阶段")
+            return
+        }
         resultNotified = true
         val failure = terminalFailure
         val content = failure ?: getString(
@@ -240,7 +245,7 @@ class CacheBookService : BaseService() {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setContentIntent(activityPendingIntent<CacheActivity>("cacheActivity"))
             .build()
-        notificationManager.notify(NotificationId.CacheBookResult, notification)
+        notificationManager.notify(NotificationId.CacheBookService, notification)
     }
 
     /** 通知文字：正文 x/y · 评论 a/b（y = 本次缓存目标章数，不是全书总章数）；无活跃书时回退下载摘要 */
