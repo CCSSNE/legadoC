@@ -205,9 +205,20 @@ class ReviewCacheService : BaseService() {
                         activeCount.incrementAndGet()
                         try {
                             // 单任务异常隔离：一个任务失败只记日志，绝不打死整个 Review Phase
-                            runCatching { ReviewSnapshotManager.processTask(task) }.onFailure {
+                            val success = runCatching { ReviewSnapshotManager.processTask(task) }
+                                .onFailure {
                                 io.legado.app.constant.AppLog.put(
                                     "评论快照任务处理失败 ${task.key}\n${it.localizedMessage}", it
+                                )
+                                }
+                                .getOrDefault(false)
+                            val bookUrl = task.key.substringBefore('|')
+                            val chapterIndex = task.key.substringAfter('|').toIntOrNull()
+                            if (chapterIndex != null) {
+                                io.legado.app.help.cache.CacheReviewWorkerRegistry.onChapterFinished(
+                                    bookUrl,
+                                    chapterIndex,
+                                    success,
                                 )
                             }
                         } finally {
@@ -220,6 +231,9 @@ class ReviewCacheService : BaseService() {
     }
 
     override fun onDestroy() {
+        if (stopRequested || !ReviewSnapshotManager.hasPendingTasks()) {
+            io.legado.app.help.cache.CacheReviewWorkerRegistry.onServiceFinished(stopRequested)
+        }
         val state = ReviewSnapshotManager.syncState.value
         val finalText = if (stopRequested) {
             stopText ?: getString(R.string.cache_manage_task_cancelled)

@@ -29,7 +29,13 @@ import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.isType
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.book.removeType
-import io.legado.app.model.CacheBook
+import io.legado.app.help.cache.CacheCoordinator
+import io.legado.app.help.cache.CacheKind
+import io.legado.app.help.cache.CachePhase
+import io.legado.app.help.cache.CacheRequest
+import io.legado.app.help.cache.CacheRequestSource
+import io.legado.app.help.cache.CacheUnitKey
+import io.legado.app.help.config.AppConfig
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.AnalyzeUrl.Companion.getMediaRequest
 import io.legado.app.model.webBook.WebBook
@@ -293,9 +299,17 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
             .sorted()
             .toList()
         if (indexes.isEmpty()) return 0
-        indexes.toRanges().forEach { (start, end) ->
-            CacheBook.start(appCtx, book, start, end)
-        }
+        CacheCoordinator.submit(
+            CacheRequest(
+                source = CacheRequestSource.CACHE_MANAGE,
+                kind = CacheKind.TEXT,
+                phase = CachePhase.BODY,
+                bookUrl = book.bookUrl,
+                bookName = book.name,
+                units = indexes.map { CacheUnitKey(book.bookUrl, it) },
+                reviewEnabled = AppConfig.syncCacheReview,
+            )
+        )
         return indexes.size
     }
 

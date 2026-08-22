@@ -3,6 +3,9 @@ package io.legado.app.help.cache
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
 import java.util.UUID
 
 /**
@@ -20,15 +23,25 @@ internal class CacheTaskStore(
     private val sessions = LinkedHashMap<String, CacheSessionState>()
     private val _snapshot = MutableStateFlow(CacheSnapshot())
     val snapshot: StateFlow<CacheSnapshot> = _snapshot.asStateFlow()
+    private val persistenceExecutor = Executors.newSingleThreadScheduledExecutor { runnable ->
+        Thread(runnable, "cache-task-persistence").apply { isDaemon = true }
+    }
+    private var pendingCheckpoint: ScheduledFuture<*>? = null
+    private var persistenceVersion = 0L
 
     init {
         val loaded = persistence.load()
         loaded.onFailure { error ->
             record(
                 CacheLogEventType.PERSISTENCE_LOAD_FAILED,
-                detail = error.localizedMessage,
+                detail = "load=${error.localizedMessage}",
             )
-            throw IllegalStateException("cache task state recovery failed", error)
+            persistence.recoverLoadFailure().onFailure { recoveryError ->
+                record(
+                    CacheLogEventType.PERSISTENCE_LOAD_FAILED,
+                    detail = "quarantine=${recoveryError.localizedMessage}",
+                )
+            }
         }
         loaded.getOrNull()?.let { restore(it) }
     }
@@ -214,7 +227,7 @@ internal class CacheTaskStore(
                 )
             }
             replaceTaskLocked(task.copy(units = units, updatedAt = System.currentTimeMillis()))
-            publishLocked()
+            publishLocked(persist = false)
         }
         record(
             if (status == CacheUnitStatus.FAILED) {
@@ -433,14 +446,37 @@ internal class CacheTaskStore(
                     detail = "tasks=${recovered.tasks.size} status=${recovered.status}",
                 )
             }
-            publishLocked(persist = false)
+            publishLocked()
         }
     }
 
     private fun publishLocked(persist: Boolean = true) {
         _snapshot.value = CacheSnapshot(sessions.values.toList())
-        if (!persist) return
-        persistence.save(_snapshot.value).onFailure { error ->
+        val version = ++persistenceVersion
+        if (!persist) {
+            scheduleCheckpointLocked(version)
+            return
+        }
+        pendingCheckpoint?.cancel(false)
+        pendingCheckpoint = null
+        saveSnapshot(_snapshot.value)
+    }
+
+    private fun scheduleCheckpointLocked(version: Long) {
+        pendingCheckpoint?.cancel(false)
+        pendingCheckpoint = persistenceExecutor.schedule(
+            {
+                synchronized(lock) {
+                    if (version == persistenceVersion) saveSnapshot(_snapshot.value)
+                }
+            },
+            500,
+            TimeUnit.MILLISECONDS,
+        )
+    }
+
+    private fun saveSnapshot(snapshot: CacheSnapshot) {
+        persistence.save(snapshot).onFailure { error ->
             record(
                 CacheLogEventType.PERSISTENCE_SAVE_FAILED,
                 detail = error.localizedMessage,

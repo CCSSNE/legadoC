@@ -80,6 +80,9 @@ object CacheCoordinator : CacheUiPort {
         }
     }
 
+    private val workerDispatcher: CacheWorkerDispatcher =
+        CacheWorkerDispatcherImpl(workerPort)
+
     override fun submit(request: CacheRequest): CacheSubmission {
         validateUiRequest(request)
         val session = store.createSession(request.bookName)
@@ -90,19 +93,29 @@ object CacheCoordinator : CacheUiPort {
             task.taskId,
             "source=${request.source} kind=${request.kind} phase=${request.phase}",
         )
-        return CacheSubmission(session.sessionId, task.taskId)
+        return CacheSubmission(session.sessionId, task.taskId).also {
+            CacheNotificationBridge.started(task)
+            workerDispatcher.start(it)
+        }
     }
 
     override fun pause(submission: CacheSubmission): Boolean {
-        return store.pauseTask(submission.sessionId, submission.taskId)
+        return store.pauseTask(submission.sessionId, submission.taskId).also {
+            if (it) workerDispatcher.pause(submission)
+        }
     }
 
     override fun resume(submission: CacheSubmission): Boolean {
-        return store.resumeTask(submission.sessionId, submission.taskId) != null
+        val lease = store.resumeTask(submission.sessionId, submission.taskId) ?: return false
+        currentTask(submission)?.let(CacheNotificationBridge::started)
+        workerDispatcher.resume(submission, lease)
+        return true
     }
 
     override fun cancel(submission: CacheSubmission): Boolean {
-        return store.beginCancel(submission.sessionId, submission.taskId)
+        return store.beginCancel(submission.sessionId, submission.taskId).also {
+            if (it) workerDispatcher.cancel(submission)
+        }
     }
 
     /** Only the text coordinator may append the REVIEW task to an existing session. */
@@ -140,11 +153,34 @@ object CacheCoordinator : CacheUiPort {
             task.taskId,
             "appended=REVIEW units=${task.units.size}",
         )
-        return CacheSubmission(sessionId, task.taskId)
+        return CacheSubmission(sessionId, task.taskId).also {
+            CacheNotificationBridge.started(task)
+            workerDispatcher.start(it)
+        }
     }
 
     internal fun currentTask(submission: CacheSubmission): CacheTaskState? {
         return store.currentTask(submission.sessionId, submission.taskId)
+    }
+
+    internal fun notifyTaskFinished(
+        lease: CacheWorkerLease,
+        result: CacheResult,
+        error: String? = null,
+    ) {
+        CacheNotificationBridge.finished(
+            currentTask(CacheSubmission(lease.sessionId, lease.taskId)),
+            result,
+            error,
+        )
+    }
+
+    internal fun notifyTaskFinished(
+        submission: CacheSubmission,
+        result: CacheResult,
+        error: String? = null,
+    ) {
+        CacheNotificationBridge.finished(currentTask(submission), result, error)
     }
 
     private fun validateUiRequest(request: CacheRequest) {
