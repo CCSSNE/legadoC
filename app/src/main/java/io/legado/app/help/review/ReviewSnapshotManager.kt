@@ -12,6 +12,7 @@ import io.legado.app.help.book.BookImgClick
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.StrResponse
+import io.legado.app.model.CacheBook
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.service.ReviewCacheService
 import io.legado.app.ui.login.SourceLoginJsExtensions
@@ -23,6 +24,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import splitties.init.appCtx
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -60,10 +62,16 @@ object ReviewSnapshotManager {
     data class ReviewSyncState(
         val bookUrl: String = "",
         val bookName: String = "",
+        /** 正文目标进度（本次批量目标章数），通知“正文 x/y”用 */
+        val bodyDone: Int = 0,
+        val bodyTotal: Int = 0,
+        /** 本次会话入队的评论任务总数（目标章数），通知“评论 a/b”用 */
+        val totalChapters: Int = 0,
+        val completedChapters: Int = 0,
         val currentChapterTitle: String = "",
+        /** 当前章评论按钮进度，通知“当前章快照 c/d”用 */
         val totalButtons: Int = 0,
-        val completedButtons: Int = 0,
-        val completedChapters: Int = 0
+        val completedButtons: Int = 0
     )
 
     private val _syncState = MutableStateFlow(ReviewSyncState())
@@ -168,6 +176,7 @@ object ReviewSnapshotManager {
      */
     fun enqueue(book: Book, chapter: BookChapter, force: Boolean = false) {
         var shouldStartService = false
+        refreshBodyState(book)
         synchronized(queueLock) {
             val existed = pendingForce.putIfAbsent(keyOf(book, chapter), force)
             if (existed == null) {
@@ -175,6 +184,7 @@ object ReviewSnapshotManager {
                     // Body Phase：只登记待抓任务，绝不在批量正文结束前启动 WebView 抓取
                 } else {
                     channel.trySend(Task(keyOf(book, chapter)))
+                    _syncState.update { it.copy(totalChapters = it.totalChapters + 1) }
                     shouldStartService = true
                 }
             } else if (force && existed != true) {
@@ -187,6 +197,15 @@ object ReviewSnapshotManager {
         }
     }
 
+    /** 同步正文目标进度到通知状态（正文通知“正文 x/y”用） */
+    private fun refreshBodyState(book: Book) {
+        val model = CacheBook.cacheBookMap[book.bookUrl]
+        val done = model?.bodyDone
+            ?: BookHelp.getChapterFiles(book).count { it.endsWith(".nb") }
+        val total = model?.bodyTarget ?: book.totalChapterNum
+        _syncState.update { it.copy(bodyDone = done, bodyTotal = total) }
+    }
+
     /** 批量缓存开始（Body Phase）：该书评论任务只登记不执行 */
     fun beginBodyPhase(bookUrl: String) {
         bodyPhaseBooks.add(bookUrl)
@@ -197,10 +216,13 @@ object ReviewSnapshotManager {
         bodyPhaseBooks.remove(bookUrl)
         var sentAny = false
         synchronized(queueLock) {
+            val book = appDb.bookDao.getBook(bookUrl)
+            if (book != null) refreshBodyState(book)
             pendingForce.keys
                 .filter { it.substringBefore('|') == bookUrl }
                 .forEach { key ->
                     channel.trySend(Task(key))
+                    _syncState.update { it.copy(totalChapters = it.totalChapters + 1) }
                     sentAny = true
                 }
         }

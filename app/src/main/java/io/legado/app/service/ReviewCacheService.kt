@@ -7,6 +7,7 @@ import io.legado.app.R
 import io.legado.app.base.BaseService
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.NotificationId
+import io.legado.app.help.config.AppConfig
 import io.legado.app.help.review.ReviewSnapshotManager
 import io.legado.app.help.review.ReviewSnapshotManager.ReviewSyncState
 import io.legado.app.utils.activityPendingIntent
@@ -64,6 +65,8 @@ class ReviewCacheService : BaseService() {
     private var workJob: Job? = null
     private var notifyJob: Job? = null
     private var lastNotifyTime = 0L
+    /** 正在执行任务的 worker 数：队列空时需全部 idle 才停服务 */
+    private val activeCount = java.util.concurrent.atomic.AtomicInteger(0)
 
     private val notificationBuilder by lazy {
         NotificationCompat.Builder(this, AppConst.channelIdReview)
@@ -97,24 +100,38 @@ class ReviewCacheService : BaseService() {
 
     private fun startWork() {
         workJob?.cancel()
+        val concurrency = AppConfig.reviewCacheConcurrency.coerceIn(1, 32)
         workJob = lifecycleScope.launch(Dispatchers.IO) {
-            while (isActive) {
-                // 先取出任务再判断，绝不用“取任务的函数”当“看看有没有”：
-                // 取出来的任务必须被处理，否则任务会永久丢失
-                var task = ReviewSnapshotManager.tryTakeTask()
-                if (task == null) {
-                    delay(1500)
-                    task = ReviewSnapshotManager.tryTakeTask()
-                    if (task == null) {
-                        stopSelf()
-                        break
+            repeat(concurrency) {
+                launch {
+                    while (isActive) {
+                        // 先取出任务再判断，绝不用“取任务的函数”当“看看有没有”：
+                        // 取出来的任务必须被处理，否则任务会永久丢失
+                        var task = ReviewSnapshotManager.tryTakeTask()
+                        if (task == null) {
+                            delay(1500)
+                            task = ReviewSnapshotManager.tryTakeTask()
+                            if (task == null) {
+                                // 全部 worker 都空闲且队列空时才停服务
+                                if (activeCount.get() == 0) {
+                                    stopSelf()
+                                    break
+                                }
+                                continue
+                            }
+                        }
+                        activeCount.incrementAndGet()
+                        try {
+                            // 单任务异常隔离：一个任务失败只记日志，绝不打死整个 Review Phase
+                            runCatching { ReviewSnapshotManager.processTask(task) }.onFailure {
+                                io.legado.app.constant.AppLog.put(
+                                    "评论快照任务处理失败 ${task.key}\n${it.localizedMessage}", it
+                                )
+                            }
+                        } finally {
+                            activeCount.decrementAndGet()
+                        }
                     }
-                }
-                // 单任务异常隔离：一个任务失败只记日志，绝不打死整个 Review Phase
-                runCatching { ReviewSnapshotManager.processTask(task) }.onFailure {
-                    io.legado.app.constant.AppLog.put(
-                        "评论快照任务处理失败 ${task.key}\n${it.localizedMessage}", it
-                    )
                 }
             }
         }
@@ -134,25 +151,28 @@ class ReviewCacheService : BaseService() {
     }
 
     /** 进度通知：当前章按钮进度（进度条），文本带书名/当前章/已完成章数 */
-    /** 通知文字：正文 x/y · 评论 a/b（总进度），与正文缓存通知同一格式 */
+    /** 通知文字：正文 x/y · 评论 a/b（y = 本次缓存目标章数），当前章有按钮进度时附“当前章快照 c/d” */
     private fun totalProgressText(state: ReviewSyncState): String {
-        val book = state.bookUrl.takeIf { it.isNotBlank() }
-            ?.let { io.legado.app.data.appDb.bookDao.getBook(it) }
-        if (book != null) {
-            val cachedText = io.legado.app.help.book.BookHelp.getChapterFiles(book)
-                .count { it.endsWith(".nb") }
-            val cachedReview = ReviewSnapshotManager.cachedReviewChapterCount(book)
+        val bodyTotal = state.bodyTotal.takeIf { it > 0 }
+            ?: state.bookUrl.takeIf { it.isNotBlank() }
+                ?.let { io.legado.app.data.appDb.bookDao.getBook(it) }?.totalChapterNum
+            ?: 0
+        val bodyDone = state.bodyDone
+        val reviewTotal = state.totalChapters.takeIf { it > 0 } ?: bodyTotal
+        val reviewDone = state.completedChapters.coerceAtMost(reviewTotal)
+        if (state.totalButtons > 0) {
+            // 评论区阶段：附当前章的评论泡/快照进度
             return getString(
-                R.string.download_count_review,
-                cachedText,
-                book.totalChapterNum,
-                cachedReview,
-                book.totalChapterNum
+                R.string.review_notification_detail,
+                bodyDone, bodyTotal,
+                reviewDone, reviewTotal,
+                state.completedButtons.coerceIn(0, state.totalButtons), state.totalButtons
             )
         }
         return getString(
-            R.string.review_sync_running,
-            state.bookName.ifBlank { getString(R.string.sync_cache_review) }
+            R.string.download_count_review,
+            bodyDone, bodyTotal,
+            reviewDone, reviewTotal
         )
     }
 
