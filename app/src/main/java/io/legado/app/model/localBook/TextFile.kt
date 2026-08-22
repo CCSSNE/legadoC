@@ -164,6 +164,9 @@ class TextFile(private var book: Book) {
         }
         lastVolumeTitle.value = ""
         val toc = arrayListOf<BookChapter>()
+        // 导出占位章（正文为字面量 "null"）：规则分析时只登记、不建目录，
+        // 全程保持偏移推进（后续章节 start 依赖占位章 end），最后统一移除。
+        val stubChapters = arrayListOf<BookChapter>()
         var bookWordCount = 0
         LocalBook.getBookInputStream(book).use { bis ->
             var blockContent: String
@@ -291,6 +294,9 @@ class TextFile(private var book: Book) {
                             if (chapterContent.isBlank()) {
                                 lastChapter.isVolume = true
                                 lastVolumeTitle.value = lastChapter.title
+                            } else if (chapterContent.isNullExportStub()) {
+                                // 导出占位章（正文为字面量 "null"）：登记待移除，不占目录
+                                stubChapters.add(lastChapter)
                             } else {
                                 lastChapter.isVolume = false
                             }
@@ -323,6 +329,9 @@ class TextFile(private var book: Book) {
                             if (chapterContent.isBlank()) {
                                 lastChapter.isVolume = true
                                 lastVolumeTitle.value = lastChapter.title
+                            } else if (chapterContent.isNullExportStub()) {
+                                // 导出占位章（正文为字面量 "null"）：登记待移除，不占目录
+                                stubChapters.add(lastChapter)
                             } else {
                                 lastChapter.isVolume = false
                             }
@@ -382,6 +391,10 @@ class TextFile(private var book: Book) {
                     toc.addAll(chapters)
                 }
             }
+        }
+        // 移除导出占位章：占位章的 start/end 已参与后续章节偏移计算，只删目录行不破坏偏移
+        if (stubChapters.isNotEmpty()) {
+            toc.removeAll(stubChapters)
         }
         System.gc()
         System.runFinalization()
@@ -511,6 +524,18 @@ class TextFile(private var book: Book) {
             var numE = 0
             var lastTitle: String? = null
             while (matcher.find()) {
+                // 导出占位章（正文为字面量 "null"）不参与匹配统计：其标题间距不足
+                // 100 字会被误判为“卷/目录”错误识别，导致本该可用的规则被整体拒绝，
+                // 最终落入按体积兜底切分、章节标题丢失（评论快照 remap 随之失败）。
+                val between = if (matcher.start() > start) {
+                    content.substring(start, matcher.start())
+                } else {
+                    ""
+                }
+                if (between.isNullExportStub()) {
+                    start = matcher.end()
+                    continue
+                }
                 val contentLength = matcher.start() - start
                 if (start == 0 || contentLength > 1000) {
                     val title = replacement(matcher.group(), tocRule.replacement, csNum, lastTitle, contentLength)
@@ -591,6 +616,20 @@ class TextFile(private var book: Book) {
 
 
             /**
+     * 导出占位章判定：章节正文为字面量 "null"。
+     * 旧版带评论 TXT 导出对未缓存章节写 `第N章 标题\n　　null` 占位，
+     * 这些占位章（连同标题）在重新导入时应被忽略，且不得干扰分章规则选中。
+     */
+    private fun CharSequence.isNullExportStub(): Boolean {
+        if (isEmpty()) return false
+        val compact = StringBuilder(length)
+        for (c in this) {
+            if (!c.isWhitespace()) compact.append(c)
+        }
+        return compact.length == 4 && compact.toString() == "null"
+    }
+
+    /**
      * 获取启用的目录规则
      */
     private fun getTocRules(): List<TxtTocRule> {
