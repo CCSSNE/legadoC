@@ -488,7 +488,14 @@ class ExportBookService : BaseService() {
                 dir.mkdirs()
                 ReviewSnapshotStore.listAll(book).forEach { snapshot ->
                     try {
-                        File(dir, ReviewSnapshotStore.fileName(snapshot.chapterIndex, snapshot.buttonSrc))
+                        val fileName = if (snapshot.chapterUrl.isNotBlank()) {
+                            ReviewSnapshotStore.fileName(snapshot.chapterUrl, snapshot.buttonSrc)
+                        } else {
+                            ReviewSnapshotStore.legacyFileNameForExport(
+                                snapshot.chapterIndex, snapshot.buttonSrc
+                            )
+                        }
+                        File(dir, fileName)
                             .writeText(GSON.toJson(snapshot), Charsets.UTF_8)
                     } catch (e: Exception) {
                         AppLog.put("导出评论快照失败: ${book.name} ${snapshot.chapterTitle}", e)
