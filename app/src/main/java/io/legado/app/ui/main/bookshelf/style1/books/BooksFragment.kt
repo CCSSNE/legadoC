@@ -31,7 +31,11 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.FragmentBooksBinding
+import io.legado.app.help.book.AudioTextFusion
+import io.legado.app.help.book.isAudio
+import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.lib.dialogs.alert
@@ -61,6 +65,7 @@ import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.model.SourceCallBack
 import io.legado.app.model.localBook.LocalBook
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -534,6 +539,72 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
                     clearSelection()
                 }
             }
+        }
+    }
+
+    /**
+     * 「融合」：把文字书里已有的段落评论入口迁移到同名同作者的有声书。
+     * Audio = 主体（音频与字幕不变），Text 只提供评论元数据；
+     * 仅处理双方已缓存的章节，不联网下载。
+     */
+    fun fuseSelectedBooks() {
+        if (selectedCollections.isNotEmpty() || selectedBooks.size != 2) {
+            toastOnUi(R.string.fusion_need_two_books)
+            return
+        }
+        val books = selectedBookList()
+        val audioBook = books.singleOrNull { it.isAudio }
+        val textBook = books.singleOrNull { !it.isAudio && !it.isVideo && !it.isImage }
+        if (audioBook == null || textBook == null) {
+            toastOnUi(R.string.fusion_type_invalid)
+            return
+        }
+        val sameName = audioBook.name.trim() == textBook.name.trim()
+        val sameAuthor = audioBook.author.trim() == textBook.author.trim()
+        if (!sameName || !sameAuthor) {
+            toastOnUi(R.string.fusion_info_mismatch)
+            return
+        }
+        alert(
+            titleResource = R.string.fusion_confirm_title,
+            messageResource = R.string.fusion_confirm_message
+        ) {
+            okButton { fuseAudioWithComments(audioBook, textBook) }
+            noButton()
+        }
+    }
+
+    private fun fuseAudioWithComments(audioBook: Book, textBook: Book) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val result = try {
+                withContext(Dispatchers.IO) {
+                    AudioTextFusion.fuseBooks(textBook, audioBook)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                AppLog.put("融合评论失败 ${textBook.name} -> ${audioBook.name}", e)
+                toastOnUi(getString(R.string.fusion_failed, e.localizedMessage ?: "unknown"))
+                return@launch
+            }
+            if (result.migratedAnything) {
+                AppLog.put(
+                    "融合评论完成 ${textBook.name} -> ${audioBook.name}：" +
+                        "配对 ${result.pairedChapters} 章，写入 ${result.fusedChapters} 章，" +
+                        "迁移 ${result.migratedEntries} 个评论入口"
+                )
+                toastOnUi(
+                    getString(
+                        R.string.fusion_done,
+                        result.pairedChapters,
+                        result.fusedChapters,
+                        result.migratedEntries,
+                    )
+                )
+            } else {
+                toastOnUi(R.string.fusion_nothing)
+            }
+            clearSelection()
         }
     }
 

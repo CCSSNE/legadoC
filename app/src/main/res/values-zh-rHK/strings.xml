@@ -214,6 +214,15 @@
     <string name="select_all">全選</string>
     <string name="select_all_count">全選 (%1$d/%2$d)</string>
     <string name="select_all_books_collections">全選(%1$d,%2$d)</string>
+    <string name="bookshelf_fusion">融合</string>
+    <string name="fusion_need_two_books">融合需要恰好選中兩本同名同作者的書：一本有聲書、一本文字書</string>
+    <string name="fusion_type_invalid">選中的兩本書類型相同，需要一本有聲書和一本文字書</string>
+    <string name="fusion_info_mismatch">兩本書的書名或作者不一致，無法融合</string>
+    <string name="fusion_confirm_title">融合評論到有聲書</string>
+    <string name="fusion_confirm_message">只處理雙方已經快取的章節，不連網下載。文字書中與聽書章節、段落符合的評論按鈕，將掛載到有聲書對應字幕位置。確定繼續嗎？</string>
+    <string name="fusion_done">融合完成：配對 %1$d 章，寫入 %2$d 章，遷移 %3$d 個評論按鈕</string>
+    <string name="fusion_nothing">融合完成：已快取章節中沒有找到可遷移的段落評論按鈕</string>
+    <string name="fusion_failed">融合失敗：%1$s</string>
     <string name="select_cancel_count">取消全選 (%1$d/%2$d)</string>
     <string name="dark_theme">深色模式</string>
     <string name="welcome">啟動頁</string>
