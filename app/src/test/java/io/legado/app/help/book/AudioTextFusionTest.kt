@@ -49,6 +49,23 @@ class AudioTextFusionTest {
         assertEquals("段落", insertions[0].anchor)
     }
 
+    @Test
+    fun `single quoted style option is recognized as review button`() {
+        // 书源常用单引号 JSON（与阅读页渲染一致），此前手写双引号正则漏判
+        val svg = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjx0ZXh0PjI8L3RleHQ+PC9zdmc+"
+        val img = """<img src="$svg,{'click':'showCmt("a","b")','style':'TEXT'}">"""
+        val line = "这一段有评论$img"
+        val (text, buttons) = AudioTextFusion.splitInlineCommentButtons(line)
+        assertEquals("这一段有评论", text)
+        assertEquals(1, buttons.size)
+        assertTrue(buttons.single().contains("showCmt"))
+
+        // 端到端：能挂载到对应字幕行
+        val insertions = AudioTextFusion.fuseOverlay(line, "[00:01.00]这一段有评论")!!
+        assertEquals(1, insertions.size)
+        assertEquals("这一段有评论", insertions[0].anchor)
+    }
+
     // ---------- usehtml 块归属（按原始 offset 邻接） ----------
 
     @Test

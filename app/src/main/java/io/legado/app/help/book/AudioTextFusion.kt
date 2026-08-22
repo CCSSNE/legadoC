@@ -8,6 +8,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.utils.GSON
 import io.legado.app.utils.StringUtils
+import io.legado.app.utils.fromJsonObject
 
 /**
  * 音频书 × 文本书 评论融合。
@@ -611,17 +612,17 @@ object AudioTextFusion {
 
     /**
      * 评论泡判定：src 携带的选项 JSON 里 style 为 TEXT（与排版层同一约定）。
-     * 选项 JSON 分隔复用 [AppPattern.urlOptionPattern]（AnalyzeUrl.paramPattern
-     * 同一口径），URL 自身含逗号也能正确定位。
+     * 选项 JSON 用 [AppPattern.urlOptionPattern] 定位起点后交给 [GSON]
+     * lenient 解析（书源常用单引号 JSON，如 `{'click':'…','style':'TEXT'}`，
+     * 与阅读页渲染、BookImgClick.parseSrcOptions 完全同一口径）。
      */
     private fun isReviewButton(src: String?): Boolean {
         if (src.isNullOrEmpty()) return false
         val optionMatcher = AppPattern.urlOptionPattern.matcher(src)
         if (!optionMatcher.find()) return false
         val optionJson = src.substring(optionMatcher.end())
-        val style = Regex("\"style\"\\s*:\\s*\"([^\"]*)\"", RegexOption.IGNORE_CASE)
-            .find(optionJson)?.groupValues?.get(1)
-        return style.equals("TEXT", ignoreCase = true)
+        val options = GSON.fromJsonObject<Map<String, String>>(optionJson).getOrNull() ?: return false
+        return options["style"].equals("TEXT", ignoreCase = true)
     }
 
     /** 组装要写入 Audio 字幕行之后的载荷：行内评论图包进一个 usehtml 块 */
