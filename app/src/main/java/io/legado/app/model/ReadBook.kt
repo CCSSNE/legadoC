@@ -582,7 +582,8 @@ object ReadBook : CoroutineScope by MainScope() {
         }
         val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, index)
             ?: return@withContext null
-        val rawContent = BookHelp.getContent(book, chapter) ?: downloadAwait(chapter)
+        val cached = BookHelp.getContent(book, chapter)
+        val rawContent = cached ?: downloadAwait(chapter)
         val contentProcessor = ContentProcessor.get(book.name, book.origin)
         val displayTitle = chapter.getDisplayTitle(
             contentProcessor.getTitleReplaceRules(),
@@ -600,6 +601,8 @@ object ReadBook : CoroutineScope by MainScope() {
             simulatedChapterSize
         )
         textChapter.layoutChannel.receiveAsFlow().collect()
+        // downloadAwait 刚下载的章节：正文排版（最终完成）后才入队评论
+        if (cached == null) notifyChapterDownloaded(book, chapter)
         return@withContext textChapter
     }
 
@@ -747,8 +750,11 @@ object ReadBook : CoroutineScope by MainScope() {
             try {
                 val book = book!!
                 val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, index)!!
-                val content = BookHelp.getContent(book, chapter) ?: downloadAwait(chapter)
+                val cached = BookHelp.getContent(book, chapter)
+                val content = cached ?: downloadAwait(chapter)
                 contentLoadFinishAwait(book, chapter, content, upContent, resetPageOffset)
+                // downloadAwait 刚下载的章节：正文刷新状态收尾后才入队评论
+                if (cached == null) notifyChapterDownloaded(book, chapter)
                 success?.invoke()
             } catch (e: Exception) {
                 AppLog.put("加载正文出错\n${e.localizedMessage}")
@@ -756,6 +762,19 @@ object ReadBook : CoroutineScope by MainScope() {
                 removeLoading(index)
             }
         }
+    }
+
+    /**
+     * downloadAwait 路径的正文最终完成（排版/刷新状态收尾）后统一入队评论，
+     * 与 CacheBook 下载路径的出口语义一致；缓存命中不下发，避免无意义入队。
+     */
+    private fun notifyChapterDownloaded(book: Book, chapter: BookChapter) {
+        val source = appDb.bookSourceDao.getBookSource(book.origin) ?: return
+        io.legado.app.help.review.ReviewSnapshotManager.enqueueIfEnabled(
+            source, book, chapter,
+            force = io.legado.app.help.review.ReviewSnapshotManager
+                .isUserRefreshActive(book.bookUrl, chapter.index)
+        )
     }
 
     /**

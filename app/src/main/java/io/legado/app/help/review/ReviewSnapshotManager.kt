@@ -41,11 +41,7 @@ import java.util.concurrent.atomic.AtomicReference
  */
 object ReviewSnapshotManager {
 
-    private data class Task(
-        val bookUrl: String,
-        val chapterIndex: Int,
-        val force: Boolean
-    )
+    private data class Task(val key: String)
 
     /** 评论按钮模型：click / 旧源 js 二选一 */
     data class ReviewButton(
@@ -59,9 +55,17 @@ object ReviewSnapshotManager {
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val channel = Channel<Task>(Channel.UNLIMITED)
-    private val pendingKeys = ConcurrentHashMap.newKeySet<String>()
 
-    /** 用户刷新标记：menu 刷新/重新缓存期间置位，有效期内下载成功都强制重抓评论 */
+    /**
+     * 待处理任务的 force 聚合表（key = bookUrl|chapterIndex）。
+     * 负责两件事：
+     * - 去重：已存在代表该章已在队列中，不重复入队；
+     * - force 合并：后入队的 force=true 必须提升已排队任务的 force，
+     *   绝不允许先 false 后 true 时把 true 丢掉。
+     */
+    private val pendingForce = ConcurrentHashMap<String, Boolean>()
+
+    /** 用户刷新标记：按具体章节追踪（key = bookUrl|chapterIndex → 标记时间） */
     private val userRefreshMarks = ConcurrentHashMap<String, Long>()
     private const val MARK_TTL_MS = 15 * 60 * 1000L
 
@@ -98,30 +102,38 @@ object ReviewSnapshotManager {
      * 因此缓存流程在跳过正文下载前调用本方法直接入队。
      */
     fun enqueue(book: Book, chapter: BookChapter, force: Boolean = false) {
-        val key = "${book.bookUrl}|${chapter.index}"
-        if (!pendingKeys.add(key)) return
-        channel.trySend(Task(book.bookUrl, chapter.index, force))
-        startWorkerIfNeeded()
+        val key = keyOf(book, chapter)
+        val existed = pendingForce.putIfAbsent(key, force)
+        if (existed == null) {
+            channel.trySend(Task(key))
+            startWorkerIfNeeded()
+        } else if (force && existed != true) {
+            // force 合并：已排队任务升级为强制重抓，不丢 true
+            pendingForce.replace(key, existed, true)
+        }
     }
 
-    /** 用户明确刷新：记录时间戳，之后该书的章节下载成功都强制重抓评论 */
-    fun markUserRefresh(bookUrl: String) {
-        userRefreshMarks[bookUrl] = System.currentTimeMillis()
+    private fun keyOf(book: Book, chapter: BookChapter) = "${book.bookUrl}|${chapter.index}"
+
+    /** 用户明确刷新某章：记录时间戳，该章下载完成后强制重抓评论 */
+    fun markUserRefresh(bookUrl: String, chapterIndex: Int) {
+        userRefreshMarks["$bookUrl|$chapterIndex"] = System.currentTimeMillis()
     }
 
-    /** 该书当前是否处于用户刷新标记有效期内（顺带惰性清理过期标记） */
-    fun isUserRefreshActive(bookUrl: String): Boolean {
+    /** 该章是否处于用户刷新标记有效期内（顺带惰性清理过期标记） */
+    fun isUserRefreshActive(bookUrl: String, chapterIndex: Int): Boolean {
         val now = System.currentTimeMillis()
-        val markedAt = userRefreshMarks[bookUrl] ?: return false
+        val key = "$bookUrl|$chapterIndex"
+        val markedAt = userRefreshMarks[key] ?: return false
         if (now - markedAt > MARK_TTL_MS) {
-            userRefreshMarks.remove(bookUrl)
+            userRefreshMarks.remove(key)
             return false
         }
         return true
     }
 
-    fun clearUserRefresh(bookUrl: String) {
-        userRefreshMarks.remove(bookUrl)
+    fun clearUserRefresh(bookUrl: String, chapterIndex: Int) {
+        userRefreshMarks.remove("$bookUrl|$chapterIndex")
     }
 
     private fun startWorkerIfNeeded() {
@@ -137,23 +149,26 @@ object ReviewSnapshotManager {
 
     private suspend fun consume() {
         for (task in channel) {
-            pendingKeys.remove("${task.bookUrl}|${task.chapterIndex}")
-            runCatching { processTask(task) }
+            // 取出聚合后的 force（队列去重期间可能被提升为 true）
+            val force = pendingForce.remove(task.key) ?: false
+            runCatching { processTask(task.key, force) }
         }
     }
 
-    private suspend fun processTask(task: Task) {
-        val book = appDb.bookDao.getBook(task.bookUrl) ?: return
+    private suspend fun processTask(key: String, force: Boolean) {
+        val bookUrl = key.substringBefore('|')
+        val chapterIndex = key.substringAfter('|').toIntOrNull() ?: return
+        val book = appDb.bookDao.getBook(bookUrl) ?: return
         val bookSource = appDb.bookSourceDao.getBookSource(book.origin) ?: return
         // 处理时再查一次开关：入队后关闭开关不应继续抓取
         if (!AppConfig.syncCacheReview) return
-        val chapter = appDb.bookChapterDao.getChapter(task.bookUrl, task.chapterIndex) ?: return
+        val chapter = appDb.bookChapterDao.getChapter(bookUrl, chapterIndex) ?: return
         val content = BookHelp.getContent(book, chapter) ?: return
         val buttons = extractReviewButtons(content).take(MAX_BUTTONS_PER_CHAPTER)
         for (button in buttons) {
             if (!button.hasAction) continue
             // 普通触发有快照可跳过；force（明确重新缓存/刷新）必须重抓覆盖
-            if (!task.force && ReviewSnapshotStore.has(book, chapter, button.src)) continue
+            if (!force && ReviewSnapshotStore.has(book, chapter, button.src)) continue
             val url = runCatching {
                 resolveReviewPageUrl(book, bookSource, chapter, button)
             }.onFailure {
