@@ -542,6 +542,7 @@ object LocalBook {
                         name == IllustrationHelp.EXPORT_BOOKMARKS_NAME ||
                         name == IllustrationHelp.EXPORT_REPLACE_RULES_NAME ||
                         name.startsWith("${IllustrationHelp.EXPORT_IMAGES_DIR}/") ||
+                        name.startsWith("reviews/") ||
                         name.matches(AppPattern.bookFileRegex)
                 }
             )
@@ -575,6 +576,22 @@ object LocalBook {
                     AppLog.put("导入替换规则失败\n${e.localizedMessage}", e)
                 }
             }
+            // 评论页快照：reviews/r_*.json 原样还原进该书缓存目录，
+            // 之后点击评论按钮即可离线打开快照。
+            // 注意放在 illustrations.json 存在性判断之前：无配图的书可能只有评论快照
+            files.filter { it.name.startsWith("r_") && it.name.endsWith(".json") }
+                .forEach { snapshotFile ->
+                    kotlin.runCatching {
+                        val snapshot = GSON.fromJsonObject<io.legado.app.help.review.ReviewSnapshot>(
+                            snapshotFile.readText()
+                        ).getOrNull() ?: return@runCatching
+                        importedBooks.firstOrNull()?.let { book ->
+                            io.legado.app.help.review.ReviewSnapshotStore.put(book, snapshot)
+                        }
+                    }.onFailure { e ->
+                        AppLog.put("导入评论快照失败 ${snapshotFile.name}\n${e.localizedMessage}", e)
+                    }
+                }
             val jsonFile = files.firstOrNull { it.name == IllustrationHelp.EXPORT_JSON_NAME }
                 ?: return
             val json = kotlin.runCatching {

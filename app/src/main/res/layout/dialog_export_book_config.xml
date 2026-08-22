@@ -215,6 +215,20 @@
             </LinearLayout>
 
             <LinearLayout
+                android:id="@+id/row_export_reviews"
+                style="@style/ReadColorRow">
+
+                <TextView
+                    style="@style/ReadColorRowTitle"
+                    android:text="@string/export_reviews" />
+
+                <TextView
+                    android:id="@+id/tv_export_reviews_value"
+                    style="@style/ReadColorRowValue" />
+
+            </LinearLayout>
+
+            <LinearLayout
                 android:id="@+id/row_custom_export"
                 style="@style/ReadColorRow">
 

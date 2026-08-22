@@ -567,7 +567,8 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
                     }
                 }
                 appDb.bookSourceDao.getBookSource(sourceKey).let {
-                    if (it == null) {
+                    if (it == null && args.getString("html").isNullOrEmpty()) {
+                        // 评论快照等本地 HTML 可在无书源时离线渲染，不再强制要求书源存在
                         activity?.toastOnUi("no find bookSource")
                         dismiss()
                         return@launch

@@ -32,6 +32,7 @@ import io.legado.app.help.book.isLocalModified
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalTxt
 import io.legado.app.help.illustration.IllustrationHelp
+import io.legado.app.help.review.ReviewSnapshotStore
 import io.legado.app.help.illustration.imageSrcsFromJson
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.ReadBook
@@ -124,6 +125,7 @@ class ExportBookService : BaseService() {
         val noChapterName: Boolean = AppConfig.exportNoChapterName,
         val pictureFile: Boolean = AppConfig.exportPictureFile,
         val exportBookmarks: Boolean = AppConfig.exportBookmarks,
+        val exportReviews: Boolean = AppConfig.exportReviews,
         val parallelExport: Boolean = AppConfig.parallelExportBook,
         val bookExportFileName: String? = AppConfig.bookExportFileName,
         val episodeExportFileName: String? = AppConfig.episodeExportFileName,
@@ -179,6 +181,10 @@ class ExportBookService : BaseService() {
                         exportBookmarks = intent.getBooleanExtra(
                             "exportBookmarks",
                             AppConfig.exportBookmarks
+                        ),
+                        exportReviews = intent.getBooleanExtra(
+                            "exportReviews",
+                            AppConfig.exportReviews
                         ),
                         parallelExport = intent.getBooleanExtra(
                             "parallelExportBook",
@@ -476,6 +482,22 @@ class ExportBookService : BaseService() {
         } else {
             null
         }
+        // 评论页快照：按存储原样导出 reviews/*.json，导入时原样还原
+        val tmpReviewsDir = if (config.exportReviews) {
+            File(tmpRoot, ReviewSnapshotStore.REVIEWS_DIR_NAME).also { dir ->
+                dir.mkdirs()
+                ReviewSnapshotStore.listAll(book).forEach { snapshot ->
+                    try {
+                        File(dir, ReviewSnapshotStore.fileName(snapshot.chapterIndex, snapshot.buttonSrc))
+                            .writeText(GSON.toJson(snapshot), Charsets.UTF_8)
+                    } catch (e: Exception) {
+                        AppLog.put("导出评论快照失败: ${book.name} ${snapshot.chapterTitle}", e)
+                    }
+                }
+            }
+        } else {
+            null
+        }
         try {
             if (book.isLocalTxt) {
                 // 本地 TXT 书直接复制原始文件，保持与用户源文件字节一致：
@@ -516,6 +538,9 @@ class ExportBookService : BaseService() {
             tmpJson.takeIf { it.exists() }?.let { zipEntries.add(it) }
             tmpBookmarks?.takeIf { it.exists() }?.let { zipEntries.add(it) }
             tmpReplaceRules?.takeIf { it.exists() }?.let { zipEntries.add(it) }
+            tmpReviewsDir?.takeIf { dir ->
+                dir.exists() && (dir.listFiles()?.isNotEmpty() == true)
+            }?.let { zipEntries.add(it) }
             ZipUtils.zipFiles(
                 zipEntries,
                 tmpZip,
