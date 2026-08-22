@@ -17,6 +17,7 @@ import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.ui.rss.read.RssJsExtensions
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
+import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -70,11 +71,20 @@ object ReviewSnapshotManager {
 
     /**
      * “评论待刷新”持久标记（key = bookUrl|chapterIndex）。
-     * 用户明确要求刷新的章节加入；不设时间 TTL——
-     * 状态一直保持到该章评论被真正重新处理（processTask 处理完成）后清除，
-     * 因此“刷新当前之后”隔很久才读到的章节，force 依然有效。
+     * 用户明确要求刷新的章节加入；不设时间 TTL，并且落盘保存——
+     * App 重启后依然存在。只有该章所有需要刷新的评论按钮全部真正处理成功
+     * （processTask 整体成功）后才清除；任何按钮失败都保留，等待重新
+     * 缓存/刷新时继续重试。因此“刷新当前之后”隔很久才读到的章节，
+     * force 依然有效。
      */
     private val refreshPending = ConcurrentHashMap.newKeySet<String>()
+
+    /** 持久化文件：<book_cache>/review_refresh_pending.json（bookUrl|chapterIndex 列表） */
+    private val refreshPendingFile by lazy {
+        File(io.legado.app.help.book.BookHelp.cachePath, "review_refresh_pending.json")
+    }
+    @Volatile
+    private var refreshPendingLoaded = false
 
     /** 按钮之间的间隔，把网络与 WebView 占用压到最低 */
     private const val BUTTON_INTERVAL_MS = 800L
@@ -124,19 +134,54 @@ object ReviewSnapshotManager {
 
     private fun keyOf(book: Book, chapter: BookChapter) = "${book.bookUrl}|${chapter.index}"
 
-    /** 用户明确刷新某章：登记“评论待刷新”，状态保持到该章评论真正处理后清除 */
+    /** 用户明确刷新某章：登记“评论待刷新”并落盘，状态保持到该章评论真正处理成功后清除 */
     fun markUserRefresh(bookUrl: String, chapterIndex: Int) {
-        refreshPending.add("$bookUrl|$chapterIndex")
+        ensureRefreshPendingLoaded()
+        if (refreshPending.add("$bookUrl|$chapterIndex")) {
+            persistRefreshPending()
+        }
     }
 
-    /** 该章是否处于“评论待刷新”状态（无 TTL，直到真正处理） */
+    /** 该章是否处于“评论待刷新”状态（无 TTL，重启仍有效，直到真正处理成功） */
     fun isUserRefreshActive(bookUrl: String, chapterIndex: Int): Boolean {
+        ensureRefreshPendingLoaded()
         return "$bookUrl|$chapterIndex" in refreshPending
     }
 
-    /** 该章评论已真正重新处理后清除待刷新标记 */
+    /** 该章所有需要刷新的评论按钮已全部处理成功后，清除待刷新标记并落盘 */
     fun clearUserRefresh(bookUrl: String, chapterIndex: Int) {
-        refreshPending.remove("$bookUrl|$chapterIndex")
+        ensureRefreshPendingLoaded()
+        if (refreshPending.remove("$bookUrl|$chapterIndex")) {
+            persistRefreshPending()
+        }
+    }
+
+    private fun ensureRefreshPendingLoaded() {
+        if (refreshPendingLoaded) return
+        synchronized(this) {
+            if (refreshPendingLoaded) return
+            runCatching {
+                if (refreshPendingFile.isFile) {
+                    val saved = GSON.fromJson(
+                        refreshPendingFile.readText(),
+                        Array<String>::class.java
+                    ) ?: return@runCatching
+                    refreshPending.addAll(saved)
+                }
+            }.onFailure {
+                AppLog.put("读取评论待刷新标记失败\n${it.localizedMessage}", it)
+            }
+            refreshPendingLoaded = true
+        }
+    }
+
+    private fun persistRefreshPending() {
+        runCatching {
+            refreshPendingFile.parentFile?.mkdirs()
+            refreshPendingFile.writeText(GSON.toJson(refreshPending.toList()))
+        }.onFailure {
+            AppLog.put("保存评论待刷新标记失败\n${it.localizedMessage}", it)
+        }
     }
 
     private fun startWorkerIfNeeded() {
@@ -170,6 +215,9 @@ object ReviewSnapshotManager {
         val chapter = appDb.bookChapterDao.getChapter(bookUrl, chapterIndex) ?: return
         val content = BookHelp.getContent(book, chapter) ?: return
         val buttons = extractReviewButtons(content).take(MAX_BUTTONS_PER_CHAPTER)
+        // force=true（用户明确刷新）时，任何一个需要刷新的按钮失败都保留待刷新标记，
+        // 不能“一个成功就算整章成功”
+        var hasFailure = false
         for (button in buttons) {
             if (!button.hasAction) continue
             // 普通触发有快照可跳过；force（明确重新缓存/刷新）必须重抓覆盖
@@ -177,11 +225,15 @@ object ReviewSnapshotManager {
             val url = runCatching {
                 resolveReviewPageUrl(book, bookSource, chapter, button)
             }.onFailure {
+                hasFailure = true
                 AppLog.put(
                     "解析评论页地址失败 ${book.name} ${chapter.title}\n${it.localizedMessage}", it
                 )
             }.getOrNull()
-            if (url.isNullOrBlank()) continue
+            if (url.isNullOrBlank()) {
+                hasFailure = true
+                continue
+            }
             // 失败只记日志：重新缓存/刷新会再次入队重试，绝不影响正文
             runCatching {
                 val snapshot = ReviewSnapshotCapture.capture(
@@ -189,14 +241,17 @@ object ReviewSnapshotManager {
                 )
                 ReviewSnapshotStore.put(book, snapshot)
             }.onFailure {
+                hasFailure = true
                 AppLog.put(
                     "评论快照抓取失败 ${book.name} ${chapter.title}\n${it.localizedMessage}", it
                 )
             }
             delay(BUTTON_INTERVAL_MS)
         }
-        // 该章评论已真正重新处理完毕：清除“评论待刷新”持久标记
-        clearUserRefresh(bookUrl, chapterIndex)
+        // 该章所有需要刷新的评论按钮全部成功处理，才清除“评论待刷新”持久标记
+        if (force && !hasFailure) {
+            clearUserRefresh(bookUrl, chapterIndex)
+        }
     }
 
     /**
