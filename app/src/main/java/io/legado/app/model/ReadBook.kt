@@ -35,8 +35,6 @@ import io.legado.app.help.globalExecutor
 import io.legado.app.model.localBook.TextFile
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.service.BaseReadAloudService
-import io.legado.app.service.CacheBookService
-import io.legado.app.service.ReviewCacheService
 import io.legado.app.ui.about.ReadRecordWidgetStore
 import io.legado.app.ui.book.read.page.entities.TextChapter
 import io.legado.app.ui.book.read.page.entities.TextPage
@@ -1254,9 +1252,6 @@ object ReadBook : CoroutineScope by MainScope() {
         coroutineContext.cancelChildren()
         ImageProvider.clear()
         clearExpiredChapterLoadingJob(true)
-        if (!CacheBookService.isRun && !ReviewCacheService.isRun) {
-            CacheBook.close()
-        }
     }
 
     interface CallBack : LayoutProgressListener {

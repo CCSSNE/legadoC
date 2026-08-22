@@ -283,7 +283,8 @@ internal class CacheTaskStore(
             }
             val finalResult = aggregateTaskResult(task, result)
             aggregateResult = finalResult
-            val lifecycle = if (finalResult == CacheResult.FAILED) {
+            val hasUnitFailure = task.units.any { it.status == CacheUnitStatus.FAILED }
+            val lifecycle = if (finalResult == CacheResult.FAILED && !hasUnitFailure) {
                 CacheLifecycle.FAILED
             } else {
                 CacheLifecycle.COMPLETED
@@ -388,7 +389,9 @@ internal class CacheTaskStore(
         } else when {
             session.tasks.all { it.status == CacheLifecycle.CANCELLED } -> CacheResult.CANCELLED
             session.tasks.any { it.status == CacheLifecycle.CANCELLED } -> CacheResult.PARTIAL
-            session.tasks.any { it.status == CacheLifecycle.FAILED } -> {
+            session.tasks.any {
+                it.status == CacheLifecycle.FAILED || it.result == CacheResult.FAILED
+            } -> {
                 if (session.tasks.any { it.result == CacheResult.SUCCEEDED || it.result == CacheResult.PARTIAL }) {
                     CacheResult.PARTIAL
                 } else {

@@ -13,7 +13,11 @@ import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ItemDownloadBinding
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isLocal
-import io.legado.app.model.CacheBook
+import io.legado.app.help.cache.CacheCoordinator
+import io.legado.app.help.cache.CacheKind
+import io.legado.app.help.cache.CacheLifecycleRules
+import io.legado.app.help.cache.CachePhase
+import io.legado.app.help.cache.CacheSubmission
 import io.legado.app.utils.gone
 import io.legado.app.utils.visible
 
@@ -86,13 +90,8 @@ class CacheAdapter(context: Context, private val callBack: CallBack) :
         binding.run {
             ivDownload.setOnClickListener {
                 getItem(holder.layoutPosition)?.let { book ->
-                    CacheBook.cacheBookMap[book.bookUrl]?.let {
-                        if (!it.isStop()) {
-                            CacheBook.remove(context, book.bookUrl)
-                        } else {
-                            // 保留章节范围弹窗：用户确认 章x至y 后才开始正文缓存
-                            callBack.showCacheRange(book)
-                        }
+                    CacheCoordinator.snapshot.value.findTextTask(book.bookUrl)?.let {
+                        CacheCoordinator.cancel(it)
                     } ?: callBack.showCacheRange(book)
                 }
             }
@@ -107,13 +106,9 @@ class CacheAdapter(context: Context, private val callBack: CallBack) :
             iv.gone()
         } else {
             iv.visible()
-            CacheBook.cacheBookMap[book.bookUrl]?.let {
-                if (!it.isStop()) {
-                    iv.setImageResource(R.drawable.ic_stop_black_24dp)
-                } else {
-                    iv.setImageResource(R.drawable.ic_play_24dp)
-                }
-            } ?: let {
+            if (CacheCoordinator.snapshot.value.findTextTask(book.bookUrl) != null) {
+                iv.setImageResource(R.drawable.ic_stop_black_24dp)
+            } else {
                 iv.setImageResource(R.drawable.ic_play_24dp)
             }
         }
@@ -147,4 +142,18 @@ class CacheAdapter(context: Context, private val callBack: CallBack) :
         fun exportProgress(bookUrl: String): Int?
         fun exportMsg(bookUrl: String): String?
     }
+}
+
+private fun io.legado.app.help.cache.CacheSnapshot.findTextTask(
+    bookUrl: String,
+): CacheSubmission? {
+    val task = sessions.asSequence()
+        .flatMap { it.tasks.asSequence() }
+        .firstOrNull {
+            it.kind == CacheKind.TEXT &&
+                it.phase == CachePhase.BODY &&
+                it.bookUrl == bookUrl &&
+                !CacheLifecycleRules.isTerminal(it.status)
+        }
+    return task?.let { CacheSubmission(it.sessionId, it.taskId) }
 }

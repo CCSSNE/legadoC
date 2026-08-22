@@ -3,10 +3,8 @@ package io.legado.app.model
 import android.content.Context
 import io.legado.app.R
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.AppConst
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.IntentAction
-import io.legado.app.constant.NotificationId
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -21,9 +19,7 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.lib.permission.NotificationPermission
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.service.CacheBookService
-import io.legado.app.service.ReviewCacheService
 import io.legado.app.utils.onEachParallel
-import io.legado.app.utils.postEvent
 import io.legado.app.utils.startService
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.CancellationException
@@ -33,27 +29,19 @@ import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.onCompletion
-import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
-import androidx.core.app.NotificationCompat
-import splitties.systemservices.notificationManager
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.CoroutineContext
 
 object CacheBook {
 
-    val cacheBookMap = ConcurrentHashMap<String, CacheBookModel>()
+    private val models = ConcurrentHashMap<String, CacheBookModel>()
 
-    private val workingState = MutableStateFlow(true)
-    private val downloadPauseState = MutableStateFlow(true)
     private val mutex = Mutex()
 
     @Synchronized
@@ -61,7 +49,7 @@ object CacheBook {
         val book = appDb.bookDao.getBook(bookUrl) ?: return null
         val bookSource = appDb.bookSourceDao.getBookSource(book.origin) ?: return null
         updateBookSource(bookSource)
-        var cacheBook = cacheBookMap[bookUrl]
+        var cacheBook = models[bookUrl]
         if (cacheBook != null) {
             //存在时更新,书源可能会变化,必须更新
             cacheBook.bookSource = bookSource
@@ -69,14 +57,14 @@ object CacheBook {
             return cacheBook
         }
         cacheBook = CacheBookModel(bookSource, book)
-        cacheBookMap[bookUrl] = cacheBook
+        models[bookUrl] = cacheBook
         return cacheBook
     }
 
     @Synchronized
     fun getOrCreate(bookSource: BookSource, book: Book): CacheBookModel {
         updateBookSource(bookSource)
-        var cacheBook = cacheBookMap[book.bookUrl]
+        var cacheBook = models[book.bookUrl]
         if (cacheBook != null) {
             //存在时更新,书源可能会变化,必须更新
             cacheBook.bookSource = bookSource
@@ -84,12 +72,12 @@ object CacheBook {
             return cacheBook
         }
         cacheBook = CacheBookModel(bookSource, book)
-        cacheBookMap[book.bookUrl] = cacheBook
+        models[book.bookUrl] = cacheBook
         return cacheBook
     }
 
     private fun updateBookSource(newBookSource: BookSource) {
-        cacheBookMap.forEach {
+        models.forEach {
             val model = it.value
             if (model.bookSource.bookSourceUrl == newBookSource.bookSourceUrl) {
                 model.bookSource = newBookSource
@@ -97,7 +85,7 @@ object CacheBook {
         }
     }
 
-    fun start(
+    internal fun start(
         context: Context,
         book: Book,
         start: Int,
@@ -116,12 +104,6 @@ object CacheBook {
             )
             val error = IllegalArgumentException("local book cannot be cached from network")
             AppLog.put("离线缓存拒绝：${book.name} 是本地书", error, true)
-            notifyResult(
-                context,
-                R.string.cache_download_failed,
-                "${book.name}: local book",
-                coordinatorOwned = coordinatorSessionId != null,
-            )
             return
         }
         NotificationPermission.ensure(
@@ -156,19 +138,13 @@ object CacheBook {
                             coordinatorGeneration?.let { putExtra("coordinatorGeneration", it) }
                         }
                     }.onFailure {
-                    val message = "${book.name}: 启动正文缓存服务失败：${it.localizedMessage}"
-                    AppLog.put(message, it, true)
-                    notifyCoordinatorStartFailure(
-                        coordinatorSessionId,
-                        coordinatorTaskId,
-                        coordinatorGeneration,
-                        message,
-                    )
-                        notifyResult(
-                            context,
-                            R.string.cache_download_failed,
+                        val message = "${book.name}: 启动正文缓存服务失败：${it.localizedMessage}"
+                        AppLog.put(message, it, true)
+                        notifyCoordinatorStartFailure(
+                            coordinatorSessionId,
+                            coordinatorTaskId,
+                            coordinatorGeneration,
                             message,
-                            coordinatorOwned = coordinatorSessionId != null,
                         )
                     }
                 }
@@ -182,12 +158,6 @@ object CacheBook {
                     context.getString(R.string.notification_permission_required_for_download),
                 )
                 context.toastOnUi(R.string.notification_permission_required_for_download)
-                notifyResult(
-                    context,
-                    R.string.cache_download_failed,
-                    context.getString(R.string.notification_permission_required_for_download),
-                    coordinatorOwned = coordinatorSessionId != null,
-                )
             }
         )
     }
@@ -205,245 +175,71 @@ object CacheBook {
         )
     }
 
-    private fun notifyResult(
-        context: Context,
-        titleRes: Int,
-        message: String,
-        coordinatorOwned: Boolean = false,
-    ) {
-        if (coordinatorOwned) return
-        notificationManager.notify(
-            NotificationId.CacheBookService,
-            NotificationCompat.Builder(context, AppConst.channelIdDownload)
-                .setSmallIcon(R.drawable.ic_status_bar_r)
-                .setContentTitle(context.getString(titleRes))
-                .setContentText(message)
-                .setStyle(NotificationCompat.BigTextStyle().bigText(message))
-                .setAutoCancel(false)
-                .setOngoing(false)
-                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                .build()
-        )
-    }
-
-    fun remove(context: Context, bookUrl: String) {
-        context.startService<CacheBookService> {
-            action = IntentAction.remove
-            putExtra("bookUrl", bookUrl)
-        }
-    }
-
-    fun stop(context: Context) {
-        var requested = false
-        if (ReviewCacheService.isRun) {
-            ReviewCacheService.requestStop()
-            requested = true
-        } else if (CacheBookService.isRun) {
-            context.startService<CacheBookService> {
-                action = IntentAction.stop
-            }
-            requested = true
-        }
-        if (!requested) {
-            AppLog.put("停止离线缓存：当前没有运行中的缓存服务")
-        }
-    }
-
     /** Stop one coordinator-owned book without touching other cache books. */
-    fun stop(bookUrl: String, releaseReviewPhase: Boolean = false) {
-        cacheBookMap[bookUrl]?.stop(releaseReviewPhase)
-        cacheBookMap.remove(bookUrl)
-        postEvent(EventBus.UP_DOWNLOAD, bookUrl)
+    internal fun stop(bookUrl: String) {
+        models[bookUrl]?.stop()
+        models.remove(bookUrl)
     }
 
-    /** 清理正文任务状态；评论队列由 ReviewSnapshotManager 单独管理。 */
-    fun stopAll() {
-        cacheBookMap.forEach { it.value.stop(releaseReviewPhase = false) }
-        cacheBookMap.clear()
-        downloadPauseState.value = true
-        workingState.value = true
-        successDownloadSet.clear()
-        errorDownloadMap.clear()
-        postEvent(EventBus.UP_DOWNLOAD, "")
-    }
-
-    fun close() {
-        stopAll()
-        // 兜底清掉所有残留 Body Phase，异常退出也不留“只登记不执行”状态
-        io.legado.app.help.review.ReviewSnapshotManager.cancelAllBodyPhases()
-    }
-
-    fun setWorkingState(value: Boolean) {
-        workingState.value = value
-    }
-
-    val isDownloadPaused: Boolean
-        get() = !downloadPauseState.value
-
-    fun pauseDownload() {
-        downloadPauseState.value = false
-        AppLog.put("离线缓存已暂停")
-        postEvent(EventBus.UP_DOWNLOAD_STATE, "")
-    }
-
-    fun resumeDownload() {
-        downloadPauseState.value = true
-        AppLog.put("离线缓存已继续")
-        postEvent(EventBus.UP_DOWNLOAD_STATE, "")
-    }
-
-    suspend fun awaitDownloadResumed() {
-        downloadPauseState.first { it }
-    }
-
-    suspend fun startProcessJob(context: CoroutineContext) = mutex.withLock {
-        setWorkingState(true)
+    internal suspend fun runProcessJob(context: CoroutineContext) = mutex.withLock {
         flow {
-            while (currentCoroutineContext().isActive && cacheBookMap.isNotEmpty()) {
+            while (currentCoroutineContext().isActive && models.isNotEmpty()) {
                 var emitted = false
 
-                cacheBookMap.forEach { (_, model) ->
+                models.forEach { (_, model) ->
                     if (!model.isLoading()) {
                         emit(model)
                         emitted = true
                     }
-                    workingState.first { it }
-                    downloadPauseState.first { it }
                 }
 
                 if (!emitted) {
                     delay(1000)
                 }
             }
-        }.onStart {
-            postEvent(EventBus.UP_DOWNLOAD_STATE, "")
         }.onEachParallel(AppConfig.threadCount) {
             coroutineScope {
                 it.download(this, context)
             }
-        }.onCompletion {
-            postEvent(EventBus.UP_DOWNLOAD_STATE, "")
         }.collect()
     }
+    internal fun hasPendingWork(): Boolean = models.values.any { it.hasWork() }
 
-
-    val downloadSummary: String
-        get() {
-            return "正在下载:${onDownloadCount}|等待中:${waitCount}|失败:${errorDownloadMap.count()}|成功:${successDownloadSet.size}"
-        }
-
-    /** 当前正在缓存的书（多本时取第一本活跃的），通知展示“正文 x/y · 评论 a/b”用 */
-    fun activeCachingBook(): Book? {
-        cacheBookMap.values.firstOrNull { it.isRun() }?.book?.let { return it }
-        return null
-    }
-
-    /** 当前活跃批量模型的目标正文进度（已缓存章, 目标章数）；空表示无活跃批量 */
-    fun activeBodyProgress(): Pair<Int, Int>? {
-        cacheBookMap.values.firstOrNull { it.isRun() }?.let { m ->
-            if (m.bodyTarget > 0) {
-                return m.bodyDone to m.bodyTarget
-            }
-        }
-        return null
-    }
-
-    val isRun: Boolean
-        get() {
-            cacheBookMap.forEach {
-                if (it.value.isRun()) {
-                    return true
-                }
-            }
-            return false
-        }
-
-    private val waitCount: Int
-        get() {
-            var count = 0
-            cacheBookMap.forEach {
-                count += it.value.waitCount
-            }
-            return count
-        }
-
-    val onDownloadCount: Int
-        get() {
-            var count = 0
-            cacheBookMap.forEach {
-                count += it.value.onDownloadCount
-            }
-            return count
-        }
-
-    val successDownloadSet = linkedSetOf<String>()
-    val errorDownloadMap = hashMapOf<String, Int>()
-
-    val successDownloadCount: Int
-        get() = successDownloadSet.size
-
-    val failedDownloadCount: Int
-        get() = errorDownloadMap.size
+    internal fun hasActiveBook(bookUrl: String): Boolean = models[bookUrl]?.hasWork() == true
 
     class CacheBookModel(var bookSource: BookSource, var book: Book) {
 
         private val waitDownloadSet = linkedSetOf<Int>()
         private val onDownloadSet = linkedSetOf<Int>()
         private val tasks = CompositeCoroutine()
-        private val successUrls = linkedSetOf<String>()
         private var isStopped = false
-        private var waitingRetry = false
         private var isLoading = false
         private var coordinatorLease: CacheWorkerLease? = null
 
-        /** 本次批量缓存的目标章数（addDownload 新增的章累计，停止后重置） */
-        private var targetChapterCount = 0
-
-        /** 已完成缓存的正文章数（按章 url 去重） */
-        val bodyDone: Int get() = successUrls.size
-        val bodyTarget: Int get() = targetChapterCount
-
-        val waitCount get() = waitDownloadSet.size
-        val onDownloadCount get() = onDownloadSet.size
-
-        init {
-            postEvent(EventBus.UP_DOWNLOAD, book.bookUrl)
-        }
+        private val errorDownloadMap = hashMapOf<String, Int>()
 
         @Synchronized
-        fun isRun(): Boolean {
+        internal fun hasWork(): Boolean {
             return waitDownloadSet.isNotEmpty() || onDownloadSet.isNotEmpty() || isLoading
         }
 
         @Synchronized
-        fun isStop(): Boolean {
-            return isStopped || (!isRun() && !waitingRetry)
-        }
-
-        @Synchronized
-        fun isLoading(): Boolean {
+        internal fun isLoading(): Boolean {
             return isLoading
         }
 
         @Synchronized
-        fun setLoading() {
+        internal fun setLoading() {
             isLoading = true
         }
 
         @Synchronized
-        fun stop(releaseReviewPhase: Boolean = true) {
+        internal fun stop() {
             waitDownloadSet.clear()
             tasks.clear()
             coordinatorLease = null
             isStopped = true
             isLoading = false
-            targetChapterCount = 0
-            // 用户取消批量缓存：同样必须收掉 Body Phase，否则该书后续评论任务
-            // 会一直“只登记不执行”；已登记任务（正文已完成）照常进入 Review Phase
-            if (releaseReviewPhase) {
-                io.legado.app.help.review.ReviewSnapshotManager.cancelBodyPhase(book.bookUrl)
-            }
-            postEvent(EventBus.UP_DOWNLOAD, book.bookUrl)
         }
 
         @Synchronized
@@ -453,29 +249,20 @@ object CacheBook {
             executionLease: CacheWorkerLease? = null,
         ) {
             coordinatorLease = executionLease
-            if (isStopped) targetChapterCount = 0
             isStopped = false
             for (i in start..end) {
                 if (!onDownloadSet.contains(i)) {
-                    // 新加入目标队列的章才算本次目标；重复 addDownload 不重复计数
-                    if (waitDownloadSet.add(i)) {
-                        targetChapterCount++
-                    }
+                    waitDownloadSet.add(i)
                 }
             }
-            cacheBookMap[book.bookUrl] = this
+            models[book.bookUrl] = this
             isLoading = false
-            // 批量缓存开始（Body Phase）：该批正文下载期间评论任务只登记不执行
-            io.legado.app.help.review.ReviewSnapshotManager.beginBodyPhase(book.bookUrl)
-            postEvent(EventBus.UP_DOWNLOAD, book.bookUrl)
         }
 
         @Synchronized
         private fun onSuccess(chapter: BookChapter, executionLease: CacheWorkerLease? = null) {
             onDownloadSet.remove(chapter.index)
-            successDownloadSet.add(chapter.primaryStr())
             errorDownloadMap.remove(chapter.primaryStr())
-            successUrls.add(chapter.url)
             executionLease?.let {
                 io.legado.app.help.cache.CacheBodyWorkerRegistry.onChapterSuccess(it, chapter.index)
             }
@@ -484,7 +271,6 @@ object CacheBook {
 
         @Synchronized
         private fun onPreError(chapter: BookChapter, error: Throwable) {
-            waitingRetry = true
             errorDownloadMap[chapter.primaryStr()] =
                 (errorDownloadMap[chapter.primaryStr()] ?: 0) + 1
             AppLog.put("离线缓存尝试失败 ${book.name}-${chapter.title}：${error.localizedMessage}", error)
@@ -513,7 +299,6 @@ object CacheBook {
                     error
                 )
             }
-            waitingRetry = false
         }
 
         @Synchronized
@@ -539,36 +324,25 @@ object CacheBook {
                 kotlin.runCatching {
                     CacheManifestHelper.refresh(book)
                 }
-                cacheBookMap.remove(book.bookUrl)
-                if (executionLease != null) {
-                    io.legado.app.help.cache.CacheBodyWorkerRegistry.onWorkerFinished(executionLease)
-                } else {
-                    io.legado.app.help.review.ReviewSnapshotManager.endBodyPhase(book.bookUrl)
+                models.remove(book.bookUrl)
+                executionLease?.let {
+                    io.legado.app.help.cache.CacheBodyWorkerRegistry.onWorkerFinished(it)
                 }
-                // 整批目标正文结束（Review Phase 开始）：登记过的评论任务正式执行，
-                // 评论进度不参与正文下载状态
             }
-            postEvent(EventBus.UP_DOWNLOAD, book.bookUrl)
         }
 
         /**
          * 从待下载列表内取第一条下载
          */
         @Synchronized
-        fun download(scope: CoroutineScope, context: CoroutineContext) {
+        internal fun download(scope: CoroutineScope, context: CoroutineContext) {
             val executionLease = coordinatorLease
             val chapterIndex = waitDownloadSet.firstOrNull()
             if (chapterIndex == null) {
                 if (!isLoading && onDownloadSet.isEmpty()) {
-                    cacheBookMap.remove(book.bookUrl)
-                    // 整批结束（可能是“全部已缓存命中，无任何正文任务”）：同样必须收掉
-                    // Body Phase，否则后补评论场景（正文已缓存，重新缓存即补评论）会卡死；
-                    // 仅在活跃批量下收尾，阅读页单章 model 不被误收
+                    models.remove(book.bookUrl)
                     if (executionLease != null) {
                         onFinally(executionLease)
-                    } else {
-                        io.legado.app.help.review.ReviewSnapshotManager
-                            .endBodyPhaseIfActive(book.bookUrl)
                     }
                 }
                 return
@@ -687,7 +461,6 @@ object CacheBook {
                     (ReadBook.downloadFailChapters[chapter.index] ?: 0) + 1
                 return "获取正文失败\n${e.localizedMessage}"
             } finally {
-                postEvent(EventBus.UP_DOWNLOAD, book.bookUrl)
             }
         }
 
@@ -725,7 +498,6 @@ object CacheBook {
                 onCancel(chapter.index)
                 downloadFinish(chapter, "download canceled", resetPageOffset, true, success = false)
             }.onFinally {
-                postEvent(EventBus.UP_DOWNLOAD, book.bookUrl)
             }.start()
         }
 

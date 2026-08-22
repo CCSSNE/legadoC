@@ -70,8 +70,10 @@ import io.legado.app.service.VideoPlayService
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.model.SourceCallBack
 import io.legado.app.ui.association.OnLineImportActivity
-import io.legado.app.ui.book.cache.AudioCacheTaskManager
-import io.legado.app.ui.book.cache.CacheTaskStatus
+import io.legado.app.help.cache.CacheCoordinator
+import io.legado.app.help.cache.CacheKind
+import io.legado.app.help.cache.CacheLifecycleRules
+import io.legado.app.help.cache.CachePhase
 import io.legado.app.ui.book.cache.CacheManageViewModel
 import io.legado.app.ui.book.changesource.ChangeBookSourceDialog
 import io.legado.app.ui.book.info.BookInfoViewModel
@@ -1187,10 +1189,17 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
 
     private fun observeVideoCacheTasks() {
         lifecycleScope.launch {
-            AudioCacheTaskManager.states.collectLatest { states ->
+            CacheCoordinator.snapshot.collectLatest { snapshot ->
                 val bookUrl = VideoPlay.book?.bookUrl ?: return@collectLatest
-                val state = states[bookUrl] ?: return@collectLatest
-                if (!state.active && state.status.isTerminalForVideoCacheRefresh()) {
+                val terminal = snapshot.sessions
+                    .flatMap { it.tasks }
+                    .any {
+                        it.bookUrl == bookUrl &&
+                            it.kind == CacheKind.VIDEO &&
+                            it.phase == CachePhase.MEDIA &&
+                            CacheLifecycleRules.isTerminal(it.status)
+                    }
+                if (terminal) {
                     refreshVideoCacheState(bookUrl)
                 }
             }
@@ -1337,11 +1346,4 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         pooledWebView?.let { WebViewPool.release(it) }
         pooledWebView = null
     }
-}
-
-private fun CacheTaskStatus.isTerminalForVideoCacheRefresh(): Boolean {
-    return this == CacheTaskStatus.COMPLETED ||
-        this == CacheTaskStatus.PAUSED ||
-        this == CacheTaskStatus.CANCELLED ||
-        this == CacheTaskStatus.FAILED
 }

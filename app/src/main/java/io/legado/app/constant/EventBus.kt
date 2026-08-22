@@ -27,8 +27,6 @@ object EventBus {
     const val NOTIFY_MAIN = "notifyMain"
     const val NAVIGATION_BAR_CHANGED = "navigationBarChanged"
     const val WEB_SERVICE = "webService"
-    const val UP_DOWNLOAD = "upDownload"
-    const val UP_DOWNLOAD_STATE = "upDownloadState"
     const val APP_LOG_CHANGED = "appLogChanged"
     const val SAVE_CONTENT = "saveContent"
     const val REVIEW_CACHE_SAVED = "reviewCacheSaved"

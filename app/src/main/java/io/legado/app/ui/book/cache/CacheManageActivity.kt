@@ -571,40 +571,6 @@ private fun CacheSnapshot.findMediaTask(bookUrl: String): Pair<CacheSubmission, 
         ?.let { CacheSubmission(it.sessionId, it.taskId) to it }
 }
 
-private fun CacheSnapshot.toMediaTaskStates(): Map<String, AudioCacheTaskState> {
-    return sessions.asSequence()
-        .flatMap { it.tasks.asSequence() }
-        .filter { it.kind != CacheKind.TEXT && it.phase == CachePhase.MEDIA }
-        .groupBy { it.bookUrl }
-        .mapValues { (_, tasks) ->
-            val task = tasks.maxBy { it.updatedAt }
-            val completed = task.units.count { it.status == io.legado.app.help.cache.CacheUnitStatus.SUCCEEDED }
-            val status = when (task.status) {
-                CacheLifecycle.QUEUED -> CacheTaskStatus.PENDING
-                CacheLifecycle.RUNNING,
-                CacheLifecycle.PAUSING -> CacheTaskStatus.CACHING
-                CacheLifecycle.PAUSED -> CacheTaskStatus.PAUSED
-                CacheLifecycle.COMPLETED -> CacheTaskStatus.COMPLETED
-                CacheLifecycle.CANCELLED -> CacheTaskStatus.CANCELLED
-                CacheLifecycle.FAILED -> CacheTaskStatus.FAILED
-                CacheLifecycle.INTERRUPTED -> CacheTaskStatus.PENDING
-                CacheLifecycle.CANCELLING -> CacheTaskStatus.CACHING
-            }
-            AudioCacheTaskState(
-                bookUrl = task.bookUrl,
-                bookName = task.bookName,
-                totalChapters = task.units.size,
-                completedChapters = completed,
-                currentChapterIndex = completed,
-                status = status,
-                message = task.error.orEmpty(),
-                active = task.status == CacheLifecycle.RUNNING ||
-                    task.status == CacheLifecycle.PAUSING ||
-                    task.status == CacheLifecycle.CANCELLING,
-            )
-        }
-}
-
 private fun summarySize(bytes: Long): String {
     val mb = bytes.toDouble() / 1024.0 / 1024.0
     val gb = mb / 1024.0
