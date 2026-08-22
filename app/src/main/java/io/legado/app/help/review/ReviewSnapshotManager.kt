@@ -11,36 +11,44 @@ import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.BookImgClick
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
-import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.http.StrResponse
 import io.legado.app.model.analyzeRule.AnalyzeUrl
+import io.legado.app.service.ReviewCacheService
 import io.legado.app.ui.rss.read.RssJsExtensions
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
-import java.io.File
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
+import io.legado.app.utils.startService
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import splitties.init.appCtx
+import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * 评论快照抓取调度器。
+ * 评论快照抓取调度器（登记端）。
  *
- * 正文永远优先：这里只在章节正文全部完成（文本/图片/成功状态/刷新状态）之后由
- * [CacheBook] 入队，由单条低优先级协程串行处理，每个按钮之间主动让出（delay），
- * 失败只记日志，绝不影响正文下载与刷新体验。
+ * 正文永远优先：批量缓存分两阶段——
+ * - Body Phase：只下载正文，评论任务只登记（pendingForce），绝不开 WebView 抓评论；
+ * - Review Phase：整批目标正文结束后（[endBodyPhase]）把登记任务放入队列，
+ *   由独立前台 [io.legado.app.service.ReviewCacheService] 低优先级串行抓取，
+ *   评论进度不算正文下载进度。
+ * 阅读页单章下载（不走批量）正文完全结束后直接登记并启动评论服务。
  *
  * 快照刷新语义：
  * - 普通后台重复触发（force=false）：已有快照可跳过；
- * - 用户明确重新缓存/刷新该章节（force=true 或 [markUserRefresh] 标记有效期内）：
+ * - 用户明确重新缓存/刷新该章节（force=true 或 [markUserRefresh] 持久标记）：
  *   重新抓取并覆盖旧快照，不依赖 has()。
  */
 object ReviewSnapshotManager {
+
+    /** 对外任务（key = bookUrl|chapterIndex；force 为消费时聚合值） */
+    data class QueueTask internal constructor(
+        val key: String,
+        val force: Boolean
+    )
 
     private data class Task(val key: String)
 
@@ -54,8 +62,10 @@ object ReviewSnapshotManager {
         val hasAction: Boolean get() = !click.isNullOrBlank() || !js.isNullOrBlank()
     }
 
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val channel = Channel<Task>(Channel.UNLIMITED)
+
+    /** 批量缓存进行中的书（Body Phase）：该书已登记任务只入 pendingForce，暂不执行 */
+    private val bodyPhaseBooks = ConcurrentHashMap.newKeySet<String>()
 
     /**
      * 待处理任务的 force 聚合表（key = bookUrl|chapterIndex）。
@@ -79,9 +89,12 @@ object ReviewSnapshotManager {
      */
     private val refreshPending = ConcurrentHashMap.newKeySet<String>()
 
-    /** 持久化文件：<book_cache>/review_refresh_pending.json（bookUrl|chapterIndex 列表） */
+    /**
+     * 持久化文件：filesDir/review_refresh_pending.json（应用私有目录，
+     * 不受 book_cache 清理影响）；保存 bookUrl|chapterIndex 列表。
+     */
     private val refreshPendingFile by lazy {
-        File(io.legado.app.help.book.BookHelp.cachePath, "review_refresh_pending.json")
+        File(appCtx.filesDir, "review_refresh_pending.json")
     }
     @Volatile
     private var refreshPendingLoaded = false
@@ -94,9 +107,6 @@ object ReviewSnapshotManager {
 
     /** 单个按钮解析评论页地址的超时 */
     private const val RESOLVE_TIMEOUT_MS = 20_000L
-
-    @Volatile
-    private var workerStarted = false
 
     /**
      * 正文保存/成功状态结束后调用。
@@ -119,17 +129,61 @@ object ReviewSnapshotManager {
      * 因此缓存流程在跳过正文下载前调用本方法直接入队。
      */
     fun enqueue(book: Book, chapter: BookChapter, force: Boolean = false) {
-        val key = keyOf(book, chapter)
+        var shouldStartService = false
         synchronized(queueLock) {
-            val existed = pendingForce.putIfAbsent(key, force)
+            val existed = pendingForce.putIfAbsent(keyOf(book, chapter), force)
             if (existed == null) {
-                channel.trySend(Task(key))
-                startWorkerIfNeeded()
+                if (bodyPhaseBooks.contains(book.bookUrl)) {
+                    // Body Phase：只登记待抓任务，绝不在批量正文结束前启动 WebView 抓取
+                } else {
+                    channel.trySend(Task(keyOf(book, chapter)))
+                    shouldStartService = true
+                }
             } else if (force && existed != true) {
                 // force 合并：已排队任务升级为强制重抓，不丢 true
-                pendingForce.replace(key, existed, true)
+                pendingForce.replace(keyOf(book, chapter), existed, true)
             }
         }
+        if (shouldStartService) {
+            ReviewCacheService.startSelf()
+        }
+    }
+
+    /** 批量缓存开始（Body Phase）：该书评论任务只登记不执行 */
+    fun beginBodyPhase(bookUrl: String) {
+        bodyPhaseBooks.add(bookUrl)
+    }
+
+    /** 整批目标正文结束后（Review Phase 开始）：该书登记的任务正式入队执行 */
+    fun endBodyPhase(bookUrl: String) {
+        bodyPhaseBooks.remove(bookUrl)
+        var sentAny = false
+        synchronized(queueLock) {
+            pendingForce.keys
+                .filter { it.substringBefore('|') == bookUrl }
+                .forEach { key ->
+                    channel.trySend(Task(key))
+                    sentAny = true
+                }
+        }
+        if (sentAny) {
+            ReviewCacheService.startSelf()
+        }
+    }
+
+    /** 评论服务消费：取一个任务（无任务返回 null）。force 取聚合值并原子移除 */
+    fun tryTakeTask(): QueueTask? {
+        val task = synchronized(queueLock) {
+            val t = channel.tryReceive().getOrNull() ?: return null
+            val force = pendingForce.remove(t.key) ?: false
+            t to force
+        }
+        return QueueTask(task.first.key, task.second)
+    }
+
+    /** 评论服务处理任务（suspend：内部解析 URL、WebView 抓取、落盘） */
+    suspend fun processTask(task: QueueTask) {
+        processTask(task.key, task.force)
     }
 
     private fun keyOf(book: Book, chapter: BookChapter) = "${book.bookUrl}|${chapter.index}"
@@ -181,27 +235,6 @@ object ReviewSnapshotManager {
             refreshPendingFile.writeText(GSON.toJson(refreshPending.toList()))
         }.onFailure {
             AppLog.put("保存评论待刷新标记失败\n${it.localizedMessage}", it)
-        }
-    }
-
-    private fun startWorkerIfNeeded() {
-        if (workerStarted) return
-        synchronized(this) {
-            if (workerStarted) return
-            workerStarted = true
-            Coroutine.async(scope, executeContext = Dispatchers.IO) {
-                consume()
-            }.start()
-        }
-    }
-
-    private suspend fun consume() {
-        for (task in channel) {
-            // 取出聚合后的 force（队列去重期间可能被提升为 true）
-            val force = synchronized(queueLock) {
-                pendingForce.remove(task.key) ?: false
-            }
-            runCatching { processTask(task.key, force) }
         }
     }
 
