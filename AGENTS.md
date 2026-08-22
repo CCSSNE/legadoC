@@ -268,6 +268,6 @@ uiautomator2 / ADB
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- `3.26.082210c` / `10708`，2026-08-22（UTC），`own` 主线（代码提交 `bab11b0`，含 isValidCommentHtml 结构判定、书源单引号 JSON 评论按钮漏判修复等最新已提交改动；与 10707 同 UTC 小时，版本名相同、仅版本码递增，符合规则）。本次编译顺利：启动前确认工作区仅剩未跟踪文件、无外部活跃构建，`git stash -u` 移出后基于干净 HEAD 冷编译一次通过（BUILD SUCCESSFUL in 2m 42s，退出码 0）；构建后复查分支头未移动，stash 原样恢复。`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.082210c` / `10708`、中文名 `阅读 C`（zh locale）、架构 `arm64-v8a`；`apksigner` 完整执行退出码 0（仅 META-INF 未签名条目警告，可接受）。收尾 `gradlew --stop` 无守护进程、无残留构建 JVM。未安装到模拟器、未做正式回归（用户仅要求编译）。`origin/own` 为 `bab11b0`，本地领先为基线记录提交。
+- `3.26.082212c` / `10709`，2026-08-22（UTC），`own` 主线（代码提交 `81833f3`，用户授权把工作区已跟踪未提交的 2 个文件提交后编译：评论泡 img 迁移为 data-legado-style/click 属性形态、usehtml 块内评论图一并转换，含对应单测；父提交含 `25857e2` 评论并行缓存等最新已提交改动）。提交后编译一次通过无需修复（BUILD SUCCESSFUL in 2m 39s，退出码 0）；构建前确认无外部活跃构建、`git stash -u` 移出未跟踪文件，构建后复查分支头未移动、stash 原样恢复。`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.082212c` / `10709`、中文名 `阅读 C`（zh locale）、架构 `arm64-v8a`；`apksigner` 完整执行退出码 0（仅 META-INF 未签名条目警告，可接受）。收尾发现一个 Kotlin compile daemon 残留，经查其 classpath 属于另一会话新启用的隔离 Gradle home（`android-gradle-user-home-iso`）且早于本次构建创建，非本构建残留，未予清理；本构建自身（`--no-daemon`）无残留。未安装到模拟器、未做正式回归（用户仅要求提交并编译）。`origin/own` 为 `81833f3`，本地领先为基线记录提交。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
