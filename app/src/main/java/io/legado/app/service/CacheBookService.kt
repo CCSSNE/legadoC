@@ -46,6 +46,8 @@ class CacheBookService : BaseService() {
         Executors.newFixedThreadPool(min(threadCount, AppConst.MAX_THREAD)).asCoroutineDispatcher()
     private var downloadJob: Job? = null
     private var notificationContent = appCtx.getString(R.string.service_starting)
+    private var terminalFailure: String? = null
+    private var resultNotified = false
     private var mutex = Mutex()
     private val notificationBuilder by lazy {
         val builder = NotificationCompat.Builder(this, AppConst.channelIdDownload)
@@ -85,13 +87,18 @@ class CacheBookService : BaseService() {
                 )
 
                 IntentAction.remove -> removeDownload(intent.getStringExtra("bookUrl"))
-                IntentAction.stop -> stopSelf()
+                IntentAction.stop -> {
+                    AppLog.put("用户停止离线缓存")
+                    finishNotification()
+                    stopSelf()
+                }
             }
         }
         return super.onStartCommand(intent, flags, startId)
     }
 
     override fun onDestroy() {
+        finishNotification()
         isRun = false
         cachePool.close()
         CacheBook.close()
@@ -100,9 +107,21 @@ class CacheBookService : BaseService() {
     }
 
     private fun addDownloadData(bookUrl: String?, start: Int, end: Int) {
-        bookUrl ?: return
+        resultNotified = false
+        terminalFailure = null
+        if (bookUrl.isNullOrBlank()) {
+            reportTerminalFailure("missing book url")
+            finishNotification()
+            stopSelf()
+            return
+        }
         execute {
-            val cacheBook = CacheBook.getOrCreate(bookUrl) ?: return@execute
+            val cacheBook = CacheBook.getOrCreate(bookUrl) ?: run {
+                reportTerminalFailure("book not found: $bookUrl")
+                finishNotification()
+                stopSelf()
+                return@execute
+            }
             val chapterCount = appDb.bookChapterDao.getChapterCount(bookUrl)
             val book = cacheBook.book
             if (chapterCount == 0) {
@@ -115,7 +134,7 @@ class CacheBookService : BaseService() {
                         }.onFailure {
                             removeDownload(bookUrl)
                             val msg = "《$name》目录为空且加载详情页失败\n${it.localizedMessage}"
-                            AppLog.put(msg, it, true)
+                            reportTerminalFailure(msg, it)
                             return@execute
                         }
                     }
@@ -126,7 +145,7 @@ class CacheBookService : BaseService() {
                         }
                         removeDownload(bookUrl)
                         val msg = "《$name》目录为空且加载目录失败\n${it.localizedMessage}"
-                        AppLog.put(msg, it, true)
+                        reportTerminalFailure(msg, it)
                         return@execute
                     }.getOrNull()?.let { toc ->
                         appDb.bookChapterDao.insert(*toc.toTypedArray())
@@ -134,23 +153,43 @@ class CacheBookService : BaseService() {
                     book.update()
                 }
             }
-            val end2 = if (end < 0) {
-                book.lastChapterIndex
-            } else {
-                min(end, book.lastChapterIndex)
+            val lastChapterIndex = appDb.bookChapterDao.getChapterList(bookUrl).maxOfOrNull { it.index }
+            if (lastChapterIndex == null) {
+                reportTerminalFailure("${book.name} has no chapters")
+                removeDownload(bookUrl)
+                return@execute
             }
+            val end2 = if (end < 0) lastChapterIndex else min(end, lastChapterIndex)
+            if (start < 0 || start > end2) {
+                reportTerminalFailure("${book.name} invalid chapter range ${start + 1}-${end + 1}, max index $lastChapterIndex")
+                removeDownload(bookUrl)
+                return@execute
+            }
+            AppLog.put("提交离线缓存 ${book.name}，实际章节范围 ${start + 1}-${end2 + 1}")
             cacheBook.addDownload(start, end2)
             notificationContent = CacheBook.downloadSummary
             upCacheBookNotification()
+        }.onError { error ->
+            reportTerminalFailure("初始化离线缓存失败：${error.localizedMessage}", error)
+            finishNotification()
+            stopSelf()
         }.onFinally {
-            if (downloadJob == null) {
+            if (downloadJob == null && terminalFailure == null && CacheBook.isRun) {
                 download()
             }
         }
     }
 
+    private fun reportTerminalFailure(message: String, throwable: Throwable? = null) {
+        terminalFailure = message
+        AppLog.put("离线缓存失败：$message", throwable)
+        notificationContent = message
+        upCacheBookNotification()
+    }
+
     private fun removeDownload(bookUrl: String?) {
         CacheBook.cacheBookMap[bookUrl]?.stop()
+        CacheBook.cacheBookMap.remove(bookUrl)
         postEvent(EventBus.UP_DOWNLOAD, "")
         if (downloadJob == null && CacheBook.isRun) {
             download()
@@ -164,9 +203,44 @@ class CacheBookService : BaseService() {
     private fun download() {
         downloadJob?.cancel()
         downloadJob = lifecycleScope.launch(cachePool) {
-            CacheBook.startProcessJob(cachePool)
-            stopSelf()
+            try {
+                CacheBook.startProcessJob(cachePool)
+            } catch (e: Throwable) {
+                reportTerminalFailure("下载调度异常：${e.localizedMessage}", e)
+            } finally {
+                finishNotification()
+                stopSelf()
+            }
         }
+    }
+
+    private fun finishNotification() {
+        if (resultNotified) return
+        resultNotified = true
+        val failure = terminalFailure
+        val content = failure ?: getString(
+            R.string.cache_download_finished,
+            CacheBook.successDownloadCount,
+            CacheBook.failedDownloadCount
+        )
+        val title = if (failure == null && CacheBook.failedDownloadCount == 0) {
+            getString(R.string.cache_download_success)
+        } else {
+            getString(R.string.cache_download_failed)
+        }
+        AppLog.put("离线缓存通知：$title，$content")
+        val notification = NotificationCompat.Builder(this, AppConst.channelIdDownload)
+            .setSmallIcon(R.drawable.ic_status_bar_r)
+            .setContentTitle(title)
+            .setContentText(content)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(content))
+            .setOnlyAlertOnce(false)
+            .setAutoCancel(false)
+            .setOngoing(false)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setContentIntent(activityPendingIntent<CacheActivity>("cacheActivity"))
+            .build()
+        notificationManager.notify(NotificationId.CacheBookResult, notification)
     }
 
     /** 通知文字：正文 x/y · 评论 a/b（y = 本次缓存目标章数，不是全书总章数）；无活跃书时回退下载摘要 */

@@ -1401,6 +1401,9 @@
     <string name="wait_download">wait download</string>
     <string name="download_success">download success</string>
     <string name="download_error">download failure</string>
+    <string name="cache_download_success">Offline cache complete</string>
+    <string name="cache_download_failed">Offline cache failed</string>
+    <string name="cache_download_finished">Succeeded %1$d chapter(s), failed %2$d</string>
     <string name="downloading">downloading</string>
     <string name="unknown_state">unknown</string>
     <string name="disable_source">disable source</string>
