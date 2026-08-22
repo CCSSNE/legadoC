@@ -17,8 +17,6 @@
         android:layout_height="wrap_content"
         android:contentDescription="@string/log"
         android:textIsSelectable="true"
-        android:autoLink="web"
-        android:maxLines="2"
-        android:ellipsize="end" />
+        android:autoLink="web" />
 
 </LinearLayout>

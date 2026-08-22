@@ -17,10 +17,14 @@ import io.legado.app.utils.LogUtils
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.viewbindingdelegate.viewBinding
-import splitties.views.onClick
 import java.util.*
 
 class AppLogDialog : BaseLogDialogFragment() {
+
+    private companion object {
+        /** 评论缓存逐章详细日志前缀：仅此类日志在列表折叠为两行 */
+        const val REVIEW_LOG_PREFIX = "[评论缓存]"
+    }
 
     private val binding by viewBinding(DialogRecyclerViewBinding::bind)
     private val adapter by lazy {
@@ -63,12 +67,20 @@ class AppLogDialog : BaseLogDialogFragment() {
         ) {
             binding.textTime.text = LogUtils.logTimeFormat.format(Date(item.first))
             binding.textMessage.text = item.second
+            // 只有 [评论缓存] 逐章详细日志做两行折叠；普通日志保持原有显示方式
+            if (item.second.startsWith(REVIEW_LOG_PREFIX)) {
+                binding.textMessage.maxLines = 2
+                binding.textMessage.ellipsize = android.text.TextUtils.TruncateAt.END
+            } else {
+                binding.textMessage.maxLines = Int.MAX_VALUE
+                binding.textMessage.ellipsize = null
+            }
         }
 
         override fun registerListener(holder: ItemViewHolder, binding: ItemAppLogBinding) {
-            binding.root.onClick {
+            val showFullLog: (android.view.View) -> Unit = {
                 getItem(holder.layoutPosition)?.let { item ->
-                    // 点击任意一条日志：弹窗显示完整内容（列表只展示一两行摘要）
+                    // 点击任意一条日志：弹窗显示完整内容（列表只展示摘要）
                     val full = buildString {
                         append(item.second)
                         item.third?.let {
@@ -78,6 +90,8 @@ class AppLogDialog : BaseLogDialogFragment() {
                     showDialogFragment(TextDialog("Log", full))
                 }
             }
+            binding.root.setOnClickListener(showFullLog)
+            binding.textMessage.setOnClickListener(showFullLog)
         }
 
     }
