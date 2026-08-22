@@ -276,6 +276,6 @@ uiautomator2 / ADB
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- `3.26.082213c` / `10710`，2026-08-22（UTC），`own` 主线（代码提交 `cea7eaf`，含带评论 TXT-ZIP 导出导入闭环修复、并发通知进度聚合、原子 update 防丢失等最新已提交改动）。本次编译顺利：启动前确认工作区仅剩未跟踪文件、无外部活跃构建，`git stash -u` 移出后基于干净 HEAD 冷编译一次通过（BUILD SUCCESSFUL in 2m 12s，退出码 0）；构建后复查分支头未移动，stash 原样恢复。`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.082213c` / `10710`、中文名 `阅读 C`（zh locale）、架构 `arm64-v8a`；`apksigner` 完整执行退出码 0（仅 META-INF 未签名条目警告，可接受）。收尾 `gradlew --stop` 停掉标准 home 守护进程；残留检查中的两个 kotlin compile daemon（`-iso` home 与标准 home 各一）均早于本次构建创建、非本构建残留，未予清理。未安装到模拟器、未做正式回归（用户仅要求编译）。`origin/own` 为 `cea7eaf`，本地领先为基线记录提交。
+- `3.26.082214c` / `10711`，2026-08-22（UTC），`own` 主线（代码提交 `8228d23`，含对方会话评论抓取提速（单章按钮级并发、去 800ms 等待）等已提交改动；编译中首次失败并已修复）。首次编译在 `compileAppCKotlin` 失败：`ReviewSnapshotCapture.kt` 新增的三参 `onReceivedError` 覆盖中的 `WebResourceError` 未导入（imports 有 Request/Response 唯独缺 Error），报“overrides nothing / Unresolved reference”四处；读取源码确认后补 `import android.webkit.WebResourceError` 单独提交（`8228d23`），同版本冷编译通过（BUILD SUCCESSFUL in 5m 9s，退出码 0）。构建前 `git stash -u` 移出未跟踪文件（两笔 stash：初建时一笔、对方会话运行中新文件一笔），构建后全部原样恢复、分支头未移动；构建期间新增的对方未跟踪文件（`review_hook_probe.py`、`review_snapshot_check.py`）不影响交付。`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.082214c` / `10711`、中文名 `阅读 C`（zh locale）、架构 `arm64-v8a`；`apksigner` 完整执行退出码 0（仅 META-INF 未签名条目警告，可接受）。收尾 `gradlew --stop` 无守护进程、无残留构建 JVM。未安装到模拟器、未做正式回归（用户要求编译并授权自行处理错误）。`origin/own` 为 `8228d23`，本地领先为基线记录提交。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
