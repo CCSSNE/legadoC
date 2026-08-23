@@ -353,9 +353,6 @@ object CacheBook {
                 waitDownloadSet.remove(chapterIndex)
                 return
             }
-            executionLease?.let {
-                io.legado.app.help.cache.CacheBodyWorkerRegistry.onChapterStarted(it, chapterIndex)
-            }
             val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, chapterIndex) ?: let {
                 waitDownloadSet.remove(chapterIndex)
                 val error = IllegalStateException("chapter index $chapterIndex is missing")
