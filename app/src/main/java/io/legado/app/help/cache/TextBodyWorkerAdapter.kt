@@ -21,26 +21,7 @@ internal class TextBodyWorkerAdapter(
         }
         val book = appDb.bookDao.getBook(task.bookUrl)
             ?: error("book not found: ${task.bookUrl}")
-        task.units
-            .filter { it.status == CacheUnitStatus.PENDING || it.status == CacheUnitStatus.REVIEW_ELIGIBLE }
-            .forEach { unit ->
-                workerPort.updateUnit(lease, unit.key, CacheUnitStatus.RUNNING)
-            }
         if (!registry.register(task, lease, task.units.map { it.key }.toSet())) {
-            task.units
-                .filter { it.status in setOf(
-                    CacheUnitStatus.PENDING,
-                    CacheUnitStatus.REVIEW_ELIGIBLE,
-                    CacheUnitStatus.RUNNING,
-                ) }
-                .forEach { unit ->
-                workerPort.updateUnit(
-                    lease,
-                    unit.key,
-                    CacheUnitStatus.FAILED,
-                    "another body task is active for this book",
-                )
-            }
             if (workerPort.finish(lease, CacheResult.FAILED, "another body task is active for this book")) {
                 CacheCoordinator.notifyTaskFinished(
                     lease,
@@ -107,6 +88,7 @@ internal object CacheBodyWorkerRegistry {
         val lease: CacheWorkerLease,
         val bookUrl: String,
         val expected: Set<CacheUnitKey>,
+        val started: MutableSet<CacheUnitKey> = linkedSetOf(),
         val completed: MutableMap<CacheUnitKey, CacheUnitStatus> = linkedMapOf(),
     )
 
@@ -154,6 +136,18 @@ internal object CacheBodyWorkerRegistry {
         complete(lease, chapterIndex, CacheUnitStatus.FAILED, error)
     }
 
+    /** A unit enters RUNNING only after the body executor has selected it for work. */
+    fun onChapterStarted(lease: CacheWorkerLease, chapterIndex: Int) {
+        val binding = bindingFor(lease, "body chapter=$chapterIndex") ?: return
+        val key = binding.expected.firstOrNull { it.chapterIndex == chapterIndex } ?: return
+        val started = synchronized(lock) {
+            !binding.completed.containsKey(key) && binding.started.add(key)
+        }
+        if (started) {
+            requireWorkerPort().updateUnit(binding.lease, key, CacheUnitStatus.RUNNING)
+        }
+    }
+
     fun onStartRejected(lease: CacheWorkerLease, error: String) {
         onExecutionFailed(lease, error)
     }
@@ -191,14 +185,13 @@ internal object CacheBodyWorkerRegistry {
             return
         }
         val unfinished = binding.expected - binding.completed.keys
-        unfinished.forEach { key ->
-            complete(
-                lease,
-                key.chapterIndex,
-                CacheUnitStatus.FAILED,
-                error ?: "body worker ended before chapter completion",
-            )
+        if (unfinished.isNotEmpty()) {
+            val failure = error ?: "body worker ended before chapter completion"
+            if (requireWorkerPort().finish(lease, CacheResult.FAILED, failure)) {
+                CacheCoordinator.notifyTaskFinished(lease, CacheResult.FAILED, failure)
+            }
         }
+        removeBinding(lease)
         managedBooks.remove(binding.bookUrl)
     }
 
