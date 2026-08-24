@@ -7,6 +7,8 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import java.util.UUID
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 /**
  * The single in-process source of cache task state.
@@ -34,6 +36,7 @@ internal class CacheTaskStore(
     }
     private var pendingCheckpoint: ScheduledFuture<*>? = null
     private var persistenceVersion = 0L
+    private val artifactCommitGates = HashMap<ArtifactCommitKey, ArtifactCommitGate>()
 
     private data class ProgressKey(
         val sessionId: String,
@@ -41,6 +44,58 @@ internal class CacheTaskStore(
         val generation: Long,
         val unitKey: CacheUnitKey?,
     )
+
+    private data class ArtifactCommitKey(
+        val sessionId: String,
+        val taskId: String,
+    )
+
+    /** Coordinates task-owned artifact commits without holding the Store state lock. */
+    private class ArtifactCommitGate {
+        private val gateLock = ReentrantLock()
+        private val idle = gateLock.newCondition()
+        private var active = 0
+        private var accepting = true
+
+        fun tryEnter(): Boolean = gateLock.withLock {
+            if (!accepting) return@withLock false
+            active++
+            true
+        }
+
+        fun exit() {
+            gateLock.withLock {
+                check(active > 0) { "artifact commit gate exited while idle" }
+                active--
+                if (active == 0) idle.signalAll()
+            }
+        }
+
+        fun closeAdmissions() {
+            gateLock.withLock {
+                accepting = false
+            }
+        }
+
+        fun reopenAdmissions() {
+            gateLock.withLock {
+                accepting = true
+            }
+        }
+
+        fun awaitIdle() {
+            gateLock.withLock {
+                while (active > 0) {
+                    try {
+                        idle.await()
+                    } catch (error: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                        throw error
+                    }
+                }
+            }
+        }
+    }
 
     init {
         val loaded = persistence.load()
@@ -195,6 +250,7 @@ internal class CacheTaskStore(
         synchronized(lock) {
             val task = requireTaskLocked(sessionId, taskId)
             if (task.status != CacheLifecycle.RUNNING) return false
+            artifactCommitGates[ArtifactCommitKey(sessionId, taskId)]?.closeAdmissions()
             replaceTaskLocked(task.copy(
                 status = CacheLifecycle.PAUSING,
                 generation = task.generation + 1,
@@ -208,6 +264,7 @@ internal class CacheTaskStore(
     }
 
     fun confirmPaused(sessionId: String, taskId: String): Boolean {
+        awaitArtifactCommits(sessionId, taskId)
         synchronized(lock) {
             val task = requireTaskLocked(sessionId, taskId)
             if (task.status != CacheLifecycle.PAUSING) return false
@@ -245,6 +302,7 @@ internal class CacheTaskStore(
             check(CacheLifecycleRules.canTransition(task.status, CacheLifecycle.CANCELLING)) {
                 "invalid cache transition ${task.status} -> CANCELLING"
             }
+            artifactCommitGates[ArtifactCommitKey(sessionId, taskId)]?.closeAdmissions()
             replaceTaskLocked(task.copy(
                 status = CacheLifecycle.CANCELLING,
                 generation = task.generation + 1,
@@ -258,6 +316,7 @@ internal class CacheTaskStore(
     }
 
     fun confirmCancelled(sessionId: String, taskId: String): Boolean {
+        awaitArtifactCommits(sessionId, taskId)
         synchronized(lock) {
             val task = requireTaskLocked(sessionId, taskId)
             if (task.status != CacheLifecycle.CANCELLING) return false
@@ -394,11 +453,26 @@ internal class CacheTaskStore(
         require(result != CacheResult.CANCELLED && result != CacheResult.SKIPPED) {
             "cancelled and skipped tasks must use their dedicated terminal transitions"
         }
-        var aggregateResult: CacheResult? = null
-        var autoFailedUnits: List<CacheUnitKey> = emptyList()
-        synchronized(lock) {
+        val commitKey = ArtifactCommitKey(lease.sessionId, lease.taskId)
+        val commitGate = synchronized(lock) {
             val task = requireTaskLocked(lease.sessionId, lease.taskId)
             if (!isCurrentLease(task, lease) || task.status != CacheLifecycle.RUNNING) {
+                logStaleUpdate(lease, "finish=$result")
+                null
+            } else {
+                artifactCommitGateLocked(commitKey).also { it.closeAdmissions() }
+            }
+        } ?: return false
+        commitGate.awaitIdle()
+        var aggregateResult: CacheResult? = null
+        var autoFailedUnits: List<CacheUnitKey> = emptyList()
+        try {
+            synchronized(lock) {
+            val task = requireTaskLocked(lease.sessionId, lease.taskId)
+            if (!isCurrentLease(task, lease) || task.status != CacheLifecycle.RUNNING) {
+                if (!CacheLifecycleRules.isTerminal(task.status)) {
+                    commitGate.reopenAdmissions()
+                }
                 logStaleUpdate(lease, "finish=$result")
                 return false
             }
@@ -454,7 +528,18 @@ internal class CacheTaskStore(
                 updatedAt = System.currentTimeMillis(),
             ))
             removeTaskProgressLocked(lease.sessionId, lease.taskId)
-            publishLocked()
+                publishLocked()
+            }
+        } catch (error: Throwable) {
+            synchronized(lock) {
+                val current = sessions[lease.sessionId]
+                    ?.tasks
+                    ?.firstOrNull { it.taskId == lease.taskId }
+                if (current != null && !CacheLifecycleRules.isTerminal(current.status)) {
+                    commitGate.reopenAdmissions()
+                }
+            }
+            throw error
         }
         autoFailedUnits.forEach { key ->
             record(
@@ -552,6 +637,7 @@ internal class CacheTaskStore(
                 terminalEffectsPending = false,
                 updatedAt = System.currentTimeMillis(),
             ))
+            artifactCommitGates.remove(ArtifactCommitKey(sessionId, taskId))
             publishLocked()
             return true
         }
@@ -580,20 +666,32 @@ internal class CacheTaskStore(
     }
 
     /**
-     * Execute one durable artifact commit while the lease is still owned by this RUNNING task.
-     * The Store lock covers both the lease check and the write callback so pause/cancel cannot
-     * invalidate the generation between the check and the commit boundary.
+     * Admit one durable artifact commit while the lease is still owned by this RUNNING task.
+     * Only the admission check uses the Store lock; file IO runs under the task-local gate.
      */
-    fun commitIfLeaseActive(lease: CacheWorkerLease, action: () -> Unit): Boolean = synchronized(lock) {
-        val task = sessions[lease.sessionId]
-            ?.tasks
-            ?.firstOrNull { it.taskId == lease.taskId }
-        if (task == null || !isCurrentLease(task, lease) || task.status != CacheLifecycle.RUNNING) {
-            logStaleUpdate(lease, "artifact commit rejected")
-            return@synchronized false
+    fun commitIfLeaseActive(lease: CacheWorkerLease, action: () -> Unit): Boolean {
+        val key = ArtifactCommitKey(lease.sessionId, lease.taskId)
+        val gate = synchronized(lock) {
+            val task = sessions[lease.sessionId]
+                ?.tasks
+                ?.firstOrNull { it.taskId == lease.taskId }
+            if (task == null || !isCurrentLease(task, lease) || task.status != CacheLifecycle.RUNNING) {
+                logStaleUpdate(lease, "artifact commit rejected")
+                null
+            } else {
+                artifactCommitGateLocked(key).takeIf { it.tryEnter() }
+                    ?: run {
+                        logStaleUpdate(lease, "artifact commit gate closed")
+                        null
+                    }
+            }
+        } ?: return false
+        return try {
+            action()
+            true
+        } finally {
+            gate.exit()
         }
-        action()
-        true
     }
 
     fun findTask(sessionId: String, kind: CacheKind, phase: CachePhase, bookUrl: String): CacheTaskState? =
@@ -615,6 +713,7 @@ internal class CacheTaskStore(
         }
 
     private fun attachWorkerLocked(task: CacheTaskState): CacheWorkerLease {
+        artifactCommitGates[ArtifactCommitKey(task.sessionId, task.taskId)]?.reopenAdmissions()
         val nextGeneration = task.generation + 1
         val nextStatus = CacheLifecycle.RUNNING
         check(CacheLifecycleRules.canTransition(task.status, nextStatus)) {
@@ -861,6 +960,17 @@ internal class CacheTaskStore(
     private fun requireTaskLocked(sessionId: String, taskId: String): CacheTaskState {
         return requireSessionLocked(sessionId).tasks.firstOrNull { it.taskId == taskId }
             ?: error("unknown cache task: session=$sessionId task=$taskId")
+    }
+
+    private fun artifactCommitGateLocked(key: ArtifactCommitKey): ArtifactCommitGate {
+        return artifactCommitGates.getOrPut(key) { ArtifactCommitGate() }
+    }
+
+    private fun awaitArtifactCommits(sessionId: String, taskId: String) {
+        val gate = synchronized(lock) {
+            artifactCommitGates[ArtifactCommitKey(sessionId, taskId)]
+        }
+        gate?.awaitIdle()
     }
 
     private fun record(
