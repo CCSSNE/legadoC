@@ -1374,6 +1374,7 @@
     <string name="audio_play_display_top_title">Top title shows</string>
     <string name="audio_play_display_top_title_chapter_name">Current chapter name</string>
     <string name="audio_play_display_bottom_chapter_title">Show chapter name below</string>
+    <string name="audio_play_display_review_invert_colors">Invert comment bubble colors</string>
     <string name="audio_play_display_font_setting">Font settings</string>
     <string name="audio_play_font_size">Text size</string>
     <string name="audio_play_font_size_value">%1$d px</string>

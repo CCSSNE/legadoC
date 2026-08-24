@@ -6,6 +6,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
 import android.graphics.RectF
 import android.os.Bundle
@@ -687,6 +688,13 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         }
     }
 
+    /** 评论气泡反色设置变更：重绘全部带评论的行（无评论 span 的行无需重绘） */
+    private fun applyReviewInvertColors() {
+        listeningTextRows.forEach { row ->
+            if (row.spannable != null) row.view.invalidate()
+        }
+    }
+
     private fun scheduleListeningTextCenter() {
         listeningTextScrollFollowJob?.cancel()
         listeningTextScrollFollowJob = null
@@ -951,6 +959,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
                 PreferKey.audioPlayShowChapterTitle -> applyDisplaySettings()
                 PreferKey.audioPlayTextSize,
                 PreferKey.audioPlayTextZoom -> applyListeningFontSettings()
+                PreferKey.audioPlayReviewInvertColors -> applyReviewInvertColors()
             }
         }
         observeEvent<Int>(EventBus.ALOUD_STATE) { state ->
@@ -1172,7 +1181,10 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             val width = (paint.textSize * REVIEW_IMAGE_WIDTH_SCALE).roundToInt().coerceAtLeast(1)
             val bitmap = resolveBitmap(width, height) ?: return
             val rect = imageRect(width, height, bitmap.width, bitmap.height, x, top, bottom)
-            canvas.drawBitmap(bitmap, null, rect, paint)
+            // 反色只作用于绘制、不动共享位图缓存：段评按钮图常为固定灰色系（#666666）
+            // 描边与文字，在深色沉浸背景上几乎同色；反色后保持高对比。
+            val drawPaint = if (AppConfig.audioPlayReviewInvertColors) invertPaint else paint
+            canvas.drawBitmap(bitmap, null, rect, drawPaint)
         }
 
         /**
@@ -1212,6 +1224,23 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             val imgHeight = width.toFloat() / bitmapWidth.coerceAtLeast(1) * bitmapHeight
             val div = (height - imgHeight) / 2f
             return RectF(x, top + div, x + width, bottom - div)
+        }
+
+        companion object {
+            /**
+             * 反色绘制画笔：RGB 逐通道反转（255 - v）、alpha 保留，
+             * 把固定灰色系（#666666）的评论按钮图在深色沉浸背景上反成高对比亮色。
+             */
+            private val invertPaint = Paint().apply {
+                colorFilter = ColorMatrixColorFilter(
+                    floatArrayOf(
+                        -1f, 0f, 0f, 0f, 255f,
+                        0f, -1f, 0f, 0f, 255f,
+                        0f, 0f, -1f, 0f, 255f,
+                        0f, 0f, 0f, 1f, 0f,
+                    )
+                )
+            }
         }
     }
 

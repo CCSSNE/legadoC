@@ -59,6 +59,15 @@
             android:text="@string/audio_play_display_bottom_chapter_title"
             tools:ignore="TouchTargetSizeCheck" />
 
+        <io.legado.app.lib.theme.view.ThemeSwitch
+            android:id="@+id/sw_review_invert_colors"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:padding="6dp"
+            android:text="@string/audio_play_display_review_invert_colors"
+            tools:ignore="TouchTargetSizeCheck" />
+
         <TextView
             android:id="@+id/tv_font_setting"
             android:layout_width="match_parent"
