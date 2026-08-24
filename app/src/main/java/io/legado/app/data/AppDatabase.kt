@@ -17,6 +17,7 @@ import io.legado.app.data.dao.BookDao
 import io.legado.app.data.dao.BookGroupDao
 import io.legado.app.data.dao.BookIllustrationDao
 import io.legado.app.data.dao.BookSourceDao
+import io.legado.app.data.dao.BookShortcutDao
 import io.legado.app.data.dao.BookmarkDao
 import io.legado.app.data.dao.CacheDao
 import io.legado.app.data.dao.CookieDao
@@ -46,6 +47,7 @@ import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookIllustration
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
+import io.legado.app.data.entities.BookShortcut
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.data.entities.Cache
 import io.legado.app.data.entities.Cookie
@@ -80,7 +82,7 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 105,
+    version = 106,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
         BookCollection::class, BookCollectionItem::class, BookCollectionChild::class,
@@ -89,7 +91,7 @@ val appDb by lazy {
         RssStar::class, TxtTocRule::class, ReadRecord::class, ReadRecordDaily::class,
         HttpTTS::class, Cache::class, BookIllustration::class,
         RuleSub::class, DictRule::class, KeyboardAssist::class, Server::class,
-        ReadRecentBook::class, AiChapterPurifyRecord::class],
+        ReadRecentBook::class, AiChapterPurifyRecord::class, BookShortcut::class],
     views = [BookSourcePart::class],
     autoMigrations = [
         AutoMigration(from = 43, to = 44),
@@ -145,6 +147,7 @@ abstract class AppDatabase : RoomDatabase() {
 
     abstract val bookDao: BookDao
     abstract val bookCollectionDao: BookCollectionDao
+    abstract val bookShortcutDao: BookShortcutDao
     abstract val bookGroupDao: BookGroupDao
     abstract val bookIllustrationDao: BookIllustrationDao
     abstract val bookSourceDao: BookSourceDao
@@ -178,6 +181,7 @@ abstract class AppDatabase : RoomDatabase() {
         const val BOOK_COLLECTION_TABLE_NAME = "book_collections"
         const val BOOK_COLLECTION_ITEM_TABLE_NAME = "book_collection_items"
         const val BOOK_COLLECTION_CHILD_TABLE_NAME = "book_collection_children"
+        const val BOOK_SHORTCUT_TABLE_NAME = "book_shortcuts"
         const val BOOK_SOURCE_TABLE_NAME = "book_sources"
         const val RSS_SOURCE_TABLE_NAME = "rssSources"
 
