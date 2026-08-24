@@ -2087,7 +2087,7 @@
     <string name="cache_manage_add_bookshelf">入架</string>
     <string name="cache_manage_use_cache">用缓存</string>
     <string name="cache_manage_use">用</string>
-    <string name="cache_manage_reviews">评论</string>
+    <string name="cache_manage_reviews">评</string>
     <string name="cache_manage_review_snapshots">评论快照</string>
     <string name="cache_manage_review_chapter">第%1$d章</string>
     <string name="cache_manage_review_progress">%1$d/%2$d</string>
