@@ -620,6 +620,36 @@ object LocalBook {
                             )
                         }
                     }
+                files.filter(io.legado.app.help.review.ReviewSnapshotStore::isChapterStatusFile)
+                    .forEach { statusFile ->
+                        kotlin.runCatching {
+                            val status = io.legado.app.help.review.ReviewSnapshotStore
+                                .readChapterStatus(statusFile)
+                                ?: return@runCatching
+                            matchLocalChapter(
+                                localChapters,
+                                status.chapterIndex,
+                                status.chapterTitle
+                            )?.let { localChapter ->
+                                io.legado.app.help.review.ReviewSnapshotStore.putChapterStatus(
+                                    importedBook,
+                                    status.copy(
+                                        bookUrl = importedBook.bookUrl,
+                                        chapterUrl = localChapter.url,
+                                        chapterIndex = localChapter.index,
+                                        chapterTitle = localChapter.title
+                                    )
+                                )
+                            } ?: AppLog.put(
+                                "导入评论快照状态跳过：找不到唯一匹配的本地章节 " +
+                                    "chapterIndex=${status.chapterIndex} chapterTitle=${status.chapterTitle}"
+                            )
+                        }.onFailure { e ->
+                            AppLog.put(
+                                "导入评论快照状态失败 ${statusFile.name}\n${e.localizedMessage}", e
+                            )
+                        }
+                    }
             }
             val jsonFile = files.firstOrNull { it.name == IllustrationHelp.EXPORT_JSON_NAME }
                 ?: return
@@ -658,24 +688,30 @@ object LocalBook {
     private fun matchLocalChapter(
         localChapters: List<BookChapter>,
         snapshot: io.legado.app.help.review.ReviewSnapshot
+    ): BookChapter? = matchLocalChapter(localChapters, snapshot.chapterIndex, snapshot.chapterTitle)
+
+    private fun matchLocalChapter(
+        localChapters: List<BookChapter>,
+        chapterIndex: Int,
+        chapterTitle: String
     ): BookChapter? {
-        if (snapshot.chapterTitle.isBlank()) return null
+        if (chapterTitle.isBlank()) return null
         // 1. index + title 双匹配
         localChapters.firstOrNull {
-            it.index == snapshot.chapterIndex && it.title == snapshot.chapterTitle
+            it.index == chapterIndex && it.title == chapterTitle
         }?.let { return it }
         // 2/3. title 匹配候选
-        val candidates = localChapters.filter { it.title == snapshot.chapterTitle }
+        val candidates = localChapters.filter { it.title == chapterTitle }
         if (candidates.isEmpty()) return null
         if (candidates.size == 1) return candidates.first()
         // 同名多个：取与原 index 距离最近且唯一
         val nearest = candidates.minByOrNull {
-            kotlin.math.abs(it.index - snapshot.chapterIndex)
+            kotlin.math.abs(it.index - chapterIndex)
         } ?: return null
         val hasTie = candidates.any {
             it !== nearest &&
-                kotlin.math.abs(it.index - snapshot.chapterIndex) ==
-                kotlin.math.abs(nearest.index - snapshot.chapterIndex)
+                kotlin.math.abs(it.index - chapterIndex) ==
+                kotlin.math.abs(nearest.index - chapterIndex)
         }
         return if (hasTie) null else nearest
     }

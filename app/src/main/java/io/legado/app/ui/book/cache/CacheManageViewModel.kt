@@ -36,6 +36,8 @@ import io.legado.app.help.cache.CacheRequest
 import io.legado.app.help.cache.CacheRequestSource
 import io.legado.app.help.cache.CacheUnitKey
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.review.ReviewSnapshotManager
+import io.legado.app.help.review.ReviewSnapshotStore
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.AnalyzeUrl.Companion.getMediaRequest
 import io.legado.app.model.webBook.WebBook
@@ -263,6 +265,46 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
                         CacheChapterFilter.ALL -> Unit
                     }
                     CacheChapterItem(chapter = chapter, cached = cached)
+                }
+                .toList()
+        }
+    }
+
+    /**
+     * Reviews are reported from their own persisted state, not from task
+     * progress. A task progress value disappears when its session ends, while a
+     * cache-management row must retain the latest per-chapter failure result.
+     */
+    suspend fun getReviewSnapshotItems(book: Book): List<ReviewSnapshotChapterItem> {
+        return withContext(Dispatchers.IO) {
+            val manifest = CacheManifestHelper.read(book)
+            val dbChapters = appDb.bookChapterDao.getChapterList(book.bookUrl)
+            val chapters = dbChapters.takeIf { it.isNotEmpty() }
+                ?: CacheManifestHelper.toChapters(manifest ?: return@withContext emptyList())
+            val counts = ReviewSnapshotStore.snapshotCounts(book)
+            val statuses = ReviewSnapshotStore.chapterStatuses(book)
+            val statusesByUrl = statuses.associateBy { it.chapterUrl.trim() }
+            chapters.asSequence()
+                .filterNot { it.isVolume }
+                .mapNotNull { chapter ->
+                    val cachedSnapshots = counts.forChapter(chapter)
+                    val status = statusesByUrl[chapter.url.trim()]
+                    if (status == null && cachedSnapshots == 0) {
+                        return@mapNotNull null
+                    }
+                    // Status sidecars are added with this version. For legacy
+                    // exports, derive the expected button count from this one
+                    // affected chapter instead of guessing that every existing
+                    // snapshot means the chapter was completely cached.
+                    val totalSnapshots = status?.totalSnapshots ?: BookHelp.getContent(book, chapter)
+                        ?.let(ReviewSnapshotManager::extractReviewButtons)
+                        ?.count { it.hasAction }
+                    ReviewSnapshotChapterItem(
+                        chapter = chapter,
+                        completedSnapshots = cachedSnapshots,
+                        totalSnapshots = totalSnapshots,
+                        failedSnapshots = status?.failedSnapshots ?: 0
+                    )
                 }
                 .toList()
         }
@@ -1284,6 +1326,14 @@ data class CacheBookSourceVariant(
 data class CacheChapterItem(
     val chapter: BookChapter,
     val cached: Boolean
+)
+
+data class ReviewSnapshotChapterItem(
+    val chapter: BookChapter,
+    val completedSnapshots: Int,
+    /** null only for a legacy cache whose original button count is no longer available. */
+    val totalSnapshots: Int?,
+    val failedSnapshots: Int,
 )
 
 data class CacheSummary(
