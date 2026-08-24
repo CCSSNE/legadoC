@@ -1274,10 +1274,14 @@
     <string name="cache_review_avatars_summary">离线保存评论者头像</string>
     <string name="cache_review_images">缓存评论图片</string>
     <string name="cache_review_images_summary">离线保存非头像的评论图片</string>
-    <string name="cache_review_resource_database">使用评论资源数据库</string>
+    <string name="cache_review_resource_database">使用资源库</string>
     <string name="cache_review_resource_database_summary">头像和评论图片去重保存，评论快照只保留资源引用</string>
-    <string name="cache_review_avatar_compression">压缩评论头像</string>
+    <string name="cache_review_avatar_compression">压缩头像</string>
+    <string name="cache_review_avatar_compression_summary">只压缩超过设定大小的头像</string>
+    <string name="cache_review_avatar_max_size">头像最大大小</string>
     <string name="cache_review_image_compression">压缩评论图片</string>
+    <string name="cache_review_image_compression_summary">只压缩超过设定大小的评论图片</string>
+    <string name="cache_review_image_max_size">评论图片最大大小</string>
     <string name="cache_review_compression_size_summary">最大输出大小：%1$d KB</string>
     <string name="comment_cache_concurrency">评论资源下载并发数</string>
     <string name="comment_cache_concurrency_summary">缓存单个评论页快照时的资源下载线程数，默认 8</string>

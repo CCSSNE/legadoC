@@ -107,6 +107,8 @@ object PreferKey {
     const val cacheReviewAvatars = "cacheReviewAvatars"
     const val cacheReviewImages = "cacheReviewImages"
     const val cacheReviewResourceDatabase = "cacheReviewResourceDatabase"
+    const val compressReviewAvatars = "compressReviewAvatars"
+    const val compressReviewImages = "compressReviewImages"
     const val reviewAvatarCompressionMaxKb = "reviewAvatarCompressionMaxKb"
     const val reviewImageCompressionMaxKb = "reviewImageCompressionMaxKb"
     const val reviewCacheConcurrency = "reviewCacheConcurrency"

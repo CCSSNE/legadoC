@@ -1526,10 +1526,14 @@
     <string name="cache_review_avatars_summary">Save commenter avatars for offline comment snapshots</string>
     <string name="cache_review_images">Cache comment images</string>
     <string name="cache_review_images_summary">Save non-avatar images for offline comment snapshots</string>
-    <string name="cache_review_resource_database">Use review resource database</string>
+    <string name="cache_review_resource_database">Use resource library</string>
     <string name="cache_review_resource_database_summary">Deduplicate avatars and comment images; snapshots keep resource references</string>
     <string name="cache_review_avatar_compression">Compress comment avatars</string>
+    <string name="cache_review_avatar_compression_summary">Compress only avatars larger than the configured maximum</string>
+    <string name="cache_review_avatar_max_size">Avatar maximum size</string>
     <string name="cache_review_image_compression">Compress comment images</string>
+    <string name="cache_review_image_compression_summary">Compress only comment images larger than the configured maximum</string>
+    <string name="cache_review_image_max_size">Comment image maximum size</string>
     <string name="cache_review_compression_size_summary">Maximum output size: %1$d KB</string>
     <string name="comment_cache_concurrency">Comment resource download concurrency</string>
     <string name="comment_cache_concurrency_summary">Maximum concurrent resource downloads while caching one comment-page snapshot, default 8</string>
