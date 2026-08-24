@@ -24,6 +24,8 @@ import io.legado.app.help.DispatchersMonitor
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.showDecimalInputDialog
+import io.legado.app.lib.dialogs.showIntegerInputDialog
 import io.legado.app.lib.prefs.fragment.PreferenceFragment
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.CheckSource
@@ -74,6 +76,14 @@ class OtherConfigFragment : PreferenceFragment(),
         addPreferencesFromResource(R.xml.pref_config_other)
         upPreferenceSummary(PreferKey.userAgent, AppConfig.userAgent)
         upPreferenceSummary(PreferKey.preDownloadNum, AppConfig.preDownloadNum.toString())
+        upPreferenceSummary(
+            PreferKey.downloadChapterIntervalMillis,
+            AppConfig.downloadChapterIntervalSecondsText(),
+        )
+        upPreferenceSummary(
+            PreferKey.downloadChapterRetryCount,
+            AppConfig.downloadChapterRetryCount.toString(),
+        )
         upPreferenceSummary(PreferKey.threadCount, AppConfig.threadCount.toString())
         upPreferenceSummary(PreferKey.webPort, AppConfig.webPort.toString())
         AppConfig.defaultBookTreeUri?.let {
@@ -138,6 +148,33 @@ class OtherConfigFragment : PreferenceFragment(),
                 .show {
                     AppConfig.preDownloadNum = it
                 }
+
+            PreferKey.downloadChapterIntervalMillis -> showDecimalInputDialog(
+                title = R.string.download_chapter_interval,
+                currentValue = AppConfig.downloadChapterIntervalMillis / 1000.0,
+                validRange = 0.0..(Long.MAX_VALUE / 1000.0),
+                defaultValue = 0.0,
+                validationError = { seconds ->
+                    if (AppConfig.downloadChapterIntervalMillisFromSeconds(seconds) == null) {
+                        getString(R.string.download_chapter_interval_precision_invalid)
+                    } else {
+                        null
+                    }
+                },
+            ) { seconds ->
+                AppConfig.downloadChapterIntervalMillis = checkNotNull(
+                    AppConfig.downloadChapterIntervalMillisFromSeconds(seconds)
+                )
+            }
+
+            PreferKey.downloadChapterRetryCount -> showIntegerInputDialog(
+                title = R.string.download_chapter_retry_count,
+                currentValue = AppConfig.downloadChapterRetryCount,
+                validRange = 0..Int.MAX_VALUE,
+                defaultValue = 2,
+            ) {
+                AppConfig.downloadChapterRetryCount = it
+            }
 
             PreferKey.threadCount -> NumberPickerDialog(requireContext())
                 .setTitle(getString(R.string.threads_num_title))
@@ -204,6 +241,14 @@ class OtherConfigFragment : PreferenceFragment(),
         when (key) {
             PreferKey.preDownloadNum -> {
                 upPreferenceSummary(key, AppConfig.preDownloadNum.toString())
+            }
+
+            PreferKey.downloadChapterIntervalMillis -> {
+                upPreferenceSummary(key, AppConfig.downloadChapterIntervalSecondsText())
+            }
+
+            PreferKey.downloadChapterRetryCount -> {
+                upPreferenceSummary(key, AppConfig.downloadChapterRetryCount.toString())
             }
 
             PreferKey.threadCount -> {
@@ -284,6 +329,12 @@ class OtherConfigFragment : PreferenceFragment(),
         when (preferenceKey) {
             PreferKey.preDownloadNum -> preference.summary =
                 getString(R.string.pre_download_s, value)
+
+            PreferKey.downloadChapterIntervalMillis -> preference.summary =
+                getString(R.string.download_chapter_interval_summary, value)
+
+            PreferKey.downloadChapterRetryCount -> preference.summary =
+                getString(R.string.download_chapter_retry_count_summary, value)
 
             PreferKey.threadCount -> preference.summary = getString(R.string.threads_num, value)
             PreferKey.webPort -> preference.summary = getString(R.string.web_port_summary, value)

@@ -1043,6 +1043,11 @@
     <string name="pre_download">预下载</string>
     <string name="pre_download_m">预下载%s页</string>
     <string name="pre_download_s">预先下载 %s 章正文</string>
+    <string name="download_chapter_interval">下载章节间隔</string>
+    <string name="download_chapter_interval_summary">后台缓存章节启动间隔至少 %s 秒</string>
+    <string name="download_chapter_interval_precision_invalid">请输入非负秒数，精度最多到毫秒。</string>
+    <string name="download_chapter_retry_count">失败章节重试次数</string>
+    <string name="download_chapter_retry_count_summary">章节首次失败后，额外重试 %s 次。</string>
     <string name="is_enabled">是否启用</string>
     <string name="background_image">背景图片</string>
     <string name="read_scroll_follow_background">背景滚动跟随</string>

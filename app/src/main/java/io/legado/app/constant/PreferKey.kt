@@ -105,6 +105,8 @@ object PreferKey {
     const val enableReview = "enableReview"
     const val syncCacheReview = "syncCacheReview"
     const val autoDownloadReview = "autoDownloadReview"
+    const val downloadChapterIntervalMillis = "downloadChapterIntervalMillis"
+    const val downloadChapterRetryCount = "downloadChapterRetryCount"
     const val cacheReviewAvatars = "cacheReviewAvatars"
     const val cacheReviewImages = "cacheReviewImages"
     const val compressReviewAvatars = "compressReviewAvatars"

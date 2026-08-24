@@ -17,6 +17,7 @@ fun Fragment.showDecimalInputDialog(
     currentValue: Double,
     validRange: ClosedFloatingPointRange<Double>,
     defaultValue: Double? = null,
+    validationError: ((Double) -> String?)? = null,
     onValueConfirmed: (Double) -> Unit
 ) {
     require(validRange.start <= validRange.endInclusive) {
@@ -53,6 +54,10 @@ fun Fragment.showDecimalInputDialog(
         val value = binding.editView.text?.toString()?.trim()?.toDoubleOrNull()
         if (value == null || !value.isFinite() || value !in validRange) {
             toastOnUi(getString(R.string.decimal_input_range_invalid, rangeStart, rangeEnd))
+            return@setOnClickListener
+        }
+        validationError?.invoke(value)?.let { error ->
+            toastOnUi(error)
             return@setOnClickListener
         }
         confirm(value)

@@ -1,12 +1,15 @@
 package io.legado.app.ui.book.cache
 
 import io.legado.app.R
+import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.AudioOfflineState
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.help.book.isVideo
+import io.legado.app.help.cache.ChapterDownloadPacer
 import io.legado.app.help.cache.CacheOperationDiagnostics
+import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.ConvertUtils
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -120,149 +123,198 @@ internal object AudioCacheTaskManager {
             var speedBytes = 0L
             var speedWindowStart = System.currentTimeMillis()
             var activeTrace: CacheOperationDiagnostics.Operation? = null
+            var failedChapters = 0
+            var lastChapterFailure: String? = null
             try {
                 chapters.forEach { chapter ->
-                    if (cancelFlag.get()) throw CancellationException("cancelled")
-                    activeChapter = chapter
-                    val displayIndex = (completed + 1).coerceAtMost(request.totalChapters)
-                    updateState(
-                        book.bookUrl
-                    ) {
-                        it.copy(
-                            status = CacheTaskStatus.RESOLVING,
-                            currentChapterTitle = chapter.title,
-                            currentChapterIndex = displayIndex,
-                            completedChapters = completed,
-                            currentChapterBytes = 0L,
-                            currentChapterTotalBytes = null,
-                            active = true,
-                            message = appCtx.getString(
-                                R.string.cache_manage_resolving_chapter,
-                                displayIndex,
-                                request.totalChapters
+                    var retries = 0
+                    var chapterFinished = false
+                    while (!chapterFinished) {
+                        if (cancelFlag.get()) throw CancellationException("cancelled")
+                        val mayStart = runBlocking {
+                            ChapterDownloadPacer.awaitStartSlot { !cancelFlag.get() }
+                        }
+                        if (!mayStart || cancelFlag.get()) throw CancellationException("cancelled")
+                        activeChapter = chapter
+                        val displayIndex = (completed + 1).coerceAtMost(request.totalChapters)
+                        updateState(
+                            book.bookUrl
+                        ) {
+                            it.copy(
+                                status = CacheTaskStatus.RESOLVING,
+                                currentChapterTitle = chapter.title,
+                                currentChapterIndex = displayIndex,
+                                completedChapters = completed,
+                                currentChapterBytes = 0L,
+                                currentChapterTotalBytes = null,
+                                active = true,
+                                message = appCtx.getString(
+                                    R.string.cache_manage_resolving_chapter,
+                                    displayIndex,
+                                    request.totalChapters
+                                )
                             )
-                        )
-                    }
-                    request.onChapterStarted?.invoke(chapter)
-                    val chapterDiagnostics = request.diagnostics?.forChapter(chapter.index)
-                    activeTrace = chapterDiagnostics?.let {
-                        CacheOperationDiagnostics.begin(it, "MEDIA_RESOLVE")
-                    }
-                    val mediaRequest = runBlocking {
-                        request.resolver(book, chapter)
-                    }
-                    activeTrace?.done(
-                        CacheOperationDiagnostics.Metrics(outputChars = mediaRequest.url.length),
-                        "MEDIA_URL_READY",
-                    )
-                    activeTrace = null
-                    request.onChapterResolved?.invoke(chapter, mediaRequest)
-                    var chapterKnownLength = 0L
-                    activeTrace = chapterDiagnostics?.let {
-                        CacheOperationDiagnostics.begin(
-                            it,
-                            "MEDIA_CACHE",
-                            CacheOperationDiagnostics.Metrics(inputChars = mediaRequest.url.length),
-                        )
-                    }
-                    ExoPlayerHelper.cacheMedia(
-                        request = mediaRequest,
-                        useVideoCache = book.isVideo,
-                        book = book,
-                        progress = progress@{ requestLength, bytesCached, newBytesCached ->
-                            if (cancelFlag.get()) throw CancellationException("cancelled")
-                            if (requestLength > 0 && bytesCached <= requestLength) {
-                                val previousKnown = chapterKnownLength
-                                chapterKnownLength = max(chapterKnownLength, requestLength)
-                                knownTotalBytes += (chapterKnownLength - previousKnown)
+                        }
+                        request.onChapterStarted?.invoke(chapter)
+                        try {
+                            val chapterDiagnostics = request.diagnostics?.forChapter(chapter.index)
+                            activeTrace = chapterDiagnostics?.let {
+                                CacheOperationDiagnostics.begin(it, "MEDIA_RESOLVE")
                             }
-                            downloadedBytes += newBytesCached.coerceAtLeast(0L)
-                            speedBytes += newBytesCached.coerceAtLeast(0L)
-                            val now = System.currentTimeMillis()
-                            val delta = (now - speedWindowStart).coerceAtLeast(1L)
-                            if (delta < PROGRESS_STATE_INTERVAL_MS) return@progress
-                            val speed = speedBytes * 1000L / delta
-                            speedBytes = 0L
-                            speedWindowStart = now
+                            val mediaRequest = runBlocking {
+                                request.resolver(book, chapter)
+                            }
+                            activeTrace?.done(
+                                CacheOperationDiagnostics.Metrics(outputChars = mediaRequest.url.length),
+                                "MEDIA_URL_READY",
+                            )
+                            activeTrace = null
+                            request.onChapterResolved?.invoke(chapter, mediaRequest)
+                            var chapterKnownLength = 0L
+                            activeTrace = chapterDiagnostics?.let {
+                                CacheOperationDiagnostics.begin(
+                                    it,
+                                    "MEDIA_CACHE",
+                                    CacheOperationDiagnostics.Metrics(inputChars = mediaRequest.url.length),
+                                )
+                            }
+                            ExoPlayerHelper.cacheMedia(
+                                request = mediaRequest,
+                                useVideoCache = book.isVideo,
+                                book = book,
+                                progress = progress@{ requestLength, bytesCached, newBytesCached ->
+                                    if (cancelFlag.get()) throw CancellationException("cancelled")
+                                    if (requestLength > 0 && bytesCached <= requestLength) {
+                                        val previousKnown = chapterKnownLength
+                                        chapterKnownLength = max(chapterKnownLength, requestLength)
+                                        knownTotalBytes += (chapterKnownLength - previousKnown)
+                                    }
+                                    downloadedBytes += newBytesCached.coerceAtLeast(0L)
+                                    speedBytes += newBytesCached.coerceAtLeast(0L)
+                                    val now = System.currentTimeMillis()
+                                    val delta = (now - speedWindowStart).coerceAtLeast(1L)
+                                    if (delta < PROGRESS_STATE_INTERVAL_MS) return@progress
+                                    val speed = speedBytes * 1000L / delta
+                                    speedBytes = 0L
+                                    speedWindowStart = now
+                                    updateState(book.bookUrl) {
+                                        it.copy(
+                                            status = CacheTaskStatus.CACHING,
+                                            currentChapterTitle = chapter.title,
+                                            currentChapterIndex = displayIndex,
+                                            completedChapters = completed,
+                                            currentChapterBytes = bytesCached.coerceAtLeast(0L),
+                                            currentChapterTotalBytes = chapterKnownLength
+                                                .takeIf { value -> value > 0L },
+                                            downloadedBytes = downloadedBytes,
+                                            totalBytes = knownTotalBytes.takeIf { value -> value > 0L },
+                                            speedBytesPerSecond = speed,
+                                            active = true,
+                                            message = buildProgressMessage(
+                                                completed = completed,
+                                                total = request.totalChapters,
+                                                downloadedBytes = downloadedBytes,
+                                                totalBytes = knownTotalBytes.takeIf { value -> value > 0L },
+                                                speedBytes = speed
+                                            )
+                                        )
+                                    }
+                                    request.onChapterProgress?.invoke(
+                                        chapter,
+                                        bytesCached.coerceAtLeast(0L),
+                                        chapterKnownLength.takeIf { value -> value > 0L },
+                                    )
+                                },
+                                shouldCancel = { cancelFlag.get() }
+                            )
+                            activeTrace?.done(
+                                CacheOperationDiagnostics.Metrics(outputBytes = chapterKnownLength),
+                                "MEDIA_CACHE_WRITTEN",
+                            )
+                            activeTrace = null
+                            if (!book.isVideo) {
+                                val offlineState = AudioOfflineState.inspect(book, chapter)
+                                require(offlineState.isComplete) {
+                                    offlineState.incompleteReason()
+                                }
+                            }
+                            request.onChapterProgress?.invoke(
+                                chapter,
+                                chapterKnownLength.coerceAtLeast(0L),
+                                chapterKnownLength.takeIf { value -> value > 0L },
+                            )
+                            request.onChapterFinished?.invoke(chapter, true, null)
+                            activeChapter = null
+                            completed += 1
                             updateState(book.bookUrl) {
                                 it.copy(
                                     status = CacheTaskStatus.CACHING,
+                                    completedChapters = completed,
                                     currentChapterTitle = chapter.title,
                                     currentChapterIndex = displayIndex,
-                                    completedChapters = completed,
-                                    currentChapterBytes = bytesCached.coerceAtLeast(0L),
+                                    currentChapterBytes = chapterKnownLength.coerceAtLeast(0L),
                                     currentChapterTotalBytes = chapterKnownLength
                                         .takeIf { value -> value > 0L },
-                                    downloadedBytes = downloadedBytes,
-                                    totalBytes = knownTotalBytes.takeIf { value -> value > 0L },
-                                    speedBytesPerSecond = speed,
                                     active = true,
                                     message = buildProgressMessage(
                                         completed = completed,
                                         total = request.totalChapters,
                                         downloadedBytes = downloadedBytes,
                                         totalBytes = knownTotalBytes.takeIf { value -> value > 0L },
-                                        speedBytes = speed
+                                        speedBytes = _states.value[book.bookUrl]?.speedBytesPerSecond ?: 0L
                                     )
                                 )
                             }
-                            request.onChapterProgress?.invoke(
-                                chapter,
-                                bytesCached.coerceAtLeast(0L),
-                                chapterKnownLength.takeIf { value -> value > 0L },
+                            chapterFinished = true
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (error: Exception) {
+                            if (cancelFlag.get()) {
+                                activeTrace?.cancelled()
+                                activeTrace = null
+                                throw CancellationException("cancelled")
+                            }
+                            activeTrace?.fail(error)
+                            activeTrace = null
+                            AppLog.put(
+                                "媒体缓存尝试失败 ${book.name}-${chapter.title}：${error.localizedMessage}",
+                                error,
                             )
-                        },
-                        shouldCancel = { cancelFlag.get() }
-                    )
-                    activeTrace?.done(
-                        CacheOperationDiagnostics.Metrics(outputBytes = chapterKnownLength),
-                        "MEDIA_CACHE_WRITTEN",
-                    )
-                    activeTrace = null
-                    if (!book.isVideo) {
-                        val offlineState = AudioOfflineState.inspect(book, chapter)
-                        require(offlineState.isComplete) {
-                            offlineState.incompleteReason()
+                            if (retries < AppConfig.downloadChapterRetryCount) {
+                                retries += 1
+                            } else {
+                                request.onChapterFinished?.invoke(chapter, false, error.localizedMessage)
+                                activeChapter = null
+                                failedChapters += 1
+                                lastChapterFailure = error.localizedMessage
+                                chapterFinished = true
+                            }
                         }
-                    }
-                    request.onChapterProgress?.invoke(
-                        chapter,
-                        chapterKnownLength.coerceAtLeast(0L),
-                        chapterKnownLength.takeIf { value -> value > 0L },
-                    )
-                    request.onChapterFinished?.invoke(chapter, true, null)
-                    activeChapter = null
-                    completed += 1
-                    updateState(book.bookUrl) {
-                        it.copy(
-                            status = CacheTaskStatus.CACHING,
-                            completedChapters = completed,
-                            currentChapterTitle = chapter.title,
-                            currentChapterIndex = displayIndex,
-                            currentChapterBytes = chapterKnownLength.coerceAtLeast(0L),
-                            currentChapterTotalBytes = chapterKnownLength
-                                .takeIf { value -> value > 0L },
-                            active = true,
-                            message = buildProgressMessage(
-                                completed = completed,
-                                total = request.totalChapters,
-                                downloadedBytes = downloadedBytes,
-                                totalBytes = knownTotalBytes.takeIf { value -> value > 0L },
-                                speedBytes = _states.value[book.bookUrl]?.speedBytesPerSecond ?: 0L
-                            )
-                        )
                     }
                 }
                 updateState(book.bookUrl) {
+                    val status = if (failedChapters == 0) {
+                        CacheTaskStatus.COMPLETED
+                    } else {
+                        CacheTaskStatus.FAILED
+                    }
                     it.copy(
-                        status = CacheTaskStatus.COMPLETED,
+                        status = status,
                         completedChapters = completed,
                         active = false,
                         speedBytesPerSecond = 0L,
-                        message = appCtx.getString(R.string.cache_manage_task_done, completed)
+                        message = if (status == CacheTaskStatus.COMPLETED) {
+                            appCtx.getString(R.string.cache_manage_task_done, completed)
+                        } else {
+                            lastChapterFailure ?: appCtx.getString(R.string.error)
+                        }
                     )
                 }
-                finalStatus = CacheTaskStatus.COMPLETED
+                finalStatus = if (failedChapters == 0) {
+                    CacheTaskStatus.COMPLETED
+                } else {
+                    CacheTaskStatus.FAILED
+                }
             } catch (e: CancellationException) {
                 activeTrace?.cancelled()
                 activeTrace = null

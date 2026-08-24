@@ -1287,6 +1287,11 @@
     <string name="pre_download">Download in advance</string>
     <string name="pre_download_m">Pre-download %s pages</string>
     <string name="pre_download_s">Download %s chapters in advance</string>
+    <string name="download_chapter_interval">Download chapter interval</string>
+    <string name="download_chapter_interval_summary">Start cached chapters at least %s s apart</string>
+    <string name="download_chapter_interval_precision_invalid">Enter non-negative seconds with a precision of one millisecond.</string>
+    <string name="download_chapter_retry_count">Failed chapter retries</string>
+    <string name="download_chapter_retry_count_summary">Retry a failed chapter %s more time(s).</string>
     <string name="is_enabled">Is enabled</string>
     <string name="background_image">Background image</string>
     <string name="read_scroll_follow_background">Scroll Follow Background</string>
