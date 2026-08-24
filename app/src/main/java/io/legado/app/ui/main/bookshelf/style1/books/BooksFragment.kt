@@ -35,6 +35,9 @@ import io.legado.app.help.book.AudioTextFusion
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.isShortcut
+import io.legado.app.help.book.shelfKey
+import io.legado.app.help.book.BookShortcutHelp
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
@@ -63,8 +66,6 @@ import io.legado.app.utils.startActivity
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
-import io.legado.app.model.SourceCallBack
-import io.legado.app.model.localBook.LocalBook
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -303,9 +304,18 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             clearSelection()
         }
         actionAddGroup.setOnClickListener {
-            val urls = selectedBookList().map { it.bookUrl }
-            if (urls.isEmpty() || selectedCollections.isNotEmpty()) return@setOnClickListener
-            showDialogFragment(BookGroupSelectDialog(ArrayList(urls)))
+            val selected = selectedBookList()
+            val urls = selected.filterNot { it.isShortcut }.map { it.bookUrl }
+            val shortcutIds = selected.map { it.shortcutId }.filter { it > 0L }.toLongArray()
+            if (urls.isEmpty() && shortcutIds.isEmpty() || selectedCollections.isNotEmpty()) {
+                return@setOnClickListener
+            }
+            showDialogFragment(
+                BookGroupSelectDialog(
+                    ArrayList(urls),
+                    shortcutIds
+                )
+            )
             clearSelection()
         }
         actionDeleteBook.setOnClickListener {
@@ -343,8 +353,8 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     private fun toggleSelection(book: Book) {
-        if (selectedBooks.remove(book.bookUrl) == null) {
-            selectedBooks[book.bookUrl] = book
+        if (selectedBooks.remove(book.shelfKey) == null) {
+            selectedBooks[book.shelfKey] = book
         }
         updateSelectionBar()
     }
@@ -361,7 +371,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         showActionBar: Boolean = true,
         refreshItems: Boolean = true
     ) {
-        selectedBooks[book.bookUrl] = book
+        selectedBooks[book.shelfKey] = book
         updateSelectionBar(showActionBar, refreshItems)
     }
 
@@ -468,45 +478,44 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         val books = selectedBookList()
         if (books.isEmpty()) return
         alert(titleResource = R.string.draw, messageResource = R.string.sure_del) {
-            var checkBox: CheckBox? = null
+            var deleteBodyCheckBox: CheckBox? = null
+            var deleteOriginalCheckBox: CheckBox? = null
+            val checks = LinearLayout(requireContext()).apply {
+                setPadding(16.dpToPx(), 0, 16.dpToPx(), 0)
+            }
+            if (books.any { it.isShortcut }) {
+                deleteBodyCheckBox = CheckBox(requireContext()).apply {
+                    setText(R.string.delete_book_body)
+                }
+                checks.addView(deleteBodyCheckBox)
+            }
             if (books.any { it.isLocal }) {
-                checkBox = CheckBox(requireContext()).apply {
+                deleteOriginalCheckBox = CheckBox(requireContext()).apply {
                     setText(R.string.delete_book_file)
+                    setOnCheckedChangeListener { _, isChecked ->
+                        if (isChecked) deleteBodyCheckBox?.isChecked = true
+                    }
                     isChecked = LocalConfig.deleteBookOriginal
                 }
-                val view = LinearLayout(requireContext()).apply {
-                    setPadding(16.dpToPx(), 0, 16.dpToPx(), 0)
-                    addView(checkBox)
-                }
-                customView { view }
+                checks.addView(deleteOriginalCheckBox)
+            }
+            if (checks.childCount > 0) {
+                customView { checks }
             }
             okButton {
-                checkBox?.let {
+                deleteOriginalCheckBox?.let {
                     LocalConfig.deleteBookOriginal = it.isChecked
                 }
-                deleteBooks(books, LocalConfig.deleteBookOriginal)
+                viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+                    BookShortcutHelp.delete(
+                        books,
+                        deleteBody = deleteBodyCheckBox?.isChecked == true,
+                        deleteOriginal = deleteOriginalCheckBox?.isChecked == true
+                    )
+                }
                 clearSelection()
             }
             noButton()
-        }
-    }
-
-    private fun deleteBooks(books: List<Book>, deleteOriginal: Boolean) {
-        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
-            books.forEach {
-                if (it.isLocal) {
-                    LocalBook.clearBookShelfCache(it)
-                }
-            }
-            appDb.bookDao.delete(*books.toTypedArray())
-            books.forEach {
-                if (it.isLocal) {
-                    LocalBook.deleteBook(it, deleteOriginal)
-                } else {
-                    val source = appDb.bookSourceDao.getBookSource(it.origin)
-                    SourceCallBack.callBackBook(SourceCallBack.DEL_BOOK_SHELF, source, it)
-                }
-            }
         }
     }
 
@@ -532,12 +541,28 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
                 val book = books[index]
                 book.copy(group = book.group or groupId)
             }
-            appDb.bookDao.update(*array)
+            BookShortcutHelp.update(*array)
             withContext(Dispatchers.Main) {
                 toastOnUi(R.string.book_group_added)
                 if (clearAfter) {
                     clearSelection()
                 }
+            }
+        }
+    }
+
+    fun canCreateShortcuts(): Boolean {
+        return selectedBooks.isNotEmpty() && selectedCollections.isEmpty()
+    }
+
+    fun createShortcuts() {
+        if (!canCreateShortcuts()) return
+        val group = secondaryGroupId.takeIf { it > 0L } ?: 0L
+        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+            BookShortcutHelp.create(selectedBookList(), group)
+            withContext(Dispatchers.Main) {
+                clearSelection()
+                postEvent(EventBus.BOOKSHELF_REFRESH, "")
             }
         }
     }
@@ -586,6 +611,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     /** 当前选择能否触发有效操作：只需选中书籍（无合集），具体错误在点击后提示 */
     fun fusionActionAvailable(): Boolean {
         if (selectedCollections.isNotEmpty() || selectedBooks.isEmpty()) return false
+        if (selectedBooks.values.any { it.isShortcut }) return false
         return true
     }
 
@@ -707,7 +733,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
                 appDb.bookCollectionDao.normalizeLocations()
             }
             val userGroupIds = appDb.bookGroupDao.idsSum
-            val booksFlow = appDb.bookDao.flowByGroup(groupId).map { list ->
+            val booksFlow = BookShortcutHelp.flowByGroup(groupId).map { list ->
                 //排序
                 when (bookSort) {
                     1 -> list.sortedByDescending { it.latestChapterTime }
@@ -742,15 +768,20 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
                 appDb.bookCollectionDao.flowCollectedBookUrls()
             ) { bookData, collections, collectedBookUrls ->
                 val (allBooks, filteredBooks) = bookData
-                val visibleBookUrls = filteredBooks.mapTo(hashSetOf()) { it.bookUrl }
+                val visibleBookUrls = filteredBooks
+                    .filterNot { it.isShortcut }
+                    .mapTo(hashSetOf()) { it.bookUrl }
                 val collectedBookUrlSet = collectedBookUrls.toHashSet()
-                val rootBooks = filteredBooks.filter { it.bookUrl !in collectedBookUrlSet }
+                val rootBooks = filteredBooks.filter {
+                    it.isShortcut || it.bookUrl !in collectedBookUrlSet
+                }
                 val collectionItems = buildCollectionShelfItems(collections, visibleBookUrls)
                 Triple(allBooks, filteredBooks, collectionItems + rootBooks)
             }.flowWithLifecycleAndDatabaseChangeFirst(
                 viewLifecycleOwner.lifecycle,
                 Lifecycle.State.RESUMED,
                 AppDatabase.BOOK_TABLE_NAME,
+                AppDatabase.BOOK_SHORTCUT_TABLE_NAME,
                 AppDatabase.BOOK_COLLECTION_TABLE_NAME,
                 AppDatabase.BOOK_COLLECTION_ITEM_TABLE_NAME,
                 AppDatabase.BOOK_COLLECTION_CHILD_TABLE_NAME
@@ -813,7 +844,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     fun getBooks(): List<Book> {
-        return booksAdapter.getItems().filterIsInstance<Book>()
+        return booksAdapter.getItems().filterIsInstance<Book>().distinctBy { it.bookUrl }
     }
 
     fun gotoTop() {
@@ -852,7 +883,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         selectedCollections.clear()
         items.forEach { item ->
             when (item) {
-                is Book -> selectedBooks[item.bookUrl] = item
+                is Book -> selectedBooks[item.shelfKey] = item
                 is BookCollectionShelfItem -> selectedCollections[item.id] = item
             }
         }
@@ -906,12 +937,12 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     override fun onBookTouchedForDrag(book: Book, view: View, rawX: Float, rawY: Float) {
-        draggingBooks = if (selectedBooks.containsKey(book.bookUrl)) {
+        draggingBooks = if (selectedBooks.containsKey(book.shelfKey)) {
             selectedBookList()
         } else {
             listOf(book)
         }
-        draggingCollections = if (selectedBooks.containsKey(book.bookUrl)) {
+        draggingCollections = if (selectedBooks.containsKey(book.shelfKey)) {
             selectedCollectionList()
         } else {
             emptyList()
@@ -1006,7 +1037,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
 
     override fun isSelected(item: Any): Boolean {
         return when (item) {
-            is Book -> selectedBooks.containsKey(item.bookUrl)
+            is Book -> selectedBooks.containsKey(item.shelfKey)
             is BookCollectionShelfItem -> selectedCollections.containsKey(item.id)
             else -> false
         }
@@ -1057,7 +1088,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     private fun buildStack(view: View) {
-        val draggingBookUrls = selectedBooks.keys
+        val draggingBookKeys = selectedBooks.keys
         val draggingCollectionIds = selectedCollections.keys
         draggingViewStates.clear()
         val anchorState = view.toDraggingViewState()
@@ -1071,7 +1102,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             if (position == RecyclerView.NO_POSITION) continue
             val item = booksAdapter.getItem(position)
             val shouldDrag = when (item) {
-                is Book -> item.bookUrl in draggingBookUrls
+                is Book -> item.shelfKey in draggingBookKeys
                 is BookCollectionShelfItem -> item.id in draggingCollectionIds
                 else -> false
             }
@@ -1121,7 +1152,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             resetDraggingView()
             return
         }
-        val targetBook = findBookAt(rawX, rawY, books.mapTo(hashSetOf()) { it.bookUrl })
+        val targetBook = findBookAt(rawX, rawY, books.mapTo(hashSetOf()) { it.shelfKey })
         if (targetBook != null) {
             val urls = (books + targetBook).distinctBy { it.bookUrl }.map { it.bookUrl }
             val collectionIds = collections.map { it.id }.toLongArray()
@@ -1173,9 +1204,14 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     ) {
         if (books.isEmpty() && collections.isEmpty()) return
         viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
-            val bookUrls = books.map { it.bookUrl }
+            BookShortcutHelp.update(
+                *books.filter { it.isShortcut }.map { it.copy(group = 0L) }.toTypedArray()
+            )
+            val bookUrls = books.filterNot { it.isShortcut }.map { it.bookUrl }
             val collectionIds = collections.map { it.id }
-            appDb.bookCollectionDao.moveItemsToRoot(bookUrls, collectionIds)
+            if (bookUrls.isNotEmpty() || collectionIds.isNotEmpty()) {
+                appDb.bookCollectionDao.moveItemsToRoot(bookUrls, collectionIds)
+            }
             withContext(Dispatchers.Main) {
                 upRecyclerData()
                 clearSelection()
@@ -1245,7 +1281,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             val position = binding.rvBookshelf.getChildAdapterPosition(child)
             if (position == RecyclerView.NO_POSITION) continue
             val item = booksAdapter.getItem(position)
-            if (item is Book && item.bookUrl !in excludedBookUrls) {
+            if (item is Book && item.shelfKey !in excludedBookUrls) {
                 return item
             }
         }

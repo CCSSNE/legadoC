@@ -24,12 +24,13 @@ import io.legado.app.data.entities.BookCollectionWithItems
 import io.legado.app.databinding.ActivityBookCollectionBinding
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isNotShelf
+import io.legado.app.help.book.isShortcut
+import io.legado.app.help.book.shelfKey
+import io.legado.app.help.book.BookShortcutHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.UiCorner
-import io.legado.app.model.SourceCallBack
-import io.legado.app.model.localBook.LocalBook
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.main.bookshelf.style1.books.BaseBooksAdapter
 import io.legado.app.ui.main.bookshelf.style1.books.BooksAdapterGrid
@@ -115,9 +116,15 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
             }
             combine(
                 appDb.bookCollectionDao.flowBooks(collectionId),
-                appDb.bookCollectionDao.flowChildCollections(collectionId)
-            ) { list, childCollections ->
-                val sortedBooks = sortBooks(list.filterNot { it.isNotShelf })
+                appDb.bookCollectionDao.flowChildCollections(collectionId),
+                appDb.bookShortcutDao.flowAll()
+            ) { list, childCollections, shortcuts ->
+                val sortedBooks = sortBooks(
+                    BookShortcutHelp.withShortcuts(
+                        list.filterNot { it.isNotShelf },
+                        shortcuts
+                    )
+                )
                 val visibleBookUrls = sortedBooks.mapTo(hashSetOf()) { it.bookUrl }
                 val childItems = buildCollectionShelfItems(childCollections, visibleBookUrls)
                 childItems + sortedBooks
@@ -154,9 +161,18 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
             clearSelection()
         }
         actionAddGroup.setOnClickListener {
-            val urls = selectedBookList().map { it.bookUrl }
-            if (urls.isEmpty() || selectedCollections.isNotEmpty()) return@setOnClickListener
-            showDialogFragment(BookGroupSelectDialog(ArrayList(urls)))
+            val selected = selectedBookList()
+            val urls = selected.filterNot { it.isShortcut }.map { it.bookUrl }
+            val shortcutIds = selected.map { it.shortcutId }.filter { it > 0L }.toLongArray()
+            if (urls.isEmpty() && shortcutIds.isEmpty() || selectedCollections.isNotEmpty()) {
+                return@setOnClickListener
+            }
+            showDialogFragment(
+                BookGroupSelectDialog(
+                    ArrayList(urls),
+                    shortcutIds
+                )
+            )
             clearSelection()
         }
         actionDeleteBook.setOnClickListener {
@@ -230,8 +246,8 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
     }
 
     private fun toggleSelection(book: Book) {
-        if (selectedBooks.remove(book.bookUrl) == null) {
-            selectedBooks[book.bookUrl] = book
+        if (selectedBooks.remove(book.shelfKey) == null) {
+            selectedBooks[book.shelfKey] = book
         }
         updateSelectionBar()
     }
@@ -248,7 +264,7 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
         showActionBar: Boolean = true,
         refreshItems: Boolean = true
     ) {
-        selectedBooks[book.bookUrl] = book
+        selectedBooks[book.shelfKey] = book
         updateSelectionBar(showActionBar, refreshItems)
     }
 
@@ -334,7 +350,7 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
         selectedCollections.clear()
         items.forEach { item ->
             when (item) {
-                is Book -> selectedBooks[item.bookUrl] = item
+                is Book -> selectedBooks[item.shelfKey] = item
                 is BookCollectionShelfItem -> selectedCollections[item.id] = item
             }
         }
@@ -361,45 +377,46 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
         val books = selectedBookList()
         if (books.isEmpty()) return
         alert(titleResource = R.string.draw, messageResource = R.string.sure_del) {
-            var checkBox: CheckBox? = null
-            if (books.any { it.isLocal }) {
-                checkBox = CheckBox(this@BookCollectionActivity).apply {
+            var deleteBodyCheckBox: CheckBox? = null
+            val deleteOriginalCheckBox = CheckBox(this@BookCollectionActivity).apply {
                     setText(R.string.delete_book_file)
                     isChecked = LocalConfig.deleteBookOriginal
+            }
+            val view = LinearLayout(this@BookCollectionActivity).apply {
+                setPadding(16.dpToPx(), 0, 16.dpToPx(), 0)
+            }
+            if (books.any { it.isShortcut }) {
+                deleteBodyCheckBox = CheckBox(this@BookCollectionActivity).apply {
+                    setText(R.string.delete_book_body)
                 }
-                val view = LinearLayout(this@BookCollectionActivity).apply {
-                    setPadding(16.dpToPx(), 0, 16.dpToPx(), 0)
-                    addView(checkBox)
+                view.addView(deleteBodyCheckBox)
+                deleteOriginalCheckBox.setOnCheckedChangeListener { _, isChecked ->
+                    if (isChecked) deleteBodyCheckBox?.isChecked = true
                 }
+                if (deleteOriginalCheckBox.isChecked) {
+                    deleteBodyCheckBox.isChecked = true
+                }
+            }
+            if (books.any { it.isLocal }) {
+                view.addView(deleteOriginalCheckBox)
+            }
+            if (view.childCount > 0) {
                 customView { view }
             }
             okButton {
-                checkBox?.let {
-                    LocalConfig.deleteBookOriginal = it.isChecked
+                if (books.any { it.isLocal }) {
+                    LocalConfig.deleteBookOriginal = deleteOriginalCheckBox.isChecked
                 }
-                deleteBooks(books, LocalConfig.deleteBookOriginal)
+                lifecycleScope.launch(Dispatchers.IO) {
+                    BookShortcutHelp.delete(
+                        books,
+                        deleteBody = deleteBodyCheckBox?.isChecked == true,
+                        deleteOriginal = deleteOriginalCheckBox.isChecked && books.any { it.isLocal }
+                    )
+                }
                 clearSelection()
             }
             noButton()
-        }
-    }
-
-    private fun deleteBooks(books: List<Book>, deleteOriginal: Boolean) {
-        lifecycleScope.launch(Dispatchers.IO) {
-            books.forEach {
-                if (it.isLocal) {
-                    LocalBook.clearBookShelfCache(it)
-                }
-            }
-            appDb.bookDao.delete(*books.toTypedArray())
-            books.forEach {
-                if (it.isLocal) {
-                    LocalBook.deleteBook(it, deleteOriginal)
-                } else {
-                    val source = appDb.bookSourceDao.getBookSource(it.origin)
-                    SourceCallBack.callBackBook(SourceCallBack.DEL_BOOK_SHELF, source, it)
-                }
-            }
         }
     }
 
@@ -455,12 +472,12 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
     }
 
     override fun onBookTouchedForDrag(book: Book, view: View, rawX: Float, rawY: Float) {
-        draggingBooks = if (selectedBooks.containsKey(book.bookUrl)) {
+        draggingBooks = if (selectedBooks.containsKey(book.shelfKey)) {
             selectedBookList()
         } else {
             listOf(book)
         }
-        draggingCollections = if (selectedBooks.containsKey(book.bookUrl)) {
+        draggingCollections = if (selectedBooks.containsKey(book.shelfKey)) {
             selectedCollectionList()
         } else {
             emptyList()
@@ -555,7 +572,7 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
 
     override fun isSelected(item: Any): Boolean {
         return when (item) {
-            is Book -> selectedBooks.containsKey(item.bookUrl)
+            is Book -> selectedBooks.containsKey(item.shelfKey)
             is BookCollectionShelfItem -> selectedCollections.containsKey(item.id)
             else -> false
         }
@@ -603,7 +620,7 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
     }
 
     private fun buildStack(view: View) {
-        val draggingBookUrls = selectedBooks.keys
+        val draggingBookKeys = selectedBooks.keys
         val draggingCollectionIds = selectedCollections.keys
         draggingViewStates.clear()
         val anchorState = view.toDraggingViewState()
@@ -617,7 +634,7 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
             if (position == RecyclerView.NO_POSITION) continue
             val item = adapter.getItem(position)
             val shouldDrag = when (item) {
-                is Book -> item.bookUrl in draggingBookUrls
+                is Book -> item.shelfKey in draggingBookKeys
                 is BookCollectionShelfItem -> item.id in draggingCollectionIds
                 else -> false
             }

@@ -13,11 +13,10 @@ import io.legado.app.help.ai.AiChapterPurifyService
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.removeType
+import io.legado.app.help.book.BookShortcutHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.model.localBook.LocalBook
 import io.legado.app.model.webBook.WebBook
-import io.legado.app.model.SourceCallBack
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.stackTraceStr
@@ -36,39 +35,30 @@ class BookshelfManageViewModel(application: Application) : BaseViewModel(applica
 
     fun upCanUpdate(books: List<Book>, canUpdate: Boolean) {
         execute {
-            val array = Array(books.size) {
-                books[it].copy(canUpdate = canUpdate).apply {
-                    if (!canUpdate) {
-                        removeType(BookType.updateError)
-                    }
-                }
-            }
-            appDb.bookDao.update(*array)
+            val bodyBooks = books.map { appDb.bookDao.getBook(it.bookUrl) ?: it }
+                .distinctBy { it.bookUrl }
+                .map { it.copy(canUpdate = canUpdate).apply { if (!canUpdate) removeType(BookType.updateError) } }
+            appDb.bookDao.update(*bodyBooks.toTypedArray())
         }
     }
 
     fun updateBook(vararg book: Book) {
         execute {
-            appDb.bookDao.update(*book)
+            BookShortcutHelp.update(*book)
         }
     }
 
-    fun deleteBook(books: List<Book>, deleteOriginal: Boolean = false) {
+    fun deleteBook(
+        books: List<Book>,
+        deleteBody: Boolean = false,
+        deleteOriginal: Boolean = false
+    ) {
         execute {
-            books.forEach {
-                if (it.isLocal) {
-                    LocalBook.clearBookShelfCache(it)
-                }
-            }
-            appDb.bookDao.delete(*books.toTypedArray())
-            books.forEach {
-                if (it.isLocal) {
-                    LocalBook.deleteBook(it, deleteOriginal)
-                } else {
-                    val source = appDb.bookSourceDao.getBookSource(it.origin)
-                    SourceCallBack.callBackBook(SourceCallBack.DEL_BOOK_SHELF, source, it)
-                }
-            }
+            BookShortcutHelp.delete(
+                books,
+                deleteBody = deleteBody,
+                deleteOriginal = deleteOriginal
+            )
         }
     }
 
@@ -93,8 +83,10 @@ class BookshelfManageViewModel(application: Application) : BaseViewModel(applica
         batchChangeSourceCoroutine?.cancel()
         batchChangeSourceCoroutine = execute {
             val changeSourceDelay = AppConfig.batchChangeSourceDelay * 1000L
-            books.forEachIndexed { index, book ->
-                batchChangeSourceProcessLiveData.postValue("${index + 1} / ${books.size}")
+            val bodyBooks = books.map { appDb.bookDao.getBook(it.bookUrl) ?: it }
+                .distinctBy { it.bookUrl }
+            bodyBooks.forEachIndexed { index, book ->
+                batchChangeSourceProcessLiveData.postValue("${index + 1} / ${bodyBooks.size}")
                 if (book.isLocal) return@forEachIndexed
                 if (book.origin == source.bookSourceUrl) return@forEachIndexed
                 val newBook = WebBook.preciseSearchAwait(source, book.name, book.author)
