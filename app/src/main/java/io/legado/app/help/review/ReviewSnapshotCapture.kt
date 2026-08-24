@@ -31,12 +31,17 @@ import io.legado.app.help.webView.WebViewPool
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.utils.GSON
 import io.legado.app.utils.runOnUI
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.apache.commons.text.StringEscapeUtils
 import splitties.init.appCtx
 import java.io.ByteArrayInputStream
-import java.io.StringReader
+import java.io.InterruptedIOException
+import java.io.Reader
+import java.util.concurrent.Executors
 import java.util.concurrent.Semaphore
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.ScheduledThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
@@ -55,6 +60,16 @@ import kotlin.coroutines.resumeWithException
 object ReviewSnapshotCapture {
 
     private val mHandler = Handler(Looper.getMainLooper())
+    /** 超时看门狗不能依赖 WebView 所在的主线程，否则主线程卡顿会同时拖迟所有 Capture。 */
+    private val timeoutScheduler = ScheduledThreadPoolExecutor(2) { runnable ->
+        Thread(runnable, "ReviewSnapshotTimeout").apply { isDaemon = true }
+    }.apply {
+        setRemoveOnCancelPolicy(true)
+    }
+    /** 等实际 Heavy Thread 退出后再做交接，避免线程尾部仍持有大对象时提前放行下一条。 */
+    private val heavyWorkerReaper = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "ReviewSnapshotWorkerReaper").apply { isDaemon = true }
+    }
 
     /** 页面加载与评论展开共享的执行预算；不包含重内存阶段的排队或执行。 */
     private const val PAGE_EXECUTION_TIMEOUT_MS = 60_000L
@@ -79,6 +94,28 @@ object ReviewSnapshotCapture {
     private val heavyStagePermits = Semaphore(1, true)
 
     private class ResourceBudgetExceededException(message: String) : IllegalStateException(message)
+
+    private class CaptureStageTimeoutException(message: String) : NoStackTraceException(message)
+
+    private class InterruptibleStringReader(private val value: String) : Reader() {
+        private var position = 0
+
+        override fun read(buffer: CharArray, offset: Int, length: Int): Int {
+            if (Thread.currentThread().isInterrupted) {
+                throw InterruptedIOException("评论快照 HTML 解码已取消")
+            }
+            if (length == 0) return 0
+            if (position >= value.length) return -1
+            val count = minOf(length, value.length - position)
+            for (index in 0 until count) {
+                buffer[offset + index] = value[position + index]
+            }
+            position += count
+            return count
+        }
+
+        override fun close() = Unit
+    }
 
     private enum class CaptureStage(val diagnosticsStage: String) {
         PAGE_EXECUTION("PAGE_EXECUTION"),
@@ -208,15 +245,21 @@ object ReviewSnapshotCapture {
             val sessionRef = AtomicReference<SnapshotSession?>()
             val released = java.util.concurrent.atomic.AtomicBoolean(false)
             // 唯一释放点：重复调用被 AtomicBoolean 挡住
-            fun releaseOnce() {
+            fun releaseOnce(discard: Boolean = false) {
                 val pooled = pooledRef.getAndSet(null) ?: return
                 if (released.compareAndSet(false, true)) {
-                    runOnUI { WebViewPool.release(pooled) }
+                    runOnUI {
+                        if (discard) WebViewPool.discard(pooled) else WebViewPool.release(pooled)
+                    }
                 }
             }
             block.invokeOnCancellation {
-                runOnUI { sessionRef.getAndSet(null)?.destroy() }
-                releaseOnce()
+                val session = sessionRef.get()
+                if (session == null) {
+                    releaseOnce()
+                } else {
+                    session.destroy()
+                }
             }
             runOnUI {
                 if (!block.isActive) return@runOnUI
@@ -237,9 +280,9 @@ object ReviewSnapshotCapture {
                         null
                     }
                     val session = SnapshotSession(webView, url, jsBridge, diagnostics) {
-                        result, error, rounds, clicks ->
+                        result, error, rounds, clicks, discardWebView ->
                         sessionRef.set(null)
-                        releaseOnce()
+                        releaseOnce(discardWebView)
                         if (block.isActive) {
                             if (error != null) block.resumeWithException(error)
                             else block.resume(Triple(result ?: "", rounds, clicks))
@@ -261,9 +304,13 @@ object ReviewSnapshotCapture {
                         webView.loadUrl(url, headerMap)
                     }
                 } catch (e: Throwable) {
-                    sessionRef.getAndSet(null)?.destroy()
-                    releaseOnce()
-                    if (block.isActive) block.resumeWithException(e)
+                    val session = sessionRef.get()
+                    if (session == null) {
+                        releaseOnce()
+                        if (block.isActive) block.resumeWithException(e)
+                    } else {
+                        session.abort(e)
+                    }
                 }
             }
         }
@@ -296,8 +343,19 @@ object ReviewSnapshotCapture {
         private val url: String,
         private val jsBridge: PageJsBridge?,
         private val diagnostics: CacheOperationDiagnostics.Operation?,
-        private val done: (String?, Throwable?, Int, Int) -> Unit
+        private val done: (String?, Throwable?, Int, Int, Boolean) -> Unit
     ) {
+
+        private data class TerminalResult(
+            val html: String?,
+            val error: Throwable?,
+            val discardWebView: Boolean,
+        )
+
+        private data class CleanupHandles(
+            val worker: Thread?,
+            val call: okhttp3.Call?,
+        )
 
         @Volatile
         private var destroyed = false
@@ -310,8 +368,16 @@ object ReviewSnapshotCapture {
 
         private var jsInjectedForPage = false
         private val heavyStagePermitHeld = AtomicBoolean(false)
+        private val lifecycleLock = Any()
+        private val queueWaitThread = AtomicReference<Thread?>()
+        private var terminalResult: TerminalResult? = null
+        private var terminalFinalized = false
+        private var activeHeavyWorker: Thread? = null
+        private var activeResourceCall: okhttp3.Call? = null
+        @Volatile
         private var activeStage: CaptureStage? = null
-        private var stageTimeout: Runnable? = null
+        @Volatile
+        private var stageTimeout: ScheduledFuture<*>? = null
 
         init {
             startTimedStage(
@@ -404,26 +470,102 @@ object ReviewSnapshotCapture {
         }
 
         fun destroy() {
-            destroyed = true
-            clearStageTimeout()
+            val cleanup = acceptTerminal(
+                TerminalResult(
+                    html = null,
+                    error = CancellationException("评论快照 Capture 已取消"),
+                    discardWebView = true,
+                )
+            ) ?: return
             activeStage = null
-            releaseHeavyStagePermit()
+            clearStageTimeout()
+            cancelOutstandingWork(cleanup)
+        }
+
+        fun abort(error: Throwable) {
+            fail(error, discardWebView = true)
         }
 
         private fun finish(html: String?) {
-            if (destroyed) return
+            val cleanup = acceptTerminal(
+                TerminalResult(html = html, error = null, discardWebView = false)
+            ) ?: return
             completeActiveStage(CacheOperationDiagnostics.Metrics(outputChars = html?.length))
-            destroyed = true
-            releaseHeavyStagePermit()
-            done(html, null, expandRounds, totalExpandClicks)
+            cancelOutstandingWork(cleanup)
         }
 
-        private fun fail(error: Throwable) {
-            if (destroyed) return
+        private fun fail(
+            error: Throwable,
+            discardWebView: Boolean = error is CaptureStageTimeoutException,
+        ) {
+            val cleanup = acceptTerminal(
+                TerminalResult(
+                    html = null,
+                    error = error,
+                    discardWebView = discardWebView,
+                )
+            ) ?: return
             failActiveStage(error)
-            destroyed = true
-            releaseHeavyStagePermit()
-            done(null, error, expandRounds, totalExpandClicks)
+            cancelOutstandingWork(cleanup)
+        }
+
+        private fun failStageTimeout(stage: CaptureStage, error: CaptureStageTimeoutException) {
+            val cleanup = synchronized(lifecycleLock) {
+                if (terminalResult != null || activeStage != stage) return
+                terminalResult = TerminalResult(
+                    html = null,
+                    error = error,
+                    discardWebView = true,
+                )
+                destroyed = true
+                activeStage = null
+                CleanupHandles(activeHeavyWorker, activeResourceCall)
+            }
+            clearStageTimeout()
+            diagnostics?.stageFail(stage.diagnosticsStage, error)
+            cancelOutstandingWork(cleanup)
+        }
+
+        private fun acceptTerminal(result: TerminalResult): CleanupHandles? {
+            return synchronized(lifecycleLock) {
+                if (terminalResult != null) return@synchronized null
+                terminalResult = result
+                destroyed = true
+                CleanupHandles(activeHeavyWorker, activeResourceCall)
+            }
+        }
+
+        private fun cancelOutstandingWork(cleanup: CleanupHandles) {
+            clearStageTimeout()
+            queueWaitThread.get()?.interrupt()
+            cleanup.call?.cancel()
+            cleanup.worker?.interrupt()
+            tryFinalizeTerminal()
+        }
+
+        /**
+         * 只有 Java 侧 Heavy worker 已真实退出后才释放 permit。这样前一条流水线超时后，
+         * 它残留的下载/Base64/decode 不会与下一条 Heavy 流水线重叠。
+         */
+        private fun tryFinalizeTerminal() {
+            val terminal = synchronized(lifecycleLock) {
+                val result = terminalResult
+                if (result == null || terminalFinalized || activeHeavyWorker != null) {
+                    return@synchronized null
+                }
+                terminalFinalized = true
+                result
+            } ?: return
+            runOnUI {
+                done(
+                    terminal.html,
+                    terminal.error,
+                    expandRounds,
+                    totalExpandClicks,
+                    terminal.discardWebView,
+                )
+                releaseHeavyStagePermit()
+            }
         }
 
         /**
@@ -432,43 +574,52 @@ object ReviewSnapshotCapture {
          */
         private fun startTimedStage(stage: CaptureStage, timeoutMs: Long, timeoutLabel: String) {
             completeActiveStage()
-            activeStage = stage
-            diagnostics?.stageStart(stage.diagnosticsStage, startAlways = true)
-            val timeout = Runnable {
-                if (!destroyed && activeStage == stage) {
-                    fail(
-                        NoStackTraceException(
-                            "${timeoutLabel}执行超时 ${timeoutMs / 1000}s",
-                        )
-                    )
-                }
+            synchronized(lifecycleLock) {
+                if (destroyed) return
+                activeStage = stage
             }
-            stageTimeout = timeout
-            mHandler.postDelayed(timeout, timeoutMs)
+            diagnostics?.stageStart(stage.diagnosticsStage, startAlways = true)
+            stageTimeout = timeoutScheduler.schedule({
+                failStageTimeout(
+                    stage,
+                    CaptureStageTimeoutException(
+                        "${timeoutLabel}执行超时 ${timeoutMs / 1000}s",
+                    )
+                )
+            }, timeoutMs, TimeUnit.MILLISECONDS)
         }
 
         private fun startQueueWaitStage() {
             completeActiveStage()
-            activeStage = CaptureStage.HEAVY_STAGE_WAIT
+            synchronized(lifecycleLock) {
+                if (destroyed) return
+                activeStage = CaptureStage.HEAVY_STAGE_WAIT
+            }
             diagnostics?.stageStart(CaptureStage.HEAVY_STAGE_WAIT.diagnosticsStage, startAlways = true)
         }
 
         private fun completeActiveStage(metrics: CacheOperationDiagnostics.Metrics = CacheOperationDiagnostics.Metrics()) {
-            val stage = activeStage ?: return
+            val stage = synchronized(lifecycleLock) {
+                val current = activeStage ?: return
+                activeStage = null
+                current
+            }
             clearStageTimeout()
-            activeStage = null
             diagnostics?.stageDone(stage.diagnosticsStage, metrics)
         }
 
         private fun failActiveStage(error: Throwable) {
-            val stage = activeStage ?: return
+            val stage = synchronized(lifecycleLock) {
+                val current = activeStage ?: return
+                activeStage = null
+                current
+            }
             clearStageTimeout()
-            activeStage = null
             diagnostics?.stageFail(stage.diagnosticsStage, error)
         }
 
         private fun clearStageTimeout() {
-            stageTimeout?.let(mHandler::removeCallbacks)
+            stageTimeout?.cancel(false)
             stageTimeout = null
         }
 
@@ -531,7 +682,7 @@ object ReviewSnapshotCapture {
             if (destroyed) return
             startQueueWaitStage()
             // 只限流会创建完整 Java 大对象的阶段；此时之前的页面加载与展开可以继续并行。
-            Thread {
+            val waiter = Thread {
                 try {
                     heavyStagePermits.acquire()
                     if (destroyed) {
@@ -554,9 +705,14 @@ object ReviewSnapshotCapture {
                     }
                 } catch (e: InterruptedException) {
                     Thread.currentThread().interrupt()
-                    mHandler.post { fail(e) }
+                    if (!destroyed) mHandler.post { fail(e) }
+                } finally {
+                    queueWaitThread.compareAndSet(Thread.currentThread(), null)
                 }
-            }.start()
+            }
+            queueWaitThread.set(waiter)
+            if (destroyed) waiter.interrupt()
+            waiter.start()
         }
 
         private fun collectAndInlineResources() {
@@ -569,9 +725,10 @@ object ReviewSnapshotCapture {
                         "RESOURCE_LIST_READY",
                         CacheOperationDiagnostics.Metrics(resourceCount = urls.first.size + urls.second.size),
                     )
-                    Thread {
-                        runCatching {
-                            val inline = downloadResources(urls)
+                    launchHeavyWorker(
+                        name = "ReviewSnapshotResources",
+                        work = { downloadResources(urls) },
+                        onSuccess = { inline ->
                             diagnostics?.mark(
                                 "RESOURCE_INLINE_READY",
                                 CacheOperationDiagnostics.Metrics(
@@ -579,15 +736,78 @@ object ReviewSnapshotCapture {
                                     outputBytes = inline.inlineBytes,
                                 ),
                             )
-                            mHandler.post { applyInline(inline) }
-                        }.onFailure {
-                            diagnostics?.warn("RESOURCE_INLINE_FAILED", it)
-                            mHandler.post {
-                                if (it is ResourceBudgetExceededException) fail(it) else serialize()
-                            }
-                        }
-                    }.start()
+                            applyInline(inline)
+                        },
+                        onFailure = { error ->
+                            diagnostics?.warn("RESOURCE_INLINE_FAILED", error)
+                            fail(error)
+                        },
+                    )
                 }
+            }
+        }
+
+        private fun <T> launchHeavyWorker(
+            name: String,
+            work: () -> T,
+            onSuccess: (T) -> Unit,
+            onFailure: (Throwable) -> Unit,
+        ) {
+            lateinit var worker: Thread
+            worker = Thread({
+                val result = runCatching {
+                    ensureHeavyActive()
+                    work()
+                }
+                heavyWorkerReaper.execute {
+                    worker.join()
+                    synchronized(lifecycleLock) {
+                        if (activeHeavyWorker === worker) activeHeavyWorker = null
+                    }
+                    if (destroyed) {
+                        tryFinalizeTerminal()
+                    } else {
+                        mHandler.post {
+                            if (!destroyed) result.fold(onSuccess, onFailure)
+                        }
+                    }
+                }
+            }, name)
+            synchronized(lifecycleLock) {
+                if (destroyed) return
+                check(activeHeavyWorker == null) { "评论快照 Heavy worker 重叠" }
+                activeHeavyWorker = worker
+            }
+            try {
+                worker.start()
+            } catch (error: Throwable) {
+                synchronized(lifecycleLock) {
+                    if (activeHeavyWorker === worker) activeHeavyWorker = null
+                }
+                if (destroyed) tryFinalizeTerminal() else onFailure(error)
+            }
+        }
+
+        private fun ensureHeavyActive() {
+            if (destroyed || Thread.currentThread().isInterrupted) {
+                throw InterruptedIOException("评论快照 Heavy 工作已取消")
+            }
+        }
+
+        private fun registerResourceCall(call: okhttp3.Call) {
+            synchronized(lifecycleLock) {
+                if (destroyed) {
+                    call.cancel()
+                    throw InterruptedIOException("评论快照资源请求已取消")
+                }
+                check(activeResourceCall == null) { "评论快照资源请求重叠" }
+                activeResourceCall = call
+            }
+        }
+
+        private fun unregisterResourceCall(call: okhttp3.Call) {
+            synchronized(lifecycleLock) {
+                if (activeResourceCall === call) activeResourceCall = null
             }
         }
 
@@ -632,8 +852,15 @@ object ReviewSnapshotCapture {
             // fetchBytes() 都会整块分配 byte[]，使“单个快照”在入 DOM 前就产生多份大对象。
             // 现在按队列逐项抓取；预算不够时整份快照明确失败，绝不悄悄少存资源。
             var totalBytes = 0L
-            imgUrls.forEach { rawUrl ->
-                val bytes = runCatching { fetchBytes(rawUrl) }.getOrNull() ?: return@forEach
+            for (rawUrl in imgUrls) {
+                ensureHeavyActive()
+                val bytes = try {
+                    fetchBytes(rawUrl)
+                } catch (_: Exception) {
+                    ensureHeavyActive()
+                    continue
+                }
+                ensureHeavyActive()
                 if (bytes.size > MAX_INLINE_RESOURCE_BYTES) {
                     throw ResourceBudgetExceededException(
                         "评论快照资源 ${bytes.size}B 超过单资源预算 $MAX_INLINE_RESOURCE_BYTES B: $rawUrl",
@@ -651,14 +878,21 @@ object ReviewSnapshotCapture {
                 totalBytes = nextTotal
                 imgMap[rawUrl] = value
             }
-            cssUrls.forEach { rawUrl ->
-                val bytes = runCatching { fetchBytes(rawUrl) }.getOrNull() ?: return@forEach
+            for (rawUrl in cssUrls) {
+                ensureHeavyActive()
+                val bytes = try {
+                    fetchBytes(rawUrl)
+                } catch (_: Exception) {
+                    ensureHeavyActive()
+                    continue
+                }
+                ensureHeavyActive()
                 if (bytes.size > MAX_INLINE_RESOURCE_BYTES) {
                     throw ResourceBudgetExceededException(
                         "评论快照资源 ${bytes.size}B 超过单资源预算 $MAX_INLINE_RESOURCE_BYTES B: $rawUrl",
                     )
                 }
-                val text = bytes.toString(Charsets.UTF_8).takeIf { it.isNotBlank() } ?: return@forEach
+                val text = bytes.toString(Charsets.UTF_8).takeIf { it.isNotBlank() } ?: continue
                 val nextTotal = totalBytes + text.toByteArray(Charsets.UTF_8).size
                 if (nextTotal > MAX_TOTAL_INLINE_BYTES) {
                     throw ResourceBudgetExceededException(
@@ -677,14 +911,21 @@ object ReviewSnapshotCapture {
                 .url(resourceUrl)
                 .header("Referer", url)
                 .build()
-            okHttpClient.newBuilder()
+            val call = okHttpClient.newBuilder()
                 .connectTimeout(RESOURCE_FETCH_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                 .readTimeout(RESOURCE_FETCH_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                 .build()
-                .newCall(request).execute().use { response ->
+                .newCall(request)
+            registerResourceCall(call)
+            try {
+                ensureHeavyActive()
+                call.execute().use { response ->
                     check(response.isSuccessful) { "HTTP ${response.code}" }
                     return response.body.bytes()
                 }
+            } finally {
+                unregisterResourceCall(call)
+            }
         }
 
         private fun guessMime(rawUrl: String, bytes: ByteArray): String {
@@ -706,7 +947,20 @@ object ReviewSnapshotCapture {
                 serialize()
                 return
             }
-            webView.evaluateJavascript(buildApplyJs(inline)) { serialize() }
+            // Gson 与大 String 的构建不能占用主线程；它仍属于当前 Heavy permit。
+            launchHeavyWorker(
+                name = "ReviewSnapshotInlineJs",
+                work = {
+                    ensureHeavyActive()
+                    buildApplyJs(inline).also { ensureHeavyActive() }
+                },
+                onSuccess = { script ->
+                    webView.evaluateJavascript(script) {
+                        if (!destroyed) serialize()
+                    }
+                },
+                onFailure = { error -> fail(error) },
+            )
         }
 
         private fun serialize() {
@@ -719,35 +973,34 @@ object ReviewSnapshotCapture {
                     "WEBVIEW_HTML_READY",
                     CacheOperationDiagnostics.Metrics(inputChars = raw?.length),
                 )
-                Thread {
-                    runCatching { decodeJavascriptString(raw) }
-                        .onSuccess { html ->
-                            mHandler.post {
-                                if (destroyed) return@post
-                                if (html.isNullOrBlank()) {
-                                    fail(NoStackTraceException("评论页快照序列化为空 $url"))
-                                } else {
-                                    diagnostics?.stageDone(
-                                        "SANITIZE",
-                                        CacheOperationDiagnostics.Metrics(outputChars = html.length),
-                                    )
-                                    finish(html)
-                                }
-                            }
+                launchHeavyWorker(
+                    name = "ReviewSnapshotDecode",
+                    work = { decodeJavascriptString(raw) },
+                    onSuccess = { html ->
+                        if (html.isNullOrBlank()) {
+                            fail(NoStackTraceException("评论页快照序列化为空 $url"))
+                        } else {
+                            diagnostics?.stageDone(
+                                "SANITIZE",
+                                CacheOperationDiagnostics.Metrics(outputChars = html.length),
+                            )
+                            finish(html)
                         }
-                        .onFailure { error ->
-                            diagnostics?.stageFail("SANITIZE", error)
-                            mHandler.post { fail(error) }
-                        }
-                }.start()
+                    },
+                    onFailure = { error ->
+                        diagnostics?.stageFail("SANITIZE", error)
+                        fail(error)
+                    },
+                )
             }
         }
 
         private fun decodeJavascriptString(raw: String?): String? {
             if (raw == null || raw == "null") return null
             // evaluateJavascript 的回调是一个 JSON string。JsonReader 直接解码这一层，
-            // 避免 unescapeJson(...).trim(...) 产生两份完整 HTML 的中间字符串。
-            return JsonReader(StringReader(raw)).use { reader -> reader.nextString() }
+            // 避免 unescapeJson(...).trim(...) 产生两份完整 HTML 的中间字符串；Reader
+            // 每次供数前检查 interrupt，使 Heavy 超时能够真实终止巨大 HTML 的解码。
+            return JsonReader(InterruptibleStringReader(raw)).use { reader -> reader.nextString() }
         }
 
         private fun buildApplyJs(inline: InlineResources): String {
