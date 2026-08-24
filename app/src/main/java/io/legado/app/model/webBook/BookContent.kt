@@ -205,7 +205,7 @@ object BookContent {
             throw ContentEmptyException("内容为空")
         }
         if (needSave) {
-            BookHelp.saveContent(bookSource, book, bookChapter, contentStr)
+            BookHelp.saveContent(book, bookChapter, contentStr)
         }
         return contentStr
     }
