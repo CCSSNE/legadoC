@@ -45,10 +45,7 @@ class CacheViewModel(application: Application) : BaseViewModel(application) {
                     cacheChapters[book.bookUrl] = chapterCaches
                     // 评论快照章数：统计该书快照文件（按章去重），后续由事件增量更新
                     reviewChapters[book.bookUrl] = io.legado.app.help.review.ReviewSnapshotStore
-                        .listAll(book)
-                        .asSequence()
-                        .map { it.chapterUrl }
-                        .filter { it.isNotBlank() }
+                        .chapterUrls(book)
                         .toHashSet()
                     upAdapterLiveData.sendValue(book.bookUrl)
                 }
