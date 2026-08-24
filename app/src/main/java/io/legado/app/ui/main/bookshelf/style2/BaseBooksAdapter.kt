@@ -9,6 +9,7 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
+import io.legado.app.help.book.shelfKey
 import io.legado.app.lib.theme.applyUiBodyTypeface
 import io.legado.app.ui.main.bookshelf.BookCollectionShelfItem
 
@@ -31,7 +32,7 @@ abstract class BaseBooksAdapter<VH : RecyclerView.ViewHolder>(
         override fun areItemsTheSame(oldItem: Any, newItem: Any): Boolean {
             return when {
                 oldItem is Book && newItem is Book -> {
-                    oldItem.bookUrl == newItem.bookUrl
+                    oldItem.shelfKey == newItem.shelfKey
                 }
 
                 oldItem is BookGroup && newItem is BookGroup -> {
@@ -149,7 +150,6 @@ abstract class BaseBooksAdapter<VH : RecyclerView.ViewHolder>(
             getItem(i).let {
                 if (it is Book && it.bookUrl == bookUrl) {
                     notifyItemChanged(i, bundleOf(Pair("refresh", null)))
-                    return
                 }
             }
         }

@@ -14,6 +14,7 @@ import io.legado.app.R
 import io.legado.app.base.adapter.DiffRecyclerAdapter
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.data.entities.Book
+import io.legado.app.help.book.shelfKey
 import io.legado.app.ui.main.bookshelf.BookCollectionShelfItem
 
 abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
@@ -33,7 +34,7 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
             override fun areItemsTheSame(oldItem: Any, newItem: Any): Boolean {
                 return when {
                     oldItem is Book && newItem is Book -> {
-                        oldItem.bookUrl == newItem.bookUrl
+                        oldItem.shelfKey == newItem.shelfKey
                     }
 
                     oldItem is BookCollectionShelfItem && newItem is BookCollectionShelfItem -> {
@@ -259,7 +260,6 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
         getItems().forEachIndexed { i, it ->
             if (it is Book && it.bookUrl == bookUrl) {
                 notifyItemChanged(i, bundleOf(Pair("refresh", null), Pair("lastUpdateTime", null)))
-                return
             }
         }
     }

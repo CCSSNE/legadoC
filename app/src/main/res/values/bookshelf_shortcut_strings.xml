@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="add_book_shortcut">Add shortcut</string>
+    <string name="delete_book_body">Delete original book</string>
+</resources>
