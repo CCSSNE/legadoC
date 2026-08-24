@@ -49,7 +49,11 @@ class ReviewSnapshotStatusAdapter(
         )
         if (item.failedSnapshots > 0) {
             tvState.text = context.getString(R.string.cache_manage_review_failed, item.failedSnapshots)
-            btnRetry.visible()
+            if (item.canRetryFailedSnapshots) {
+                btnRetry.visible()
+            } else {
+                btnRetry.gone()
+            }
         } else {
             tvState.setText(R.string.cache_manage_review_success)
             btnRetry.gone()
@@ -59,7 +63,7 @@ class ReviewSnapshotStatusAdapter(
     override fun registerListener(holder: ItemViewHolder, binding: ItemReviewSnapshotStatusBinding) {
         binding.btnRetry.setOnClickListener {
             getItem(holder.layoutPosition)
-                ?.takeIf { it.failedSnapshots > 0 }
+                ?.takeIf { it.canRetryFailedSnapshots }
                 ?.let(callback::retry)
         }
     }

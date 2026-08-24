@@ -6,6 +6,7 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.review.ReviewSnapshotManager
+import io.legado.app.help.review.ReviewSnapshotStore
 
 data class CacheSubmission(
     val sessionId: String,
@@ -162,16 +163,12 @@ object CacheCoordinator : CacheUiPort {
         ReviewSnapshotManager.markUserRefresh(bookUrl, chapterIndex)
     }
 
-    /** Cache-management retry boundary for one chapter's failed review snapshots. */
+    /** Cache-management retry boundary for one chapter's recorded failed review buttons. */
     fun retryReviewSnapshots(book: Book, chapter: BookChapter): Boolean {
         return retryReviewSnapshots(book, listOf(chapter)) == 1
     }
 
-    /**
-     * Retries failed review snapshots as one Coordinator task. Existing owners
-     * keep their unit; the durable refresh mark makes them perform a forced
-     * capture instead of creating competing work for the same chapter.
-     */
+    /** Retries only the durable failed-button identities as one Coordinator task. */
     fun retryReviewSnapshots(book: Book, chapters: List<BookChapter>): Int {
         if (!AppConfig.syncCacheReview || book.isLocal) return 0
         val requested = chapters
@@ -180,6 +177,18 @@ object CacheCoordinator : CacheUiPort {
             .distinctBy { it.index }
             .toList()
         if (requested.isEmpty()) return 0
+        val statusesByChapterUrl = ReviewSnapshotStore.chapterStatuses(book)
+            .associateBy { it.chapterUrl.trim() }
+        val retryTargets = requested.mapNotNull { chapter ->
+            val failedButtonSources = statusesByChapterUrl[chapter.url.trim()]
+                ?.failedButtonSourcesForRetry()
+                ?: return@mapNotNull null
+            CacheReviewRetryTarget(
+                unitKey = CacheUnitKey(book.bookUrl, chapter.index),
+                buttonSources = failedButtonSources,
+            )
+        }
+        if (retryTargets.isEmpty()) return 0
         synchronized(readerReviewLock) {
             val activeIndexes = snapshot.value.sessions.asSequence()
                 .flatMap { it.tasks.asSequence() }
@@ -191,11 +200,10 @@ object CacheCoordinator : CacheUiPort {
                 }
                 .flatMap { task -> task.units.asSequence().map { it.key.chapterIndex } }
                 .toHashSet()
-            requested.forEach { chapter ->
-                ReviewSnapshotManager.markUserRefresh(book.bookUrl, chapter.index)
+            val unownedTargets = retryTargets.filterNot { target ->
+                target.unitKey.chapterIndex in activeIndexes
             }
-            val unowned = requested.filterNot { it.index in activeIndexes }
-            if (unowned.isNotEmpty()) {
+            if (unownedTargets.isNotEmpty()) {
                 submit(
                     CacheRequest(
                         source = CacheRequestSource.READER,
@@ -203,12 +211,13 @@ object CacheCoordinator : CacheUiPort {
                         phase = CachePhase.REVIEW,
                         bookUrl = book.bookUrl,
                         bookName = book.name,
-                        units = unowned.map { CacheUnitKey(book.bookUrl, it.index) },
+                        units = unownedTargets.map { it.unitKey },
                         reviewEnabled = true,
+                        reviewRetryTargets = unownedTargets,
                     )
                 )
             }
-            return requested.size
+            return unownedTargets.size
         }
     }
 
@@ -360,6 +369,22 @@ object CacheCoordinator : CacheUiPort {
         require(request.units.isNotEmpty()) { "cache request has no units" }
         require(request.units.all { it.bookUrl == request.bookUrl }) {
             "cache request contains units from another book"
+        }
+        if (request.reviewRetryTargets.isNotEmpty()) {
+            require(request.phase == CachePhase.REVIEW) {
+                "review retry targets require a REVIEW task"
+            }
+            val unitKeys = request.units.toSet()
+            require(request.reviewRetryTargets.all { target ->
+                target.unitKey in unitKeys &&
+                    target.buttonSources.isNotEmpty() &&
+                    target.buttonSources.all { it.isNotBlank() } &&
+                    target.buttonSources.distinct().size == target.buttonSources.size
+            }) { "review retry targets are invalid" }
+            require(request.reviewRetryTargets.map { it.unitKey }.distinct().size ==
+                request.reviewRetryTargets.size) {
+                "review retry target units are duplicated"
+            }
         }
         when (request.kind) {
             CacheKind.TEXT -> require(

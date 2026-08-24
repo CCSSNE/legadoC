@@ -66,6 +66,12 @@ data class CacheUnitState(
     val updatedAt: Long = 0L,
 )
 
+/** Exact failed review buttons selected for a cache-management retry. */
+data class CacheReviewRetryTarget(
+    val unitKey: CacheUnitKey,
+    val buttonSources: List<String>,
+)
+
 data class CacheRequest(
     val source: CacheRequestSource,
     val kind: CacheKind,
@@ -74,6 +80,8 @@ data class CacheRequest(
     val bookName: String,
     val units: List<CacheUnitKey>,
     val reviewEnabled: Boolean = false,
+    /** Empty for normal review caching; non-empty targets only recorded failed buttons. */
+    val reviewRetryTargets: List<CacheReviewRetryTarget> = emptyList(),
 )
 
 internal data class CacheWorkerLease(
@@ -92,6 +100,8 @@ data class CacheTaskState(
     val bookName: String,
     val units: List<CacheUnitState>,
     val reviewEnabled: Boolean = false,
+    /** Persisted with a REVIEW task so a resumed retry cannot widen back to a chapter refresh. */
+    val reviewRetryTargets: List<CacheReviewRetryTarget> = emptyList(),
     val status: CacheLifecycle = CacheLifecycle.QUEUED,
     val result: CacheResult? = null,
     val generation: Long = 0L,

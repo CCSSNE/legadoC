@@ -41,15 +41,31 @@ data class ReviewSnapshot(
  * cache management and retry actions.
  */
 data class ReviewChapterSnapshotStatus(
-    val version: Int = 1,
+    val version: Int = 2,
     val bookUrl: String = "",
     val chapterUrl: String = "",
     val chapterIndex: Int = 0,
     val chapterTitle: String = "",
     val totalSnapshots: Int = 0,
     val failedSnapshots: Int = 0,
+    /** Stable identities of the failed buttons; required for an exact retry. */
+    val failedButtonSources: List<String>? = null,
     val updatedAt: Long = 0L,
-)
+) {
+    /**
+     * A count alone cannot identify which bubble is safe to retry. Older status files without
+     * these identities remain visible, but are deliberately not eligible for a broad retry.
+     */
+    fun failedButtonSourcesForRetry(): List<String>? {
+        val sources = failedButtonSources.orEmpty().map(String::trim)
+        return sources.takeIf {
+            failedSnapshots > 0 &&
+                it.size == failedSnapshots &&
+                it.none(String::isBlank) &&
+                it.distinct().size == it.size
+        }
+    }
+}
 
 data class ReviewSnapshotCounts(
     private val byChapterUrl: Map<String, Int>,
@@ -232,6 +248,11 @@ object ReviewSnapshotStore {
         return statusFiles(book).mapNotNull(::readChapterStatus)
     }
 
+    fun chapterStatus(book: Book, chapter: BookChapter): ReviewChapterSnapshotStatus? {
+        requireCurrentFormatIfReviewData(book)
+        return readChapterStatus(File(reviewsDir(book), statusFileName(chapter.url)))
+    }
+
     fun isChapterStatusFile(file: File): Boolean {
         return file.name.startsWith(STATUS_FILE_PREFIX) && file.name.endsWith(FILE_SUFFIX)
     }
@@ -249,6 +270,20 @@ object ReviewSnapshotStore {
     fun putChapterStatus(book: Book, status: ReviewChapterSnapshotStatus) {
         require(status.chapterUrl.isNotBlank()) { "review status requires chapterUrl" }
         require(status.totalSnapshots > 0) { "review status requires totalSnapshots" }
+        if (status.version >= 2) {
+            val failedSources = requireNotNull(status.failedButtonSources) {
+                "review status version 2 requires failed button identities"
+            }
+            require(status.failedSnapshots == failedSources.size) {
+                "review status failed button identities are incomplete"
+            }
+            require(failedSources.all { it.isNotBlank() }) {
+                "review status contains blank failed button identity"
+            }
+            require(failedSources.distinct().size == failedSources.size) {
+                "review status contains duplicate failed button identity"
+            }
+        }
         ReviewSnapshotResourceStore.requireDatabase(book)
         val dir = reviewsDir(book)
         if (!dir.exists()) check(dir.mkdirs()) { "cannot create review status directory: ${dir.absolutePath}" }
