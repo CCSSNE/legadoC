@@ -1,6 +1,5 @@
 package io.legado.app.help.book
 
-import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -28,9 +27,7 @@ object CacheManifestHelper {
 
     fun read(file: File): CacheBookManifest? {
         if (!file.isFile) return null
-        return runCatching {
-            GSON.fromJsonObject<CacheBookManifest>(file.readText()).getOrNull()
-        }.getOrNull()
+        return GSON.fromJsonObject<CacheBookManifest>(file.readText()).getOrThrow()
     }
 
     fun listManifests(): List<CacheBookManifest> {
@@ -115,22 +112,18 @@ object CacheManifestHelper {
         book: Book,
         chapters: List<BookChapter> = appDb.bookChapterDao.getChapterList(book.bookUrl)
     ): CacheBookManifest? {
-        return runCatching {
-            if (chapters.isEmpty()) {
-                delete(book)
-                return@runCatching null
+        if (chapters.isEmpty()) {
+            delete(book)
+            return null
+        }
+        return write(book, chapters) { chapter ->
+            when {
+                book.isLocal -> false
+                book.isVideo -> ExoPlayerHelper.isVideoCached(chapter.resourceUrl, book)
+                book.isAudio -> AudioOfflineState.isComplete(book, chapter)
+                else -> BodyOfflineState.isComplete(book, chapter)
             }
-            write(book, chapters) { chapter ->
-                when {
-                    book.isLocal -> false
-                    book.isVideo -> ExoPlayerHelper.isVideoCached(chapter.resourceUrl, book)
-                    book.isAudio -> AudioOfflineState.isComplete(book, chapter)
-                    else -> BodyOfflineState.isComplete(book, chapter)
-                }
-            }
-        }.onFailure {
-            AppLog.put("刷新缓存清单失败 ${book.name}\n${it.localizedMessage}", it)
-        }.getOrNull()
+        }
     }
 
     fun refreshAsync(
