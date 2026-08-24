@@ -10,6 +10,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.BookImgClick
 import io.legado.app.help.cache.CacheWorkerLease
+import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.StrResponse
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.ui.login.SourceLoginJsExtensions
