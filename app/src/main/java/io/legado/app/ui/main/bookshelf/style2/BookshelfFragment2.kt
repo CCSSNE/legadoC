@@ -26,8 +26,6 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.FragmentBookshelf2Binding
 import io.legado.app.help.book.isLocal
-import io.legado.app.help.book.isShortcut
-import io.legado.app.help.book.BookShortcutHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.lib.dialogs.alert
@@ -52,6 +50,8 @@ import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import io.legado.app.model.SourceCallBack
+import io.legado.app.model.localBook.LocalBook
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -154,7 +154,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
         binding.refreshLayout.setProgressViewOffset(true, (-28).dpToPx(), 56.dpToPx())
         binding.refreshLayout.setOnRefreshListener {
             binding.refreshLayout.isRefreshing = false
-            activityViewModel.upToc(books.distinctBy { it.bookUrl }, onlyUpdateRead)
+            activityViewModel.upToc(books, onlyUpdateRead)
         }
         if (bookshelfLayout >= 2) {
             binding.rvBookshelf.layoutManager = GridLayoutManager(context, bookshelfLayout)
@@ -246,7 +246,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
             withContext(Dispatchers.IO) {
                 appDb.bookCollectionDao.normalizeLocations()
             }
-            val booksFlow = BookShortcutHelp.flowByGroup(groupId).map { list ->
+            val booksFlow = appDb.bookDao.flowByGroup(groupId).map { list ->
                 //排序
                 when (AppConfig.getBookSortByGroupId(groupId)) {
                     1 -> list.sortedByDescending {
@@ -276,9 +276,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
                 appDb.bookCollectionDao.flowCollectedBookUrls()
             ) { list, collections, collectedBookUrls ->
                 val shelfCollections = if (groupId == BookGroup.IdRoot) {
-                    val visibleBookUrls = list
-                        .filterNot { it.isShortcut }
-                        .mapTo(hashSetOf()) { it.bookUrl }
+                    val visibleBookUrls = list.mapTo(hashSetOf()) { it.bookUrl }
                     collections.mapNotNull { item ->
                         val visibleBooks = item.books.filter { it.bookUrl in visibleBookUrls }
                         if (visibleBooks.isEmpty() && item.childCollections.isEmpty()) {
@@ -300,7 +298,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
                 }
                 val visibleBooks = if (groupId == BookGroup.IdRoot) {
                     val collectedBookUrlSet = collectedBookUrls.toHashSet()
-                    list.filter { it.isShortcut || it.bookUrl !in collectedBookUrlSet }
+                    list.filter { it.bookUrl !in collectedBookUrlSet }
                 } else {
                     list
                 }
@@ -309,7 +307,6 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
                 viewLifecycleOwner.lifecycle,
                 Lifecycle.State.RESUMED,
                 AppDatabase.BOOK_TABLE_NAME,
-                AppDatabase.BOOK_SHORTCUT_TABLE_NAME,
                 AppDatabase.BOOK_COLLECTION_TABLE_NAME,
                 AppDatabase.BOOK_COLLECTION_ITEM_TABLE_NAME,
                 AppDatabase.BOOK_COLLECTION_CHILD_TABLE_NAME
@@ -454,44 +451,41 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
 
     private fun alertDeleteBook(book: Book) {
         alert(titleResource = R.string.draw, messageResource = R.string.sure_del) {
-            var deleteBodyCheckBox: CheckBox? = null
-            var deleteOriginalCheckBox: CheckBox? = null
-            val checks = LinearLayout(requireContext()).apply {
-                setPadding(16.dpToPx(), 0, 16.dpToPx(), 0)
-            }
-            if (book.isShortcut) {
-                deleteBodyCheckBox = CheckBox(requireContext()).apply {
-                    setText(R.string.delete_book_body)
-                }
-                checks.addView(deleteBodyCheckBox)
-            }
+            var checkBox: CheckBox? = null
             if (book.isLocal) {
-                deleteOriginalCheckBox = CheckBox(requireContext()).apply {
+                checkBox = CheckBox(requireContext()).apply {
                     setText(R.string.delete_book_file)
-                    setOnCheckedChangeListener { _, isChecked ->
-                        if (isChecked) deleteBodyCheckBox?.isChecked = true
-                    }
                     isChecked = LocalConfig.deleteBookOriginal
                 }
-                checks.addView(deleteOriginalCheckBox)
-            }
-            if (checks.childCount > 0) {
-                customView { checks }
+                val view = LinearLayout(requireContext()).apply {
+                    setPadding(16.dpToPx(), 0, 16.dpToPx(), 0)
+                    addView(checkBox)
+                }
+                customView { view }
             }
             okButton {
-                deleteOriginalCheckBox?.let {
+                checkBox?.let {
                     LocalConfig.deleteBookOriginal = it.isChecked
                 }
-                viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
-                    BookShortcutHelp.delete(
-                        listOf(book),
-                        deleteBody = deleteBodyCheckBox?.isChecked == true,
-                        deleteOriginal = deleteOriginalCheckBox?.isChecked == true
-                    )
-                }
+                deleteBook(book, LocalConfig.deleteBookOriginal)
                 clearBookActionBar()
             }
             noButton()
+        }
+    }
+
+    private fun deleteBook(book: Book, deleteOriginal: Boolean) {
+        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+            if (book.isLocal) {
+                LocalBook.clearBookShelfCache(book)
+            }
+            appDb.bookDao.delete(book)
+            if (book.isLocal) {
+                LocalBook.deleteBook(book, deleteOriginal)
+            } else {
+                val source = appDb.bookSourceDao.getBookSource(book.origin)
+                SourceCallBack.callBackBook(SourceCallBack.DEL_BOOK_SHELF, source, book)
+            }
         }
     }
 

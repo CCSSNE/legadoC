@@ -101,9 +101,6 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
         binding.btnSelectAll.setOnClickListener {
             fragmentMap[selectedSecondaryGroupId]?.toggleSelectAll()
         }
-        binding.btnShortcut.setOnClickListener {
-            fragmentMap[selectedSecondaryGroupId]?.createShortcuts()
-        }
         binding.btnFusion.setOnClickListener {
             fragmentMap[selectedSecondaryGroupId]?.fuseSelectedBooks()
         }
@@ -218,10 +215,6 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
         val selecting = currentFragment?.isSelecting() == true
         binding.btnSelectAll.visibility = if (selecting) View.VISIBLE else View.GONE
         binding.btnFusion.visibility = if (selecting) View.VISIBLE else View.GONE
-        binding.btnShortcut.visibility = if (selecting) View.VISIBLE else View.GONE
-        val shortcutAvailable = currentFragment?.canCreateShortcuts() == true
-        binding.btnShortcut.isEnabled = shortcutAvailable
-        binding.btnShortcut.alpha = if (shortcutAvailable) 1f else 0.38f
         val fusionAvailable = currentFragment?.fusionActionAvailable() == true
         binding.btnFusion.isEnabled = fusionAvailable
         binding.btnFusion.alpha = if (fusionAvailable) 1f else 0.38f
