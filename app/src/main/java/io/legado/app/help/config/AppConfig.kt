@@ -1068,6 +1068,33 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefBoolean(PreferKey.cacheReviewImages, value)
         }
 
+    /** 评论图片使用每书一份去重资源数据库，快照只保留资源引用。 */
+    var cacheReviewResourceDatabase: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.cacheReviewResourceDatabase, true)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.cacheReviewResourceDatabase, value)
+        }
+
+    /** 评论头像压缩后的最大大小，单位 KiB。 */
+    var reviewAvatarCompressionMaxKb: Int
+        get() = appCtx.getPrefInt(PreferKey.reviewAvatarCompressionMaxKb, 2)
+        set(value) {
+            appCtx.putPrefInt(PreferKey.reviewAvatarCompressionMaxKb, value)
+        }
+
+    /** 评论内图片压缩后的最大大小，单位 KiB。 */
+    var reviewImageCompressionMaxKb: Int
+        get() = appCtx.getPrefInt(PreferKey.reviewImageCompressionMaxKb, 50)
+        set(value) {
+            appCtx.putPrefInt(PreferKey.reviewImageCompressionMaxKb, value)
+        }
+
+    val reviewAvatarCompressionMaxBytes: Long
+        get() = reviewAvatarCompressionMaxKb.toLong() * 1024L
+
+    val reviewImageCompressionMaxBytes: Long
+        get() = reviewImageCompressionMaxKb.toLong() * 1024L
+
     /** 评论快照资源下载线程数；页面与 Heavy 并发由固定调度策略控制。 */
     var reviewResourceDownloadConcurrency: Int
         get() = appCtx.getPrefInt(PreferKey.reviewCacheConcurrency, 8)

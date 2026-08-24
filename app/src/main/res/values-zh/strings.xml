@@ -1271,9 +1271,14 @@
     <string name="sync_cache_review">缓存评论</string>
     <string name="sync_cache_review_summary">正文缓存完成后，在后台抓取真实评论页快照；评论失败不影响正文</string>
     <string name="cache_review_avatars">缓存评论头像</string>
-    <string name="cache_review_avatars_summary">将评论者头像内联到离线评论快照</string>
+    <string name="cache_review_avatars_summary">离线保存评论者头像</string>
     <string name="cache_review_images">缓存评论图片</string>
-    <string name="cache_review_images_summary">将非头像的评论图片内联到离线评论快照</string>
+    <string name="cache_review_images_summary">离线保存非头像的评论图片</string>
+    <string name="cache_review_resource_database">使用评论资源数据库</string>
+    <string name="cache_review_resource_database_summary">头像和评论图片去重保存，评论快照只保留资源引用</string>
+    <string name="cache_review_avatar_compression">压缩评论头像</string>
+    <string name="cache_review_image_compression">压缩评论图片</string>
+    <string name="cache_review_compression_size_summary">最大输出大小：%1$d KB</string>
     <string name="comment_cache_concurrency">评论资源下载并发数</string>
     <string name="comment_cache_concurrency_summary">缓存单个评论页快照时的资源下载线程数，默认 8</string>
     <string name="export_reviews">导出评论</string>

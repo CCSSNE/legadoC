@@ -131,7 +131,8 @@ object BookImgClick {
                     cached.snapshot.url.ifBlank { "about:blank" },
                     cached.snapshot.html,
                     networkRefresher = networkRefresher,
-                    offlineOnly = offlineOnly
+                    offlineOnly = offlineOnly,
+                    reviewResourceBook = cached.book,
                 )
             )
         }
@@ -310,7 +311,11 @@ object BookImgClick {
                     !click.isNullOrBlank() -> {
                         val fallbackExtensions = fallback?.let {
                             SnapshotFallbackJsExtensions(
-                                context, execSource, BookType.text, it.snapshot.html
+                                context,
+                                execSource,
+                                BookType.text,
+                                it.snapshot.html,
+                                execution.book,
                             )
                         }
                         executeClick(
@@ -331,6 +336,7 @@ object BookImgClick {
                             js.orEmpty(), urlNoOption.orEmpty()
                         ) {
                             fallbackBrowserHtml = fallbackHtml
+                            fallbackReviewResourceBook = fallback?.book
                             if (fallbackHtml != null) {
                                 onBrowserOpenRequestedHook = { _, _, _ ->
                                     browserRequested = true
@@ -460,7 +466,8 @@ object BookImgClick {
         context: AppCompatActivity?,
         source: BookSource?,
         bookType: Int,
-        private val fallbackHtml: String
+        private val fallbackHtml: String,
+        private val reviewResourceBook: Book,
     ) : SourceLoginJsExtensions(context, source, bookType) {
 
         var browserRequested = false
@@ -474,7 +481,12 @@ object BookImgClick {
             browserRequested = true
             rhinoContext.ensureActive()
             SourceVerificationHelp.startBrowser(
-                getSource(), url, title, html = html, fallbackHtml = fallbackHtml
+                getSource(),
+                url,
+                title,
+                html = html,
+                fallbackHtml = fallbackHtml,
+                fallbackReviewResourceBook = reviewResourceBook,
             )
         }
 
@@ -500,7 +512,8 @@ object BookImgClick {
             rhinoContext.ensureActive()
             val pair = SourceVerificationHelp.getVerificationResult(
                 getSource(), url, title, true, refetchAfterSuccess, html,
-                fallbackHtml = fallbackHtml
+                fallbackHtml = fallbackHtml,
+                fallbackReviewResourceBook = reviewResourceBook,
             )
             val (url2, body) = pair
             return StrResponse(url2.ifEmpty { url }, body)
@@ -530,7 +543,8 @@ object BookImgClick {
                         preloadJs,
                         config,
                         networkRefresher = null,
-                        fallbackHtml = fallbackHtml
+                        fallbackHtml = fallbackHtml,
+                        reviewResourceBook = reviewResourceBook,
                     )
                 )
             }

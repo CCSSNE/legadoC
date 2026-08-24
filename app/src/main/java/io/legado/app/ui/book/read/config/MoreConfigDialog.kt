@@ -129,6 +129,20 @@ class MoreConfigDialog : BaseReaderSheetPrefDialogFragment() {
             upPreferenceSummary(PreferKey.pageAnimationSpeed, AppConfig.pageAnimationSpeed.toString())
             upPreferenceSummary(PreferKey.keyPageAnimationSpeed, AppConfig.keyPageAnimationSpeed.toString())
             upPreferenceSummary(PreferKey.reviewCacheConcurrency, AppConfig.reviewResourceDownloadConcurrency.toString())
+            upPreferenceSummary(
+                PreferKey.reviewAvatarCompressionMaxKb,
+                getString(
+                    R.string.cache_review_compression_size_summary,
+                    AppConfig.reviewAvatarCompressionMaxKb
+                )
+            )
+            upPreferenceSummary(
+                PreferKey.reviewImageCompressionMaxKb,
+                getString(
+                    R.string.cache_review_compression_size_summary,
+                    AppConfig.reviewImageCompressionMaxKb
+                )
+            )
             if (!CanvasRecorderFactory.isSupport) {
                 removePref(PreferKey.optimizeRender)
                 preferenceScreen.removePreferenceRecursively(PreferKey.optimizeRender)
@@ -326,6 +340,36 @@ class MoreConfigDialog : BaseReaderSheetPrefDialogFragment() {
                         upPreferenceSummary(
                             PreferKey.reviewCacheConcurrency,
                             AppConfig.reviewResourceDownloadConcurrency.toString()
+                        )
+                    }
+                }
+
+                PreferKey.reviewAvatarCompressionMaxKb -> {
+                    showIntegerInputDialog(
+                        title = R.string.cache_review_avatar_compression,
+                        currentValue = AppConfig.reviewAvatarCompressionMaxKb,
+                        validRange = 1..(Int.MAX_VALUE / 1024),
+                        defaultValue = 2,
+                    ) {
+                        AppConfig.reviewAvatarCompressionMaxKb = it
+                        upPreferenceSummary(
+                            PreferKey.reviewAvatarCompressionMaxKb,
+                            getString(R.string.cache_review_compression_size_summary, it)
+                        )
+                    }
+                }
+
+                PreferKey.reviewImageCompressionMaxKb -> {
+                    showIntegerInputDialog(
+                        title = R.string.cache_review_image_compression,
+                        currentValue = AppConfig.reviewImageCompressionMaxKb,
+                        validRange = 1..(Int.MAX_VALUE / 1024),
+                        defaultValue = 50,
+                    ) {
+                        AppConfig.reviewImageCompressionMaxKb = it
+                        upPreferenceSummary(
+                            PreferKey.reviewImageCompressionMaxKb,
+                            getString(R.string.cache_review_compression_size_summary, it)
                         )
                     }
                 }
