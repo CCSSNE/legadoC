@@ -7,7 +7,6 @@ import androidx.viewbinding.ViewBinding
 import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.data.entities.Book
-import io.legado.app.help.book.isShortcut
 import io.legado.app.databinding.ItemBookshelfCollectionGridBinding
 import io.legado.app.databinding.ItemBookshelfGrid2Binding
 import io.legado.app.databinding.ItemBookshelfGridBinding
@@ -62,7 +61,6 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
             return
         }
         if (item !is Book) return
-        val book = item
         when (binding) {
             is ItemBookshelfGridBinding -> binding.run {
                 ivCover.alpha = UiCorner.bookshelfCoverAlpha()
@@ -85,7 +83,7 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
                             when (it) {
                                 "name" -> tvName.text = item.name
                                 "cover" -> ivCover.loadThumb(
-                                book,
+                                    item,
                                     false
                                 )
 

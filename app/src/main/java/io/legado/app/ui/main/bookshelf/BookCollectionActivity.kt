@@ -117,7 +117,7 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
             combine(
                 appDb.bookCollectionDao.flowBooks(collectionId),
                 appDb.bookCollectionDao.flowChildCollections(collectionId),
-                appDb.bookCollectionDao.flowShortcuts(collectionId)
+                appDb.bookShortcutDao.flowAll()
             ) { list, childCollections, shortcuts ->
                 val sortedBooks = sortBooks(
                     BookShortcutHelp.withShortcuts(

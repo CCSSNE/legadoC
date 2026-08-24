@@ -12,8 +12,6 @@ import io.legado.app.data.entities.BookCollection
 import io.legado.app.data.entities.BookCollectionChild
 import io.legado.app.data.entities.BookCollectionItem
 import io.legado.app.data.entities.BookCollectionWithItems
-import io.legado.app.data.entities.BookShortcut
-import io.legado.app.data.entities.ShelfEntry
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -44,22 +42,10 @@ interface BookCollectionDao {
         SELECT books.* FROM books
         INNER JOIN book_collection_items ON books.bookUrl = book_collection_items.bookUrl
         WHERE book_collection_items.collectionId = :collectionId
-          AND book_collection_items.entryType = ${BookCollectionItem.TYPE_BOOK}
         ORDER BY book_collection_items.`order`, book_collection_items.addedTime
         """
     )
     fun flowBooks(collectionId: Long): Flow<List<Book>>
-
-    @Query(
-        "SELECT book_shortcuts.* FROM book_shortcuts INNER JOIN book_collection_items ON book_shortcuts.shortcutId = book_collection_items.shortcutId " +
-            "WHERE book_collection_items.collectionId = :collectionId AND book_collection_items.entryType = ${BookCollectionItem.TYPE_SHORTCUT} ORDER BY book_collection_items.`order`, book_collection_items.addedTime"
-    )
-    fun flowShortcuts(collectionId: Long): Flow<List<BookShortcut>>
-
-    @Query(
-        "SELECT book_shortcuts.* FROM book_shortcuts INNER JOIN book_collection_items ON book_shortcuts.shortcutId = book_collection_items.shortcutId WHERE book_collection_items.collectionId = :collectionId AND book_collection_items.entryType = ${BookCollectionItem.TYPE_SHORTCUT} ORDER BY book_collection_items.`order`, book_collection_items.addedTime"
-    )
-    fun shortcutsInCollection(collectionId: Long): List<BookShortcut>
 
     @Transaction
     @Query(
@@ -85,7 +71,7 @@ interface BookCollectionDao {
     @Query("DELETE FROM book_collections WHERE collectionId IN (:collectionIds)")
     fun deleteByIds(collectionIds: List<Long>)
 
-    @Query("SELECT bookUrl FROM book_collection_items WHERE collectionId = :collectionId AND entryType = ${BookCollectionItem.TYPE_BOOK} AND bookUrl IS NOT NULL ORDER BY `order`, addedTime")
+    @Query("SELECT bookUrl FROM book_collection_items WHERE collectionId = :collectionId ORDER BY `order`, addedTime")
     fun bookUrlsInCollection(collectionId: Long): List<String>
 
     @Query("SELECT childCollectionId FROM book_collection_children WHERE parentCollectionId = :collectionId ORDER BY `order`, addedTime")
@@ -98,16 +84,10 @@ interface BookCollectionDao {
     fun insertItems(items: List<BookCollectionItem>)
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
-    fun insertEntryItems(items: List<BookCollectionItem>)
-
-    @Insert(onConflict = OnConflictStrategy.IGNORE)
     fun insertChildren(children: List<BookCollectionChild>)
 
-    @Query("DELETE FROM book_collection_items WHERE entryType = ${BookCollectionItem.TYPE_BOOK} AND bookUrl IN (:bookUrls)")
+    @Query("DELETE FROM book_collection_items WHERE bookUrl IN (:bookUrls)")
     fun deleteItemsByBookUrls(bookUrls: List<String>)
-
-    @Query("DELETE FROM book_collection_items WHERE entryType = ${BookCollectionItem.TYPE_SHORTCUT} AND shortcutId IN (:shortcutIds)")
-    fun deleteItemsByShortcutIds(shortcutIds: List<Long>)
 
     @Query("DELETE FROM book_collection_children WHERE childCollectionId IN (:childCollectionIds)")
     fun deleteParentsByChildCollectionIds(childCollectionIds: List<Long>)
@@ -117,8 +97,7 @@ interface BookCollectionDao {
         DELETE FROM book_collection_items
         WHERE EXISTS (
             SELECT 1 FROM book_collection_items AS newer
-            WHERE newer.entryType = ${BookCollectionItem.TYPE_BOOK}
-              AND newer.bookUrl = book_collection_items.bookUrl
+            WHERE newer.bookUrl = book_collection_items.bookUrl
                 AND (
                     newer.addedTime > book_collection_items.addedTime
                     OR (
@@ -130,22 +109,6 @@ interface BookCollectionDao {
         """
     )
     fun deleteDuplicateBookItems()
-
-    @Query(
-        """
-        DELETE FROM book_collection_items
-        WHERE entryType = ${BookCollectionItem.TYPE_SHORTCUT}
-          AND EXISTS (
-            SELECT 1 FROM book_collection_items AS newer
-            WHERE newer.entryType = ${BookCollectionItem.TYPE_SHORTCUT}
-              AND newer.shortcutId = book_collection_items.shortcutId
-              AND (newer.addedTime > book_collection_items.addedTime
-                OR (newer.addedTime = book_collection_items.addedTime
-                    AND newer.collectionId > book_collection_items.collectionId))
-          )
-        """
-    )
-    fun deleteDuplicateShortcutItems()
 
     @Query(
         """
@@ -180,11 +143,8 @@ interface BookCollectionDao {
     @Query("UPDATE book_collections SET updatedTime = :updatedTime")
     fun updateAllCollectionTimes(updatedTime: Long)
 
-    @Query("SELECT DISTINCT bookUrl FROM book_collection_items WHERE entryType = ${BookCollectionItem.TYPE_BOOK} AND bookUrl IS NOT NULL")
+    @Query("SELECT DISTINCT bookUrl FROM book_collection_items")
     fun flowCollectedBookUrls(): Flow<List<String>>
-
-    @Query("SELECT DISTINCT shortcutId FROM book_collection_items WHERE entryType = ${BookCollectionItem.TYPE_SHORTCUT} AND shortcutId IS NOT NULL")
-    fun flowCollectedShortcutIds(): Flow<List<Long>>
 
     @Query(
         """
@@ -203,7 +163,6 @@ interface BookCollectionDao {
         INNER JOIN collection_tree
             ON book_collection_items.collectionId = collection_tree.collectionId
         ORDER BY collection_tree.depth,
-            book_collection_items.entryType,
             book_collection_items.`order`,
             book_collection_items.addedTime
         LIMIT :limit
@@ -250,7 +209,7 @@ interface BookCollectionDao {
         val startOrder = maxItemOrder(collectionId) + 1
         insertItems(
             uniqueBookUrls.mapIndexed { index, bookUrl ->
-                BookCollectionItem.book(
+                BookCollectionItem(
                     collectionId = collectionId,
                     bookUrl = bookUrl,
                     order = startOrder + index,
@@ -263,40 +222,9 @@ interface BookCollectionDao {
     }
 
     @Transaction
-    fun addEntries(collectionId: Long, entries: List<ShelfEntry>) {
-        val unique = entries.distinctBy { it.shelfKey }
-        if (unique.isEmpty()) return
-        val bookUrls = unique.filterIsInstance<ShelfEntry.Body>().map { it.book.bookUrl }
-        val shortcutIds = unique.filterIsInstance<ShelfEntry.Shortcut>().map { it.shortcut.shortcutId }
-        if (bookUrls.isNotEmpty()) deleteItemsByBookUrls(bookUrls)
-        if (shortcutIds.isNotEmpty()) deleteItemsByShortcutIds(shortcutIds)
-        val now = System.currentTimeMillis()
-        val startOrder = maxItemOrder(collectionId) + 1
-        insertEntryItems(unique.mapIndexed { index, entry ->
-            when (entry) {
-                is ShelfEntry.Body -> BookCollectionItem.book(collectionId, entry.book.bookUrl, startOrder + index, now + index)
-                is ShelfEntry.Shortcut -> BookCollectionItem.shortcut(collectionId, entry.shortcut.shortcutId, entry.book.bookUrl, startOrder + index, now + index)
-            }
-        })
-        updateAllCollectionTimes(now)
-    }
-
-    @Transaction
     fun normalizeLocations() {
         deleteDuplicateBookItems()
-        deleteDuplicateShortcutItems()
         deleteDuplicateChildCollections()
-        updateAllCollectionTimes(System.currentTimeMillis())
-    }
-
-    @Transaction
-    fun moveEntriesToRoot(entries: List<ShelfEntry>, collectionIds: List<Long>) {
-        val books = entries.filterIsInstance<ShelfEntry.Body>().map { it.book.bookUrl }
-        val shortcuts = entries.filterIsInstance<ShelfEntry.Shortcut>().map { it.shortcut.shortcutId }
-        if (books.isNotEmpty()) deleteItemsByBookUrls(books)
-        if (shortcuts.isNotEmpty()) deleteItemsByShortcutIds(shortcuts)
-        val ids = collectionIds.distinct().filter { it > 0 }
-        if (ids.isNotEmpty()) deleteParentsByChildCollectionIds(ids)
         updateAllCollectionTimes(System.currentTimeMillis())
     }
 
@@ -325,37 +253,13 @@ interface BookCollectionDao {
     @Transaction
     fun deleteCollectionAndRelease(collectionId: Long) {
         val bookUrls = bookUrlsInCollection(collectionId)
-        val shortcuts = shortcutsInCollection(collectionId)
         val childIds = childCollectionIds(collectionId)
         val parentIds = parentCollectionIds(collectionId).filter { it > 0 && it != collectionId }
         parentIds.forEach { parentId ->
             addBookUrls(parentId, bookUrls)
-            addShortcutEntries(parentId, shortcuts)
             addChildCollectionIds(parentId, childIds)
         }
         deleteByIds(listOf(collectionId))
-    }
-
-    @Transaction
-    fun addShortcutEntries(collectionId: Long, shortcuts: List<BookShortcut>) {
-        if (shortcuts.isEmpty()) return
-        val entries = shortcuts.map { shortcut ->
-            ShelfEntry.Shortcut(
-                shortcut = shortcut,
-                book = Book(
-                    bookUrl = shortcut.bookUrl,
-                    name = "",
-                    author = ""
-                )
-            )
-        }
-        // Only the shortcut identity is used by addEntries; the joined book is resolved by FK.
-        val now = System.currentTimeMillis()
-        val startOrder = maxItemOrder(collectionId) + 1
-        insertEntryItems(shortcuts.mapIndexed { index, shortcut ->
-            BookCollectionItem.shortcut(collectionId, shortcut.shortcutId, shortcut.bookUrl, startOrder + index, now + index)
-        })
-        updateAllCollectionTimes(now)
     }
 
     @Transaction

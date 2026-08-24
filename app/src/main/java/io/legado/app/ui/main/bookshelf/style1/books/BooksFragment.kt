@@ -811,10 +811,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             item.collection.collectionId to item.books.filter { it.bookUrl in visibleBookUrls }
         }
         return collections.mapNotNull { item ->
-            val visibleBooks = BookShortcutHelp.withShortcuts(
-                visibleBooksByCollectionId[item.collection.collectionId].orEmpty(),
-                item.shortcuts
-            )
+            val visibleBooks = visibleBooksByCollectionId[item.collection.collectionId].orEmpty()
             if (visibleBooks.isEmpty() && item.childCollections.isEmpty()) {
                 null
             } else {
