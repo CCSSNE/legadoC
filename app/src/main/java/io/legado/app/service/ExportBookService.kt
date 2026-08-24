@@ -872,8 +872,16 @@ class ExportBookService : BaseService() {
             promoted = true
             val committed = FileDoc.fromDocumentFile(stagingDocument)
             backupDocument?.let { backup ->
-                require(backup.delete() && !backup.exists()) {
-                    "TXT-ZIP export failed: unable to remove replaced archive backup"
+                runCatching {
+                    require(backup.delete() && !backup.exists()) {
+                        "Unable to remove replaced archive backup: $backupName"
+                    }
+                }.onFailure { cleanupError ->
+                    AppLog.put(
+                        "TXT-ZIP export completed but could not remove replaced archive backup: " +
+                            backupName,
+                        cleanupError,
+                    )
                 }
             }
             return committed
