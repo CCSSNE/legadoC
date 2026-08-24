@@ -522,18 +522,19 @@ object ExoPlayerHelper {
     }
 
     /**
-     * Materializes one chapter's resolved audio as ordinary files for TXT-ZIP export.
-     * Remote progressive media is first completed in the per-book cache; local archive
-     * media is copied directly. Adaptive manifests are rejected because copying only the
-     * manifest would create a ZIP that looks complete but cannot play offline.
-     */
+     * Materializes one chapter's already-complete audio as ordinary files for TXT-ZIP export.
+     * Export never resolves a source or downloads missing remote media: those are cache-domain
+     * responsibilities. Local archive media is copied directly. Adaptive manifests are rejected
+     * because copying only the manifest would create a ZIP that looks complete but cannot play
+     * offline.
+    */
     fun exportAudioFiles(
-        request: MediaRequest,
+        resourceUrl: String,
         book: Book,
         targetDir: File,
         filePrefix: String,
     ): List<File> {
-        val urls = getMediaUrls(request.url)
+        val urls = getMediaUrls(resourceUrl)
         require(urls.isNotEmpty()) { "Audio export failed: empty media address" }
         targetDir.mkdirs()
         return urls.mapIndexed { index, mediaUrl ->
@@ -550,11 +551,8 @@ object ExoPlayerHelper {
                 require(isHttpMediaUrl(mediaUrl)) {
                     "Audio export does not support media scheme: $mediaUrl"
                 }
-                if (!isMediaUrlCached(mediaUrl, book)) {
-                    cacheMedia(MediaRequest(mediaUrl, request.headers), book = book)
-                }
                 require(isMediaUrlCached(mediaUrl, book)) {
-                    "Audio export cache is incomplete: $mediaUrl"
+                    "Audio export requires completed offline media: $mediaUrl"
                 }
                 copyCachedMedia(mediaUrl, book, output)
             }
