@@ -139,10 +139,12 @@ data class CacheProgressState(
 
 /**
  * Store-owned runtime progress projection. It is not part of [CacheSnapshot] persistence.
- * [display] is selected by the Store and remains stable across ordinary progress ticks.
+ * [displaySessionId] is selected by the Store and remains stable across ordinary progress ticks.
+ * [display] is the current task/unit progress within that session.
  */
 data class CacheProgressSnapshot(
     val states: List<CacheProgressState> = emptyList(),
+    val displaySessionId: String? = null,
     val display: CacheProgressState? = null,
 )
 
