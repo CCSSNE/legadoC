@@ -588,7 +588,14 @@ object LocalBook {
                 // 快照 remap 依赖本地章节列表：先按现有分章逻辑补齐目录
                 ensureChapterListForImport(importedBook)
                 val localChapters = appDb.bookChapterDao.getChapterList(importedBook.bookUrl)
-                files.filter { it.name.startsWith("r_") && it.name.endsWith(".json") }
+                // Validate and restore the resource library before accepting any
+                // snapshot payload. A reviews/ archive without resources.json is
+                // the retired non-resource format and must not be partially imported.
+                io.legado.app.help.review.ReviewSnapshotResourceStore.importFrom(
+                    importedBook,
+                    files
+                )
+                files.filter(io.legado.app.help.review.ReviewSnapshotStore::isSnapshotFile)
                     .forEach { snapshotFile ->
                         kotlin.runCatching {
                             val snapshot =
@@ -650,14 +657,6 @@ object LocalBook {
                             )
                         }
                     }
-                kotlin.runCatching {
-                    io.legado.app.help.review.ReviewSnapshotResourceStore.importFrom(
-                        importedBook,
-                        files
-                    )
-                }.onFailure { error ->
-                    AppLog.put("导入评论资源数据库失败\n${error.localizedMessage}", error)
-                }
             }
             val jsonFile = files.firstOrNull { it.name == IllustrationHelp.EXPORT_JSON_NAME }
                 ?: return

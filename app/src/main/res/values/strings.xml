@@ -2217,7 +2217,6 @@
     <string name="cache_manage_review_snapshots">Review snapshots</string>
     <string name="cache_manage_review_chapter">Chapter %1$d</string>
     <string name="cache_manage_review_progress">%1$d/%2$d</string>
-    <string name="cache_manage_review_cached_unknown">Cached %1$d</string>
     <string name="cache_manage_review_success">Success</string>
     <string name="cache_manage_review_failed">Failed %1$d</string>
     <string name="cache_manage_review_retry">Retry</string>

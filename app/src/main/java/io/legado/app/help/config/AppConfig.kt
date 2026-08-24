@@ -1054,14 +1054,14 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefBoolean(PreferKey.syncCacheReview, value)
         }
 
-    /** 缓存评论快照时内联评论者头像。 */
+    /** 缓存评论快照时保存评论者头像到资源库。 */
     var cacheReviewAvatars: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.cacheReviewAvatars, true)
         set(value) {
             appCtx.putPrefBoolean(PreferKey.cacheReviewAvatars, value)
         }
 
-    /** 缓存评论快照时内联非头像的评论图片。 */
+    /** 缓存评论快照时保存非头像的评论图片到资源库。 */
     var cacheReviewImages: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.cacheReviewImages, true)
         set(value) {

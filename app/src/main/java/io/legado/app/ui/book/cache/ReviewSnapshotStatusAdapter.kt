@@ -42,9 +42,11 @@ class ReviewSnapshotStatusAdapter(
         payloads: MutableList<Any>,
     ) = binding.run {
         tvChapter.text = context.getString(R.string.cache_manage_review_chapter, item.chapter.index + 1)
-        tvProgress.text = item.totalSnapshots?.let { total ->
-            context.getString(R.string.cache_manage_review_progress, item.processedSnapshots, total)
-        } ?: context.getString(R.string.cache_manage_review_cached_unknown, item.successfulSnapshots)
+        tvProgress.text = context.getString(
+            R.string.cache_manage_review_progress,
+            item.processedSnapshots,
+            item.totalSnapshots
+        )
         if (item.failedSnapshots > 0) {
             tvState.text = context.getString(R.string.cache_manage_review_failed, item.failedSnapshots)
             btnRetry.visible()
