@@ -10,6 +10,7 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import io.legado.app.help.config.AppConfig
+import io.legado.app.utils.configureOfflineResourceLoading
 import io.legado.app.ui.rss.read.VisibleWebView
 import io.legado.app.utils.setDarkeningAllowed
 import kotlinx.coroutines.CoroutineScope
@@ -52,6 +53,7 @@ object WebViewPool {
             createNewWebView() // 创建新实例
         }
         pooledWebView.upContext(context).apply {
+            realWebView.settings.configureOfflineResourceLoading(false)
             realWebView.settings.setDarkeningAllowed(AppConfig.isNightTheme) //设置是否夜间
             if (inUsePool.isEmpty()) {
                 realWebView.resumeTimers()
@@ -110,7 +112,7 @@ object WebViewPool {
                         webview.settings.apply {
                             javaScriptEnabled = false
                             javaScriptEnabled = true // 禁用再启用来重置js环境，注意需要禁用的订阅源需要再次执行
-                            blockNetworkImage = false // 确保允许加载网络图片
+                            configureOfflineResourceLoading(false)
                             cacheMode = WebSettings.LOAD_DEFAULT // 重置缓存模式
                             useWideViewPort = false // 恢复默认关闭宽视模式
                             loadWithOverviewMode = false // 恢复默认

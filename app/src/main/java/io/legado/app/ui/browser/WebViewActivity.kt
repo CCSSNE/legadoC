@@ -71,6 +71,7 @@ import java.net.URLDecoder
 import androidx.core.graphics.createBitmap
 import io.legado.app.help.WebCacheManager
 import io.legado.app.help.webView.WebJsExtensions.Companion.nameCache
+import io.legado.app.utils.configureOfflineResourceLoading
 
 class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
     companion object {
@@ -132,8 +133,7 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
         if (fallbackApplied) return
         fallbackApplied = true
         cancelFallbackTimeout()
-        currentWebView.settings.blockNetworkLoads = true
-        currentWebView.settings.blockNetworkImage = true
+        currentWebView.settings.configureOfflineResourceLoading(true)
         currentWebView.loadDataWithBaseURL(
             viewModel.baseUrl.ifBlank { "https://localhost/" },
             html,

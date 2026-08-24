@@ -33,6 +33,7 @@ import io.legado.app.help.webView.WebJsExtensions.Companion.nameUrl
 import io.legado.app.help.webView.WebViewPool
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.utils.GSON
+import io.legado.app.utils.configureOfflineResourceLoading
 import io.legado.app.utils.runOnUI
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -289,7 +290,7 @@ object ReviewSnapshotCapture {
                     webView.onResume()
                     webView.setBackgroundColor(android.graphics.Color.WHITE)
                     webView.settings.apply {
-                        blockNetworkImage = false
+                        configureOfflineResourceLoading(false)
                         headerMap[AppConst.UA_NAME]?.let { userAgentString = it }
                     }
                     AppCookieManager.applyToWebView(url)
@@ -1344,7 +1345,7 @@ object ReviewSnapshotCapture {
             // 内联完成后立即记录本快照引用的资源 key；终态回调据此携带 resourceKeys。
             capturedResourceKeys = inline.resourceKeys
             if (inline.imgMap.isEmpty() && inline.cssMap.isEmpty()) {
-                serialize()
+                serialize(inline)
                 return
             }
             // Gson 与大 String 的构建不能占用主线程；它仍属于当前 Heavy permit。
@@ -1356,19 +1357,19 @@ object ReviewSnapshotCapture {
                 },
                 onSuccess = { script ->
                     webView.evaluateJavascript(script) {
-                        if (!destroyed) serialize()
+                        if (!destroyed) serialize(inline)
                     }
                 },
                 onFailure = { error -> fail(error) },
             )
         }
 
-        private fun serialize() {
+        private fun serialize(inline: InlineResources) {
             if (destroyed) return
-            // 在 WebView DOM 内去掉脚本后再取 outerHTML，避免 Java Regex 对整份页面连续
-            // 复制。JSON 解码也移出主线程，不能在 evaluateJavascript 回调中阻塞 UI。
+            // 在冻结 DOM 内原子完成完整性校验、脚本清理和 outerHTML，避免活页面在资源
+            // 下载期间继续改变。JSON 解码移出主线程，不能在回调中阻塞 UI。
             diagnostics?.stageStart("SANITIZE")
-            webView.evaluateJavascript(SERIALIZE_SNAPSHOT_JS) { raw ->
+            webView.evaluateJavascript(buildSerializeSnapshotJs(inline)) { raw ->
                 diagnostics?.mark(
                     "WEBVIEW_HTML_READY",
                     CacheOperationDiagnostics.Metrics(inputChars = raw?.length),
@@ -1377,14 +1378,25 @@ object ReviewSnapshotCapture {
                     name = "ReviewSnapshotDecode",
                     work = { decodeJavascriptString(raw) },
                     onSuccess = { html ->
-                        if (html.isNullOrBlank()) {
-                            fail(NoStackTraceException("评论页快照序列化为空 $url"))
+                        val failureMessage = when {
+                            html == null || html.isBlank() -> "评论页快照序列化为空 $url"
+                            html == SNAPSHOT_ROOT_MISSING -> "评论页快照冻结 DOM 丢失 $url"
+                            html != null && html.startsWith(SNAPSHOT_RESOURCE_INCOMPLETE_PREFIX) ->
+                                "评论页快照资源不完整: " +
+                                    html.removePrefix(SNAPSHOT_RESOURCE_INCOMPLETE_PREFIX)
+                            else -> null
+                        }
+                        if (failureMessage != null) {
+                            val error = NoStackTraceException(failureMessage)
+                            diagnostics?.stageFail("SANITIZE", error)
+                            fail(error)
                         } else {
+                            val completeHtml = checkNotNull(html)
                             diagnostics?.stageDone(
                                 "SANITIZE",
-                                CacheOperationDiagnostics.Metrics(outputChars = html.length),
+                                CacheOperationDiagnostics.Metrics(outputChars = completeHtml.length),
                             )
-                            finish(html)
+                            finish(completeHtml)
                         }
                     },
                     onFailure = { error ->
@@ -1407,17 +1419,41 @@ object ReviewSnapshotCapture {
             val imgJson = GSON.toJson(inline.imgMap)
             val cssJson = GSON.toJson(inline.cssMap)
             return "(function(){" +
+                "var root=window.__legadoReviewSnapshotRoot;" +
+                "if(!root)throw new Error('评论快照冻结 DOM 丢失');" +
                 "var m=$imgJson;" +
                 "var c=$cssJson;" +
                 "var cacheAvatars=${inline.cacheAvatars};" +
                 "var cacheCommentImages=${inline.cacheCommentImages};" +
                 IMAGE_CLASSIFIER_HELPER_JS +
-                "document.querySelectorAll('img[src]').forEach(function(el){" +
+                "root.querySelectorAll('img[src]').forEach(function(el){" +
                 "if(!(isAvatarImage(el)?cacheAvatars:cacheCommentImages))return;" +
                 "var d=m[el.src];if(d)el.src=d;});" +
-                "document.querySelectorAll('link[rel=\"stylesheet\"]').forEach(function(el){" +
+                "root.querySelectorAll('link[rel=\"stylesheet\"]').forEach(function(el){" +
                 "var d=c[el.href];if(d){var s=document.createElement('style');" +
                 "s.textContent=d;el.parentNode.insertBefore(s,el);el.remove();}});" +
+                "})()"
+        }
+
+        private fun buildSerializeSnapshotJs(inline: InlineResources): String {
+            return "(function(){" +
+                "var root=window.__legadoReviewSnapshotRoot;" +
+                "if(!root)return '$SNAPSHOT_ROOT_MISSING';" +
+                "var cacheAvatars=${inline.cacheAvatars};" +
+                "var cacheCommentImages=${inline.cacheCommentImages};" +
+                IMAGE_CLASSIFIER_HELPER_JS +
+                "var scripts=root.querySelectorAll('script');" +
+                "for(var i=scripts.length-1;i>=0;i--){var e=scripts[i];" +
+                "if(e.parentNode)e.parentNode.removeChild(e);}" +
+                "var unresolved=[];" +
+                "root.querySelectorAll('img[src]').forEach(function(el){" +
+                "if(!(isAvatarImage(el)?cacheAvatars:cacheCommentImages))return;" +
+                "if(/^https?:\\/\\//i.test(el.src))unresolved.push(el.src);});" +
+                "root.querySelectorAll('link[rel=\"stylesheet\"][href]').forEach(function(el){" +
+                "if(/^https?:\\/\\//i.test(el.href))unresolved.push(el.href);});" +
+                "if(unresolved.length)return '$SNAPSHOT_RESOURCE_INCOMPLETE_PREFIX'+" +
+                "unresolved.length+' 个外部资源未入库，首个: '+unresolved[0];" +
+                "return root.outerHTML;" +
                 "})()"
         }
     }
@@ -1456,20 +1492,18 @@ object ReviewSnapshotCapture {
 
     private val COLLECT_RESOURCES_JS =
         "(function(){" +
+            // 后续异步下载期间只操作这份脱离活页面的 DOM，页面脚本无法再改变快照内容。
+            "var root=document.documentElement.cloneNode(true);" +
+            "window.__legadoReviewSnapshotRoot=root;" +
             IMAGE_CLASSIFIER_HELPER_JS +
             "var img=[],css=[];" +
-            "document.querySelectorAll('img[src]').forEach(function(el){" +
+            "root.querySelectorAll('img[src]').forEach(function(el){" +
             "img.push({url:el.src,kind:isAvatarImage(el)?'avatar':'comment'});});" +
-            "document.querySelectorAll('link[rel=\"stylesheet\"][href]').forEach(function(el){css.push(el.href);});" +
+            "root.querySelectorAll('link[rel=\"stylesheet\"][href]').forEach(function(el){css.push(el.href);});" +
             "return JSON.stringify({img:img,css:css});" +
             "})()"
 
-    /** 在 DOM 内移除脚本后再序列化，离线快照仍保留结构、样式与图片。 */
-    private const val SERIALIZE_SNAPSHOT_JS =
-        "(function(){" +
-            "var scripts=document.querySelectorAll('script');" +
-            "for(var i=scripts.length-1;i>=0;i--){var e=scripts[i];" +
-            "if(e.parentNode)e.parentNode.removeChild(e);}" +
-            "return document.documentElement.outerHTML;" +
-            "})()"
+    private const val SNAPSHOT_ROOT_MISSING = "__LEGADO_REVIEW_SNAPSHOT_ROOT_MISSING__"
+    private const val SNAPSHOT_RESOURCE_INCOMPLETE_PREFIX =
+        "__LEGADO_REVIEW_SNAPSHOT_RESOURCE_INCOMPLETE__:"
 }
