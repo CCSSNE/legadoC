@@ -230,25 +230,27 @@ private object CacheMediaWorkerRegistry {
                 return
             }
         if (state.status == CacheTaskStatus.PAUSED) return
-        val completed = state.completedChapters.coerceIn(0, binding.expected.size)
-        val failed = state.status == CacheTaskStatus.FAILED || state.status == CacheTaskStatus.CANCELLED
-        val current = CacheCoordinator.currentTask(CacheSubmission(lease.sessionId, lease.taskId))
-        binding.expected.forEachIndexed { index, key ->
-            val currentStatus = current?.units?.firstOrNull { it.key == key }?.status
+        binding.expected.forEach { key ->
+            val currentStatus = CacheCoordinator.currentTask(
+                CacheSubmission(lease.sessionId, lease.taskId)
+            )?.units?.firstOrNull { it.key == key }?.status
             if (currentStatus == CacheUnitStatus.PENDING || currentStatus == CacheUnitStatus.RUNNING) {
                 if (currentStatus == CacheUnitStatus.PENDING) {
                     requirePort().updateUnit(lease, key, CacheUnitStatus.RUNNING)
                 }
-                val status = if (index < completed && !failed) CacheUnitStatus.SUCCEEDED
-                else CacheUnitStatus.FAILED
-                requirePort().updateUnit(lease, key, status, state.message.takeIf { status == CacheUnitStatus.FAILED })
+                requirePort().updateUnit(
+                    lease,
+                    key,
+                    CacheUnitStatus.FAILED,
+                    "media worker finished before chapter completion",
+                )
             }
         }
         val finishedTask = CacheCoordinator.currentTask(
             CacheSubmission(lease.sessionId, lease.taskId)
         )
         val unitFailed = finishedTask?.units?.any { it.status == CacheUnitStatus.FAILED } == true
-        val result = if (failed || completed < binding.expected.size || unitFailed) {
+        val result = if (unitFailed || state.status == CacheTaskStatus.FAILED) {
             CacheResult.FAILED
         } else {
             CacheResult.SUCCEEDED

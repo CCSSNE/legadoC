@@ -16,6 +16,7 @@ import io.legado.app.help.book.SourceAudioResolver
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isVideo
+import io.legado.app.help.cache.ChapterDownloadPacer
 import io.legado.app.help.cache.CacheOperationDiagnostics
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.cache.CacheWorkerLease
@@ -45,6 +46,8 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.CoroutineContext
 
 object CacheBook {
+
+    private const val READER_DOWNLOAD_MAX_ATTEMPTS = 3
 
     private val models = ConcurrentHashMap<String, CacheBookModel>()
 
@@ -234,6 +237,12 @@ object CacheBook {
 
         private val errorDownloadMap = hashMapOf<String, Int>()
 
+        private data class DownloadAttempt(
+            val chapter: BookChapter,
+            val executionLease: CacheWorkerLease?,
+            val repairImagesOnly: Boolean,
+        )
+
         @Synchronized
         internal fun hasWork(): Boolean {
             return waitDownloadSet.isNotEmpty() || onDownloadSet.isNotEmpty() || isLoading
@@ -304,8 +313,13 @@ object CacheBook {
             error: Throwable,
             executionLease: CacheWorkerLease? = null,
         ) {
-            //重试3次
-            if ((errorDownloadMap[chapter.primaryStr()] ?: 0) < 3 && !isStopped) {
+            val attempts = errorDownloadMap[chapter.primaryStr()] ?: 0
+            val shouldRetry = if (executionLease == null) {
+                attempts < READER_DOWNLOAD_MAX_ATTEMPTS
+            } else {
+                attempts <= AppConfig.downloadChapterRetryCount
+            }
+            if (shouldRetry && !isStopped) {
                 waitDownloadSet.add(chapter.index)
             } else {
                 executionLease?.let {
@@ -355,59 +369,73 @@ object CacheBook {
         /**
          * 从待下载列表内取第一条下载
          */
-        @Synchronized
-        internal fun download(scope: CoroutineScope, context: CoroutineContext) {
-            require(!book.isAudio && !book.isVideo) {
-                "text body worker received a media book: ${book.bookUrl}"
-            }
-            val executionLease = coordinatorLease
-            val chapterIndex = waitDownloadSet.firstOrNull()
-            if (chapterIndex == null) {
-                if (!isLoading && onDownloadSet.isEmpty()) {
-                    models.remove(book.bookUrl)
-                    if (executionLease != null) {
-                        onFinally(executionLease)
+        internal suspend fun download(scope: CoroutineScope, context: CoroutineContext) {
+            val attempt = synchronized(this) {
+                require(!book.isAudio && !book.isVideo) {
+                    "text body worker received a media book: ${book.bookUrl}"
+                }
+                val executionLease = coordinatorLease
+                val chapterIndex = waitDownloadSet.firstOrNull()
+                if (chapterIndex == null) {
+                    if (!isLoading && onDownloadSet.isEmpty()) {
+                        models.remove(book.bookUrl)
+                        if (executionLease != null) {
+                            onFinally(executionLease)
+                        }
                     }
+                    return@synchronized null
                 }
-                return
-            }
-            if (onDownloadSet.contains(chapterIndex)) {
-                waitDownloadSet.remove(chapterIndex)
-                return
-            }
-            val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, chapterIndex) ?: let {
-                waitDownloadSet.remove(chapterIndex)
-                val error = IllegalStateException("chapter index $chapterIndex is missing")
-                errorDownloadMap["${book.bookUrl}#$chapterIndex"] = 1
-                executionLease?.let {
-                    io.legado.app.help.cache.CacheBodyWorkerRegistry.onChapterFailed(
-                        it,
-                        chapterIndex,
-                        error.localizedMessage,
-                    )
+                if (onDownloadSet.contains(chapterIndex)) {
+                    waitDownloadSet.remove(chapterIndex)
+                    return@synchronized null
                 }
-                AppLog.put("离线缓存失败 ${book.name}：找不到章节索引 $chapterIndex", error)
-                onFinally(executionLease)
-                return
-            }
-            if (chapter.isVolume) {
-                /** 修正下载计数 */
-                onSuccess(chapter, executionLease)
-                postEvent(EventBus.SAVE_CONTENT, Pair(book, chapter))
+                val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, chapterIndex) ?: run {
+                    waitDownloadSet.remove(chapterIndex)
+                    val error = IllegalStateException("chapter index $chapterIndex is missing")
+                    errorDownloadMap["${book.bookUrl}#$chapterIndex"] = 1
+                    executionLease?.let {
+                        io.legado.app.help.cache.CacheBodyWorkerRegistry.onChapterFailed(
+                            it,
+                            chapterIndex,
+                            error.localizedMessage,
+                        )
+                    }
+                    AppLog.put("离线缓存失败 ${book.name}：找不到章节索引 $chapterIndex", error)
+                    onFinally(executionLease)
+                    return@synchronized null
+                }
+                if (chapter.isVolume) {
+                    /** 修正下载计数 */
+                    onSuccess(chapter, executionLease)
+                    postEvent(EventBus.SAVE_CONTENT, Pair(book, chapter))
+                    waitDownloadSet.remove(chapterIndex)
+                    onFinally(executionLease)
+                    return@synchronized null
+                }
+                if (BookHelp.hasImageContent(book, chapter)) {
+                    // 正文与图片均已完整，本章 BODY 直接成功。
+                    onSuccess(chapter, executionLease)
+                    waitDownloadSet.remove(chapterIndex)
+                    onFinally(executionLease)
+                    return@synchronized null
+                }
                 waitDownloadSet.remove(chapterIndex)
-                onFinally(executionLease)
-                return
+                onDownloadSet.add(chapterIndex)
+                DownloadAttempt(
+                    chapter = chapter,
+                    executionLease = executionLease,
+                    repairImagesOnly = BookHelp.hasContent(book, chapter),
+                )
+            } ?: return
+
+            val mayStart = ChapterDownloadPacer.awaitStartSlot {
+                isAttemptActive(attempt.chapter.index)
             }
-            if (BookHelp.hasImageContent(book, chapter)) {
-                // 正文与图片均已完整，本章 BODY 直接成功。
-                onSuccess(chapter, executionLease)
-                waitDownloadSet.remove(chapterIndex)
-                onFinally(executionLease)
-                return
-            }
-            waitDownloadSet.remove(chapterIndex)
-            onDownloadSet.add(chapterIndex)
-            if (BookHelp.hasContent(book, chapter)) {
+            if (!mayStart) return
+
+            val chapter = attempt.chapter
+            val executionLease = attempt.executionLease
+            if (attempt.repairImagesOnly) {
                 val imageTrace = executionLease?.let { lease ->
                     CacheOperationDiagnostics.begin(
                         CacheOperationDiagnostics.Context(
@@ -440,7 +468,7 @@ object CacheBook {
                     onPostError(chapter, it, executionLease)
                 }.onCancel {
                     imageTrace?.cancelled()
-                    onCancel(chapterIndex)
+                    onCancel(chapter.index)
                 }.onFinally {
                     onFinally(executionLease)
                 }.let {
@@ -488,13 +516,17 @@ object CacheBook {
                 )
             }.onCancel {
                 bodyTrace?.cancelled()
-                onCancel(chapterIndex)
+                onCancel(chapter.index)
             }.onFinally {
                 onFinally(executionLease)
             }.apply {
                 tasks.add(this)
             }.start()
         }
+
+        @Synchronized
+        private fun isAttemptActive(chapterIndex: Int): Boolean =
+            !isStopped && onDownloadSet.contains(chapterIndex)
 
         suspend fun downloadAwait(chapter: BookChapter): String {
             synchronized(this) {

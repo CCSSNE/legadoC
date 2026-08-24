@@ -34,6 +34,7 @@ import io.legado.app.ui.main.ai.AiProviderConfig
 import io.legado.app.ui.main.ai.AiSkillConfig
 import io.legado.app.ui.book.read.ReadAiBookHistory
 import splitties.init.appCtx
+import java.math.BigDecimal
 import java.net.InetAddress
 import java.net.URI
 
@@ -1133,6 +1134,41 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         set(value) {
             appCtx.putPrefInt(PreferKey.threadCount, value)
         }
+
+    /** Minimum spacing between starts of Coordinator-owned primary chapter downloads. */
+    var downloadChapterIntervalMillis: Long
+        get() = appCtx.getPrefLong(PreferKey.downloadChapterIntervalMillis, 0L).also {
+            require(it >= 0L) { "download chapter interval must not be negative: $it" }
+        }
+        set(value) {
+            require(value >= 0L) { "download chapter interval must not be negative: $value" }
+            appCtx.putPrefLong(PreferKey.downloadChapterIntervalMillis, value)
+        }
+
+    /** Extra attempts after a primary chapter download failure. */
+    var downloadChapterRetryCount: Int
+        get() = appCtx.getPrefInt(PreferKey.downloadChapterRetryCount, 2).also {
+            require(it >= 0) { "download chapter retry count must not be negative: $it" }
+        }
+        set(value) {
+            require(value >= 0) { "download chapter retry count must not be negative: $value" }
+            appCtx.putPrefInt(PreferKey.downloadChapterRetryCount, value)
+        }
+
+    fun downloadChapterIntervalSecondsText(): String =
+        BigDecimal.valueOf(downloadChapterIntervalMillis)
+            .movePointLeft(3)
+            .stripTrailingZeros()
+            .toPlainString()
+
+    fun downloadChapterIntervalMillisFromSeconds(seconds: Double): Long? {
+        if (!seconds.isFinite() || seconds < 0.0) return null
+        return runCatching {
+            BigDecimal.valueOf(seconds)
+                .movePointRight(3)
+                .longValueExact()
+        }.getOrNull()
+    }
 
     var remoteServerId: Long
         get() = appCtx.getPrefLong(PreferKey.remoteServerId)

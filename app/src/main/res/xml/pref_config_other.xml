@@ -145,6 +145,16 @@
             android:summary="@string/pre_download_s"
             android:title="@string/pre_download" />
 
+        <io.legado.app.lib.prefs.Preference
+            android:key="downloadChapterIntervalMillis"
+            android:title="@string/download_chapter_interval"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="downloadChapterRetryCount"
+            android:title="@string/download_chapter_retry_count"
+            app:iconSpaceReserved="false" />
+
         <io.legado.app.lib.prefs.SwitchPreference
             android:defaultValue="true"
             android:key="replaceEnableDefault"
