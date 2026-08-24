@@ -279,6 +279,12 @@ object ReviewSnapshotResourceStore {
         if (!ReviewSnapshotStore.hasPersistedReviewData(book)) {
             return ReviewResourceGcResult()
         }
+        // 扫描前检查：GC 排队到真正执行的间隔里可能已有新 REVIEW 启动并推进
+        // epoch。若那时把新值当基准，等于把这个 ABA 窗口吞进本次扫描。
+        // 必须先用“排队时快照的基准”校验，通过了才开始扫描。
+        if (!canProceed() || ReviewResourceEpoch.current() != expectedEpoch) {
+            return ReviewResourceGcResult(aborted = true)
+        }
         val collect = collectReferencedKeys(dir)
         return synchronized(lock) {
             val database = requireDatabase(book)

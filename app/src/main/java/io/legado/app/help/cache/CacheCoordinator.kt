@@ -383,10 +383,14 @@ object CacheCoordinator : CacheUiPort {
         val bookUrl = task.bookUrl
         if (hasActiveReviewTask(bookUrl)) return
         if (!resourceGcScheduled.add(bookUrl)) return
+        // 排队成功瞬间快照基准 epoch：协程之后才真正执行，但基准必须固定在
+        // “排队这一刻”。从此刻起的任何 REVIEW 启动都会推进 epoch，让本次 GC
+        // 在扫描前/删除前的检查中放弃；绝不能在协程启动后才读 epoch（那会把
+        // 排队后、执行前启动的 REVIEW 误当成自己的基准，ABA 窗口依旧存在）。
+        val epoch = ReviewResourceEpoch.current()
         resourceGcScope.launch {
             try {
                 val book = appDb.bookDao.getBook(bookUrl) ?: return@launch
-                val epoch = ReviewResourceEpoch.current()
                 val result = ReviewSnapshotResourceStore.gc(
                     book = book,
                     expectedEpoch = epoch,
