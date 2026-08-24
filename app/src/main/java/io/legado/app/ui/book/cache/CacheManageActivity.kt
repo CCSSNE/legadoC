@@ -20,12 +20,8 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.databinding.ActivityCacheManageBinding
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.cache.CacheCoordinator
-import io.legado.app.help.cache.CacheKind
 import io.legado.app.help.cache.CacheLifecycle
-import io.legado.app.help.cache.CachePhase
-import io.legado.app.help.cache.CacheSnapshot
 import io.legado.app.help.cache.CacheTaskState
-import io.legado.app.help.cache.CacheSubmission
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.SegmentedControlStyle
@@ -427,7 +423,7 @@ class CacheManageActivity :
     }
 
     override fun stopAudioCache(item: CacheBookItem) {
-        val task = CacheCoordinator.snapshot.value.findMediaTask(item.book.bookUrl) ?: return
+        val task = CacheCoordinator.snapshot.value.findMediaDownloadTask(item.book.bookUrl) ?: return
         when (task.second.status) {
             CacheLifecycle.PAUSED -> CacheCoordinator.resume(task.first)
             CacheLifecycle.RUNNING,
@@ -552,11 +548,11 @@ private val tabOrder = listOf(
 )
 
 private fun CacheBookItem.hasLockedAudioTask(): Boolean {
-    if (CacheCoordinator.snapshot.value.findMediaTask(book.bookUrl)?.second?.locksCacheActions() == true) {
+    if (CacheCoordinator.snapshot.value.findMediaDownloadTask(book.bookUrl)?.second?.locksCacheActions() == true) {
         return true
     }
     return sourceVariants.any {
-        CacheCoordinator.snapshot.value.findMediaTask(it.book.bookUrl)?.second?.locksCacheActions() == true
+        CacheCoordinator.snapshot.value.findMediaDownloadTask(it.book.bookUrl)?.second?.locksCacheActions() == true
     }
 }
 
@@ -565,14 +561,6 @@ private fun CacheTaskState.locksCacheActions(): Boolean {
         status == CacheLifecycle.QUEUED ||
         status == CacheLifecycle.PAUSING ||
         status == CacheLifecycle.PAUSED
-}
-
-private fun CacheSnapshot.findMediaTask(bookUrl: String): Pair<CacheSubmission, CacheTaskState>? {
-    return sessions.asSequence()
-        .flatMap { it.tasks.asSequence() }
-        .filter { it.kind != CacheKind.TEXT && it.phase == CachePhase.MEDIA && it.bookUrl == bookUrl }
-        .maxByOrNull { it.updatedAt }
-        ?.let { CacheSubmission(it.sessionId, it.taskId) to it }
 }
 
 private fun summarySize(bytes: Long): String {
