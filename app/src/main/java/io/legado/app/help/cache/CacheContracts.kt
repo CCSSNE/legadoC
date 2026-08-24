@@ -113,6 +113,39 @@ data class CacheSnapshot(
     val sessions: List<CacheSessionState> = emptyList(),
 )
 
+/**
+ * Non-persistent runtime progress owned by [CacheTaskStore].
+ *
+ * Lifecycle and unit state remain in [CacheSnapshot]; transport and per-chapter work progress
+ * is deliberately reset when a new generation acquires the task.
+ */
+enum class CacheProgressMode {
+    CHAPTERS,
+    BYTES,
+    SNAPSHOTS,
+    INDETERMINATE,
+}
+
+data class CacheProgressState(
+    val sessionId: String,
+    val taskId: String,
+    val generation: Long,
+    val unitKey: CacheUnitKey? = null,
+    val mode: CacheProgressMode,
+    val current: Long = 0L,
+    val total: Long? = null,
+    val updatedAt: Long = 0L,
+)
+
+/**
+ * Store-owned runtime progress projection. It is not part of [CacheSnapshot] persistence.
+ * [display] is selected by the Store and remains stable across ordinary progress ticks.
+ */
+data class CacheProgressSnapshot(
+    val states: List<CacheProgressState> = emptyList(),
+    val display: CacheProgressState? = null,
+)
+
 object CacheLifecycleRules {
 
     fun canTransition(from: CacheLifecycle, to: CacheLifecycle): Boolean {

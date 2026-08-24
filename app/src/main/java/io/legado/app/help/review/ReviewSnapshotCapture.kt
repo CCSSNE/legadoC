@@ -64,9 +64,10 @@ object ReviewSnapshotCapture {
     private const val EXPAND_ROUND_INTERVAL_MS = 800L
     /** 连续几轮稳定才判定完成（含慢加载评论） */
     private const val STABLE_ROUNDS_TO_FINISH = 3
-    /** 资源内联上限 */
+    /** Resource budget for one complete offline snapshot. Budget excess is a visible failure. */
     private const val MAX_INLINE_RESOURCES = 200
     private const val MAX_TOTAL_INLINE_BYTES = 30L * 1024 * 1024
+    private const val MAX_INLINE_RESOURCE_BYTES = 8L * 1024 * 1024
     /** 单个内联资源抓取超时：内联失败只丢该资源，不拖整章 */
     private const val RESOURCE_FETCH_TIMEOUT_MS = 8_000L
     /**
@@ -74,6 +75,8 @@ object ReviewSnapshotCapture {
      * 唯一的重内存区段。页面加载/展开仍可并行，只有进入该区段才排队。
      */
     private val heavyStagePermits = Semaphore(1, true)
+
+    private class ResourceBudgetExceededException(message: String) : IllegalStateException(message)
 
     /**
      * 抓取结果（供诊断日志）：快照 + 展开检测轮数 + 实际点击“展开/加载更多”次数。
@@ -503,9 +506,10 @@ object ReviewSnapshotCapture {
                             )
                             mHandler.post { applyInline(inline) }
                         }.onFailure {
-                            // 资源下载失败不影响快照本体
                             diagnostics?.warn("RESOURCE_INLINE_FAILED", it)
-                            mHandler.post { serialize() }
+                            mHandler.post {
+                                if (it is ResourceBudgetExceededException) fail(it) else serialize()
+                            }
                         }
                     }.start()
                 }
@@ -541,36 +545,53 @@ object ReviewSnapshotCapture {
 
         private fun downloadResources(urls: Pair<List<String>, List<String>>): InlineResources {
             val (imgUrls, cssUrls) = urls
+            val resourceCount = imgUrls.size + cssUrls.size
+            if (resourceCount > MAX_INLINE_RESOURCES) {
+                throw ResourceBudgetExceededException(
+                    "评论快照资源数 $resourceCount 超过预算 $MAX_INLINE_RESOURCES",
+                )
+            }
             val imgMap = linkedMapOf<String, String>()
             val cssMap = linkedMapOf<String, String>()
-            // 内联资源的最终体积不可预知。此前一次把最多 200 个请求同时 async，单个
+            // 内联资源的最终体积不可预知。此前一次把全部请求同时 async，单个
             // fetchBytes() 都会整块分配 byte[]，使“单个快照”在入 DOM 前就产生多份大对象。
-            // 现在沿用原有资源选择语义，但按队列逐项抓取，任一时刻只保留当前资源和已确认
-            // 需要写入快照的资源；不再把网络并发数乘到内存峰值上。
+            // 现在按队列逐项抓取；预算不够时整份快照明确失败，绝不悄悄少存资源。
             var totalBytes = 0L
-            imgUrls.take(MAX_INLINE_RESOURCES).forEach { rawUrl ->
-                if (totalBytes > MAX_TOTAL_INLINE_BYTES) return@forEach
-                val entry = runCatching {
-                    fetchBytes(rawUrl).takeIf { it.size <= 8L * 1024 * 1024 }?.let { bytes ->
-                        val mime = guessMime(rawUrl, bytes)
-                        rawUrl to ("data:$mime;base64," +
-                            android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP))
-                    }
-                }.getOrNull()
-                if (entry != null) {
-                    totalBytes += entry.second.length
-                    imgMap[entry.first] = entry.second
+            imgUrls.forEach { rawUrl ->
+                val bytes = runCatching { fetchBytes(rawUrl) }.getOrNull() ?: return@forEach
+                if (bytes.size > MAX_INLINE_RESOURCE_BYTES) {
+                    throw ResourceBudgetExceededException(
+                        "评论快照资源 ${bytes.size}B 超过单资源预算 $MAX_INLINE_RESOURCE_BYTES B: $rawUrl",
+                    )
                 }
+                val mime = guessMime(rawUrl, bytes)
+                val value = "data:$mime;base64," +
+                    android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                val nextTotal = totalBytes + value.length
+                if (nextTotal > MAX_TOTAL_INLINE_BYTES) {
+                    throw ResourceBudgetExceededException(
+                        "评论快照内联资源 $nextTotal B 超过总预算 $MAX_TOTAL_INLINE_BYTES B",
+                    )
+                }
+                totalBytes = nextTotal
+                imgMap[rawUrl] = value
             }
-            cssUrls.take(MAX_INLINE_RESOURCES).forEach { rawUrl ->
-                if (totalBytes > MAX_TOTAL_INLINE_BYTES) return@forEach
-                val text = runCatching {
-                    fetchBytes(rawUrl).toString(Charsets.UTF_8).takeIf { it.isNotBlank() }
-                }.getOrNull()
-                if (text != null) {
-                    totalBytes += text.toByteArray(Charsets.UTF_8).size
-                    cssMap[rawUrl] = text
+            cssUrls.forEach { rawUrl ->
+                val bytes = runCatching { fetchBytes(rawUrl) }.getOrNull() ?: return@forEach
+                if (bytes.size > MAX_INLINE_RESOURCE_BYTES) {
+                    throw ResourceBudgetExceededException(
+                        "评论快照资源 ${bytes.size}B 超过单资源预算 $MAX_INLINE_RESOURCE_BYTES B: $rawUrl",
+                    )
                 }
+                val text = bytes.toString(Charsets.UTF_8).takeIf { it.isNotBlank() } ?: return@forEach
+                val nextTotal = totalBytes + text.toByteArray(Charsets.UTF_8).size
+                if (nextTotal > MAX_TOTAL_INLINE_BYTES) {
+                    throw ResourceBudgetExceededException(
+                        "评论快照内联资源 $nextTotal B 超过总预算 $MAX_TOTAL_INLINE_BYTES B",
+                    )
+                }
+                totalBytes = nextTotal
+                cssMap[rawUrl] = text
             }
             return InlineResources(imgMap, cssMap, totalBytes)
         }

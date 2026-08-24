@@ -17,18 +17,29 @@ import java.util.UUID
 internal class CacheTaskStore(
     private val logSink: CacheLogSink = AppLogCacheLogSink,
     private val persistence: CacheTaskPersistence = AppFileCacheTaskPersistence,
-    private val onPublished: (CacheSnapshot) -> Unit = {},
+    private val onPublished: (CacheSnapshot, CacheProgressSnapshot) -> Unit = { _, _ -> },
 ) {
 
     private val lock = Any()
     private val sessions = LinkedHashMap<String, CacheSessionState>()
     private val _snapshot = MutableStateFlow(CacheSnapshot())
     val snapshot: StateFlow<CacheSnapshot> = _snapshot.asStateFlow()
+    private val progressByKey = LinkedHashMap<ProgressKey, CacheProgressState>()
+    private var displayProgressKey: ProgressKey? = null
+    private val _progress = MutableStateFlow(CacheProgressSnapshot())
+    val progress: StateFlow<CacheProgressSnapshot> = _progress.asStateFlow()
     private val persistenceExecutor = Executors.newSingleThreadScheduledExecutor { runnable ->
         Thread(runnable, "cache-task-persistence").apply { isDaemon = true }
     }
     private var pendingCheckpoint: ScheduledFuture<*>? = null
     private var persistenceVersion = 0L
+
+    private data class ProgressKey(
+        val sessionId: String,
+        val taskId: String,
+        val generation: Long,
+        val unitKey: CacheUnitKey?,
+    )
 
     init {
         val loaded = persistence.load()
@@ -149,6 +160,7 @@ internal class CacheTaskStore(
                 error = error,
                 updatedAt = System.currentTimeMillis(),
             ))
+            removeTaskProgressLocked(sessionId, taskId)
             publishLocked()
         }
         record(CacheLogEventType.TASK_FINISHED, sessionId, taskId, "result=FAILED error=$error")
@@ -180,6 +192,7 @@ internal class CacheTaskStore(
                 generation = task.generation + 1,
                 updatedAt = System.currentTimeMillis(),
             ))
+            removeTaskProgressLocked(sessionId, taskId)
             publishLocked()
         }
         record(CacheLogEventType.TASK_PAUSING, sessionId, taskId)
@@ -229,6 +242,7 @@ internal class CacheTaskStore(
                 generation = task.generation + 1,
                 updatedAt = System.currentTimeMillis(),
             ))
+            removeTaskProgressLocked(sessionId, taskId)
             publishLocked()
         }
         record(CacheLogEventType.TASK_CANCELLING, sessionId, taskId)
@@ -244,6 +258,7 @@ internal class CacheTaskStore(
                 result = CacheResult.CANCELLED,
                 updatedAt = System.currentTimeMillis(),
             ))
+            removeTaskProgressLocked(sessionId, taskId)
             publishLocked()
         }
         record(CacheLogEventType.TASK_CANCELLED, sessionId, taskId)
@@ -275,7 +290,15 @@ internal class CacheTaskStore(
                     updatedAt = System.currentTimeMillis(),
                 )
             }
-            replaceTaskLocked(task.copy(units = units, updatedAt = System.currentTimeMillis()))
+            val updatedTask = task.copy(units = units, updatedAt = System.currentTimeMillis())
+            replaceTaskLocked(updatedTask)
+            if (updatedTask.kind == CacheKind.TEXT && updatedTask.phase == CachePhase.BODY) {
+                updateChapterProgressLocked(updatedTask, lease)
+            }
+            if (isTerminalUnitStatus(status)) {
+                progressByKey.remove(progressKey(lease, key))
+            }
+            reconcileProgressLocked()
             publishLocked(persist = false)
         }
         record(
@@ -288,6 +311,56 @@ internal class CacheTaskStore(
             lease.taskId,
             "chapter=${key.chapterIndex} status=$status${error?.let { " error=$it" }.orEmpty()}",
         )
+        return true
+    }
+
+    /**
+     * Accept an executor progress report only for the currently owned generation. Runtime
+     * progress never enters persistent [CacheSnapshot], so a new generation always starts clean.
+     */
+    fun updateProgress(
+        lease: CacheWorkerLease,
+        unitKey: CacheUnitKey?,
+        mode: CacheProgressMode,
+        current: Long,
+        total: Long? = null,
+    ): Boolean {
+        require(current >= 0L) { "cache progress current must not be negative" }
+        require(total == null || total >= 0L) { "cache progress total must not be negative" }
+        require(total == null || current <= total) {
+            "cache progress current exceeds total: current=$current total=$total"
+        }
+        synchronized(lock) {
+            val task = requireTaskLocked(lease.sessionId, lease.taskId)
+            if (!isCurrentLease(task, lease) || task.status != CacheLifecycle.RUNNING) {
+                logStaleUpdate(lease, "progress unit=${unitKey?.chapterIndex} mode=$mode")
+                return false
+            }
+            unitKey?.let { key ->
+                require(task.units.any { it.key == key }) { "progress unit is not part of task: $key" }
+            }
+            val key = progressKey(lease, unitKey)
+            if (unitKey != null) {
+                progressByKey.remove(progressKey(lease, null))
+            }
+            progressByKey[key] = CacheProgressState(
+                sessionId = lease.sessionId,
+                taskId = lease.taskId,
+                generation = lease.generation,
+                unitKey = unitKey,
+                mode = mode,
+                current = current,
+                total = total,
+                updatedAt = System.currentTimeMillis(),
+            )
+            if (displayProgressKey == null ||
+                (displayProgressKey?.sameTask(lease) == true && displayProgressKey?.unitKey == null && unitKey != null)
+            ) {
+                displayProgressKey = key
+            }
+            reconcileProgressLocked()
+            publishProgressLocked()
+        }
         return true
     }
 
@@ -358,6 +431,7 @@ internal class CacheTaskStore(
                 error = error,
                 updatedAt = System.currentTimeMillis(),
             ))
+            removeTaskProgressLocked(lease.sessionId, lease.taskId)
             publishLocked()
         }
         autoFailedUnits.forEach { key ->
@@ -429,7 +503,103 @@ internal class CacheTaskStore(
             generation = nextGeneration,
             updatedAt = System.currentTimeMillis(),
         ))
-        return CacheWorkerLease(task.sessionId, task.taskId, nextGeneration)
+        return CacheWorkerLease(task.sessionId, task.taskId, nextGeneration).also { lease ->
+            seedProgressLocked(task.copy(generation = nextGeneration, status = nextStatus), lease)
+        }
+    }
+
+    private fun progressKey(lease: CacheWorkerLease, unitKey: CacheUnitKey?): ProgressKey = ProgressKey(
+        sessionId = lease.sessionId,
+        taskId = lease.taskId,
+        generation = lease.generation,
+        unitKey = unitKey,
+    )
+
+    private fun ProgressKey.sameTask(lease: CacheWorkerLease): Boolean =
+        sessionId == lease.sessionId && taskId == lease.taskId && generation == lease.generation
+
+    private fun seedProgressLocked(task: CacheTaskState, lease: CacheWorkerLease) {
+        removeTaskProgressLocked(task.sessionId, task.taskId)
+        val mode = if (task.kind == CacheKind.TEXT && task.phase == CachePhase.BODY) {
+            CacheProgressMode.CHAPTERS
+        } else {
+            CacheProgressMode.INDETERMINATE
+        }
+        val progress = CacheProgressState(
+            sessionId = lease.sessionId,
+            taskId = lease.taskId,
+            generation = lease.generation,
+            mode = mode,
+            current = if (mode == CacheProgressMode.CHAPTERS) {
+                task.units.count { it.status == CacheUnitStatus.SUCCEEDED }.toLong()
+            } else {
+                0L
+            },
+            total = if (mode == CacheProgressMode.CHAPTERS) task.units.size.toLong() else null,
+            updatedAt = System.currentTimeMillis(),
+        )
+        val key = progressKey(lease, null)
+        progressByKey[key] = progress
+        if (displayProgressKey == null) displayProgressKey = key
+        reconcileProgressLocked()
+    }
+
+    private fun updateChapterProgressLocked(task: CacheTaskState, lease: CacheWorkerLease) {
+        progressByKey[progressKey(lease, null)] = CacheProgressState(
+            sessionId = lease.sessionId,
+            taskId = lease.taskId,
+            generation = lease.generation,
+            mode = CacheProgressMode.CHAPTERS,
+            current = task.units.count { it.status == CacheUnitStatus.SUCCEEDED }.toLong(),
+            total = task.units.size.toLong(),
+            updatedAt = System.currentTimeMillis(),
+        )
+        if (displayProgressKey == null) displayProgressKey = progressKey(lease, null)
+    }
+
+    private fun removeTaskProgressLocked(sessionId: String, taskId: String) {
+        progressByKey.keys.removeAll { it.sessionId == sessionId && it.taskId == taskId }
+        reconcileProgressLocked()
+    }
+
+    private fun reconcileProgressLocked() {
+        progressByKey.entries.removeAll { (key, _) ->
+            val task = sessions[key.sessionId]?.tasks?.firstOrNull { it.taskId == key.taskId }
+            task == null ||
+                task.generation != key.generation ||
+                CacheLifecycleRules.isTerminal(task.status) ||
+                key.unitKey?.let { unitKey ->
+                    task.units.firstOrNull { it.key == unitKey }
+                        ?.status
+                        ?.let(::isTerminalUnitStatus)
+                        ?: true
+                } == true
+        }
+        if (displayProgressKey !in progressByKey) {
+            displayProgressKey = progressByKey.keys.firstOrNull()
+        }
+    }
+
+    private fun isTerminalUnitStatus(status: CacheUnitStatus): Boolean = status in setOf(
+        CacheUnitStatus.SUCCEEDED,
+        CacheUnitStatus.FAILED,
+        CacheUnitStatus.REVIEW_BLOCKED,
+        CacheUnitStatus.NOT_APPLICABLE,
+        CacheUnitStatus.CANCELLED,
+    )
+
+    private fun publishProgressLocked() {
+        val published = progressSnapshotLocked()
+        _progress.value = published
+        onPublished(_snapshot.value, published)
+    }
+
+    private fun progressSnapshotLocked(): CacheProgressSnapshot {
+        reconcileProgressLocked()
+        return CacheProgressSnapshot(
+            states = progressByKey.values.toList(),
+            display = displayProgressKey?.let(progressByKey::get),
+        )
     }
 
     private fun replaceTaskLocked(task: CacheTaskState) {
@@ -567,6 +737,7 @@ internal class CacheTaskStore(
 
     private fun publishLocked(persist: Boolean = true) {
         val published = CacheSnapshot(sessions.values.toList())
+        val progress = progressSnapshotLocked()
         val trace = CacheOperationDiagnostics.begin(
             CacheOperationDiagnostics.Context(domain = CacheOperationDiagnostics.Domain.STORE),
             "SNAPSHOT_PUBLISH",
@@ -578,7 +749,8 @@ internal class CacheTaskStore(
         )
         try {
             _snapshot.value = published
-            onPublished(published)
+            _progress.value = progress
+            onPublished(published, progress)
             val version = ++persistenceVersion
             if (!persist) {
                 scheduleCheckpointLocked(version)

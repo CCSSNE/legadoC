@@ -5,8 +5,6 @@ import androidx.core.app.NotificationCompat
 import io.legado.app.R
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.NotificationId
-import io.legado.app.help.review.ReviewSnapshotManager
-import io.legado.app.ui.book.cache.AudioCacheTaskManager
 import io.legado.app.ui.book.cache.CacheActivity
 import io.legado.app.utils.ConvertUtils
 import io.legado.app.utils.activityPendingIntent
@@ -28,29 +26,28 @@ internal object CacheNotificationBridge {
             .build()
     }
 
-    fun started(task: CacheTaskState) {
-        renderCurrent()
-    }
-
-    fun renderCurrent() {
-        render(CacheCoordinator.snapshot.value)
-    }
-
-    fun render(snapshot: CacheSnapshot) {
+    fun render(snapshot: CacheSnapshot, progress: CacheProgressSnapshot) {
         val active = snapshot.sessions.asSequence()
             .flatMap { it.tasks.asSequence() }
             .filter { !CacheLifecycleRules.isTerminal(it.status) }
             .toList()
         if (active.isEmpty()) return
-        renderActive(active)
+        renderActive(active, progress)
     }
 
-    /** A notification has one progress bar, so it represents the most recently changed task. */
-    private fun renderActive(active: List<CacheTaskState>) {
-        val (task, presentation) = active.asSequence()
-            .map { it to presentation(it) }
-            .maxByOrNull { (_, current) -> current.updatedAt }
-            ?: return
+    /** The Store owns a stable display target; ordinary progress ticks never select a new task. */
+    private fun renderActive(active: List<CacheTaskState>, progress: CacheProgressSnapshot) {
+        val display = progress.display?.takeIf { state ->
+            active.any { task ->
+                task.sessionId == state.sessionId &&
+                    task.taskId == state.taskId &&
+                    task.generation == state.generation
+            }
+        }
+        val task = display?.let { state ->
+            active.first { it.sessionId == state.sessionId && it.taskId == state.taskId }
+        } ?: active.first()
+        val presentation = presentation(task, display)
         notify(
             title = presentation.title,
             text = presentation.text,
@@ -62,9 +59,15 @@ internal object CacheNotificationBridge {
         )
     }
 
-    fun finished(task: CacheTaskState?, result: CacheResult, error: String? = null) {
+    fun finished(
+        snapshot: CacheSnapshot,
+        progress: CacheProgressSnapshot,
+        task: CacheTaskState?,
+        result: CacheResult,
+        error: String? = null,
+    ) {
         val session = task?.let { finishedTask ->
-            CacheCoordinator.snapshot.value.sessions.firstOrNull {
+            snapshot.sessions.firstOrNull {
                 it.sessionId == finishedTask.sessionId
             }
         }
@@ -76,12 +79,12 @@ internal object CacheNotificationBridge {
             CacheResult.FAILED -> "Cache failed${error?.let { ": $it" }.orEmpty()}"
             CacheResult.CANCELLED -> "Cache stopped"
         }
-        val active = CacheCoordinator.snapshot.value.sessions.asSequence()
+        val active = snapshot.sessions.asSequence()
             .flatMap { it.tasks.asSequence() }
             .filter { !CacheLifecycleRules.isTerminal(it.status) }
             .toList()
         if (active.isNotEmpty()) {
-            renderActive(active)
+            renderActive(active, progress)
             return
         }
         notify(
@@ -94,58 +97,55 @@ internal object CacheNotificationBridge {
         )
     }
 
-    private fun presentation(task: CacheTaskState): Presentation = when {
-        task.kind == CacheKind.TEXT && task.phase == CachePhase.BODY -> bodyPresentation(task)
-        task.kind == CacheKind.TEXT && task.phase == CachePhase.REVIEW -> reviewPresentation(task)
+    private fun presentation(
+        task: CacheTaskState,
+        progress: CacheProgressState?,
+    ): Presentation = when {
+        task.kind == CacheKind.TEXT && task.phase == CachePhase.BODY -> bodyPresentation(task, progress)
+        task.kind == CacheKind.TEXT && task.phase == CachePhase.REVIEW -> reviewPresentation(task, progress)
         task.phase == CachePhase.MEDIA &&
             (task.kind == CacheKind.AUDIO || task.kind == CacheKind.VIDEO) ->
-            mediaPresentation(task)
+            mediaPresentation(task, progress)
         else -> error("unsupported cache notification task: ${task.kind}/${task.phase}")
     }
 
-    private fun bodyPresentation(task: CacheTaskState): Presentation {
-        val completed = completedChapters(task)
-        val total = task.units.size
+    private fun bodyPresentation(
+        task: CacheTaskState,
+        progress: CacheProgressState?,
+    ): Presentation {
+        val completed = (progress?.current ?: completedChapters(task).toLong()).toInt()
+        val total = (progress?.total ?: task.units.size.toLong()).toInt()
         return Presentation(
             title = "缓存正文",
             text = chapterText(completed, total),
             progress = chapterProgress(total, completed),
-            updatedAt = task.updatedAt,
         )
     }
 
-    private fun mediaPresentation(task: CacheTaskState): Presentation {
-        val state = AudioCacheTaskManager.snapshot(task.bookUrl)
-        val totalChapters = state?.totalChapters?.takeIf { it > 0 } ?: task.units.size
-        val chapter = state?.currentChapterIndex?.takeIf { it > 0 }
-            ?: currentChapterOrdinal(task)
-        val downloadedBytes = state?.currentChapterBytes ?: 0L
-        val totalBytes = state?.currentChapterTotalBytes
+    private fun mediaPresentation(
+        task: CacheTaskState,
+        progress: CacheProgressState?,
+    ): Presentation {
+        val downloadedBytes = progress?.current ?: 0L
+        val totalBytes = progress?.total
         return Presentation(
             title = if (task.kind == CacheKind.VIDEO) "缓存视频" else "缓存音频",
             text = "${formatBytes(downloadedBytes)} / ${totalBytes?.let(::formatBytes) ?: "?"} " +
-                chapterText(chapter, totalChapters),
+                chapterText(completedChapters(task), task.units.size),
             progress = byteProgress(downloadedBytes, totalBytes),
-            updatedAt = state?.updatedAt ?: task.updatedAt,
         )
     }
 
-    private fun reviewPresentation(task: CacheTaskState): Presentation {
-        val progress = ReviewSnapshotManager.notificationProgress(
-            CacheWorkerLease(task.sessionId, task.taskId, task.generation),
-        )
-        val chapter = progress?.chapterIndex?.let { index ->
-            task.units.indexOfFirst { it.key.chapterIndex == index }
-                .takeIf { it >= 0 }
-                ?.plus(1)
-        } ?: currentChapterOrdinal(task)
-        val completed = progress?.completedSnapshots ?: 0
-        val total = progress?.totalSnapshots ?: 0
+    private fun reviewPresentation(
+        task: CacheTaskState,
+        progress: CacheProgressState?,
+    ): Presentation {
+        val completed = progress?.current?.toInt() ?: 0
+        val total = progress?.total?.toInt() ?: 0
         return Presentation(
             title = "缓存评论",
-            text = "快照：$completed/$total  ${chapterText(chapter, task.units.size)}",
+            text = "快照：$completed/$total  ${chapterText(completedChapters(task), task.units.size)}",
             progress = chapterProgress(total, completed),
-            updatedAt = progress?.updatedAt ?: task.updatedAt,
         )
     }
 
@@ -240,12 +240,6 @@ internal object CacheNotificationBridge {
     private fun completedChapters(task: CacheTaskState): Int =
         task.units.count { it.status == CacheUnitStatus.SUCCEEDED }
 
-    private fun currentChapterOrdinal(task: CacheTaskState): Int {
-        if (task.units.isEmpty()) return 0
-        val next = task.units.indexOfFirst { it.status != CacheUnitStatus.SUCCEEDED }
-        return if (next >= 0) next + 1 else task.units.size
-    }
-
     private fun chapterText(current: Int, total: Int): String = "$current/${total}章"
 
     private fun formatBytes(bytes: Long): String = ConvertUtils.formatFileSize(bytes.coerceAtLeast(0L))
@@ -254,7 +248,6 @@ internal object CacheNotificationBridge {
         val title: String,
         val text: String,
         val progress: Progress,
-        val updatedAt: Long,
     )
 
     private data class Progress(
