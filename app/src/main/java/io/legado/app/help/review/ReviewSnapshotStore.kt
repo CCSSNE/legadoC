@@ -71,7 +71,7 @@ object ReviewSnapshotStore {
             ?: emptyArray()
     }
 
-    fun put(
+    internal fun put(
         book: Book,
         snapshot: ReviewSnapshot,
         diagnostics: CacheOperationDiagnostics.Context? = null,

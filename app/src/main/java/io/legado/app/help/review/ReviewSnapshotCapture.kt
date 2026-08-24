@@ -122,7 +122,7 @@ object ReviewSnapshotCapture {
      *        仍继续展开/内联/序列化；无效则按失败处理
      * @param preloadJs 书源 showBrowser 传入的 preloadJs：随初始页面注入 JS bridge 环境
      */
-    suspend fun capture(
+    internal suspend fun capture(
         bookSource: BookSource,
         book: Book,
         chapter: BookChapter,
@@ -522,7 +522,6 @@ object ReviewSnapshotCapture {
         ) {
             val resourceCount: Int get() = imgMap.size + cssMap.size
         }
-        )
 
         private fun parseResourceUrls(json: String?): Pair<List<String>, List<String>> {
             json ?: return emptyList<String>() to emptyList()
