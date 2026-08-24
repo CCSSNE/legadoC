@@ -21,35 +21,18 @@ internal class TextBodyWorkerAdapter(
         }
         val book = appDb.bookDao.getBook(task.bookUrl)
             ?: error("book not found: ${task.bookUrl}")
+        if (!registry.register(task, lease, task.units.map { it.key }.toSet())) {
+            val detail = "another body task is active for this book"
+            if (workerPort.skip(lease, CacheTaskSkipReason.ALREADY_RUNNING, detail)) {
+                CacheCoordinator.notifyTaskFinished(lease, CacheResult.SKIPPED, detail)
+            }
+            return
+        }
         task.units
             .filter { it.status == CacheUnitStatus.PENDING || it.status == CacheUnitStatus.REVIEW_ELIGIBLE }
             .forEach { unit ->
                 workerPort.updateUnit(lease, unit.key, CacheUnitStatus.RUNNING)
             }
-        if (!registry.register(task, lease, task.units.map { it.key }.toSet())) {
-            task.units
-                .filter { it.status in setOf(
-                    CacheUnitStatus.PENDING,
-                    CacheUnitStatus.REVIEW_ELIGIBLE,
-                    CacheUnitStatus.RUNNING,
-                ) }
-                .forEach { unit ->
-                workerPort.updateUnit(
-                    lease,
-                    unit.key,
-                    CacheUnitStatus.FAILED,
-                    "another body task is active for this book",
-                )
-            }
-            if (workerPort.finish(lease, CacheResult.FAILED, "another body task is active for this book")) {
-                CacheCoordinator.notifyTaskFinished(
-                    lease,
-                    CacheResult.FAILED,
-                    "another body task is active for this book",
-                )
-            }
-            return
-        }
         ranges(task.units.map { it.key.chapterIndex }).forEach { (start, end) ->
             CacheBook.start(
                 appCtx,
