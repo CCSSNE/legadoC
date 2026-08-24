@@ -30,7 +30,8 @@ import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.book.update
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
-import io.legado.app.help.cache.ReviewWorkerAdapter
+import io.legado.app.help.cache.CacheCoordinator
+import io.legado.app.help.cache.CacheRequestSource
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.globalExecutor
 import io.legado.app.model.localBook.TextFile
@@ -105,6 +106,8 @@ object ReadBook : CoroutineScope by MainScope() {
     var webBookProgress: BookProgress? = null
 
     var preDownloadTask: Job? = null
+    @Volatile
+    private var automaticReviewWindowKey: String? = null
     val downloadedChapters = hashSetOf<Int>()
     val downloadFailChapters = hashMapOf<Int, Int>()
     var contentProcessor: ContentProcessor? = null
@@ -127,6 +130,7 @@ object ReadBook : CoroutineScope by MainScope() {
 
     fun resetData(book: Book) {
         releaseAndCancel()
+        automaticReviewWindowKey = null
         ReadBook.book = book
         readRecord.deviceId = AppConst.androidId
         readRecord.bookName = book.name
@@ -159,6 +163,7 @@ object ReadBook : CoroutineScope by MainScope() {
 
     fun upData(book: Book) {
         releaseAndCancel()
+        automaticReviewWindowKey = null
         ReadBook.book = book
         chapterSize = appDb.bookChapterDao.getChapterCount(book.bookUrl)
         simulatedChapterSize = if (book.readSimulating()) {
@@ -601,8 +606,6 @@ object ReadBook : CoroutineScope by MainScope() {
             simulatedChapterSize
         )
         textChapter.layoutChannel.receiveAsFlow().collect()
-        // downloadAwait 刚下载的章节：正文排版（最终完成）后才入队评论
-        if (cached == null) notifyChapterDownloaded(book, chapter)
         return@withContext textChapter
     }
 
@@ -753,8 +756,6 @@ object ReadBook : CoroutineScope by MainScope() {
                 val cached = BookHelp.getContent(book, chapter)
                 val content = cached ?: downloadAwait(chapter)
                 contentLoadFinishAwait(book, chapter, content, upContent, resetPageOffset)
-                // downloadAwait 刚下载的章节：正文刷新状态收尾后才入队评论
-                if (cached == null) notifyChapterDownloaded(book, chapter)
                 success?.invoke()
             } catch (e: Exception) {
                 AppLog.put("加载正文出错\n${e.localizedMessage}")
@@ -762,18 +763,6 @@ object ReadBook : CoroutineScope by MainScope() {
                 removeLoading(index)
             }
         }
-    }
-
-    /**
-     * downloadAwait 路径的正文最终完成（排版/刷新状态收尾）后统一入队评论，
-     * 与 CacheBook 下载路径的出口语义一致；缓存命中不下发，避免无意义入队。
-     */
-    private fun notifyChapterDownloaded(book: Book, chapter: BookChapter) {
-        ReviewWorkerAdapter.enqueueReaderReviewIfEnabled(
-            book, chapter,
-            force = io.legado.app.help.review.ReviewSnapshotManager
-                .isUserRefreshActive(book.bookUrl, chapter.index)
-        )
     }
 
     /**
@@ -861,9 +850,6 @@ object ReadBook : CoroutineScope by MainScope() {
     ) {
         removeLoading(chapter.index)
         if (canceled || chapter.index !in durChapterIndex - 1..durChapterIndex + 1) {
-            // 取消不入队；超窗章（如后台预下载的远景章节）正文下载已完成、
-            // 但没有排版刷新流程，按“无刷新流程的正文完成”统一入队评论
-            if (!canceled) notifyChapterDownloaded(book, chapter)
             return
         }
         chapterLoadingJobs[chapter.index]?.cancel()
@@ -1163,6 +1149,14 @@ object ReadBook : CoroutineScope by MainScope() {
      */
     private fun preDownload() {
         if (book?.isLocal == true) return
+        if (AppConfig.syncCacheReview && AppConfig.autoDownloadReview) {
+            if (AppConfig.preDownloadNum < 2) {
+                executor.execute { upToc() }
+            }
+            scheduleAutomaticReviewDownload()
+            return
+        }
+        automaticReviewWindowKey = null
         executor.execute {
             if (AppConfig.preDownloadNum < 2) {
                 upToc()
@@ -1191,6 +1185,45 @@ object ReadBook : CoroutineScope by MainScope() {
             }
         }
     }
+
+    private fun scheduleAutomaticReviewDownload() {
+        val currentBook = book ?: return
+        val startIndex = durChapterIndex
+        val chapterIndexes = CacheCoordinator.automaticChapterIndexes(
+            startIndex = startIndex,
+            chapterCount = chapterSize,
+            preDownloadCount = AppConfig.preDownloadNum,
+        )
+        if (chapterIndexes.isEmpty()) return
+        val windowKey = "${currentBook.bookUrl}|${chapterIndexes.first()}-${chapterIndexes.last()}"
+        if (automaticReviewWindowKey == windowKey) return
+        preDownloadTask?.cancel()
+        preDownloadTask = launch(IO) {
+            while (isActive) {
+                if (book?.bookUrl != currentBook.bookUrl || durChapterIndex != startIndex) {
+                    return@launch
+                }
+                if (hasLoadingChapters() || !CacheBook.prepareForCoordinator(currentBook.bookUrl)) {
+                    delay(50)
+                    continue
+                }
+                val submission = CacheCoordinator.submitAutomaticTextDownload(
+                    book = currentBook,
+                    chapterIndexes = chapterIndexes,
+                    source = CacheRequestSource.READER,
+                )
+                if (submission == null) {
+                    delay(100)
+                    continue
+                }
+                automaticReviewWindowKey = windowKey
+                return@launch
+            }
+        }
+    }
+
+    @Synchronized
+    private fun hasLoadingChapters(): Boolean = loadingChapters.isNotEmpty()
 
     fun cancelPreDownloadTask() {
         if (contentLoadFinish) {
@@ -1247,6 +1280,7 @@ object ReadBook : CoroutineScope by MainScope() {
 
     private fun releaseAndCancel() {
         msg = null
+        automaticReviewWindowKey = null
         preDownloadTask?.cancel()
         downloadScope.coroutineContext.cancelChildren()
         coroutineContext.cancelChildren()

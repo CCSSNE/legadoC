@@ -1054,6 +1054,13 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefBoolean(PreferKey.syncCacheReview, value)
         }
 
+    /** 阅读或书架刷新时，按正文预下载窗口自动执行正文→评论下载任务。 */
+    var autoDownloadReview: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.autoDownloadReview, true)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.autoDownloadReview, value)
+        }
+
     /** 缓存评论快照时保存评论者头像到资源库。 */
     var cacheReviewAvatars: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.cacheReviewAvatars, true)

@@ -122,7 +122,8 @@ object CacheCoordinator : CacheUiPort {
 
     private val workerDispatcher: CacheWorkerDispatcher =
         CacheWorkerDispatcherImpl(workerPort)
-    private val readerReviewLock = Any()
+    private val reviewTaskLock = Any()
+    private val automaticTextSubmitLock = Any()
     private val resourceGcScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     /** 防止同一本书在短时间内重复排队 GC。 */
     private val resourceGcScheduled = ConcurrentHashMap.newKeySet<String>()
@@ -142,6 +143,70 @@ object CacheCoordinator : CacheUiPort {
             "source=${request.source} kind=${request.kind} phase=${request.phase}",
         )
         return CacheSubmission(session.sessionId, task.taskId).also(workerDispatcher::start)
+    }
+
+    /** Shared BODY submission used by both explicit Download actions and automatic refresh. */
+    fun submitTextDownload(
+        book: Book,
+        chapterIndexes: Collection<Int>,
+        source: CacheRequestSource,
+        reviewEnabled: Boolean = AppConfig.syncCacheReview,
+    ): CacheSubmission {
+        val indexes = chapterIndexes.distinct().sorted()
+        require(indexes.isNotEmpty()) { "text download has no chapters" }
+        return submit(
+            CacheRequest(
+                source = source,
+                kind = CacheKind.TEXT,
+                phase = CachePhase.BODY,
+                bookUrl = book.bookUrl,
+                bookName = book.name,
+                units = indexes.map { CacheUnitKey(book.bookUrl, it) },
+                reviewEnabled = reviewEnabled,
+            )
+        )
+    }
+
+    /** Current chapter counts as the first chapter in the configured predownload window. */
+    fun automaticChapterIndexes(
+        startIndex: Int,
+        chapterCount: Int,
+        preDownloadCount: Int,
+    ): List<Int> {
+        if (chapterCount <= 0 || startIndex !in 0 until chapterCount) return emptyList()
+        val count = preDownloadCount.coerceAtLeast(1)
+        val endIndex = (startIndex.toLong() + count - 1L)
+            .coerceAtMost(chapterCount - 1L)
+            .toInt()
+        return (startIndex..endIndex).toList()
+    }
+
+    /**
+     * Automatic refresh never creates a competing text session for the same book.
+     * The caller waits and retries while an explicit or earlier automatic session owns it.
+     */
+    fun submitAutomaticTextDownload(
+        book: Book,
+        chapterIndexes: Collection<Int>,
+        source: CacheRequestSource,
+    ): CacheSubmission? = synchronized(automaticTextSubmitLock) {
+        if (hasActiveTextDownload(book.bookUrl)) return@synchronized null
+        submitTextDownload(
+            book = book,
+            chapterIndexes = chapterIndexes,
+            source = source,
+            reviewEnabled = AppConfig.syncCacheReview && AppConfig.autoDownloadReview,
+        )
+    }
+
+    private fun hasActiveTextDownload(bookUrl: String): Boolean {
+        return snapshot.value.sessions.asSequence()
+            .flatMap { it.tasks.asSequence() }
+            .any { task ->
+                task.bookUrl == bookUrl &&
+                    task.kind == CacheKind.TEXT &&
+                    !CacheLifecycleRules.isTerminal(task.status)
+            }
     }
 
     override fun pause(submission: CacheSubmission): Boolean {
@@ -200,7 +265,7 @@ object CacheCoordinator : CacheUiPort {
             )
         }
         if (retryTargets.isEmpty()) return 0
-        synchronized(readerReviewLock) {
+        synchronized(reviewTaskLock) {
             val activeIndexes = snapshot.value.sessions.asSequence()
                 .flatMap { it.tasks.asSequence() }
                 .filter {
@@ -276,52 +341,6 @@ object CacheCoordinator : CacheUiPort {
             "appended=REVIEW units=${task.units.size}",
         )
         return CacheSubmission(sessionId, task.taskId).also(workerDispatcher::start)
-    }
-
-    /**
-     * Reader-triggered review caching still belongs to the coordinator domain.
-     * Reuse an active same-chapter task so repeated page callbacks do not create
-     * competing REVIEW workers for one book.
-     */
-    internal fun submitReaderReview(
-        book: Book,
-        chapter: BookChapter,
-        force: Boolean,
-    ): Boolean {
-        if (!AppConfig.syncCacheReview || book.isLocal) return false
-        synchronized(readerReviewLock) {
-            val existing = snapshot.value.sessions.asSequence()
-                .flatMap { it.tasks.asSequence() }
-                .filter {
-                    it.kind == CacheKind.TEXT &&
-                        it.phase == CachePhase.REVIEW &&
-                        it.bookUrl == book.bookUrl &&
-                        !CacheLifecycleRules.isTerminal(it.status)
-                }
-                .firstOrNull { task ->
-                    task.units.any { it.key.chapterIndex == chapter.index }
-                }
-            if (existing != null) {
-                // Keep an explicit refresh request durable while the active task
-                // remains the single owner for this chapter.
-                if (force) {
-                    ReviewSnapshotManager.markUserRefresh(book.bookUrl, chapter.index)
-                }
-                return true
-            }
-            submit(
-                CacheRequest(
-                    source = CacheRequestSource.READER,
-                    kind = CacheKind.TEXT,
-                    phase = CachePhase.REVIEW,
-                    bookUrl = book.bookUrl,
-                    bookName = book.name,
-                    units = listOf(CacheUnitKey(book.bookUrl, chapter.index)),
-                    reviewEnabled = true,
-                )
-            )
-            return true
-        }
     }
 
     internal fun currentTask(submission: CacheSubmission): CacheTaskState? {
