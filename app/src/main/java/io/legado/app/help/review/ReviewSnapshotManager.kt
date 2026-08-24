@@ -79,6 +79,8 @@ object ReviewSnapshotManager {
     internal data class QueueTask(
         val key: String,
         val force: Boolean,
+        /** Null = normal/force chapter capture; non-null = only these failed button src values. */
+        val retryButtonSources: Set<String>?,
         internal val executionLease: CacheWorkerLease,
         internal val reportProgress: (
             processedSnapshots: Int,
@@ -109,6 +111,7 @@ object ReviewSnapshotManager {
 
     private data class PendingReview(
         val force: Boolean,
+        val retryButtonSources: Set<String>?,
         val executionLease: CacheWorkerLease,
         val reportProgress: (
             processedSnapshots: Int,
@@ -174,6 +177,7 @@ object ReviewSnapshotManager {
         book: Book,
         chapter: BookChapter,
         force: Boolean,
+        retryButtonSources: Set<String>? = null,
         executionLease: CacheWorkerLease,
         reportProgress: (
             processedSnapshots: Int,
@@ -184,9 +188,12 @@ object ReviewSnapshotManager {
         cancelledTasks.remove(taskKey(executionLease))
         synchronized(queueLock) {
             val key = keyOf(book, chapter)
+            require(retryButtonSources == null || retryButtonSources.all { it.isNotBlank() }) {
+                "review retry contains blank button source"
+            }
             val existed = pendingForce.putIfAbsent(
                 key,
-                PendingReview(force, executionLease, reportProgress),
+                PendingReview(force, retryButtonSources, executionLease, reportProgress),
             )
             if (existed != null &&
                 taskKey(existed.executionLease) != taskKey(executionLease)
@@ -221,6 +228,7 @@ object ReviewSnapshotManager {
         return QueueTask(
             key = task.first.key,
             force = task.second.force,
+            retryButtonSources = task.second.retryButtonSources,
             executionLease = task.second.executionLease,
             reportProgress = task.second.reportProgress,
         )
@@ -261,7 +269,14 @@ object ReviewSnapshotManager {
             if (cancelledTasks.contains(taskKey(lease))) {
                 false
             } else {
-                processTask(task.key, task.force, outcomeKey, diagnostics, task.reportProgress)
+                processTask(
+                    task.key,
+                    task.force,
+                    task.retryButtonSources,
+                    outcomeKey,
+                    diagnostics,
+                    task.reportProgress,
+                )
                 taskOutcomes.remove(outcomeKey) == true
             }
         } finally {
@@ -326,6 +341,7 @@ object ReviewSnapshotManager {
     private suspend fun processTask(
         key: String,
         force: Boolean,
+        retryButtonSources: Set<String>?,
         outcomeKey: String,
         diagnostics: CacheOperationDiagnostics.Context,
         reportProgress: (
@@ -338,7 +354,15 @@ object ReviewSnapshotManager {
         // 一章一次评论缓存任务 = 日志一条（多行详情），进入 AppLog 日志页可展开查看
         val sb = StringBuilder()
         val unexpected = runCatching {
-            processTaskWithLog(key, force, sb, outcomeKey, diagnostics, reportProgress)
+            processTaskWithLog(
+                key,
+                force,
+                retryButtonSources,
+                sb,
+                outcomeKey,
+                diagnostics,
+                reportProgress,
+            )
         }.exceptionOrNull()
         if (unexpected != null) {
             sb.append("\n异常：").append(unexpected.stackTraceToString())
@@ -352,6 +376,7 @@ object ReviewSnapshotManager {
     private suspend fun processTaskWithLog(
         key: String,
         force: Boolean,
+        retryButtonSources: Set<String>?,
         sb: StringBuilder,
         outcomeKey: String,
         diagnostics: CacheOperationDiagnostics.Context,
@@ -418,25 +443,47 @@ object ReviewSnapshotManager {
         sb.append('\n')
         val buttons = extraction.buttons
         val snapshotButtons = buttons.filter { it.hasAction }
+        val requestedRetrySources = retryButtonSources?.map(String::trim)?.toSet()
+        val retryFailedSources = if (requestedRetrySources != null) {
+            val persisted = ReviewSnapshotStore.chapterStatus(book, chapter)
+                ?.failedButtonSourcesForRetry()
+                ?.toSet()
+                ?: error("review retry has no complete failed button identities: ${chapter.url}")
+            require(persisted == requestedRetrySources) {
+                "review retry no longer matches persisted failed button identities: ${chapter.url}"
+            }
+            persisted
+        } else {
+            emptySet()
+        }
         if (snapshotButtons.isNotEmpty()) {
             // A capture with no image resources still belongs to the one resource-library
             // format, so establish its empty index before any snapshot/status can persist.
             ReviewSnapshotResourceStore.prepareForCapture(book)
+        }
+        val processButtons = if (requestedRetrySources != null) {
+            snapshotButtons.filter { it.src in requestedRetrySources }.also { selected ->
+                require(selected.size == requestedRetrySources.size) {
+                    "review retry button is no longer present in chapter content: ${chapter.url}"
+                }
+                require(selected.none { ReviewSnapshotStore.has(book, chapter, it.src) }) {
+                    "review retry button already has a snapshot: ${chapter.url}"
+                }
+            }
+        } else {
+            snapshotButtons
         }
         val existingSnapshots = if (force) {
             0
         } else {
             snapshotButtons.count { ReviewSnapshotStore.has(book, chapter, it.src) }
         }
-        val needProcess = snapshotButtons.filter { button ->
-            force || !ReviewSnapshotStore.has(book, chapter, button.src)
-        }
         // "已处理" and "成功" are different counters. Existing snapshots count as
         // already processed for an ordinary cache run, while a forced retry starts
         // a complete new attempt from zero.
         val successfulSnapshots = AtomicInteger(if (force) 0 else existingSnapshots)
         val processedSnapshots = AtomicInteger(if (force) 0 else existingSnapshots)
-        val failedSnapshots = AtomicInteger()
+        val failedSnapshots = AtomicInteger(retryFailedSources.size)
         val progressLock = Any()
         fun reportChapterProgress() {
             synchronized(progressLock) {
@@ -448,13 +495,11 @@ object ReviewSnapshotManager {
             }
         }
         reportChapterProgress()
-        var failedButtons = 0
-        // force=true（用户明确刷新）时，任何一个需要刷新的按钮失败都保留待刷新标记，
-        // 不能“一个成功就算整章成功”
-        var hasFailure = false
         // 单章只预热当前按钮与下一条；全局也由 [withPipelinePermit] 固定为两条 Capture。
-        val buttonConcurrency = CAPTURE_PIPELINE_CONCURRENCY.coerceAtMost(buttons.size.coerceAtLeast(1))
-        val outcomes = buttons
+        val buttonConcurrency = CAPTURE_PIPELINE_CONCURRENCY.coerceAtMost(
+            processButtons.size.coerceAtLeast(1)
+        )
+        val outcomes = processButtons
             .asFlow()
             .mapAsyncIndexed(buttonConcurrency) { index, button ->
                 val outcome = processButton(
@@ -473,6 +518,11 @@ object ReviewSnapshotManager {
                             processedSnapshots.updateAndGet { value ->
                                 (value + 1).coerceAtMost(snapshotButtons.size)
                             }
+                            if (requestedRetrySources != null) {
+                                failedSnapshots.updateAndGet { value ->
+                                    (value - 1).coerceAtLeast(0)
+                                }
+                            }
                             reportProgress(
                                 processedSnapshots.get(),
                                 snapshotButtons.size,
@@ -483,7 +533,9 @@ object ReviewSnapshotManager {
                 )
                 if (outcome.failed) {
                     synchronized(progressLock) {
-                        failedSnapshots.incrementAndGet()
+                        if (requestedRetrySources == null) {
+                            failedSnapshots.incrementAndGet()
+                        }
                         processedSnapshots.updateAndGet { value ->
                             (value + 1).coerceAtMost(snapshotButtons.size)
                         }
@@ -500,11 +552,14 @@ object ReviewSnapshotManager {
             .sortedBy { it.index }
         outcomes.forEach { o ->
             sb.append(o.log)
-            if (o.failed) {
-                hasFailure = true
-                failedButtons++
-            }
         }
+        val failedButtonSources = outcomes
+            .asSequence()
+            .filter { it.failed }
+            .map { it.buttonSrc }
+            .toList()
+        val failedButtons = failedButtonSources.size
+        val hasFailure = failedButtons > 0
         if (snapshotButtons.isNotEmpty()) {
             ReviewSnapshotStore.putChapterStatus(
                 book,
@@ -515,6 +570,7 @@ object ReviewSnapshotManager {
                     chapterTitle = chapter.title,
                     totalSnapshots = snapshotButtons.size,
                     failedSnapshots = failedButtons,
+                    failedButtonSources = failedButtonSources,
                     updatedAt = System.currentTimeMillis(),
                 )
             )
@@ -537,13 +593,14 @@ object ReviewSnapshotManager {
         sb.append("8. 最终结果：\n")
         sb.append("   成功快照 ").append(successfulSnapshots.get()).append("/")
             .append(snapshotButtons.size).append('\n')
-        sb.append("   失败 ").append(failedButtons).append("/").append(needProcess.size).append('\n')
+        sb.append("   失败 ").append(failedButtons).append("/").append(processButtons.size).append('\n')
         sb.append("   本章是否计入“评论已缓存”：").append(if (chapterHasSnapshot) "是" else "否")
     }
 
     /** 单按钮处理结果：日志按原序号归位，成功/失败供整章统计 */
     private data class ButtonOutcome(
         val index: Int,
+        val buttonSrc: String,
         val log: String,
         val success: Boolean = false,
         val failed: Boolean = false
@@ -586,13 +643,13 @@ object ReviewSnapshotManager {
         diagnostics: CacheOperationDiagnostics.Context,
         onSnapshotSaved: () -> Unit,
     ): ButtonOutcome {
-        if (!button.hasAction) return ButtonOutcome(buttonIndex, "")
+        if (!button.hasAction) return ButtonOutcome(buttonIndex, button.src, "")
         val sb = StringBuilder()
         // 普通触发有快照可跳过；force（明确重新缓存/刷新）必须重抓覆盖
         if (!force && ReviewSnapshotStore.has(book, chapter, button.src)) {
             sb.append("3. 按钮").append(buttonIndex + 1).append("：src=").append(button.src)
                 .append("\n   已有有效快照，跳过\n")
-            return ButtonOutcome(buttonIndex, sb.toString())
+            return ButtonOutcome(buttonIndex, button.src, sb.toString())
         }
         sb.append("3. 按钮").append(buttonIndex + 1).append("：\n")
         sb.append("   src=").append(button.src).append('\n')
@@ -612,7 +669,7 @@ object ReviewSnapshotManager {
             }
             sb.append("   解析真实评论页 URL：失败（").append(reason).append("）\n")
             sb.append("   ").append(error.stackTraceToString()).append('\n')
-            return ButtonOutcome(buttonIndex, sb.toString(), failed = true)
+            return ButtonOutcome(buttonIndex, button.src, sb.toString(), failed = true)
         }
         val page = resolveResult.getOrNull()!!
         val url = page.url
@@ -620,7 +677,7 @@ object ReviewSnapshotManager {
             // resolveReviewPageUrl 无异常但没等到地址
             sb.append("   解析真实评论页 URL：失败（click/js 执行了，但没有触发 browser open/showBrowser，")
                 .append(RESOLVE_TIMEOUT_MS / 1000).append("s 超时）\n")
-            return ButtonOutcome(buttonIndex, sb.toString(), failed = true)
+            return ButtonOutcome(buttonIndex, button.src, sb.toString(), failed = true)
         }
         sb.append("   解析真实评论页 URL：成功")
         if (!page.html.isNullOrBlank()) {
@@ -653,7 +710,7 @@ object ReviewSnapshotManager {
             }
             sb.append("4. 打开评论页/抓取快照：失败（").append(reason).append("）\n")
             sb.append("   ").append(e.stackTraceToString()).append('\n')
-            return ButtonOutcome(buttonIndex, sb.toString(), failed = true)
+            return ButtonOutcome(buttonIndex, button.src, sb.toString(), failed = true)
         }
         val capture = outcome.getOrNull()!!
         sb.append("4. 打开评论页：成功\n")
@@ -667,11 +724,11 @@ object ReviewSnapshotManager {
         if (putResult.isSuccess) {
             onSnapshotSaved()
             sb.append("7. SnapshotStore.put：成功\n")
-            return ButtonOutcome(buttonIndex, sb.toString(), success = true)
+            return ButtonOutcome(buttonIndex, button.src, sb.toString(), success = true)
         }
         sb.append("7. SnapshotStore.put：失败\n")
         sb.append("   ").append(putResult.exceptionOrNull()!!.stackTraceToString()).append('\n')
-        return ButtonOutcome(buttonIndex, sb.toString(), failed = true)
+        return ButtonOutcome(buttonIndex, button.src, sb.toString(), failed = true)
     }
 
     /**

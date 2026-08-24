@@ -92,12 +92,21 @@ internal class ReviewWorkerAdapter(
             )
             return
         }
-        chapters.forEach { (_, chapter) ->
+        val retryTargetsByUnit = task.reviewRetryTargets.associateBy { it.unitKey }
+        chapters.forEach { (unitKey, chapter) ->
+            val retryButtonSources = retryTargetsByUnit[unitKey]
+                ?.buttonSources
+                ?.toSet()
             ReviewSnapshotManager.enqueue(
                 book,
                 chapter,
-                force = task.source != CacheRequestSource.READER ||
-                    ReviewSnapshotManager.isUserRefreshActive(book.bookUrl, chapter.index),
+                // A management retry carries exact failed button identities. It must not
+                // become a chapter-wide force refresh merely because it is a REVIEW task.
+                force = retryButtonSources == null && (
+                    task.source != CacheRequestSource.READER ||
+                        ReviewSnapshotManager.isUserRefreshActive(book.bookUrl, chapter.index)
+                    ),
+                retryButtonSources = retryButtonSources,
                 executionLease = lease,
                 reportProgress = { processedSnapshots, totalSnapshots, failedSnapshots ->
                     CacheReviewWorkerRegistry.onSnapshotProgress(
