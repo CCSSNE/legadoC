@@ -143,6 +143,7 @@ class MoreConfigDialog : BaseReaderSheetPrefDialogFragment() {
                     AppConfig.reviewImageCompressionMaxKb
                 )
             )
+            updateReviewCachePreferenceVisibility()
             if (!CanvasRecorderFactory.isSupport) {
                 removePref(PreferKey.optimizeRender)
                 preferenceScreen.removePreferenceRecursively(PreferKey.optimizeRender)
@@ -177,6 +178,12 @@ class MoreConfigDialog : BaseReaderSheetPrefDialogFragment() {
             key: String?
         ) {
             when (key) {
+                PreferKey.syncCacheReview,
+                PreferKey.cacheReviewAvatars,
+                PreferKey.cacheReviewImages,
+                PreferKey.compressReviewAvatars,
+                PreferKey.compressReviewImages -> updateReviewCachePreferenceVisibility()
+
                 PreferKey.readBodyToLh -> activity?.recreate()
                 PreferKey.hideStatusBar -> {
                     ReadBookConfig.hideStatusBar = getPrefBoolean(PreferKey.hideStatusBar)
@@ -252,6 +259,26 @@ class MoreConfigDialog : BaseReaderSheetPrefDialogFragment() {
                     (activity as? ReadBookActivity)?.reloadPageBookmarkConfig()
                 }
             }
+        }
+
+        private fun updateReviewCachePreferenceVisibility() {
+            val cacheReview = AppConfig.syncCacheReview
+            val cacheAvatars = cacheReview && AppConfig.cacheReviewAvatars
+            val cacheImages = cacheReview && AppConfig.cacheReviewImages
+            val compressAvatars = cacheAvatars && AppConfig.compressReviewAvatars
+            val compressImages = cacheImages && AppConfig.compressReviewImages
+
+            findPreference<Preference>(PreferKey.cacheReviewAvatars)?.isVisible = cacheReview
+            findPreference<Preference>(PreferKey.compressReviewAvatars)?.isVisible = cacheAvatars
+            findPreference<Preference>(PreferKey.reviewAvatarCompressionMaxKb)?.isVisible =
+                compressAvatars
+            findPreference<Preference>(PreferKey.cacheReviewImages)?.isVisible = cacheReview
+            findPreference<Preference>(PreferKey.compressReviewImages)?.isVisible = cacheImages
+            findPreference<Preference>(PreferKey.reviewImageCompressionMaxKb)?.isVisible =
+                compressImages
+            findPreference<Preference>(PreferKey.cacheReviewResourceDatabase)?.isVisible =
+                cacheReview && (cacheAvatars || cacheImages)
+            findPreference<Preference>(PreferKey.reviewCacheConcurrency)?.isVisible = cacheReview
         }
 
         override fun onPreferenceTreeClick(preference: Preference): Boolean {
@@ -346,7 +373,7 @@ class MoreConfigDialog : BaseReaderSheetPrefDialogFragment() {
 
                 PreferKey.reviewAvatarCompressionMaxKb -> {
                     showIntegerInputDialog(
-                        title = R.string.cache_review_avatar_compression,
+                        title = R.string.cache_review_avatar_max_size,
                         currentValue = AppConfig.reviewAvatarCompressionMaxKb,
                         validRange = 1..(Int.MAX_VALUE / 1024),
                         defaultValue = 2,
@@ -361,7 +388,7 @@ class MoreConfigDialog : BaseReaderSheetPrefDialogFragment() {
 
                 PreferKey.reviewImageCompressionMaxKb -> {
                     showIntegerInputDialog(
-                        title = R.string.cache_review_image_compression,
+                        title = R.string.cache_review_image_max_size,
                         currentValue = AppConfig.reviewImageCompressionMaxKb,
                         validRange = 1..(Int.MAX_VALUE / 1024),
                         defaultValue = 50,

@@ -380,10 +380,40 @@
 
     <io.legado.app.lib.prefs.SwitchPreference
         android:defaultValue="true"
+        android:dependency="cacheReviewAvatars"
+        android:key="compressReviewAvatars"
+        android:summary="@string/cache_review_avatar_compression_summary"
+        android:title="@string/cache_review_avatar_compression" />
+
+    <io.legado.app.lib.prefs.Preference
+        android:defaultValue="2"
+        android:dependency="compressReviewAvatars"
+        android:key="reviewAvatarCompressionMaxKb"
+        android:summary="@string/cache_review_compression_size_summary"
+        android:title="@string/cache_review_avatar_max_size"
+        app:iconSpaceReserved="false" />
+
+    <io.legado.app.lib.prefs.SwitchPreference
+        android:defaultValue="true"
         android:dependency="syncCacheReview"
         android:key="cacheReviewImages"
         android:summary="@string/cache_review_images_summary"
         android:title="@string/cache_review_images" />
+
+    <io.legado.app.lib.prefs.SwitchPreference
+        android:defaultValue="true"
+        android:dependency="cacheReviewImages"
+        android:key="compressReviewImages"
+        android:summary="@string/cache_review_image_compression_summary"
+        android:title="@string/cache_review_image_compression" />
+
+    <io.legado.app.lib.prefs.Preference
+        android:defaultValue="50"
+        android:dependency="compressReviewImages"
+        android:key="reviewImageCompressionMaxKb"
+        android:summary="@string/cache_review_compression_size_summary"
+        android:title="@string/cache_review_image_max_size"
+        app:iconSpaceReserved="false" />
 
     <io.legado.app.lib.prefs.SwitchPreference
         android:defaultValue="true"
@@ -393,22 +423,7 @@
         android:title="@string/cache_review_resource_database" />
 
     <io.legado.app.lib.prefs.Preference
-        android:defaultValue="2"
-        android:dependency="cacheReviewAvatars"
-        android:key="reviewAvatarCompressionMaxKb"
-        android:summary="@string/cache_review_compression_size_summary"
-        android:title="@string/cache_review_avatar_compression"
-        app:iconSpaceReserved="false" />
-
-    <io.legado.app.lib.prefs.Preference
-        android:defaultValue="50"
-        android:dependency="cacheReviewImages"
-        android:key="reviewImageCompressionMaxKb"
-        android:summary="@string/cache_review_compression_size_summary"
-        android:title="@string/cache_review_image_compression"
-        app:iconSpaceReserved="false" />
-
-    <io.legado.app.lib.prefs.Preference
+        android:dependency="syncCacheReview"
         android:key="reviewCacheConcurrency"
         android:summary="@string/comment_cache_concurrency_summary"
         android:title="@string/comment_cache_concurrency"
