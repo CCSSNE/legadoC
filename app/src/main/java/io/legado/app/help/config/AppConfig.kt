@@ -1054,9 +1054,9 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefBoolean(PreferKey.syncCacheReview, value)
         }
 
-    /** 评论快照全局页面流水线的最大并发数 */
-    var reviewCacheConcurrency: Int
-        get() = appCtx.getPrefInt(PreferKey.reviewCacheConcurrency, 16)
+    /** 评论快照资源下载线程数；页面与 Heavy 并发由固定调度策略控制。 */
+    var reviewResourceDownloadConcurrency: Int
+        get() = appCtx.getPrefInt(PreferKey.reviewCacheConcurrency, 8)
         set(value) {
             appCtx.putPrefInt(PreferKey.reviewCacheConcurrency, value)
         }
