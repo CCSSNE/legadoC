@@ -56,19 +56,18 @@ object BookImgClick {
 
     /**
      * 评论快照定位不依赖网络执行条件。书源缺失时仍可用 book/chapter 读取并打开
-     * 已落盘的快照；只有真正执行 click/js 时才要求 [source] 存在。
+     * 已落盘的快照；只有真正执行 click/js 时才解析并要求书源存在。
      */
     private data class ReviewContext(
         val book: Book,
         val chapter: BookChapter,
-        val source: BookSource?,
+        val useCurrentReadSource: Boolean,
     )
 
     /** 已在网络执行前读出的快照，失败回退时禁止重新查询或重新解析上下文。 */
     private data class CachedReviewSnapshot(
         val book: Book,
         val chapter: BookChapter,
-        val source: BookSource?,
         val snapshot: ReviewSnapshot,
     )
 
@@ -80,8 +79,8 @@ object BookImgClick {
     }
 
     /**
-     * 解析评论所属文字书上下文。这里允许 source 为 null：本地快照的主键只需要
-     * book/chapter，不能因为网络执行条件不成立而错过离线快照。
+     * 解析评论所属文字书上下文。这里不读取书源：本地快照的主键只需要
+     * book/chapter，不能因为任何网络执行条件而错过离线快照。
      */
     private fun reviewContext(chapter: BookChapter, src: String): ReviewContext? {
         val textContext = AudioTextFusion.findFusionTextContext(
@@ -89,7 +88,7 @@ object BookImgClick {
             src
         ) ?: run {
             val book = ReadBook.book ?: return null
-            return ReviewContext(book, chapter, ReadBook.bookSource)
+            return ReviewContext(book, chapter, useCurrentReadSource = true)
         }
         val textBook = appDb.bookDao.getBook(textContext.first) ?: return null
         val textChapter = appDb.bookChapterDao.getChapterByUrl(textContext.first, textContext.second)
@@ -97,19 +96,28 @@ object BookImgClick {
         return ReviewContext(
             textBook,
             textChapter,
-            appDb.bookSourceDao.getBookSource(textBook.origin)
+            useCurrentReadSource = false
         )
     }
 
     private fun cachedSnapshot(context: ReviewContext, src: String): CachedReviewSnapshot? {
         val snapshot = ReviewSnapshotStore.get(context.book, context.chapter, src.trim())
             ?: return null
-        return CachedReviewSnapshot(context.book, context.chapter, context.source, snapshot)
+        return CachedReviewSnapshot(context.book, context.chapter, snapshot)
+    }
+
+    private fun resolveNetworkSource(context: ReviewContext): BookSource? {
+        return if (context.useCurrentReadSource) {
+            ReadBook.bookSource
+        } else {
+            appDb.bookSourceDao.getBookSource(context.book.origin)
+        }
     }
 
     private fun showSnapshot(
         context: AppCompatActivity,
         cached: CachedReviewSnapshot,
+        source: BookSource? = null,
         networkRefresher: (suspend () -> Pair<String, String>?)? = null,
         offlineOnly: Boolean,
     ): Boolean {
@@ -118,7 +126,7 @@ object BookImgClick {
             if (context.isFinishing || context.isDestroyed) return@runOnUiThread
             context.showDialogFragment(
                 BottomWebViewDialog(
-                    cached.source?.getKey().orEmpty(),
+                    source?.getKey().orEmpty(),
                     BookType.text,
                     cached.snapshot.url.ifBlank { "about:blank" },
                     cached.snapshot.html,
@@ -149,28 +157,26 @@ object BookImgClick {
         val cached = cachedSnapshot(resolvedContext, src) ?: return false
         // 快照优先：后台解析真实评论页并加载在线内容，成功后覆盖当前快照
         var refresher: (suspend () -> Pair<String, String>?)? = null
-        if (refreshToNetwork) {
-            val source = cached.source
-            if (source != null) {
-                val button = reviewButtonOf(src)
-                if (button != null) {
-                    refresher = refresh@{
-                        val page = ReviewSnapshotManager.resolveReviewPageUrl(
-                            cached.book, source, cached.chapter, button
-                        )
-                        val onlineUrl = page.url ?: return@refresh null
-                        // showBrowser 已带回渲染 HTML 且有效：直接用，不再重复请求
-                        val onlineHtml = when {
-                            !page.html.isNullOrBlank() &&
-                                ReviewSnapshotCapture.isValidCommentHtml(page.html) -> page.html
-                            else -> fetchOnlineHtml(onlineUrl, source)?.second
-                        } ?: return@refresh null
-                        onlineUrl to onlineHtml
-                    }
+        val snapshotSource = resolveNetworkSource(resolvedContext)
+        if (refreshToNetwork && snapshotSource != null) {
+            val button = reviewButtonOf(src)
+            if (button != null) {
+                refresher = refresh@{
+                    val page = ReviewSnapshotManager.resolveReviewPageUrl(
+                        cached.book, snapshotSource, cached.chapter, button
+                    )
+                    val onlineUrl = page.url ?: return@refresh null
+                    // showBrowser 已带回渲染 HTML 且有效：直接用，不再重复请求
+                    val onlineHtml = when {
+                        !page.html.isNullOrBlank() &&
+                            ReviewSnapshotCapture.isValidCommentHtml(page.html) -> page.html
+                        else -> fetchOnlineHtml(onlineUrl, snapshotSource)?.second
+                    } ?: return@refresh null
+                    onlineUrl to onlineHtml
                 }
             }
         }
-        return showSnapshot(context, cached, refresher, offlineOnly)
+        return showSnapshot(context, cached, snapshotSource, refresher, offlineOnly)
     }
 
     /**
@@ -298,7 +304,7 @@ object BookImgClick {
             try {
                 val execution = resolvedContext
                     ?: error("无法解析评论所属书籍或章节，无法执行评论网络打开")
-                val execSource = execution.source
+                val execSource = resolveNetworkSource(execution)
                     ?: error("评论书源不存在，无法执行评论网络打开")
                 when {
                     !click.isNullOrBlank() -> {
