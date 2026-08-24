@@ -485,22 +485,7 @@ class ExportBookService : BaseService() {
         // 评论页快照：按存储原样导出 reviews/*.json，导入时原样还原
         val tmpReviewsDir = if (config.exportReviews) {
             File(tmpRoot, ReviewSnapshotStore.REVIEWS_DIR_NAME).also { dir ->
-                dir.mkdirs()
-                ReviewSnapshotStore.listAll(book).forEach { snapshot ->
-                    try {
-                        val fileName = if (snapshot.chapterUrl.isNotBlank()) {
-                            ReviewSnapshotStore.fileName(snapshot.chapterUrl, snapshot.buttonSrc)
-                        } else {
-                            ReviewSnapshotStore.legacyFileNameForExport(
-                                snapshot.chapterIndex, snapshot.buttonSrc
-                            )
-                        }
-                        File(dir, fileName)
-                            .writeText(GSON.toJson(snapshot), Charsets.UTF_8)
-                    } catch (e: Exception) {
-                        AppLog.put("导出评论快照失败: ${book.name} ${snapshot.chapterTitle}", e)
-                    }
-                }
+                ReviewSnapshotStore.copyAllTo(book, dir)
             }
         } else {
             null

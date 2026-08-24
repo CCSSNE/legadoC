@@ -128,7 +128,6 @@ class MoreConfigDialog : BaseReaderSheetPrefDialogFragment() {
             )
             upPreferenceSummary(PreferKey.pageAnimationSpeed, AppConfig.pageAnimationSpeed.toString())
             upPreferenceSummary(PreferKey.keyPageAnimationSpeed, AppConfig.keyPageAnimationSpeed.toString())
-            upPreferenceSummary(PreferKey.reviewCacheConcurrency, AppConfig.reviewCacheConcurrency.toString())
             if (!CanvasRecorderFactory.isSupport) {
                 removePref(PreferKey.optimizeRender)
                 preferenceScreen.removePreferenceRecursively(PreferKey.optimizeRender)
@@ -312,20 +311,6 @@ class MoreConfigDialog : BaseReaderSheetPrefDialogFragment() {
                         upPreferenceSummary(
                             PreferKey.keyPageAnimationSpeed,
                             AppConfig.keyPageAnimationSpeed.toString()
-                        )
-                    }
-                }
-
-                PreferKey.reviewCacheConcurrency -> {
-                    showIntegerInputDialog(
-                        title = R.string.comment_cache_concurrency,
-                        currentValue = AppConfig.reviewCacheConcurrency,
-                        validRange = 1..32
-                    ) {
-                        AppConfig.reviewCacheConcurrency = it
-                        upPreferenceSummary(
-                            PreferKey.reviewCacheConcurrency,
-                            AppConfig.reviewCacheConcurrency.toString()
                         )
                     }
                 }
