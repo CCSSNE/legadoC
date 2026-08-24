@@ -55,7 +55,7 @@ class ReviewSnapshotStatusDialog :
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
         binding.btnRetryAll.setOnClickListener {
-            retryFailed(reviewItems.filter { it.failedSnapshots > 0 })
+            retryFailed(reviewItems.filter { it.canRetryFailedSnapshots })
         }
         loadItems()
     }
@@ -126,7 +126,7 @@ class ReviewSnapshotStatusDialog :
     }
 
     private fun updateRetryAll(items: List<ReviewSnapshotChapterItem>) {
-        val enabled = items.any { it.failedSnapshots > 0 }
+        val enabled = items.any { it.canRetryFailedSnapshots }
         binding.btnRetryAll.isEnabled = enabled
         binding.btnRetryAll.alpha = if (enabled) 1f else 0.45f
     }

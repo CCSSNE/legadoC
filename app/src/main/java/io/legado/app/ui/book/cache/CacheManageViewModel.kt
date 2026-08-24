@@ -299,7 +299,8 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
                         processedSnapshots = status.totalSnapshots,
                         successfulSnapshots = cachedSnapshots,
                         totalSnapshots = status.totalSnapshots,
-                        failedSnapshots = status.failedSnapshots
+                        failedSnapshots = status.failedSnapshots,
+                        failedButtonSources = status.failedButtonSourcesForRetry().orEmpty(),
                     )
                 }
                 .toList()
@@ -1332,7 +1333,12 @@ data class ReviewSnapshotChapterItem(
     val successfulSnapshots: Int,
     val totalSnapshots: Int,
     val failedSnapshots: Int,
-)
+    /** Empty only when an old status recorded a count without safe button identities. */
+    val failedButtonSources: List<String>,
+) {
+    val canRetryFailedSnapshots: Boolean
+        get() = failedSnapshots > 0 && failedButtonSources.size == failedSnapshots
+}
 
 data class CacheSummary(
     val bookCount: Int,
