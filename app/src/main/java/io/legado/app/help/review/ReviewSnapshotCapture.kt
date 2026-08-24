@@ -93,7 +93,7 @@ object ReviewSnapshotCapture {
     private const val MAX_SNAPSHOT_RESOURCES = 200
     private const val MAX_TOTAL_RESOURCE_BYTES = 30L * 1024 * 1024
     private const val MAX_RESOURCE_BYTES = 8L * 1024 * 1024
-    /** 单个资源抓取超时；任何资源失败都显式失败，不能把残缺快照记为成功。 */
+    /** 单个资源抓取超时；传输失败会记录并移除该非关键资源，取消与预算失败仍会中止快照。 */
     private const val RESOURCE_FETCH_TIMEOUT_MS = 8_000L
     private const val HEAVY_STAGE_CONCURRENCY = 1
     private const val RESOURCE_COPY_BUFFER_BYTES = 32 * 1024
@@ -432,6 +432,19 @@ object ReviewSnapshotCapture {
             val target: ResourceTarget,
             val file: File,
             val byteCount: Long,
+        )
+
+        /**
+         * CSS and image downloads enrich an already-captured comment page; they do not define
+         * whether the page snapshot itself is usable. Keep the target in the error so a skipped
+         * resource is visible in cache diagnostics instead of being silently discarded.
+         */
+        private class ResourceDownloadException(
+            target: ResourceTarget,
+            cause: Throwable? = null,
+        ) : java.io.IOException(
+            "评论快照非关键资源下载失败 kind=${target.kind} url=${target.url}",
+            cause,
         )
 
         private data class PreparedImage(
@@ -955,6 +968,8 @@ object ReviewSnapshotCapture {
             val resourceBytes: Long = 0L,
             val cacheAvatars: Boolean = false,
             val cacheCommentImages: Boolean = false,
+            /** A resource target existed, so any unstaged external URL must be removed. */
+            val removeUnstagedExternalResources: Boolean = false,
         ) {
             val resourceCount: Int get() = imgMap.size + cssMap.size
 
@@ -1128,6 +1143,7 @@ object ReviewSnapshotCapture {
                     resourceBytes = resourceBytes,
                     cacheAvatars = urls.cacheAvatars,
                     cacheCommentImages = urls.cacheCommentImages,
+                    removeUnstagedExternalResources = true,
                 )
             } finally {
                 stagingDir.deleteRecursively()
@@ -1148,14 +1164,20 @@ object ReviewSnapshotCapture {
             }
             val budget = ResourceStagingBudget()
             val futures = targets.map { target ->
-                executor.submit(Callable { stageResource(target, stagingDir, budget) })
+                target to executor.submit(Callable { stageResource(target, stagingDir, budget) })
             }
             try {
-                return futures.map { future ->
+                return futures.mapNotNull { (target, future) ->
                     try {
                         future.get()
                     } catch (error: java.util.concurrent.ExecutionException) {
-                        throw (error.cause ?: error)
+                        val cause = error.cause ?: error
+                        if (cause is ResourceDownloadException) {
+                            diagnostics?.warn("RESOURCE_DOWNLOAD_SKIPPED", cause)
+                            null
+                        } else {
+                            throw cause
+                        }
                     } catch (error: InterruptedException) {
                         Thread.currentThread().interrupt()
                         throw InterruptedIOException("评论快照资源下载已取消").also {
@@ -1207,34 +1229,49 @@ object ReviewSnapshotCapture {
             var completed = false
             try {
                 ensureHeavyActive()
-                call.execute().use { response ->
-                    check(response.isSuccessful) { "HTTP ${response.code}" }
-                    val body = response.body ?: error("评论快照资源响应为空: ${target.url}")
-                    body.byteStream().use { input ->
-                        targetFile.outputStream().buffered().use { output ->
-                            val buffer = ByteArray(RESOURCE_COPY_BUFFER_BYTES)
-                            var copiedBytes = 0L
-                            while (true) {
-                                ensureHeavyActive()
-                                val count = input.read(buffer)
-                                if (count < 0) break
-                                val nextBytes = copiedBytes + count
-                                if (nextBytes > MAX_RESOURCE_BYTES) {
-                                    throw ResourceBudgetExceededException(
-                                        "评论快照资源 $nextBytes B 超过单资源预算 " +
-                                            "$MAX_RESOURCE_BYTES B: ${target.url}",
-                                    )
+                try {
+                    call.execute().use { response ->
+                        if (!response.isSuccessful) {
+                            throw ResourceDownloadException(
+                                target,
+                                IllegalStateException("HTTP ${response.code}"),
+                            )
+                        }
+                        val body = response.body ?: throw ResourceDownloadException(
+                            target,
+                            IllegalStateException("评论快照资源响应为空"),
+                        )
+                        body.byteStream().use { input ->
+                            targetFile.outputStream().buffered().use { output ->
+                                val buffer = ByteArray(RESOURCE_COPY_BUFFER_BYTES)
+                                var copiedBytes = 0L
+                                while (true) {
+                                    ensureHeavyActive()
+                                    val count = input.read(buffer)
+                                    if (count < 0) break
+                                    val nextBytes = copiedBytes + count
+                                    if (nextBytes > MAX_RESOURCE_BYTES) {
+                                        throw ResourceBudgetExceededException(
+                                            "评论快照资源 $nextBytes B 超过单资源预算 " +
+                                                "$MAX_RESOURCE_BYTES B: ${target.url}",
+                                        )
+                                    }
+                                    val nextReserved = estimatedStagingBytes(nextBytes)
+                                    budget.reserve(nextReserved - reservedBytes)
+                                    reservedBytes = nextReserved
+                                    output.write(buffer, 0, count)
+                                    copiedBytes = nextBytes
                                 }
-                                val nextReserved = estimatedStagingBytes(nextBytes)
-                                budget.reserve(nextReserved - reservedBytes)
-                                reservedBytes = nextReserved
-                                output.write(buffer, 0, count)
-                                copiedBytes = nextBytes
+                                completed = true
+                                return StagedResource(target, targetFile, copiedBytes)
                             }
-                            completed = true
-                            return StagedResource(target, targetFile, copiedBytes)
                         }
                     }
+                } catch (error: ResourceDownloadException) {
+                    throw error
+                } catch (error: java.io.IOException) {
+                    if (destroyed || Thread.currentThread().isInterrupted) throw error
+                    throw ResourceDownloadException(target, error)
                 }
             } finally {
                 unregisterResourceCall(call)
@@ -1344,7 +1381,9 @@ object ReviewSnapshotCapture {
             if (destroyed) return
             // 内联完成后立即记录本快照引用的资源 key；终态回调据此携带 resourceKeys。
             capturedResourceKeys = inline.resourceKeys
-            if (inline.imgMap.isEmpty() && inline.cssMap.isEmpty()) {
+            if (inline.imgMap.isEmpty() && inline.cssMap.isEmpty() &&
+                !inline.removeUnstagedExternalResources
+            ) {
                 serialize(inline)
                 return
             }
@@ -1425,13 +1464,17 @@ object ReviewSnapshotCapture {
                 "var c=$cssJson;" +
                 "var cacheAvatars=${inline.cacheAvatars};" +
                 "var cacheCommentImages=${inline.cacheCommentImages};" +
+                "var removeUnstaged=${inline.removeUnstagedExternalResources};" +
                 IMAGE_CLASSIFIER_HELPER_JS +
                 "root.querySelectorAll('img[src]').forEach(function(el){" +
                 "if(!(isAvatarImage(el)?cacheAvatars:cacheCommentImages))return;" +
-                "var d=m[el.src];if(d)el.src=d;});" +
+                "if(!/^https?:\\/\\//i.test(el.src))return;var d=m[el.src];" +
+                "if(d)el.src=d;else if(removeUnstaged)el.removeAttribute('src');});" +
                 "root.querySelectorAll('link[rel=\"stylesheet\"]').forEach(function(el){" +
-                "var d=c[el.href];if(d){var s=document.createElement('style');" +
-                "s.textContent=d;el.parentNode.insertBefore(s,el);el.remove();}});" +
+                "if(!/^https?:\\/\\//i.test(el.href))return;var d=c[el.href];" +
+                "if(d){var s=document.createElement('style');" +
+                "s.textContent=d;el.parentNode.insertBefore(s,el);el.remove();}" +
+                "else if(removeUnstaged)el.remove();});" +
                 "})()"
         }
 
