@@ -1,5 +1,6 @@
 package io.legado.app.help.review
 
+import android.util.AtomicFile
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookHelp
@@ -8,6 +9,7 @@ import io.legado.app.utils.GSON
 import io.legado.app.utils.MD5Utils
 import com.google.gson.stream.JsonReader
 import java.io.File
+import java.io.FileOutputStream
 
 /**
  * 评论页快照实体：一章的某个评论按钮对应一份“真实评论页”网页快照。
@@ -141,7 +143,7 @@ object ReviewSnapshotStore {
         snapshot: ReviewSnapshot,
         diagnostics: CacheOperationDiagnostics.Context? = null,
     ) {
-        if (snapshot.html.isBlank()) return
+        require(snapshot.html.isNotBlank()) { "review snapshot HTML must not be blank" }
         val trace = CacheOperationDiagnostics.begin(
             diagnostics?.forChapter(snapshot.chapterIndex)
                 ?: CacheOperationDiagnostics.Context(
@@ -154,16 +156,19 @@ object ReviewSnapshotStore {
         )
         val dir = reviewsDir(book)
         try {
-            if (!dir.exists()) dir.mkdirs()
+            check(dir.exists() || dir.mkdirs()) {
+                "cannot create review snapshot directory: ${dir.absolutePath}"
+            }
             require(snapshot.chapterUrl.isNotBlank()) { "review snapshot requires chapterUrl" }
+            require(snapshot.buttonSrc.isNotBlank()) { "review snapshot requires buttonSrc" }
+            require(snapshot.resourceKeys != null) { "review snapshot requires resourceKeys" }
             ReviewSnapshotResourceStore.requireDatabase(book)
+            ReviewSnapshotResourceStore.validateSnapshot(book, snapshot)
             val name = fileName(snapshot.chapterUrl, snapshot.buttonSrc)
             val target = File(dir, name)
             // 快照 HTML 可能很大。Gson 直接写入 Writer，避免先构造整份 JSON String 和 UTF-8
             // ByteArray；它们会在原 HTML 仍存活时额外复制完整快照，放大 Java heap 峰值。
-            target.bufferedWriter(Charsets.UTF_8).use { writer ->
-                GSON.toJson(snapshot, writer)
-            }
+            writeJsonAtomically(target) { writer -> GSON.toJson(snapshot, writer) }
             trace.done(CacheOperationDiagnostics.Metrics(outputBytes = target.length()))
         } catch (error: Throwable) {
             trace.fail(error)
@@ -176,27 +181,39 @@ object ReviewSnapshotStore {
         val dir = reviewsDir(book)
         val file = File(dir, fileName(chapter.url, buttonSrc))
         if (!file.isFile) return null
-        return readSnapshot(file)
+        val snapshot = readCompleteSnapshot(book, file)
+        require(snapshot.chapterUrl.trim() == chapter.url.trim()) {
+            "review snapshot chapterUrl mismatch: ${file.absolutePath}"
+        }
+        require(snapshot.buttonSrc.trim() == buttonSrc.trim()) {
+            "review snapshot buttonSrc mismatch: ${file.absolutePath}"
+        }
+        return snapshot
+    }
+
+    private fun readCompleteSnapshot(book: Book, file: File): ReviewSnapshot {
+        val snapshot = readSnapshot(file)
+            ?: error("review snapshot file is empty: ${file.absolutePath}")
+        require(snapshot.bookUrl == book.bookUrl) {
+            "review snapshot bookUrl mismatch: ${file.absolutePath}"
+        }
+        ReviewSnapshotResourceStore.validateSnapshot(book, snapshot)
+        return snapshot
     }
 
     private fun readSnapshot(file: File): ReviewSnapshot? {
         if (!file.isFile) return null
-        return runCatching {
-            file.bufferedReader(Charsets.UTF_8).use { reader ->
-                GSON.fromJson(reader, ReviewSnapshot::class.java)
-            }
-        }.getOrNull()?.takeIf { it.html.isNotBlank() }
+        return file.bufferedReader(Charsets.UTF_8).use { reader ->
+            GSON.fromJson(reader, ReviewSnapshot::class.java)
+        }
+            ?.also { require(it.html.isNotBlank()) { "review snapshot HTML is blank: ${file.absolutePath}" } }
+            ?: error("review snapshot file is empty: ${file.absolutePath}")
     }
 
     fun has(book: Book, chapter: BookChapter, buttonSrc: String): Boolean {
-        // 文件名已经是章节 URL + 按钮 src 的确定性主键；不能为了判断“是否存在”而把
-        // 整份内联 HTML 读入内存再解析一次。写入失败会向调用方抛出，正常落盘的文件
-        // 即是可复用快照；真正打开时仍由 [get] 完整解析并直接暴露损坏文件。
-        requireCurrentFormatIfReviewData(book)
-        val dir = reviewsDir(book)
-        val file = File(dir, fileName(chapter.url, buttonSrc))
-        if (!file.isFile) return false
-        return true
+        // Existence alone is insufficient: get() validates the JSON, resource index, blob
+        // length/hash, and the snapshot-to-chapter identity before reuse.
+        return get(book, chapter, buttonSrc) != null
     }
 
     fun delete(book: Book, chapter: BookChapter, buttonSrc: String) {
@@ -225,7 +242,7 @@ object ReviewSnapshotStore {
         requireCurrentFormatIfReviewData(book)
         return reviewFiles(book)
             .asSequence()
-            .mapNotNull(::readMetadata)
+            .map { file -> readCompleteSnapshot(book, file) }
             .map { snapshot ->
                 snapshot.chapterUrl.trim().also { chapterUrl ->
                     require(chapterUrl.isNotBlank()) { "评论快照缺少 chapterUrl" }
@@ -239,7 +256,7 @@ object ReviewSnapshotStore {
         requireCurrentFormatIfReviewData(book)
         val byChapterUrl = hashMapOf<String, Int>()
         reviewFiles(book).forEach { file ->
-            readMetadata(file)?.let { snapshot ->
+            readCompleteSnapshot(book, file).let { snapshot ->
                 val key = snapshot.chapterUrl.trim()
                 require(key.isNotBlank()) { "评论快照缺少 chapterUrl: ${file.absolutePath}" }
                 byChapterUrl[key] = (byChapterUrl[key] ?: 0) + 1
@@ -265,17 +282,42 @@ object ReviewSnapshotStore {
 
     fun readChapterStatus(file: File): ReviewChapterSnapshotStatus? {
         if (!isChapterStatusFile(file)) return null
-        return runCatching {
-            file.bufferedReader(Charsets.UTF_8).use { reader ->
-                GSON.fromJson(reader, ReviewChapterSnapshotStatus::class.java)
+        return file.bufferedReader(Charsets.UTF_8).use { reader ->
+            GSON.fromJson(reader, ReviewChapterSnapshotStatus::class.java)
+        }?.also { status ->
+            require(status.chapterUrl.isNotBlank()) {
+                "review chapter status is missing chapterUrl: ${file.absolutePath}"
             }
-        }.getOrNull()?.takeIf { it.chapterUrl.isNotBlank() && it.totalSnapshots > 0 }
+            require(status.totalSnapshots > 0) {
+                "review chapter status has invalid totalSnapshots: ${file.absolutePath}"
+            }
+            require(status.failedSnapshots in 0..status.totalSnapshots) {
+                "review chapter status has invalid failedSnapshots: ${file.absolutePath}"
+            }
+            if (status.version >= 2) {
+                val failedSources = requireNotNull(status.failedButtonSources) {
+                    "review chapter status version 2 requires failed button identities"
+                }
+                require(status.failedSnapshots == failedSources.size) {
+                    "review chapter status failed button identities are incomplete"
+                }
+                require(failedSources.all { it.isNotBlank() }) {
+                    "review chapter status contains blank failed button identity"
+                }
+                require(failedSources.distinct().size == failedSources.size) {
+                    "review chapter status contains duplicate failed button identity"
+                }
+            }
+        } ?: error("review chapter status file is empty: ${file.absolutePath}")
     }
 
     /** Persists status independently of the successful snapshot payloads. */
     fun putChapterStatus(book: Book, status: ReviewChapterSnapshotStatus) {
         require(status.chapterUrl.isNotBlank()) { "review status requires chapterUrl" }
         require(status.totalSnapshots > 0) { "review status requires totalSnapshots" }
+        require(status.failedSnapshots in 0..status.totalSnapshots) {
+            "review status failedSnapshots is outside totalSnapshots"
+        }
         if (status.version >= 2) {
             val failedSources = requireNotNull(status.failedButtonSources) {
                 "review status version 2 requires failed button identities"
@@ -293,8 +335,25 @@ object ReviewSnapshotStore {
         ReviewSnapshotResourceStore.requireDatabase(book)
         val dir = reviewsDir(book)
         if (!dir.exists()) check(dir.mkdirs()) { "cannot create review status directory: ${dir.absolutePath}" }
-        File(dir, statusFileName(status.chapterUrl)).bufferedWriter(Charsets.UTF_8).use { writer ->
+        writeJsonAtomically(File(dir, statusFileName(status.chapterUrl))) { writer ->
             GSON.toJson(status, writer)
+        }
+    }
+
+    private fun writeJsonAtomically(target: File, write: (java.io.Writer) -> Unit) {
+        val atomicFile = AtomicFile(target)
+        var output: FileOutputStream? = null
+        try {
+            val stream = atomicFile.startWrite()
+            output = stream
+            val writer = stream.bufferedWriter(Charsets.UTF_8)
+            write(writer)
+            writer.flush()
+            atomicFile.finishWrite(stream)
+            output = null
+        } catch (error: Throwable) {
+            output?.let(atomicFile::failWrite)
+            throw error
         }
     }
 
@@ -322,6 +381,7 @@ object ReviewSnapshotStore {
                 "无法读取评论快照元数据: ${file.absolutePath}"
             }.chapterUrl.trim() in selectedChapterUrls
         }
+        snapshots.forEach { file -> readCompleteSnapshot(book, file) }
         val statuses = statusFiles(book).filter { file ->
             selectedChapterUrls == null || requireNotNull(readChapterStatus(file)) {
                 "无法读取评论状态文件: ${file.absolutePath}"
@@ -354,8 +414,8 @@ object ReviewSnapshotStore {
     )
 
     private fun readMetadata(file: File): SnapshotMetadata? {
-        return runCatching {
-            file.bufferedReader(Charsets.UTF_8).use { input ->
+        if (!file.isFile) return null
+        return file.bufferedReader(Charsets.UTF_8).use { input ->
                 JsonReader(input).use { reader ->
                     var chapterUrl = ""
                     var chapterIndex = 0
@@ -372,6 +432,5 @@ object ReviewSnapshotStore {
                     SnapshotMetadata(chapterUrl, chapterIndex)
                 }
             }
-        }.getOrNull()
     }
 }

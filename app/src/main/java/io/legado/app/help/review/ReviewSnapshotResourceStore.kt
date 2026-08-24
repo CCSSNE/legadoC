@@ -130,6 +130,36 @@ object ReviewSnapshotResourceStore {
         }
     }
 
+    /** Validate every resource referenced by one snapshot before it is treated as complete. */
+    internal fun validateSnapshot(book: Book, snapshot: ReviewSnapshot) = synchronized(lock) {
+        val keys = requireNotNull(snapshot.resourceKeys) {
+            "review snapshot is missing resourceKeys: ${snapshot.chapterUrl}|${snapshot.buttonSrc}"
+        }
+        require(keys.distinct().size == keys.size) {
+            "review snapshot contains duplicate resource keys: ${snapshot.chapterUrl}|${snapshot.buttonSrc}"
+        }
+        keys.forEach { key ->
+            require(keyPattern.matches(key)) { "review snapshot contains invalid resource key: $key" }
+        }
+        val dir = ReviewSnapshotStore.reviewsDir(book)
+        val database = requireDatabase(book)
+        val entriesByKey = database.resources.groupBy { it.key }
+        keys.forEach { key ->
+            val matches = entriesByKey[key].orEmpty()
+            require(matches.size == 1) {
+                "review snapshot resource is not indexed exactly once: $key"
+            }
+            validateEntry(dir, matches.single(), verifyHash = true)
+        }
+        val htmlKeys = RESOURCE_REFERENCE_PATTERN.findAll(snapshot.html)
+            .map { it.groupValues[1] }
+            .toSet()
+        require(htmlKeys == keys.toSet()) {
+            "review snapshot resource references do not match resourceKeys: "
+                + "${snapshot.chapterUrl}|${snapshot.buttonSrc}"
+        }
+    }
+
     /**
      * Publishes [source] under its SHA-256 key and updates the URL index atomically.
      * The caller retains ownership of [source].
@@ -441,12 +471,22 @@ object ReviewSnapshotResourceStore {
         }
     }
 
-    private fun validateEntry(dir: File, entry: ReviewSnapshotResourceEntry, requireBlob: Boolean = true) {
+    private fun validateEntry(
+        dir: File,
+        entry: ReviewSnapshotResourceEntry,
+        requireBlob: Boolean = true,
+        verifyHash: Boolean = false,
+    ) {
         validateDatabase(ReviewSnapshotResourceDatabase(resources = listOf(entry)))
         if (requireBlob) {
             val file = blobFile(dir, entry.key)
             check(file.isFile && file.length() == entry.byteCount) {
                 "评论资源文件缺失或长度异常: ${file.absolutePath}"
+            }
+            if (verifyHash) {
+                check(sha256(file) == entry.key) {
+                    "评论资源文件内容哈希异常: ${file.absolutePath}"
+                }
             }
         }
     }
@@ -514,6 +554,10 @@ object ReviewSnapshotResourceStore {
     private fun resourceFiles(dir: File): List<File> = dir.listFiles()
         ?.filter(::isResourceBlob)
         .orEmpty()
+
+    private val RESOURCE_REFERENCE_PATTERN = Regex(
+        "${RESOURCE_SCHEME}://([0-9a-f]{64})(?:/[^\\s\"'<>]*)?"
+    )
 
     private fun isResourceBlob(file: File): Boolean {
         val name = file.name
