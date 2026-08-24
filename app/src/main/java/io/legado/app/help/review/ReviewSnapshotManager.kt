@@ -698,7 +698,7 @@ object ReviewSnapshotManager {
             }
         }
         latch.await(RESOLVE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-        return ReviewPage(resolvedUrl.get(), resolvedHtml.get())
+        return ReviewPage(resolvedUrl.get(), resolvedHtml.get(), resolvedPreloadJs.get())
     }
 
     /**
