@@ -3,6 +3,8 @@ package io.legado.app.help.cache
 import io.legado.app.help.review.ReviewResourceEpoch
 import io.legado.app.help.review.ReviewSnapshotManager
 import io.legado.app.data.appDb
+import io.legado.app.help.book.isAudio
+import io.legado.app.help.book.isVideo
 import io.legado.app.service.ReviewCacheService
 import java.util.concurrent.ConcurrentHashMap
 
@@ -16,7 +18,7 @@ internal class ReviewWorkerAdapter(
     }
 
     fun start(task: CacheTaskState, lease: CacheWorkerLease) {
-        require(task.kind == CacheKind.TEXT && task.phase == CachePhase.REVIEW) {
+        require(task.phase == CachePhase.REVIEW && task.kind.reviewPrerequisitePhase() != null) {
             "review adapter received ${task.kind}/${task.phase}"
         }
         // REVIEW worker 真正启动即推进资源 GC 的版本号：任何一次启动都会让
@@ -31,6 +33,14 @@ internal class ReviewWorkerAdapter(
                 )
                 return
             }
+        val bookKind = when {
+            book.isAudio -> CacheKind.AUDIO
+            book.isVideo -> CacheKind.VIDEO
+            else -> CacheKind.TEXT
+        }
+        require(task.kind == bookKind) {
+            "review task kind ${task.kind} does not match book kind $bookKind"
+        }
         task.units
             .filter { it.status == CacheUnitStatus.PENDING || it.status == CacheUnitStatus.REVIEW_ELIGIBLE }
             .forEach { unit ->

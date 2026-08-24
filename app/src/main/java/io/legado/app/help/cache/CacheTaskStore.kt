@@ -489,11 +489,11 @@ internal class CacheTaskStore(
             }
         }
 
-    fun reviewEligibleUnits(sessionId: String, bodyTaskId: String): List<CacheUnitKey> =
+    fun reviewEligibleUnits(sessionId: String, prerequisiteTaskId: String): List<CacheUnitKey> =
         synchronized(lock) {
-            val task = requireTaskLocked(sessionId, bodyTaskId)
-            require(task.kind == CacheKind.TEXT && task.phase == CachePhase.BODY) {
-                "review eligibility requires a text BODY task"
+            val task = requireTaskLocked(sessionId, prerequisiteTaskId)
+            require(task.kind.reviewPrerequisitePhase() == task.phase) {
+                "review eligibility requires a review-capable primary task"
             }
             task.units
                 .filter { it.status == CacheUnitStatus.SUCCEEDED }

@@ -2,6 +2,7 @@ package io.legado.app.help.cache
 
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.help.book.AudioOfflineState
 import io.legado.app.help.book.CacheManifestHelper
 import io.legado.app.ui.book.cache.AudioCacheTaskManager
 import io.legado.app.ui.book.cache.CacheTaskStatus
@@ -47,11 +48,16 @@ internal class MediaWorkerAdapter(
             return
         }
         val chapterFinished: (BookChapter, Boolean, String?) -> Unit = { chapter, success, error ->
+            val audioState = if (success && task.kind == CacheKind.AUDIO) {
+                AudioOfflineState.inspect(book, chapter)
+            } else {
+                null
+            }
             CacheMediaWorkerRegistry.onChapterFinished(
                 lease,
                 chapter.index,
-                success,
-                error,
+                success && audioState?.isComplete != false,
+                audioState?.takeUnless { it.isComplete }?.incompleteReason() ?: error,
             )
         }
         val chapterStarted: (BookChapter) -> Unit = { chapter ->
@@ -238,7 +244,11 @@ private object CacheMediaWorkerRegistry {
                 requirePort().updateUnit(lease, key, status, state.message.takeIf { status == CacheUnitStatus.FAILED })
             }
         }
-        val result = if (failed || completed < binding.expected.size) {
+        val finishedTask = CacheCoordinator.currentTask(
+            CacheSubmission(lease.sessionId, lease.taskId)
+        )
+        val unitFailed = finishedTask?.units?.any { it.status == CacheUnitStatus.FAILED } == true
+        val result = if (failed || completed < binding.expected.size || unitFailed) {
             CacheResult.FAILED
         } else {
             CacheResult.SUCCEEDED

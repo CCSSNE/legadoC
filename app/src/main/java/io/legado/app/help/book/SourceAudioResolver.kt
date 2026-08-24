@@ -35,8 +35,7 @@ object SourceAudioResolver {
 
         chapter.resourceUrl
             ?.takeIf {
-                ExoPlayerHelper.isMediaCached(it, book) &&
-                    AudioTextFusion.effectiveLyric(chapter).isNotBlank()
+                AudioOfflineState.isComplete(book, chapter)
             }
             ?.let { cachedUrl ->
                 return ResolvedSourceAudio(

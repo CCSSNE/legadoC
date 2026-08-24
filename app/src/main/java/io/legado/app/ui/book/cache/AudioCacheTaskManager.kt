@@ -3,6 +3,7 @@ package io.legado.app.ui.book.cache
 import io.legado.app.R
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.help.book.AudioOfflineState
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.cache.CacheOperationDiagnostics
@@ -218,6 +219,12 @@ internal object AudioCacheTaskManager {
                         "MEDIA_CACHE_WRITTEN",
                     )
                     activeTrace = null
+                    if (!book.isVideo) {
+                        val offlineState = AudioOfflineState.inspect(book, chapter)
+                        require(offlineState.isComplete) {
+                            offlineState.incompleteReason()
+                        }
+                    }
                     request.onChapterProgress?.invoke(
                         chapter,
                         chapterKnownLength.coerceAtLeast(0L),
@@ -434,7 +441,7 @@ internal object AudioCacheTaskManager {
         return if (book.isVideo) {
             ExoPlayerHelper.isVideoCached(chapter.resourceUrl, book)
         } else {
-            ExoPlayerHelper.isMediaCached(chapter.resourceUrl, book)
+            AudioOfflineState.isComplete(book, chapter)
         }
     }
 

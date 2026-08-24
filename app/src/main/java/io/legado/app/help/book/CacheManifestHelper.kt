@@ -129,7 +129,7 @@ object CacheManifestHelper {
                 when {
                     book.isLocal -> false
                     book.isVideo -> ExoPlayerHelper.isVideoCached(chapter.resourceUrl, book)
-                    book.isAudio -> ExoPlayerHelper.isMediaCached(chapter.resourceUrl, book)
+                    book.isAudio -> AudioOfflineState.isComplete(book, chapter)
                     else -> BookHelp.getChapterCacheFileNames(book, chapter).any(cacheNames::contains)
                 }
             }

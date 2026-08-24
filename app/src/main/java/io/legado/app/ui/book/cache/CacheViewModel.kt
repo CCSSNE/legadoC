@@ -5,6 +5,7 @@ import androidx.lifecycle.MutableLiveData
 import io.legado.app.base.BaseViewModel
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
+import io.legado.app.help.book.AudioOfflineState
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isLocal
@@ -56,7 +57,7 @@ class CacheViewModel(application: Application) : BaseViewModel(application) {
         }.forEach { chapter ->
             val cached = when {
                 chapter.isVolume -> true
-                book.isAudio -> ExoPlayerHelper.isMediaCached(chapter.resourceUrl, book)
+                book.isAudio -> AudioOfflineState.isComplete(book, chapter)
                 book.isVideo -> ExoPlayerHelper.isVideoCached(chapter.resourceUrl, book)
                 else -> BookHelp.getChapterCacheFileNames(book, chapter).any(cacheNames::contains)
             }

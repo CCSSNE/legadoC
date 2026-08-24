@@ -567,6 +567,28 @@ object ExoPlayerHelper {
         return urls.isNotEmpty() && urls.all(::isLocalMediaUrl)
     }
 
+    /** Local imported media is complete by durable availability, not by ExoPlayer cache. */
+    fun isLocalMediaAvailable(url: String?): Boolean {
+        if (url.isNullOrBlank()) return false
+        val urls = getMediaUrls(url)
+        if (urls.isEmpty()) return false
+        return urls.all { mediaUrl ->
+            val uri = Uri.parse(mediaUrl)
+            when (uri.scheme?.lowercase()) {
+                "file" -> uri.path
+                    ?.let { File(it) }
+                    ?.let { it.isFile && it.length() > 0L }
+                    ?: false
+                "content" -> runCatching {
+                    appCtx.contentResolver.openAssetFileDescriptor(uri, "r")?.use {
+                        it.length != 0L
+                    } == true
+                }.getOrDefault(false)
+                else -> false
+            }
+        }
+    }
+
     private fun copyLocalMedia(mediaUrl: String, output: File) {
         val uri = Uri.parse(mediaUrl)
         val input = when (uri.scheme?.lowercase()) {

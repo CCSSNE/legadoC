@@ -1203,7 +1203,7 @@ object ReadBook : CoroutineScope by MainScope() {
 
     private fun scheduleAutomaticReviewDownload() {
         val currentBook = book ?: return
-        if (currentBook.isAudio || currentBook.isVideo) return
+        if (currentBook.isVideo) return
         val startIndex = durChapterIndex
         val chapterIndexes = CacheCoordinator.automaticChapterIndexes(
             startIndex = startIndex,
@@ -1219,11 +1219,13 @@ object ReadBook : CoroutineScope by MainScope() {
                 if (book?.bookUrl != currentBook.bookUrl || durChapterIndex != startIndex) {
                     return@launch
                 }
-                if (hasLoadingChapters() || !CacheBook.prepareForCoordinator(currentBook.bookUrl)) {
+                if (hasLoadingChapters() ||
+                    (!currentBook.isAudio && !CacheBook.prepareForCoordinator(currentBook.bookUrl))
+                ) {
                     delay(50)
                     continue
                 }
-                val submission = CacheCoordinator.submitAutomaticTextDownload(
+                val submission = CacheCoordinator.submitAutomaticBookDownload(
                     book = currentBook,
                     chapterIndexes = chapterIndexes,
                     source = CacheRequestSource.READER,

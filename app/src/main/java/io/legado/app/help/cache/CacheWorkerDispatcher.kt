@@ -43,7 +43,7 @@ internal class CacheWorkerDispatcherImpl(
             task.kind == CacheKind.TEXT && task.phase == CachePhase.BODY -> {
                 bodyAdapter.pause(submission)
             }
-            task.kind == CacheKind.TEXT && task.phase == CachePhase.REVIEW -> {
+            task.phase == CachePhase.REVIEW && task.kind.reviewPrerequisitePhase() != null -> {
                 reviewAdapter.pause(submission)
             }
             task.phase == CachePhase.MEDIA -> {
@@ -65,7 +65,7 @@ internal class CacheWorkerDispatcherImpl(
             task.kind == CacheKind.TEXT && task.phase == CachePhase.BODY -> {
                 bodyAdapter.cancel(submission)
             }
-            task.kind == CacheKind.TEXT && task.phase == CachePhase.REVIEW -> {
+            task.phase == CachePhase.REVIEW && task.kind.reviewPrerequisitePhase() != null -> {
                 reviewAdapter.cancel(submission)
             }
             task.phase == CachePhase.MEDIA -> {
@@ -114,7 +114,7 @@ internal class CacheWorkerDispatcherImpl(
                 task.kind == CacheKind.TEXT && task.phase == CachePhase.BODY -> {
                     bodyAdapter.start(task, lease)
                 }
-                task.kind == CacheKind.TEXT && task.phase == CachePhase.REVIEW -> {
+                task.phase == CachePhase.REVIEW && task.kind.reviewPrerequisitePhase() != null -> {
                     reviewAdapter.start(task, lease)
                 }
                 task.phase == CachePhase.MEDIA -> {
