@@ -650,6 +650,14 @@ object LocalBook {
                             )
                         }
                     }
+                kotlin.runCatching {
+                    io.legado.app.help.review.ReviewSnapshotResourceStore.importFrom(
+                        importedBook,
+                        files
+                    )
+                }.onFailure { error ->
+                    AppLog.put("导入评论资源数据库失败\n${error.localizedMessage}", error)
+                }
             }
             val jsonFile = files.firstOrNull { it.name == IllustrationHelp.EXPORT_JSON_NAME }
                 ?: return

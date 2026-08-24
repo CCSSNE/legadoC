@@ -1,6 +1,8 @@
 package io.legado.app.help.review
 
 import android.annotation.SuppressLint
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.os.Handler
 import android.os.Looper
 import android.net.http.SslError
@@ -38,6 +40,7 @@ import org.apache.commons.text.StringEscapeUtils
 import splitties.init.appCtx
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.io.FileOutputStream
 import java.io.InterruptedIOException
 import java.io.Reader
 import java.util.concurrent.Executors
@@ -204,6 +207,7 @@ object ReviewSnapshotCapture {
             val (html, expandRounds, expandClickCount) = snapshotPage(
                 url,
                 bookSource,
+                book,
                 initialHtml,
                 preloadJs,
                 trace,
@@ -240,6 +244,7 @@ object ReviewSnapshotCapture {
     private suspend fun snapshotPage(
         url: String,
         bookSource: BookSource,
+        book: Book,
         initialHtml: String? = null,
         preloadJs: String? = null,
         diagnostics: CacheOperationDiagnostics.Operation? = null,
@@ -285,7 +290,7 @@ object ReviewSnapshotCapture {
                     } else {
                         null
                     }
-                    val session = SnapshotSession(webView, url, jsBridge, diagnostics) {
+                    val session = SnapshotSession(webView, url, book, jsBridge, diagnostics) {
                         result, error, rounds, clicks, discardWebView ->
                         sessionRef.set(null)
                         releaseOnce(discardWebView)
@@ -347,6 +352,7 @@ object ReviewSnapshotCapture {
     private class SnapshotSession(
         private val webView: WebView,
         private val url: String,
+        private val book: Book,
         private val jsBridge: PageJsBridge?,
         private val diagnostics: CacheOperationDiagnostics.Operation?,
         private val done: (String?, Throwable?, Int, Int, Boolean) -> Unit
@@ -380,13 +386,20 @@ object ReviewSnapshotCapture {
 
         /** The immutable resource policy selected for one complete snapshot capture. */
         private data class ResourceUrls(
-            val images: List<String> = emptyList(),
+            val images: List<ImageResource> = emptyList(),
             val css: List<String> = emptyList(),
+            val databaseImages: Map<String, ReviewSnapshotResourceEntry> = emptyMap(),
+            val useResourceDatabase: Boolean = false,
             val cacheAvatars: Boolean = false,
             val cacheCommentImages: Boolean = false,
         ) {
             val resourceCount: Int get() = images.size + css.size
         }
+
+        private data class ImageResource(
+            val url: String,
+            val compressionMaxBytes: Long,
+        )
 
         /** A shared URL can occur in both an avatar and a comment image. */
         private data class ImageRoles(
@@ -399,12 +412,19 @@ object ReviewSnapshotCapture {
             val index: Int,
             val url: String,
             val kind: ResourceKind,
+            val compressionMaxBytes: Long? = null,
         )
 
         private data class StagedResource(
             val target: ResourceTarget,
             val file: File,
             val byteCount: Long,
+        )
+
+        private data class PreparedImage(
+            val file: File,
+            val byteCount: Long,
+            val mimeType: String,
         )
 
         /**
@@ -815,14 +835,14 @@ object ReviewSnapshotCapture {
                                 "RESOURCE_DOWNLOAD",
                                 CacheOperationDiagnostics.Metrics(
                                     resourceCount = inline.resourceCount,
-                                    outputBytes = inline.inlineBytes,
+                                    outputBytes = inline.resourceBytes,
                                 ),
                             )
                             diagnostics?.mark(
                                 "RESOURCE_INLINE_READY",
                                 CacheOperationDiagnostics.Metrics(
                                     resourceCount = inline.resourceCount,
-                                    outputBytes = inline.inlineBytes,
+                                    outputBytes = inline.resourceBytes,
                                 ),
                             )
                             applyInline(inline)
@@ -915,6 +935,7 @@ object ReviewSnapshotCapture {
             val imgMap: Map<String, String> = emptyMap(),
             val cssMap: Map<String, String> = emptyMap(),
             val inlineBytes: Long = 0L,
+            val resourceBytes: Long = 0L,
             val cacheAvatars: Boolean = false,
             val cacheCommentImages: Boolean = false,
         ) {
@@ -924,47 +945,80 @@ object ReviewSnapshotCapture {
         private fun parseResourceUrls(json: String?): ResourceUrls {
             val cacheAvatars = AppConfig.cacheReviewAvatars
             val cacheCommentImages = AppConfig.cacheReviewImages
+            val useResourceDatabase = AppConfig.cacheReviewResourceDatabase
+            val avatarCompressionMaxBytes = AppConfig.reviewAvatarCompressionMaxBytes
+            val imageCompressionMaxBytes = AppConfig.reviewImageCompressionMaxBytes
+            if (cacheAvatars) {
+                require(avatarCompressionMaxBytes > 0L) {
+                    "评论头像压缩上限必须大于 0"
+                }
+            }
+            if (cacheCommentImages) {
+                require(imageCompressionMaxBytes > 0L) {
+                    "评论图片压缩上限必须大于 0"
+                }
+            }
             json ?: return ResourceUrls(
+                useResourceDatabase = useResourceDatabase,
                 cacheAvatars = cacheAvatars,
                 cacheCommentImages = cacheCommentImages,
             )
-            return runCatching {
-                val s = StringEscapeUtils.unescapeJson(json).trim('"')
-                if (s == "null") {
-                    return ResourceUrls(
-                        cacheAvatars = cacheAvatars,
-                        cacheCommentImages = cacheCommentImages,
-                    )
-                }
-                val collected = GSON.fromJson(s, CollectedResources::class.java)
-                val imageRoles = linkedMapOf<String, ImageRoles>()
-                collected.img.forEach { image ->
-                    val url = image.url.takeIf { it.startsWith("http") } ?: return@forEach
-                    val roles = imageRoles.getOrPut(url) { ImageRoles(url) }
-                    if (image.kind == "avatar") {
-                        roles.hasAvatar = true
-                    } else {
-                        roles.hasCommentImage = true
-                    }
-                }
-                ResourceUrls(
-                    images = imageRoles.values.asSequence()
-                        .filter { roles ->
-                            (roles.hasAvatar && cacheAvatars) ||
-                                (roles.hasCommentImage && cacheCommentImages)
-                        }
-                        .map(ImageRoles::url)
-                        .toList(),
-                    css = collected.css.filter { it.startsWith("http") }.distinct(),
-                    cacheAvatars = cacheAvatars,
-                    cacheCommentImages = cacheCommentImages,
-                )
-            }.getOrElse {
-                ResourceUrls(
+            val s = StringEscapeUtils.unescapeJson(json).trim('"')
+            if (s == "null") {
+                return ResourceUrls(
+                    useResourceDatabase = useResourceDatabase,
                     cacheAvatars = cacheAvatars,
                     cacheCommentImages = cacheCommentImages,
                 )
             }
+            val collected = GSON.fromJson(s, CollectedResources::class.java)
+                ?: error("评论快照资源列表为空")
+            val imageRoles = linkedMapOf<String, ImageRoles>()
+            collected.img.forEach { image ->
+                val imageUrl = image.url.takeIf { it.startsWith("http") } ?: return@forEach
+                val roles = imageRoles.getOrPut(imageUrl) { ImageRoles(imageUrl) }
+                if (image.kind == "avatar") {
+                    roles.hasAvatar = true
+                } else {
+                    roles.hasCommentImage = true
+                }
+            }
+            val selectedImages = imageRoles.values.asSequence()
+                .filter { roles ->
+                    (roles.hasAvatar && cacheAvatars) ||
+                        (roles.hasCommentImage && cacheCommentImages)
+                }
+                .map { roles ->
+                    val maximums = buildList {
+                        if (roles.hasAvatar && cacheAvatars) add(avatarCompressionMaxBytes)
+                        if (roles.hasCommentImage && cacheCommentImages) add(imageCompressionMaxBytes)
+                    }
+                    ImageResource(roles.url, maximums.min())
+                }
+                .toList()
+            val storedImages = if (useResourceDatabase) {
+                ReviewSnapshotResourceStore.entries(book)
+            } else {
+                emptyMap()
+            }
+            val reusableImages = linkedMapOf<String, ReviewSnapshotResourceEntry>()
+            val imagesToDownload = selectedImages.filter { image ->
+                val stored = storedImages[image.url]
+                if (stored != null && stored.byteCount <= image.compressionMaxBytes) {
+                    reusableImages[image.url] = stored
+                    false
+                } else {
+                    true
+                }
+            }
+            return ResourceUrls(
+                images = imagesToDownload,
+                css = collected.css.filter { it.startsWith("http") }.distinct(),
+                databaseImages = reusableImages,
+                useResourceDatabase = useResourceDatabase,
+                cacheAvatars = cacheAvatars,
+                cacheCommentImages = cacheCommentImages,
+            )
         }
 
         private fun downloadResources(urls: ResourceUrls): InlineResources {
@@ -976,13 +1030,22 @@ object ReviewSnapshotCapture {
             }
             if (resourceCount == 0) {
                 return InlineResources(
+                    imgMap = urls.databaseImages.mapValues { (_, entry) ->
+                        ReviewSnapshotResourceStore.referenceFor(entry.key)
+                    },
+                    resourceBytes = urls.databaseImages.values.sumOf { it.byteCount },
                     cacheAvatars = urls.cacheAvatars,
                     cacheCommentImages = urls.cacheCommentImages,
                 )
             }
             val targets = ArrayList<ResourceTarget>(resourceCount)
-            urls.images.forEach { imageUrl ->
-                targets += ResourceTarget(targets.size, imageUrl, ResourceKind.IMAGE)
+            urls.images.forEach { image ->
+                targets += ResourceTarget(
+                    index = targets.size,
+                    url = image.url,
+                    kind = ResourceKind.IMAGE,
+                    compressionMaxBytes = image.compressionMaxBytes,
+                )
             }
             urls.css.forEach { targets += ResourceTarget(targets.size, it, ResourceKind.CSS) }
             val stagingDir = File(
@@ -996,38 +1059,60 @@ object ReviewSnapshotCapture {
                 val stagedResources = stageResources(targets, stagingDir)
                 val imgMap = linkedMapOf<String, String>()
                 val cssMap = linkedMapOf<String, String>()
-                var totalBytes = 0L
+                var inlineBytes = 0L
+                var resourceBytes = 0L
+                urls.databaseImages.forEach { (imageUrl, entry) ->
+                    imgMap[imageUrl] = ReviewSnapshotResourceStore.referenceFor(entry.key)
+                    resourceBytes += entry.byteCount
+                }
                 for (staged in stagedResources) {
                     ensureHeavyActive()
-                    val bytes = staged.file.readBytes()
-                    check(bytes.size.toLong() == staged.byteCount) {
-                        "评论快照资源暂存文件长度异常: ${staged.target.url}"
-                    }
                     when (staged.target.kind) {
                         ResourceKind.IMAGE -> {
-                            val mime = guessMime(staged.target.url, bytes)
-                            val value = "data:$mime;base64," +
-                                android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-                            val nextTotal = totalBytes + value.length
-                            if (nextTotal > MAX_TOTAL_INLINE_BYTES) {
-                                throw ResourceBudgetExceededException(
-                                    "评论快照内联资源 $nextTotal B 超过总预算 $MAX_TOTAL_INLINE_BYTES B",
+                            val image = prepareImage(staged)
+                            resourceBytes += image.byteCount
+                            if (urls.useResourceDatabase) {
+                                val stored = ReviewSnapshotResourceStore.put(
+                                    book = book,
+                                    url = staged.target.url,
+                                    mimeType = image.mimeType,
+                                    source = image.file,
                                 )
+                                imgMap[staged.target.url] =
+                                    ReviewSnapshotResourceStore.referenceFor(stored.key)
+                            } else {
+                                val bytes = image.file.readBytes()
+                                check(bytes.size.toLong() == image.byteCount) {
+                                    "评论快照资源暂存文件长度异常: ${staged.target.url}"
+                                }
+                                val value = "data:${image.mimeType};base64," +
+                                    android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                                val nextTotal = inlineBytes + value.length
+                                if (nextTotal > MAX_TOTAL_INLINE_BYTES) {
+                                    throw ResourceBudgetExceededException(
+                                        "评论快照内联资源 $nextTotal B 超过总预算 $MAX_TOTAL_INLINE_BYTES B",
+                                    )
+                                }
+                                inlineBytes = nextTotal
+                                imgMap[staged.target.url] = value
                             }
-                            totalBytes = nextTotal
-                            imgMap[staged.target.url] = value
                         }
 
                         ResourceKind.CSS -> {
+                            val bytes = staged.file.readBytes()
+                            check(bytes.size.toLong() == staged.byteCount) {
+                                "评论快照资源暂存文件长度异常: ${staged.target.url}"
+                            }
                             val text = bytes.toString(Charsets.UTF_8).takeIf { it.isNotBlank() }
                                 ?: continue
-                            val nextTotal = totalBytes + text.toByteArray(Charsets.UTF_8).size
+                            val nextTotal = inlineBytes + text.toByteArray(Charsets.UTF_8).size
                             if (nextTotal > MAX_TOTAL_INLINE_BYTES) {
                                 throw ResourceBudgetExceededException(
                                     "评论快照内联资源 $nextTotal B 超过总预算 $MAX_TOTAL_INLINE_BYTES B",
                                 )
                             }
-                            totalBytes = nextTotal
+                            inlineBytes = nextTotal
+                            resourceBytes += bytes.size
                             cssMap[staged.target.url] = text
                         }
                     }
@@ -1035,7 +1120,8 @@ object ReviewSnapshotCapture {
                 return InlineResources(
                     imgMap = imgMap,
                     cssMap = cssMap,
-                    inlineBytes = totalBytes,
+                    inlineBytes = inlineBytes,
+                    resourceBytes = resourceBytes,
                     cacheAvatars = urls.cacheAvatars,
                     cacheCommentImages = urls.cacheCommentImages,
                 )
@@ -1160,7 +1246,87 @@ object ReviewSnapshotCapture {
             ResourceKind.CSS -> rawBytes
         }
 
-        private fun guessMime(rawUrl: String, bytes: ByteArray): String {
+        private fun prepareImage(staged: StagedResource): PreparedImage {
+            val maxBytes = staged.target.compressionMaxBytes
+                ?: error("评论图片缺少压缩上限: ${staged.target.url}")
+            require(maxBytes > 0L) { "评论图片压缩上限必须大于 0" }
+            check(staged.file.length() == staged.byteCount) {
+                "评论快照图片暂存文件长度异常: ${staged.target.url}"
+            }
+            if (staged.byteCount <= maxBytes) {
+                return PreparedImage(
+                    file = staged.file,
+                    byteCount = staged.byteCount,
+                    mimeType = guessMime(staged.target.url, staged.file),
+                )
+            }
+            return compressImage(staged.file, maxBytes, staged.target.url)
+        }
+
+        /**
+         * Re-encodes one staged image directly to a bounded WebP file. No full byte[] or
+         * Base64 is created here; sampling occurs before decode and every retry replaces
+         * the same temporary file.
+         */
+        @Suppress("DEPRECATION")
+        private fun compressImage(source: File, maxBytes: Long, sourceUrl: String): PreparedImage {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(source.absolutePath, bounds)
+            check(bounds.outWidth > 0 && bounds.outHeight > 0) {
+                "评论图片无法解码，不能压缩: $sourceUrl"
+            }
+            val targetPixels = (maxBytes * 4L).coerceAtMost(Int.MAX_VALUE.toLong())
+            var sampleSize = 1
+            while (
+                bounds.outWidth.toLong() / sampleSize *
+                (bounds.outHeight.toLong() / sampleSize) > targetPixels
+            ) {
+                sampleSize *= 2
+            }
+            var bitmap = BitmapFactory.decodeFile(
+                source.absolutePath,
+                BitmapFactory.Options().apply {
+                    inSampleSize = sampleSize
+                    inPreferredConfig = Bitmap.Config.ARGB_8888
+                }
+            ) ?: error("评论图片无法解码，不能压缩: $sourceUrl")
+            val output = File(source.parentFile, "${source.name}.webp")
+            var completed = false
+            try {
+                while (true) {
+                    for (quality in intArrayOf(92, 80, 65, 50, 35, 20, 10)) {
+                        ensureHeavyActive()
+                        FileOutputStream(output, false).buffered().use { stream ->
+                            check(bitmap.compress(Bitmap.CompressFormat.WEBP, quality, stream)) {
+                                "评论图片 WebP 压缩失败: $sourceUrl"
+                            }
+                        }
+                        if (output.length() <= maxBytes) {
+                            completed = true
+                            return PreparedImage(output, output.length(), "image/webp")
+                        }
+                    }
+                    check(bitmap.width > 1 || bitmap.height > 1) {
+                        "评论图片无法压缩到 ${maxBytes}B: $sourceUrl"
+                    }
+                    val scaled = Bitmap.createScaledBitmap(
+                        bitmap,
+                        (bitmap.width / 2).coerceAtLeast(1),
+                        (bitmap.height / 2).coerceAtLeast(1),
+                        true,
+                    )
+                    bitmap.recycle()
+                    bitmap = scaled
+                }
+            } finally {
+                bitmap.recycle()
+                if (!completed) output.delete()
+            }
+        }
+
+        private fun guessMime(rawUrl: String, file: File): String {
+            val header = ByteArray(16)
+            val headerLength = file.inputStream().use { input -> input.read(header) }
             val lower = rawUrl.substringBefore('?').lowercase()
             return when {
                 lower.endsWith(".png") -> "image/png"
@@ -1168,7 +1334,8 @@ object ReviewSnapshotCapture {
                 lower.endsWith(".gif") -> "image/gif"
                 lower.endsWith(".svg") -> "image/svg+xml"
                 lower.endsWith(".css") -> "text/css"
-                bytes.size > 3 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() -> "image/jpeg"
+                headerLength > 3 && header[0] == 0xFF.toByte() &&
+                    header[1] == 0xD8.toByte() -> "image/jpeg"
                 else -> "image/jpeg"
             }
         }

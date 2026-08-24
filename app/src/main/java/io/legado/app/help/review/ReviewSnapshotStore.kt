@@ -276,6 +276,7 @@ object ReviewSnapshotStore {
                 }
             }
         }
+        ReviewSnapshotResourceStore.copyAllTo(book, targetDir)
     }
 
     private data class SnapshotMetadata(

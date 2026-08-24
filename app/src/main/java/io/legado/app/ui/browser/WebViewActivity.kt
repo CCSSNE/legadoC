@@ -16,6 +16,7 @@ import android.webkit.CookieManager
 import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.addCallback
@@ -25,9 +26,11 @@ import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppConst.imagePathKey
+import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ActivityWebViewBinding
 import io.legado.app.help.http.CookieStore
 import io.legado.app.help.review.ReviewSnapshotManager
+import io.legado.app.help.review.ReviewSnapshotResourceStore
 import io.legado.app.help.source.SourceVerificationHelp
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
@@ -89,6 +92,7 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
     private var needClearHistory = true
     /** 评论“网络优先”兜底快照：网络加载失败/超时时自动切换到本地快照 */
     private var fallbackHtml: String? = null
+    private var fallbackReviewResourceBook: Book? = null
     private var fallbackApplied = false
     private var fallbackTimeoutRunnable: Runnable? = null
     private val mHandler = Handler(Looper.getMainLooper())
@@ -128,6 +132,8 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
         if (fallbackApplied) return
         fallbackApplied = true
         cancelFallbackTimeout()
+        currentWebView.settings.blockNetworkLoads = true
+        currentWebView.settings.blockNetworkImage = true
         currentWebView.loadDataWithBaseURL(
             viewModel.baseUrl.ifBlank { "https://localhost/" },
             html,
@@ -149,6 +155,10 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
         binding.titleBar.title = intent.getStringExtra("title") ?: getString(R.string.loading)
         binding.titleBar.subtitle = intent.getStringExtra("sourceName")
         fallbackHtml = intent.getStringExtra("fallbackHtml")
+        @Suppress("DEPRECATION")
+        run {
+            fallbackReviewResourceBook = intent.getParcelableExtra("fallbackReviewResourceBook")
+        }
         viewModel.initData(intent) {
             val url = viewModel.baseUrl
             val headerMap = viewModel.headerMap
@@ -566,6 +576,23 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
             error: SslError?
         ) {
             handler?.proceed()
+        }
+
+        override fun shouldInterceptRequest(
+            view: WebView,
+            request: WebResourceRequest,
+        ): WebResourceResponse? {
+            val resourceUrl = request.url.toString()
+            ReviewSnapshotResourceStore.keyFromReference(resourceUrl)?.let { key ->
+                val book = checkNotNull(fallbackReviewResourceBook) {
+                    "评论快照资源引用缺少书籍上下文: $resourceUrl"
+                }
+                val resource = checkNotNull(ReviewSnapshotResourceStore.open(book, key)) {
+                    "评论快照资源不存在: $resourceUrl"
+                }
+                return WebResourceResponse(resource.mimeType, null, resource.inputStream)
+            }
+            return super.shouldInterceptRequest(view, request)
         }
 
     }
