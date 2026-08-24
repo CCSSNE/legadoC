@@ -1,7 +1,6 @@
 package io.legado.app.help.review
 
 import android.util.AtomicFile
-import com.google.gson.stream.JsonReader
 import io.legado.app.data.entities.Book
 import io.legado.app.utils.GSON
 import java.io.File
@@ -135,12 +134,6 @@ object ReviewSnapshotResourceStore {
         val keys = requireNotNull(snapshot.resourceKeys) {
             "review snapshot is missing resourceKeys: ${snapshot.chapterUrl}|${snapshot.buttonSrc}"
         }
-        require(keys.distinct().size == keys.size) {
-            "review snapshot contains duplicate resource keys: ${snapshot.chapterUrl}|${snapshot.buttonSrc}"
-        }
-        keys.forEach { key ->
-            require(keyPattern.matches(key)) { "review snapshot contains invalid resource key: $key" }
-        }
         val dir = ReviewSnapshotStore.reviewsDir(book)
         val database = requireDatabase(book)
         validateResourceKeys(dir, database, keys, verifyHash = true)
@@ -159,12 +152,6 @@ object ReviewSnapshotResourceStore {
      * does not load the HTML or recompute every blob hash.
      */
     internal fun validateResourceKeys(book: Book, keys: List<String>) = synchronized(lock) {
-        require(keys.distinct().size == keys.size) {
-            "review snapshot contains duplicate resource keys"
-        }
-        keys.forEach { key ->
-            require(keyPattern.matches(key)) { "review snapshot contains invalid resource key: $key" }
-        }
         val dir = ReviewSnapshotStore.reviewsDir(book)
         val database = requireDatabase(book)
         validateResourceKeys(dir, database, keys, verifyHash = false)
@@ -446,29 +433,11 @@ object ReviewSnapshotResourceStore {
         if (!file.isFile) {
             error("评论快照文件不存在: ${file.absolutePath}")
         }
-        file.bufferedReader(Charsets.UTF_8).use { reader ->
-            JsonReader(reader).use { json ->
-                val keys = linkedSetOf<String>()
-                var found = false
-                json.beginObject()
-                while (json.hasNext()) {
-                    if (json.nextName() == "resourceKeys") {
-                        found = true
-                        json.beginArray()
-                        while (json.hasNext()) keys.add(json.nextString())
-                        json.endArray()
-                    } else {
-                        // html 等巨大字段一律流式跳过，绝不 nextString() 整读。
-                        json.skipValue()
-                    }
-                }
-                json.endObject()
-                check(found) {
-                    "评论快照缺少 resourceKeys（旧格式），无法推断资源引用: ${file.absolutePath}"
-                }
-                return keys
-            }
+        val metadata = file.bufferedReader(Charsets.UTF_8).use(::readReviewSnapshotHotMetadata)
+        val keys = requireNotNull(metadata.resourceKeys) {
+            "评论快照缺少 resourceKeys（旧格式），无法推断资源引用: ${file.absolutePath}"
         }
+        return keys.toSet()
     }
 
     private fun blobKeyOf(file: File): String? {
@@ -532,16 +501,7 @@ object ReviewSnapshotResourceStore {
         keys: List<String>,
         verifyHash: Boolean,
     ) {
-        val entriesByKey = database.resources.groupBy { it.key }
-        keys.forEach { key ->
-            val matches = entriesByKey[key].orEmpty()
-            require(matches.isNotEmpty()) {
-                "review snapshot resource is not indexed: $key"
-            }
-            val byteCounts = matches.mapTo(hashSetOf()) { it.byteCount }
-            require(byteCounts.size == 1) {
-                "review snapshot resource entries disagree on byteCount: $key"
-            }
+        indexedReviewResources(database.resources, keys).forEach { (_, matches) ->
             matches.forEachIndexed { index, entry ->
                 // All entries share one content-addressed blob; hash it once, then validate
                 // every URL entry against the same file and declared length.
