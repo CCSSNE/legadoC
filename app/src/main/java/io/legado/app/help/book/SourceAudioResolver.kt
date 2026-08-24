@@ -19,6 +19,15 @@ object SourceAudioResolver {
         require(book.isAudio) { "Source audio requires an audio book: ${book.bookUrl}" }
 
         chapter.resourceUrl
+            ?.takeIf { book.isLocal && ExoPlayerHelper.isLocalMediaContent(it) }
+            ?.let { localUrl ->
+                return ResolvedSourceAudio(
+                    request = ExoPlayerHelper.createMediaRequest(localUrl, emptyMap()),
+                    mapping = AudioTextMapping.parse(AudioTextFusion.effectiveLyric(chapter)),
+                )
+            }
+
+        chapter.resourceUrl
             ?.takeIf { ExoPlayerHelper.isMediaCached(it, book) }
             ?.let { cachedUrl ->
                 return ResolvedSourceAudio(

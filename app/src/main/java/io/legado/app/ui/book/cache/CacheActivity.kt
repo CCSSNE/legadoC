@@ -30,6 +30,7 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.ActivityCacheBookBinding
 import io.legado.app.databinding.DialogExportBookConfigBinding
+import io.legado.app.help.book.AudioBookArchive
 import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.removeExportFileSuffix
@@ -427,9 +428,14 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
         val alertBinding = DialogExportBookConfigBinding.inflate(layoutInflater).apply {
             setExportPath(path)
             adapter.getItem(position)?.let { book ->
-                tvBookFilenameValue.text =
-                    book.getExportFileName(if (exportType == "txt_zip") "txt" else exportType, null)
-                        .removeExportFileSuffix(exportType, "txt_zip", "txt")
+                val exportName = book
+                    .getExportFileName(if (exportType == "txt_zip") "txt" else exportType, null)
+                    .removeExportFileSuffix(exportType, "txt_zip", "txt")
+                tvBookFilenameValue.text = if (exportType == "txt_zip" && book.isAudio) {
+                    AudioBookArchive.audioFileName(exportName)
+                } else {
+                    exportName
+                }
             } ?: run {
                 tvBookFilenameValue.text = AppConfig.bookExportFileName
             }
