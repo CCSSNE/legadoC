@@ -86,6 +86,7 @@ import io.legado.app.model.Download
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.utils.ACache
 import io.legado.app.utils.GSON
+import io.legado.app.utils.configureOfflineResourceLoading
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.get
 import io.legado.app.utils.writeBytes
@@ -121,7 +122,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
 
     /**
      * 离线模式（仅使用快照/快照兜底已启用）：WebView 禁止一切 http/https 网络请求，
-     * 残余外部资源一律拦截，快照只允许 data:// 等内联资源离线渲染。
+     * 残余外部资源一律拦截，只允许 data: 与 review-resource:// 本地资源离线渲染。
      */
     private var offlineMode = false
 
@@ -766,11 +767,8 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         currentWebView.addJavascriptInterface(JSInterface(this), nameBasic)
         currentWebView.webViewClient = CustomWebViewClient()
         currentWebView.settings.userAgentString = headerMap.get(AppConst.UA_NAME, true)
-        if (offlineMode) {
-            // 仅使用快照/快照兜底：禁用一切网络加载，只渲染内联 data 资源
-            currentWebView.settings.blockNetworkLoads = true
-            currentWebView.settings.blockNetworkImage = true
-        }
+        // 离线快照禁止 http/https，但必须让 review-resource:// 图片进入资源拦截器。
+        currentWebView.settings.configureOfflineResourceLoading(offlineMode)
         source?.let { source ->
             (activity as? AppCompatActivity)?.let { currentActivity ->
                 val webJsExtensions =
@@ -807,8 +805,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         cancelFallbackTimeout()
         // 兜底快照属于离线内容：切换后禁止一切网络请求
         offlineMode = true
-        currentWebView.settings.blockNetworkLoads = true
-        currentWebView.settings.blockNetworkImage = true
+        currentWebView.settings.configureOfflineResourceLoading(true)
         currentWebView.loadDataWithBaseURL(
             currentWebView.url ?: "https://localhost/",
             html,
