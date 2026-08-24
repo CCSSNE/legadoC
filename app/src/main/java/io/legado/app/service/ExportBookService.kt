@@ -25,9 +25,16 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.LifecycleHelp
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.AudioBookArchive
+import io.legado.app.help.book.AudioBookArchiveChapter
+import io.legado.app.help.book.AudioBookArchiveManifest
+import io.legado.app.help.book.AudioTextFusion
 import io.legado.app.help.book.ContentProcessor
+import io.legado.app.help.book.SourceAudioResolver
+import io.legado.app.help.book.getBookSource
 import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.book.getLiteralExportFileName
+import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isLocalModified
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalTxt
@@ -35,9 +42,11 @@ import io.legado.app.help.illustration.IllustrationHelp
 import io.legado.app.help.review.ReviewSnapshotStore
 import io.legado.app.help.illustration.imageSrcsFromJson
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.model.ReadBook
 import io.legado.app.model.localBook.EpubFile
 import io.legado.app.model.localBook.LocalBook
+import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.book.cache.CacheActivity
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
@@ -443,7 +452,12 @@ class ExportBookService : BaseService() {
         config: ExportConfig
     ) {
         val illustrations = appDb.bookIllustrationDao.getByBook(book.bookUrl)
-        val txtName = book.getLiteralExportFileName("txt", config.bookExportFileName)
+        val literalTxtName = book.getLiteralExportFileName("txt", config.bookExportFileName)
+        val txtName = if (book.isAudio) {
+            AudioBookArchive.audioFileName(literalTxtName)
+        } else {
+            literalTxtName
+        }
         val zipName = txtName.removeSuffix(".txt") + ".zip"
         fileDoc.find(zipName)?.delete()
         val tmpRoot = FileUtils.createFolderIfNotExist(
@@ -491,6 +505,11 @@ class ExportBookService : BaseService() {
             null
         }
         try {
+            val tmpAudioManifest = if (book.isAudio) {
+                exportAudioBookMedia(book, tmpRoot, txtName)
+            } else {
+                null
+            }
             if (book.isLocalTxt) {
                 // 本地 TXT 书直接复制原始文件，保持与用户源文件字节一致：
                 // 不经过 getAllContents（那会加书名头、全角缩进并重排版），
@@ -530,6 +549,10 @@ class ExportBookService : BaseService() {
             tmpJson.takeIf { it.exists() }?.let { zipEntries.add(it) }
             tmpBookmarks?.takeIf { it.exists() }?.let { zipEntries.add(it) }
             tmpReplaceRules?.takeIf { it.exists() }?.let { zipEntries.add(it) }
+            tmpAudioManifest?.let { manifest ->
+                zipEntries.add(manifest)
+                zipEntries.add(File(tmpRoot, AudioBookArchive.MEDIA_DIR_NAME))
+            }
             tmpReviewsDir?.takeIf { dir ->
                 dir.exists() && (dir.listFiles()?.isNotEmpty() == true)
             }?.let { zipEntries.add(it) }
@@ -548,6 +571,64 @@ class ExportBookService : BaseService() {
             lastExportFileName = zipName
         } finally {
             FileUtils.delete(tmpRoot)
+        }
+    }
+
+    private suspend fun exportAudioBookMedia(
+        book: Book,
+        tmpRoot: File,
+        txtName: String,
+    ): File {
+        val chapters = appDb.bookChapterDao.getChapterList(book.bookUrl)
+            .filterNot { it.isVolume }
+        require(chapters.isNotEmpty()) { "Audio TXT-ZIP export failed: chapter list is empty" }
+        val source = book.getBookSource()
+        val audioDir = File(tmpRoot, AudioBookArchive.MEDIA_DIR_NAME).apply { mkdirs() }
+        val manifestChapters = chapters.map { chapter ->
+            currentCoroutineContext().ensureActive()
+            if (AudioTextFusion.effectiveLyric(chapter).isBlank() && source != null) {
+                WebBook.getContentAwait(
+                    bookSource = source,
+                    book = book,
+                    bookChapter = chapter,
+                    needSave = true,
+                )
+            }
+            val resolved = SourceAudioResolver.resolve(book, source, chapter)
+            val prefix = "chapter_${chapter.index.toString().padStart(6, '0')}"
+            val mediaFiles = ExoPlayerHelper.exportAudioFiles(
+                request = resolved.request,
+                book = book,
+                targetDir = audioDir,
+                filePrefix = prefix,
+            )
+            require(mediaFiles.isNotEmpty()) {
+                "Audio TXT-ZIP export failed: no audio for chapter ${chapter.index + 1} ${chapter.title}"
+            }
+            AudioBookArchiveChapter(
+                index = chapter.index,
+                title = chapter.title,
+                mediaFiles = mediaFiles.map { file ->
+                    "${AudioBookArchive.MEDIA_DIR_NAME}/${file.name}"
+                },
+                variable = chapter.variable,
+                start = chapter.start,
+                end = chapter.end,
+            )
+        }
+        return File(tmpRoot, AudioBookArchive.MANIFEST_FILE_NAME).also { manifestFile ->
+            manifestFile.writeText(
+                GSON.toJson(
+                    AudioBookArchiveManifest(
+                        textFile = txtName,
+                        name = book.name,
+                        author = book.author,
+                        intro = book.intro,
+                        chapters = manifestChapters,
+                    )
+                ),
+                Charsets.UTF_8,
+            )
         }
     }
 
@@ -730,7 +811,11 @@ class ExportBookService : BaseService() {
         useReplace: Boolean,
         config: ExportConfig
     ): Pair<String, ArrayList<SrcData>?> {
-        val content = BookHelp.getContent(book, chapter).withoutReadableContentVersionFlag()
+        val content = if (book.isAudio) {
+            AudioTextFusion.effectiveLyric(chapter)
+        } else {
+            BookHelp.getContent(book, chapter).withoutReadableContentVersionFlag()
+        }
         // 未缓存章节直接跳过，不写 "null" 占位：占位章会让重新导入时分章规则
         // 误判（标题间距<100字被计为误识别），导致规则整体被拒、章节标题丢失、
         // 评论快照 remap 失败。卷章节（isVolume）无正文属正常结构，仍保留标题。

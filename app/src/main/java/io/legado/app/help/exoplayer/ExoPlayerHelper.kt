@@ -7,6 +7,8 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.FileDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.cache.Cache
@@ -125,7 +127,12 @@ object ExoPlayerHelper {
         headers: Map<String, String>,
         book: Book? = null
     ): MediaSource {
-        return DefaultMediaSourceFactory(offlineMediaDataSourceFactory(headers, book))
+        val dataSourceFactory = if (isLocalMediaContent(url)) {
+            DefaultDataSource.Factory(context)
+        } else {
+            offlineMediaDataSourceFactory(headers, book)
+        }
+        return DefaultMediaSourceFactory(dataSourceFactory)
             .setLiveTargetOffsetMs(5000)
             .createMediaSource(
                 MediaItem.Builder()
@@ -297,10 +304,15 @@ object ExoPlayerHelper {
     fun getMediaSource(context: Context, url: String, book: Book? = null): MediaSource? {
         val uris = GSON.fromJsonArray<String>(url).getOrNull() ?: return null
         if (uris.isEmpty()) return null
+        val dataSourceFactory: DataSource.Factory = if (uris.all(::isLocalMediaUrl)) {
+            DefaultDataSource.Factory(context)
+        } else {
+            audioReadDataSourceFactory(book)
+        }
         val mediaSourceBuilder = ConcatenatingMediaSource2.Builder()
         for (uri in uris) {
             mediaSourceBuilder.add(
-                ProgressiveMediaSource.Factory(audioReadDataSourceFactory(book))
+                ProgressiveMediaSource.Factory(dataSourceFactory)
                     .createMediaSource(MediaItem.fromUri(uri)), 3000
             )
         }
@@ -509,6 +521,111 @@ object ExoPlayerHelper {
         return copyCache(videoCache(book?.let(::videoBookCacheDir)), url, targetDir)
     }
 
+    /**
+     * Materializes one chapter's resolved audio as ordinary files for TXT-ZIP export.
+     * Remote progressive media is first completed in the per-book cache; local archive
+     * media is copied directly. Adaptive manifests are rejected because copying only the
+     * manifest would create a ZIP that looks complete but cannot play offline.
+     */
+    fun exportAudioFiles(
+        request: MediaRequest,
+        book: Book,
+        targetDir: File,
+        filePrefix: String,
+    ): List<File> {
+        val urls = getMediaUrls(request.url)
+        require(urls.isNotEmpty()) { "Audio export failed: empty media address" }
+        targetDir.mkdirs()
+        return urls.mapIndexed { index, mediaUrl ->
+            require(!isAdaptiveMediaUrl(mediaUrl)) {
+                "Audio export does not support adaptive media manifests: $mediaUrl"
+            }
+            val output = File(
+                targetDir,
+                "${filePrefix}_part_${(index + 1).toString().padStart(3, '0')}.${mediaFileExtension(mediaUrl)}"
+            )
+            if (isLocalMediaUrl(mediaUrl)) {
+                copyLocalMedia(mediaUrl, output)
+            } else {
+                require(isHttpMediaUrl(mediaUrl)) {
+                    "Audio export does not support media scheme: $mediaUrl"
+                }
+                if (!isMediaUrlCached(mediaUrl, book)) {
+                    cacheMedia(MediaRequest(mediaUrl, request.headers), book = book)
+                }
+                require(isMediaUrlCached(mediaUrl, book)) {
+                    "Audio export cache is incomplete: $mediaUrl"
+                }
+                copyCachedMedia(mediaUrl, book, output)
+            }
+            output
+        }
+    }
+
+    fun isLocalMediaContent(url: String): Boolean {
+        val urls = getMediaUrls(url)
+        return urls.isNotEmpty() && urls.all(::isLocalMediaUrl)
+    }
+
+    private fun copyLocalMedia(mediaUrl: String, output: File) {
+        val uri = Uri.parse(mediaUrl)
+        val input = when (uri.scheme?.lowercase()) {
+            "file" -> File(requireNotNull(uri.path) { "Local audio path is empty: $mediaUrl" })
+                .inputStream()
+            "content" -> requireNotNull(appCtx.contentResolver.openInputStream(uri)) {
+                "Cannot open local audio: $mediaUrl"
+            }
+            else -> error("Unsupported local audio URI: $mediaUrl")
+        }
+        output.outputStream().use { out ->
+            input.use { it.copyTo(out) }
+        }
+        require(output.length() > 0L) { "Exported local audio is empty: $mediaUrl" }
+    }
+
+    private fun copyCachedMedia(mediaUrl: String, book: Book, output: File) {
+        val cache = audioCache(book)
+        val spans = cache.getCachedSpans(mediaUrl)
+            .asSequence()
+            .filter { it.isCached }
+            .sortedBy { it.position }
+            .toList()
+        require(spans.isNotEmpty()) { "Audio cache has no data: $mediaUrl" }
+        var expectedPosition = 0L
+        output.outputStream().use { out ->
+            spans.forEach { span ->
+                require(span.position == expectedPosition) {
+                    "Audio cache has a gap at $expectedPosition: $mediaUrl"
+                }
+                val source = requireNotNull(span.file) { "Audio cache span has no file: $mediaUrl" }
+                require(source.isFile && source.length() == span.length) {
+                    "Audio cache span is invalid at ${span.position}: $mediaUrl"
+                }
+                val copied = source.inputStream().use { it.copyTo(out) }
+                require(copied == span.length) {
+                    "Audio cache span changed while exporting: $mediaUrl"
+                }
+                expectedPosition += span.length
+            }
+        }
+        val contentLength = ContentMetadata.getContentLength(cache.getContentMetadata(mediaUrl))
+        if (contentLength > 0L) {
+            require(expectedPosition == contentLength) {
+                "Audio cache length mismatch: expected=$contentLength actual=$expectedPosition url=$mediaUrl"
+            }
+        }
+        require(output.length() > 0L) { "Exported cached audio is empty: $mediaUrl" }
+    }
+
+    private fun mediaFileExtension(url: String): String {
+        val extension = Uri.parse(url).lastPathSegment
+            ?.substringBefore('?')
+            ?.substringAfterLast('.', "")
+            ?.lowercase()
+            .orEmpty()
+        return extension.takeIf { it.matches(Regex("[a-z0-9]{1,8}")) } ?: "m4a"
+    }
+
     private fun copyCache(cache: Cache, url: String?, targetDir: File): Int {
         if (url.isNullOrBlank()) return 0
         if (!targetDir.exists()) targetDir.mkdirs()
@@ -616,6 +733,16 @@ object ExoPlayerHelper {
         return scheme.equals("http", true) ||
             scheme.equals("https", true) ||
             (scheme.equals("file", true) && isAdaptiveMediaUrl(url))
+    }
+
+    private fun isHttpMediaUrl(url: String): Boolean {
+        val scheme = Uri.parse(url).scheme
+        return scheme.equals("http", true) || scheme.equals("https", true)
+    }
+
+    private fun isLocalMediaUrl(url: String): Boolean {
+        val scheme = Uri.parse(url).scheme
+        return scheme.equals("file", true) || scheme.equals("content", true)
     }
 
     private fun isAdaptiveMediaUrl(url: String): Boolean {
