@@ -908,16 +908,21 @@ object LocalBook {
                         importedBook,
                         files
                     )
+                    files.filter(io.legado.app.help.review.ReviewSnapshotStore::isSnapshotFile)
+                        .forEach { snapshotFile ->
+                            io.legado.app.help.review.ReviewSnapshotStore
+                                .validateImportedSnapshot(importedBook, snapshotFile)
+                        }
                 } catch (error: Throwable) {
                     throw ReviewArchiveIntegrityException(error)
                 }
                 files.filter(io.legado.app.help.review.ReviewSnapshotStore::isSnapshotFile)
                     .forEach { snapshotFile ->
-                        kotlin.runCatching {
+                        try {
                             val snapshot =
                                 GSON.fromJsonObject<io.legado.app.help.review.ReviewSnapshot>(
                                     snapshotFile.readText()
-                                ).getOrNull() ?: return@runCatching
+                            ).getOrNull() ?: error("invalid review snapshot JSON: ${snapshotFile.name}")
                             matchImportedChapter(
                                 importedBook,
                                 localChapters,
@@ -935,27 +940,17 @@ object LocalBook {
                                 io.legado.app.help.review.ReviewSnapshotStore.put(
                                     importedBook, remapped
                                 )
-                            } ?: run {
-                                // 无法唯一确认就不绑定：宁可漏恢复，也不能把评论绑错章
-                                AppLog.put(
-                                    "导入评论快照跳过：找不到唯一匹配的本地章节 " +
-                                        "chapterIndex=${snapshot.chapterIndex} " +
-                                        "chapterTitle=${snapshot.chapterTitle} " +
-                                        "（${snapshotFile.name}）"
-                                )
-                            }
-                        }.onFailure { e ->
-                            AppLog.put(
-                                "导入评论快照失败 ${snapshotFile.name}\n${e.localizedMessage}", e
-                            )
+                            } ?: error("review snapshot chapter mapping is ambiguous: ${snapshotFile.name}")
+                        } catch (error: Throwable) {
+                            throw ReviewArchiveIntegrityException(error)
                         }
                     }
                 files.filter(io.legado.app.help.review.ReviewSnapshotStore::isChapterStatusFile)
                     .forEach { statusFile ->
-                        kotlin.runCatching {
+                        try {
                             val status = io.legado.app.help.review.ReviewSnapshotStore
                                 .readChapterStatus(statusFile)
-                                ?: return@runCatching
+                                ?: error("invalid review chapter status: ${statusFile.name}")
                             matchImportedChapter(
                                 importedBook,
                                 localChapters,
@@ -973,14 +968,9 @@ object LocalBook {
                                         chapterTitle = localChapter.title
                                     )
                                 )
-                            } ?: AppLog.put(
-                                "导入评论快照状态跳过：找不到唯一匹配的本地章节 " +
-                                    "chapterIndex=${status.chapterIndex} chapterTitle=${status.chapterTitle}"
-                            )
-                        }.onFailure { e ->
-                            AppLog.put(
-                                "导入评论快照状态失败 ${statusFile.name}\n${e.localizedMessage}", e
-                            )
+                            } ?: error("review status chapter mapping is ambiguous: ${statusFile.name}")
+                        } catch (error: Throwable) {
+                            throw ReviewArchiveIntegrityException(error)
                         }
                     }
             }
