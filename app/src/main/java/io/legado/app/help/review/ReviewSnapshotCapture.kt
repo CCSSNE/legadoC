@@ -89,10 +89,10 @@ object ReviewSnapshotCapture {
     /** 连续几轮稳定才判定完成（含慢加载评论） */
     private const val STABLE_ROUNDS_TO_FINISH = 3
     /** Resource budget for one complete offline snapshot. Budget excess is a visible failure. */
-    private const val MAX_INLINE_RESOURCES = 200
-    private const val MAX_TOTAL_INLINE_BYTES = 30L * 1024 * 1024
-    private const val MAX_INLINE_RESOURCE_BYTES = 8L * 1024 * 1024
-    /** 单个内联资源抓取超时；任何资源失败都显式失败，不能把残缺快照记为成功。 */
+    private const val MAX_SNAPSHOT_RESOURCES = 200
+    private const val MAX_TOTAL_RESOURCE_BYTES = 30L * 1024 * 1024
+    private const val MAX_RESOURCE_BYTES = 8L * 1024 * 1024
+    /** 单个资源抓取超时；任何资源失败都显式失败，不能把残缺快照记为成功。 */
     private const val RESOURCE_FETCH_TIMEOUT_MS = 8_000L
     private const val HEAVY_STAGE_CONCURRENCY = 1
     private const val RESOURCE_COPY_BUFFER_BYTES = 32 * 1024
@@ -389,7 +389,6 @@ object ReviewSnapshotCapture {
             val images: List<ImageResource> = emptyList(),
             val css: List<String> = emptyList(),
             val databaseImages: Map<String, ReviewSnapshotResourceEntry> = emptyMap(),
-            val useResourceDatabase: Boolean = false,
             val cacheAvatars: Boolean = false,
             val cacheCommentImages: Boolean = false,
         ) {
@@ -428,8 +427,7 @@ object ReviewSnapshotCapture {
         )
 
         /**
-         * 并发下载时只允许受控大小的临时文件总量。图片的最终 Base64 体积按上界预留，
-         * 因而网络线程数可以提高，不会重新把多份完整 byte[] 同时堆到 Java heap。
+         * 并发下载时只允许受控大小的临时文件总量，避免多个完整响应同时占满可用资源。
          */
         private class ResourceStagingBudget {
             private var reservedBytes = 0L
@@ -438,9 +436,9 @@ object ReviewSnapshotCapture {
             fun reserve(bytes: Long) {
                 if (bytes <= 0L) return
                 val next = reservedBytes + bytes
-                if (next > MAX_TOTAL_INLINE_BYTES) {
+                if (next > MAX_TOTAL_RESOURCE_BYTES) {
                     throw ResourceBudgetExceededException(
-                        "评论快照内联资源 $next B 超过总预算 $MAX_TOTAL_INLINE_BYTES B",
+                        "评论快照资源 $next B 超过总预算 $MAX_TOTAL_RESOURCE_BYTES B",
                     )
                 }
                 reservedBytes = next
@@ -642,7 +640,7 @@ object ReviewSnapshotCapture {
 
         /**
          * 只有 Java 侧 Heavy worker 已真实退出后才释放 permit。这样前一条流水线超时后，
-         * 它残留的下载/Base64/decode 不会与下一条 Heavy 流水线重叠。
+         * 它残留的下载、资源处理或 decode 不会与下一条 Heavy 流水线重叠。
          */
         private fun tryFinalizeTerminal() {
             val terminal = synchronized(lifecycleLock) {
@@ -934,7 +932,6 @@ object ReviewSnapshotCapture {
         private data class InlineResources(
             val imgMap: Map<String, String> = emptyMap(),
             val cssMap: Map<String, String> = emptyMap(),
-            val inlineBytes: Long = 0L,
             val resourceBytes: Long = 0L,
             val cacheAvatars: Boolean = false,
             val cacheCommentImages: Boolean = false,
@@ -945,7 +942,6 @@ object ReviewSnapshotCapture {
         private fun parseResourceUrls(json: String?): ResourceUrls {
             val cacheAvatars = AppConfig.cacheReviewAvatars
             val cacheCommentImages = AppConfig.cacheReviewImages
-            val useResourceDatabase = AppConfig.cacheReviewResourceDatabase
             val compressAvatars = cacheAvatars && AppConfig.compressReviewAvatars
             val compressCommentImages = cacheCommentImages && AppConfig.compressReviewImages
             val avatarCompressionMaxBytes = AppConfig.reviewAvatarCompressionMaxBytes
@@ -961,14 +957,12 @@ object ReviewSnapshotCapture {
                 }
             }
             json ?: return ResourceUrls(
-                useResourceDatabase = useResourceDatabase,
                 cacheAvatars = cacheAvatars,
                 cacheCommentImages = cacheCommentImages,
             )
             val s = StringEscapeUtils.unescapeJson(json).trim('"')
             if (s == "null") {
                 return ResourceUrls(
-                    useResourceDatabase = useResourceDatabase,
                     cacheAvatars = cacheAvatars,
                     cacheCommentImages = cacheCommentImages,
                 )
@@ -1000,11 +994,7 @@ object ReviewSnapshotCapture {
                     ImageResource(roles.url, maximums.minOrNull())
                 }
                 .toList()
-            val storedImages = if (useResourceDatabase) {
-                ReviewSnapshotResourceStore.entries(book)
-            } else {
-                emptyMap()
-            }
+            val storedImages = ReviewSnapshotResourceStore.entries(book)
             val reusableImages = linkedMapOf<String, ReviewSnapshotResourceEntry>()
             val imagesToDownload = selectedImages.filter { image ->
                 val stored = storedImages[image.url]
@@ -1022,7 +1012,6 @@ object ReviewSnapshotCapture {
                 images = imagesToDownload,
                 css = collected.css.filter { it.startsWith("http") }.distinct(),
                 databaseImages = reusableImages,
-                useResourceDatabase = useResourceDatabase,
                 cacheAvatars = cacheAvatars,
                 cacheCommentImages = cacheCommentImages,
             )
@@ -1030,9 +1019,9 @@ object ReviewSnapshotCapture {
 
         private fun downloadResources(urls: ResourceUrls): InlineResources {
             val resourceCount = urls.resourceCount
-            if (resourceCount > MAX_INLINE_RESOURCES) {
+            if (resourceCount > MAX_SNAPSHOT_RESOURCES) {
                 throw ResourceBudgetExceededException(
-                    "评论快照资源数 $resourceCount 超过预算 $MAX_INLINE_RESOURCES",
+                    "评论快照资源数 $resourceCount 超过预算 $MAX_SNAPSHOT_RESOURCES",
                 )
             }
             if (resourceCount == 0) {
@@ -1066,7 +1055,7 @@ object ReviewSnapshotCapture {
                 val stagedResources = stageResources(targets, stagingDir)
                 val imgMap = linkedMapOf<String, String>()
                 val cssMap = linkedMapOf<String, String>()
-                var inlineBytes = 0L
+                var embeddedTextBytes = 0L
                 var resourceBytes = 0L
                 urls.databaseImages.forEach { (imageUrl, entry) ->
                     imgMap[imageUrl] = ReviewSnapshotResourceStore.referenceFor(entry.key)
@@ -1078,31 +1067,14 @@ object ReviewSnapshotCapture {
                         ResourceKind.IMAGE -> {
                             val image = prepareImage(staged)
                             resourceBytes += image.byteCount
-                            if (urls.useResourceDatabase) {
-                                val stored = ReviewSnapshotResourceStore.put(
-                                    book = book,
-                                    url = staged.target.url,
-                                    mimeType = image.mimeType,
-                                    source = image.file,
-                                )
-                                imgMap[staged.target.url] =
-                                    ReviewSnapshotResourceStore.referenceFor(stored.key)
-                            } else {
-                                val bytes = image.file.readBytes()
-                                check(bytes.size.toLong() == image.byteCount) {
-                                    "评论快照资源暂存文件长度异常: ${staged.target.url}"
-                                }
-                                val value = "data:${image.mimeType};base64," +
-                                    android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-                                val nextTotal = inlineBytes + value.length
-                                if (nextTotal > MAX_TOTAL_INLINE_BYTES) {
-                                    throw ResourceBudgetExceededException(
-                                        "评论快照内联资源 $nextTotal B 超过总预算 $MAX_TOTAL_INLINE_BYTES B",
-                                    )
-                                }
-                                inlineBytes = nextTotal
-                                imgMap[staged.target.url] = value
-                            }
+                            val stored = ReviewSnapshotResourceStore.put(
+                                book = book,
+                                url = staged.target.url,
+                                mimeType = image.mimeType,
+                                source = image.file,
+                            )
+                            imgMap[staged.target.url] =
+                                ReviewSnapshotResourceStore.referenceFor(stored.key)
                         }
 
                         ResourceKind.CSS -> {
@@ -1112,13 +1084,13 @@ object ReviewSnapshotCapture {
                             }
                             val text = bytes.toString(Charsets.UTF_8).takeIf { it.isNotBlank() }
                                 ?: continue
-                            val nextTotal = inlineBytes + text.toByteArray(Charsets.UTF_8).size
-                            if (nextTotal > MAX_TOTAL_INLINE_BYTES) {
+                            val nextTotal = embeddedTextBytes + text.toByteArray(Charsets.UTF_8).size
+                            if (nextTotal > MAX_TOTAL_RESOURCE_BYTES) {
                                 throw ResourceBudgetExceededException(
-                                    "评论快照内联资源 $nextTotal B 超过总预算 $MAX_TOTAL_INLINE_BYTES B",
+                                    "评论快照样式 $nextTotal B 超过总预算 $MAX_TOTAL_RESOURCE_BYTES B",
                                 )
                             }
-                            inlineBytes = nextTotal
+                            embeddedTextBytes = nextTotal
                             resourceBytes += bytes.size
                             cssMap[staged.target.url] = text
                         }
@@ -1127,7 +1099,6 @@ object ReviewSnapshotCapture {
                 return InlineResources(
                     imgMap = imgMap,
                     cssMap = cssMap,
-                    inlineBytes = inlineBytes,
                     resourceBytes = resourceBytes,
                     cacheAvatars = urls.cacheAvatars,
                     cacheCommentImages = urls.cacheCommentImages,
@@ -1139,7 +1110,7 @@ object ReviewSnapshotCapture {
 
         /**
          * 资源线程数只控制网络拉取。响应通过固定小缓冲区写入临时文件，随后才逐项转为
-         * Base64，因此提高下载并发不会重新引入多份完整响应 byte[] 同驻 Java heap。
+         * 资源库只保留文件引用，因此提高下载并发不会重新引入多份完整响应 byte[] 同驻 Java heap。
          */
         private fun stageResources(
             targets: List<ResourceTarget>,
@@ -1222,13 +1193,13 @@ object ReviewSnapshotCapture {
                                 val count = input.read(buffer)
                                 if (count < 0) break
                                 val nextBytes = copiedBytes + count
-                                if (nextBytes > MAX_INLINE_RESOURCE_BYTES) {
+                                if (nextBytes > MAX_RESOURCE_BYTES) {
                                     throw ResourceBudgetExceededException(
                                         "评论快照资源 $nextBytes B 超过单资源预算 " +
-                                            "$MAX_INLINE_RESOURCE_BYTES B: ${target.url}",
+                                            "$MAX_RESOURCE_BYTES B: ${target.url}",
                                     )
                                 }
-                                val nextReserved = estimatedInlineBytes(target.kind, nextBytes)
+                                val nextReserved = estimatedStagingBytes(nextBytes)
                                 budget.reserve(nextReserved - reservedBytes)
                                 reservedBytes = nextReserved
                                 output.write(buffer, 0, count)
@@ -1248,10 +1219,7 @@ object ReviewSnapshotCapture {
             }
         }
 
-        private fun estimatedInlineBytes(kind: ResourceKind, rawBytes: Long): Long = when (kind) {
-            ResourceKind.IMAGE -> ((rawBytes + 2L) / 3L) * 4L + 64L
-            ResourceKind.CSS -> rawBytes
-        }
+        private fun estimatedStagingBytes(rawBytes: Long): Long = rawBytes
 
         private fun prepareImage(staged: StagedResource): PreparedImage {
             check(staged.file.length() == staged.byteCount) {
@@ -1271,7 +1239,7 @@ object ReviewSnapshotCapture {
 
         /**
          * Re-encodes one staged image directly to a bounded WebP file. No full byte[] or
-         * Base64 is created here; sampling occurs before decode and every retry replaces
+         * encoded String is created here; sampling occurs before decode and every retry replaces
          * the same temporary file.
          */
         @Suppress("DEPRECATION")

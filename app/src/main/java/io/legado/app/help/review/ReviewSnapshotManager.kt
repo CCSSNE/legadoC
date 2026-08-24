@@ -81,7 +81,7 @@ object ReviewSnapshotManager {
         val force: Boolean,
         internal val executionLease: CacheWorkerLease,
         internal val reportProgress: (
-            completedSnapshots: Int,
+            processedSnapshots: Int,
             totalSnapshots: Int,
             failedSnapshots: Int,
         ) -> Unit,
@@ -111,7 +111,7 @@ object ReviewSnapshotManager {
         val force: Boolean,
         val executionLease: CacheWorkerLease,
         val reportProgress: (
-            completedSnapshots: Int,
+            processedSnapshots: Int,
             totalSnapshots: Int,
             failedSnapshots: Int,
         ) -> Unit,
@@ -176,7 +176,7 @@ object ReviewSnapshotManager {
         force: Boolean,
         executionLease: CacheWorkerLease,
         reportProgress: (
-            completedSnapshots: Int,
+            processedSnapshots: Int,
             totalSnapshots: Int,
             failedSnapshots: Int,
         ) -> Unit,
@@ -329,7 +329,7 @@ object ReviewSnapshotManager {
         outcomeKey: String,
         diagnostics: CacheOperationDiagnostics.Context,
         reportProgress: (
-            completedSnapshots: Int,
+            processedSnapshots: Int,
             totalSnapshots: Int,
             failedSnapshots: Int,
         ) -> Unit,
@@ -356,7 +356,7 @@ object ReviewSnapshotManager {
         outcomeKey: String,
         diagnostics: CacheOperationDiagnostics.Context,
         reportProgress: (
-            completedSnapshots: Int,
+            processedSnapshots: Int,
             totalSnapshots: Int,
             failedSnapshots: Int,
         ) -> Unit,
@@ -426,20 +426,23 @@ object ReviewSnapshotManager {
         val needProcess = snapshotButtons.filter { button ->
             force || !ReviewSnapshotStore.has(book, chapter, button.src)
         }
-        val completedSnapshots = AtomicInteger(existingSnapshots)
+        // "已处理" and "成功" are different counters. Existing snapshots count as
+        // already processed for an ordinary cache run, while a forced retry starts
+        // a complete new attempt from zero.
+        val successfulSnapshots = AtomicInteger(if (force) 0 else existingSnapshots)
+        val processedSnapshots = AtomicInteger(if (force) 0 else existingSnapshots)
         val failedSnapshots = AtomicInteger()
         val progressLock = Any()
         fun reportChapterProgress() {
             synchronized(progressLock) {
                 reportProgress(
-                    completedSnapshots.get(),
+                    processedSnapshots.get(),
                     snapshotButtons.size,
                     failedSnapshots.get(),
                 )
             }
         }
         reportChapterProgress()
-        var completedButtons = 0
         var failedButtons = 0
         // force=true（用户明确刷新）时，任何一个需要刷新的按钮失败都保留待刷新标记，
         // 不能“一个成功就算整章成功”
@@ -459,11 +462,14 @@ object ReviewSnapshotManager {
                     diagnostics,
                     onSnapshotSaved = {
                         synchronized(progressLock) {
-                            completedSnapshots.updateAndGet { value ->
+                            successfulSnapshots.updateAndGet { value ->
+                                (value + 1).coerceAtMost(snapshotButtons.size)
+                            }
+                            processedSnapshots.updateAndGet { value ->
                                 (value + 1).coerceAtMost(snapshotButtons.size)
                             }
                             reportProgress(
-                                completedSnapshots.get(),
+                                processedSnapshots.get(),
                                 snapshotButtons.size,
                                 failedSnapshots.get(),
                             )
@@ -473,8 +479,11 @@ object ReviewSnapshotManager {
                 if (outcome.failed) {
                     synchronized(progressLock) {
                         failedSnapshots.incrementAndGet()
+                        processedSnapshots.updateAndGet { value ->
+                            (value + 1).coerceAtMost(snapshotButtons.size)
+                        }
                         reportProgress(
-                            completedSnapshots.get(),
+                            processedSnapshots.get(),
                             snapshotButtons.size,
                             failedSnapshots.get(),
                         )
@@ -486,7 +495,6 @@ object ReviewSnapshotManager {
             .sortedBy { it.index }
         outcomes.forEach { o ->
             sb.append(o.log)
-            if (o.success) completedButtons++
             if (o.failed) {
                 hasFailure = true
                 failedButtons++
@@ -522,7 +530,8 @@ object ReviewSnapshotManager {
         }
         taskOutcomes[outcomeKey] = !hasFailure
         sb.append("8. 最终结果：\n")
-        sb.append("   成功快照 ").append(completedButtons).append("/").append(needProcess.size).append('\n')
+        sb.append("   成功快照 ").append(successfulSnapshots.get()).append("/")
+            .append(snapshotButtons.size).append('\n')
         sb.append("   失败 ").append(failedButtons).append("/").append(needProcess.size).append('\n')
         sb.append("   本章是否计入“评论已缓存”：").append(if (chapterHasSnapshot) "是" else "否")
     }

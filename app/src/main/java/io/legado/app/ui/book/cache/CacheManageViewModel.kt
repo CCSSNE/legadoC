@@ -301,7 +301,8 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
                         ?.count { it.hasAction }
                     ReviewSnapshotChapterItem(
                         chapter = chapter,
-                        completedSnapshots = cachedSnapshots,
+                        processedSnapshots = status?.totalSnapshots ?: cachedSnapshots,
+                        successfulSnapshots = cachedSnapshots,
                         totalSnapshots = totalSnapshots,
                         failedSnapshots = status?.failedSnapshots ?: 0
                     )
@@ -1330,7 +1331,10 @@ data class CacheChapterItem(
 
 data class ReviewSnapshotChapterItem(
     val chapter: BookChapter,
-    val completedSnapshots: Int,
+    /** Buttons that have reached either a success or failure result. */
+    val processedSnapshots: Int,
+    /** Successfully persisted snapshot files, retained separately from progress. */
+    val successfulSnapshots: Int,
     /** null only for a legacy cache whose original button count is no longer available. */
     val totalSnapshots: Int?,
     val failedSnapshots: Int,

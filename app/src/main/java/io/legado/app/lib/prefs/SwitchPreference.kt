@@ -9,7 +9,7 @@ import io.legado.app.R
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.utils.applyTint
 
-class SwitchPreference(context: Context, attrs: AttributeSet) :
+open class SwitchPreference(context: Context, attrs: AttributeSet) :
     SwitchPreferenceCompat(context, attrs) {
 
     private val isBottomBackground: Boolean

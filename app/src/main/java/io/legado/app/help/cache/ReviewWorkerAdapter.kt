@@ -99,11 +99,11 @@ internal class ReviewWorkerAdapter(
                 force = task.source != CacheRequestSource.READER ||
                     ReviewSnapshotManager.isUserRefreshActive(book.bookUrl, chapter.index),
                 executionLease = lease,
-                reportProgress = { completedSnapshots, totalSnapshots, failedSnapshots ->
+                reportProgress = { processedSnapshots, totalSnapshots, failedSnapshots ->
                     CacheReviewWorkerRegistry.onSnapshotProgress(
                         lease,
                         chapter.index,
-                        completedSnapshots,
+                        processedSnapshots,
                         totalSnapshots,
                         failedSnapshots,
                     )
@@ -230,7 +230,7 @@ internal object CacheReviewWorkerRegistry {
     fun onSnapshotProgress(
         lease: CacheWorkerLease,
         chapterIndex: Int,
-        completedSnapshots: Int,
+        processedSnapshots: Int,
         totalSnapshots: Int,
         failedSnapshots: Int,
     ) {
@@ -241,14 +241,17 @@ internal object CacheReviewWorkerRegistry {
         require(failedSnapshots <= totalSnapshots) {
             "review snapshot failed count exceeds total: $failedSnapshots/$totalSnapshots"
         }
-        require(completedSnapshots in 0..totalSnapshots) {
-            "review snapshot progress is invalid: $completedSnapshots/$totalSnapshots"
+        require(processedSnapshots in 0..totalSnapshots) {
+            "review snapshot progress is invalid: $processedSnapshots/$totalSnapshots"
+        }
+        require(failedSnapshots <= processedSnapshots) {
+            "review snapshot failures exceed processed count: $failedSnapshots/$processedSnapshots"
         }
         requireWorkerPort().updateProgress(
             binding.lease,
             key,
             CacheProgressMode.SNAPSHOTS,
-            current = completedSnapshots.toLong(),
+            current = processedSnapshots.toLong(),
             total = totalSnapshots.toLong(),
             failed = failedSnapshots.toLong(),
         )

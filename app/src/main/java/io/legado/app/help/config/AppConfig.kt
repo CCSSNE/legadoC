@@ -1068,13 +1068,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefBoolean(PreferKey.cacheReviewImages, value)
         }
 
-    /** 评论图片使用每书一份去重资源数据库，快照只保留资源引用。 */
-    var cacheReviewResourceDatabase: Boolean
-        get() = appCtx.getPrefBoolean(PreferKey.cacheReviewResourceDatabase, true)
-        set(value) {
-            appCtx.putPrefBoolean(PreferKey.cacheReviewResourceDatabase, value)
-        }
-
     /** 超过阈值时压缩评论者头像。 */
     var compressReviewAvatars: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.compressReviewAvatars, true)
