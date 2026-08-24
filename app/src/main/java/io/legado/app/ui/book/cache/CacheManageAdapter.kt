@@ -68,7 +68,7 @@ class CacheManageAdapter(
             ContextCompat.getColor(context, R.color.background_card),
             UiCorner.actionRadius(context)
         )
-        listOf(btnChapters, btnUpload, btnDelete, btnBookshelf, btnStop).forEach {
+        listOf(btnChapters, btnUpload, btnDelete, btnBookshelf, btnReviews, btnStop).forEach {
             it.background = UiCorner.softActionSelector(
                 ContextCompat.getColor(context, R.color.background_card),
                 ContextCompat.getColor(context, R.color.background_menu),
@@ -92,10 +92,20 @@ class CacheManageAdapter(
         )
         tvCacheDetail.gone()
         btnBookshelf.setText(
-            if (item.inBookshelf) R.string.cache_manage_use_cache
-            else R.string.cache_manage_add_bookshelf
+            when {
+                !item.inBookshelf -> R.string.cache_manage_add_bookshelf
+                item.mode == CacheManageMode.BOOK || item.mode == CacheManageMode.AUDIO -> {
+                    R.string.cache_manage_use
+                }
+                else -> R.string.cache_manage_use_cache
+            }
         )
         if (item.manifest != null) btnBookshelf.visible() else btnBookshelf.gone()
+        if (item.mode == CacheManageMode.BOOK || item.mode == CacheManageMode.AUDIO) {
+            btnReviews.visible()
+        } else {
+            btnReviews.gone()
+        }
         updateTaskViews(this, item)
     }
 
@@ -139,6 +149,9 @@ class CacheManageAdapter(
         binding.btnBookshelf.setOnClickListener {
             getItem(holder.layoutPosition)?.let(callback::restoreToBookshelf)
         }
+        binding.btnReviews.setOnClickListener {
+            getItem(holder.layoutPosition)?.let(callback::openReviewSnapshots)
+        }
         binding.btnDelete.setOnClickListener {
             getItem(holder.layoutPosition)?.let(callback::deleteBookCache)
         }
@@ -166,6 +179,7 @@ class CacheManageAdapter(
         fun openChapters(item: CacheBookItem)
         fun upload(item: CacheBookItem)
         fun restoreToBookshelf(item: CacheBookItem)
+        fun openReviewSnapshots(item: CacheBookItem)
         fun deleteBookCache(item: CacheBookItem)
         fun stopAudioCache(item: CacheBookItem)
         fun selectSource(item: CacheBookItem)

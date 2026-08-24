@@ -411,6 +411,10 @@ class CacheManageActivity :
         }
     }
 
+    override fun openReviewSnapshots(item: CacheBookItem) {
+        showDialogFragment(ReviewSnapshotStatusDialog.newInstance(item.book))
+    }
+
     override fun deleteBookCache(item: CacheBookItem) {
         alert(getString(R.string.delete), getString(R.string.cache_manage_delete_book_confirm, item.book.name)) {
             yesButton {
