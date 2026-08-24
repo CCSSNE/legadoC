@@ -8,6 +8,8 @@ import kotlinx.coroutines.launch
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.help.book.isAudio
+import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.review.ReviewResourceEpoch
@@ -145,7 +147,26 @@ object CacheCoordinator : CacheUiPort {
         return CacheSubmission(session.sessionId, task.taskId).also(workerDispatcher::start)
     }
 
-    /** Shared BODY submission used by both explicit Download actions and automatic refresh. */
+    /**
+     * The only explicit-download entry point for book pages.
+     *
+     * The book type, rather than the screen that initiated the action, decides the worker.
+     * Audio and video books must never be sent to the text body worker.
+     */
+    fun submitBookDownload(
+        book: Book,
+        chapterIndexes: Iterable<Int>,
+        source: CacheRequestSource,
+        reviewEnabled: Boolean = AppConfig.syncCacheReview,
+    ): CacheSubmission {
+        return if (book.isAudio || book.isVideo) {
+            submitMediaDownload(book, chapterIndexes, source)
+        } else {
+            submitTextDownload(book, chapterIndexes, source, reviewEnabled)
+        }
+    }
+
+    /** Shared BODY submission used by text-book download actions and automatic refresh. */
     fun submitTextDownload(
         book: Book,
         chapterIndexes: Iterable<Int>,
@@ -163,6 +184,27 @@ object CacheCoordinator : CacheUiPort {
                 bookName = book.name,
                 units = indexes.map { CacheUnitKey(book.bookUrl, it) },
                 reviewEnabled = reviewEnabled,
+            )
+        )
+    }
+
+    /** Shared MEDIA submission used by every audio/video-book download action. */
+    fun submitMediaDownload(
+        book: Book,
+        chapterIndexes: Iterable<Int>,
+        source: CacheRequestSource,
+    ): CacheSubmission {
+        require(book.isAudio || book.isVideo) { "media download requires an audio or video book" }
+        val indexes = chapterIndexes.distinct().sorted()
+        require(indexes.isNotEmpty()) { "media download has no chapters" }
+        return submit(
+            CacheRequest(
+                source = source,
+                kind = if (book.isVideo) CacheKind.VIDEO else CacheKind.AUDIO,
+                phase = CachePhase.MEDIA,
+                bookUrl = book.bookUrl,
+                bookName = book.name,
+                units = indexes.map { CacheUnitKey(book.bookUrl, it) },
             )
         )
     }
