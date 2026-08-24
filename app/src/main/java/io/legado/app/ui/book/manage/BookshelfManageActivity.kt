@@ -23,8 +23,6 @@ import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.DirectLinkUpload
 import io.legado.app.help.book.contains
 import io.legado.app.help.book.isLocal
-import io.legado.app.help.book.isShortcut
-import io.legado.app.help.book.BookShortcutHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.lib.dialogs.alert
@@ -220,7 +218,7 @@ class BookshelfManageActivity :
         booksFlowJob?.cancel()
         booksFlowJob = lifecycleScope.launch {
             val bookSort = AppConfig.getBookSortByGroupId(viewModel.groupId)
-            BookShortcutHelp.flowByGroup(viewModel.groupId).map { list ->
+            appDb.bookDao.flowByGroup(viewModel.groupId).map { list ->
                 when (bookSort) {
                     1 -> list.sortedByDescending {
                         it.latestChapterTime
@@ -327,40 +325,18 @@ class BookshelfManageActivity :
 
     private fun alertDelSelection() {
         alert(titleResource = R.string.draw, messageResource = R.string.sure_del) {
-            val books = adapter.selection
-            var deleteBodyCheckBox: CheckBox? = null
-            val deleteOriginalCheckBox = CheckBox(this@BookshelfManageActivity).apply {
+            val checkBox = CheckBox(this@BookshelfManageActivity).apply {
                 setText(R.string.delete_book_file)
                 isChecked = LocalConfig.deleteBookOriginal
             }
             val view = LinearLayout(this@BookshelfManageActivity).apply {
                 setPadding(16.dpToPx(), 0, 16.dpToPx(), 0)
+                addView(checkBox)
             }
-            if (books.any { it.isShortcut }) {
-                deleteBodyCheckBox = CheckBox(this@BookshelfManageActivity).apply {
-                    setText(R.string.delete_book_body)
-                }
-                view.addView(deleteBodyCheckBox)
-                deleteOriginalCheckBox.setOnCheckedChangeListener { _, isChecked ->
-                    if (isChecked) deleteBodyCheckBox?.isChecked = true
-                }
-                if (deleteOriginalCheckBox.isChecked) {
-                    deleteBodyCheckBox.isChecked = true
-                }
-            }
-            if (books.any { it.isLocal }) view.addView(deleteOriginalCheckBox)
-            if (view.childCount > 0) {
-                customView { view }
-            }
+            customView { view }
             okButton {
-                if (books.any { it.isLocal }) {
-                    LocalConfig.deleteBookOriginal = deleteOriginalCheckBox.isChecked
-                }
-                viewModel.deleteBook(
-                    books,
-                    deleteBody = deleteBodyCheckBox?.isChecked == true,
-                    deleteOriginal = deleteOriginalCheckBox.isChecked && books.any { it.isLocal }
-                )
+                LocalConfig.deleteBookOriginal = checkBox.isChecked
+                viewModel.deleteBook(adapter.selection, checkBox.isChecked)
             }
             noButton()
         }
@@ -415,39 +391,23 @@ class BookshelfManageActivity :
 
     override fun deleteBook(book: Book) {
         alert(titleResource = R.string.draw, messageResource = R.string.sure_del) {
-            var deleteBodyCheckBox: CheckBox? = null
-            var deleteOriginalCheckBox: CheckBox? = null
-            val view = LinearLayout(this@BookshelfManageActivity).apply {
-                setPadding(16.dpToPx(), 0, 16.dpToPx(), 0)
-            }
-            if (book.isShortcut) {
-                deleteBodyCheckBox = CheckBox(this@BookshelfManageActivity).apply {
-                    setText(R.string.delete_book_body)
-                }
-                view.addView(deleteBodyCheckBox)
-            }
+            var checkBox: CheckBox? = null
             if (book.isLocal) {
-                deleteOriginalCheckBox = CheckBox(this@BookshelfManageActivity).apply {
+                checkBox = CheckBox(this@BookshelfManageActivity).apply {
                     setText(R.string.delete_book_file)
-                    setOnCheckedChangeListener { _, isChecked ->
-                        if (isChecked) deleteBodyCheckBox?.isChecked = true
-                    }
                     isChecked = LocalConfig.deleteBookOriginal
                 }
-                view.addView(deleteOriginalCheckBox)
-            }
-            if (view.childCount > 0) {
+                val view = LinearLayout(this@BookshelfManageActivity).apply {
+                    setPadding(16.dpToPx(), 0, 16.dpToPx(), 0)
+                    addView(checkBox)
+                }
                 customView { view }
             }
             okButton {
-                deleteOriginalCheckBox?.let {
-                    LocalConfig.deleteBookOriginal = it.isChecked
+                if (checkBox != null) {
+                    LocalConfig.deleteBookOriginal = checkBox.isChecked
                 }
-                viewModel.deleteBook(
-                    listOf(book),
-                    deleteBody = deleteBodyCheckBox?.isChecked == true,
-                    deleteOriginal = deleteOriginalCheckBox?.isChecked == true
-                )
+                viewModel.deleteBook(listOf(book), LocalConfig.deleteBookOriginal)
             }
         }
     }
