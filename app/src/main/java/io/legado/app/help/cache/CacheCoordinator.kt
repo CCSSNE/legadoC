@@ -8,10 +8,13 @@ import kotlinx.coroutines.launch
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.help.book.AudioOfflineState
+import io.legado.app.help.book.BodyOfflineState
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.help.review.ReviewResourceEpoch
 import io.legado.app.help.review.ReviewSnapshotManager
 import io.legado.app.help.review.ReviewSnapshotResourceStore
@@ -164,6 +167,7 @@ object CacheCoordinator : CacheUiPort {
 
     override fun submit(request: CacheRequest): CacheSubmission {
         validateUiRequest(request)
+        validateReaderReviewPrerequisite(request)
         val session = store.createSession(request.bookName)
         val task = store.addTask(session.sessionId, request)
         record(
@@ -579,6 +583,43 @@ object CacheCoordinator : CacheUiPort {
             }
         }
         validateCommon(request)
+    }
+
+    /** READER may submit REVIEW only when the primary offline artifact is already complete. */
+    private fun validateReaderReviewPrerequisite(request: CacheRequest) {
+        if (request.phase != CachePhase.REVIEW || request.source != CacheRequestSource.READER) return
+        val book = appDb.bookDao.getBook(request.bookUrl)
+            ?: error("reader review prerequisite book not found: ${request.bookUrl}")
+        val expectedKind = when {
+            book.isAudio -> CacheKind.AUDIO
+            book.isVideo -> CacheKind.VIDEO
+            else -> CacheKind.TEXT
+        }
+        require(request.kind == expectedKind) {
+            "reader review kind ${request.kind} does not match book kind $expectedKind"
+        }
+        require(request.kind != CacheKind.VIDEO) {
+            "video books do not support REVIEW artifacts"
+        }
+        val chaptersByIndex = request.units.associate { unit ->
+            unit.chapterIndex to appDb.bookChapterDao.getChapter(request.bookUrl, unit.chapterIndex)
+        }
+        require(chaptersByIndex.values.all { it != null }) {
+            "reader review prerequisite chapter is missing: ${request.bookUrl}"
+        }
+        val incomplete = request.units.mapNotNull { unit ->
+            val chapter = requireNotNull(chaptersByIndex[unit.chapterIndex])
+            val complete = when (request.kind) {
+                CacheKind.TEXT -> BodyOfflineState.isComplete(book, chapter)
+                CacheKind.AUDIO -> AudioOfflineState.isComplete(book, chapter)
+                CacheKind.VIDEO -> ExoPlayerHelper.isVideoCached(chapter.resourceUrl, book)
+            }
+            unit.takeUnless { complete }
+        }
+        require(incomplete.isEmpty()) {
+            "reader review prerequisite artifact incomplete: " +
+                incomplete.joinToString { it.chapterIndex.toString() }
+        }
     }
 
     private fun validateCommon(request: CacheRequest) {
