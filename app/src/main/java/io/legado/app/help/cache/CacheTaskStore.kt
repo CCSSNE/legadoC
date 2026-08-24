@@ -25,6 +25,7 @@ internal class CacheTaskStore(
     private val _snapshot = MutableStateFlow(CacheSnapshot())
     val snapshot: StateFlow<CacheSnapshot> = _snapshot.asStateFlow()
     private val progressByKey = LinkedHashMap<ProgressKey, CacheProgressState>()
+    private var displaySessionId: String? = null
     private var displayProgressKey: ProgressKey? = null
     private val _progress = MutableStateFlow(CacheProgressSnapshot())
     val progress: StateFlow<CacheProgressSnapshot> = _progress.asStateFlow()
@@ -353,8 +354,12 @@ internal class CacheTaskStore(
                 total = total,
                 updatedAt = System.currentTimeMillis(),
             )
-            if (displayProgressKey == null ||
-                (displayProgressKey?.sameTask(lease) == true && displayProgressKey?.unitKey == null && unitKey != null)
+            if (displaySessionId == lease.sessionId &&
+                (displayProgressKey == null ||
+                    (displayProgressKey?.sameTask(lease) == true &&
+                        displayProgressKey?.unitKey == null &&
+                        unitKey != null)
+                )
             ) {
                 displayProgressKey = key
             }
@@ -540,7 +545,9 @@ internal class CacheTaskStore(
         )
         val key = progressKey(lease, null)
         progressByKey[key] = progress
-        if (displayProgressKey == null) displayProgressKey = key
+        if (displaySessionId == lease.sessionId && displayProgressKey == null) {
+            displayProgressKey = key
+        }
         reconcileProgressLocked()
     }
 
@@ -554,7 +561,9 @@ internal class CacheTaskStore(
             total = task.units.size.toLong(),
             updatedAt = System.currentTimeMillis(),
         )
-        if (displayProgressKey == null) displayProgressKey = progressKey(lease, null)
+        if (displaySessionId == lease.sessionId && displayProgressKey == null) {
+            displayProgressKey = progressKey(lease, null)
+        }
     }
 
     private fun removeTaskProgressLocked(sessionId: String, taskId: String) {
@@ -575,9 +584,26 @@ internal class CacheTaskStore(
                         ?: true
                 } == true
         }
-        if (displayProgressKey !in progressByKey) {
-            displayProgressKey = progressByKey.keys.firstOrNull()
+        reconcileDisplaySessionLocked()
+        if (displayProgressKey !in progressByKey ||
+            displayProgressKey?.sessionId != displaySessionId
+        ) {
+            displayProgressKey = progressByKey.keys.firstOrNull { key ->
+                key.sessionId == displaySessionId
+            }
         }
+    }
+
+    /**
+     * The foreground notification represents one cache operation (a Session), never whichever
+     * task happened to report progress most recently. A task/unit can change inside that Session.
+     */
+    private fun reconcileDisplaySessionLocked() {
+        val current = displaySessionId?.let(sessions::get)
+        if (current?.tasks?.any { !CacheLifecycleRules.isTerminal(it.status) } == true) return
+        displaySessionId = sessions.values.firstOrNull { session ->
+            session.tasks.any { !CacheLifecycleRules.isTerminal(it.status) }
+        }?.sessionId
     }
 
     private fun isTerminalUnitStatus(status: CacheUnitStatus): Boolean = status in setOf(
@@ -598,6 +624,7 @@ internal class CacheTaskStore(
         reconcileProgressLocked()
         return CacheProgressSnapshot(
             states = progressByKey.values.toList(),
+            displaySessionId = displaySessionId,
             display = displayProgressKey?.let(progressByKey::get),
         )
     }
