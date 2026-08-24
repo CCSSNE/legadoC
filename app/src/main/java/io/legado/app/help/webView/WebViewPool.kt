@@ -130,6 +130,18 @@ object WebViewPool {
         }
     }
 
+    /**
+     * 丢弃仍可能带有未完成 JS/WebView 回调的实例。超时或取消后的 WebView 不能回到池中，
+     * 否则旧流水线的异步回调可能落到下一位使用者的生命周期里。
+     */
+    @Synchronized
+    fun discard(pooledWebView: PooledWebView) {
+        inUsePool.remove(pooledWebView.id)
+        idlePool.remove(pooledWebView)
+        pooledWebView.isInUse = false
+        pooledWebView.realWebView.destroy()
+    }
+
     private fun createNewWebView(): PooledWebView {
         val webView = VisibleWebView(MutableContextWrapper(appCtx))
         preInitWebView(webView)
