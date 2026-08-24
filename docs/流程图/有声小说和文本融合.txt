@@ -2,7 +2,7 @@
                    （TTS 和音频共用的会话）
                               │
                               ↓
-                    currentChapterIndex
+            currentChapterIndex= BookChapter.index
                     （现在统一是哪一章）
                               │
                               ↓
@@ -70,3 +70,13 @@ TextColumn / ImageColumn(REVIEW)
         执行原 click JS
               ↓
           评论小页
+
+【自动切章】
+上一章 / 下一章
+       ↓
+先更新 currentChapterIndex
+       ↓
+取得新的 BookChapter
+       ↓
+SourceAudio 立即解析并播放
+（不等待新的 TextChapter 加载/排版完成）
