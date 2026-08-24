@@ -34,6 +34,35 @@ data class ReviewSnapshot(
 )
 
 /**
+ * Durable result for the latest review-cache attempt of a chapter.
+ *
+ * Snapshot files only exist after a successful capture, so they cannot describe
+ * buttons that failed to capture. This sidecar keeps that result explicit for
+ * cache management and retry actions.
+ */
+data class ReviewChapterSnapshotStatus(
+    val version: Int = 1,
+    val bookUrl: String = "",
+    val chapterUrl: String = "",
+    val chapterIndex: Int = 0,
+    val chapterTitle: String = "",
+    val totalSnapshots: Int = 0,
+    val failedSnapshots: Int = 0,
+    val updatedAt: Long = 0L,
+)
+
+data class ReviewSnapshotCounts(
+    private val byChapterUrl: Map<String, Int>,
+    private val byChapterIndex: Map<Int, Int>,
+) {
+    fun forChapter(chapter: BookChapter): Int {
+        return byChapterUrl[chapter.url.trim()]
+            ?: byChapterIndex[chapter.index]
+            ?: 0
+    }
+}
+
+/**
  * 评论页快照存储。
  *
  * 存储位置：<book_cache>/<book folder>/reviews/r_<md5(chapterUrl|buttonSrc)>.json
@@ -44,6 +73,7 @@ object ReviewSnapshotStore {
 
     const val REVIEWS_DIR_NAME = "reviews"
     private const val FILE_PREFIX = "r_"
+    private const val STATUS_FILE_PREFIX = "s_"
     private const val FILE_SUFFIX = ".json"
 
     fun reviewsDir(book: Book): File {
@@ -64,9 +94,20 @@ object ReviewSnapshotStore {
         return "$FILE_PREFIX${MD5Utils.md5Encode16("${chapterIndex}|${buttonSrc.trim()}")}$FILE_SUFFIX"
     }
 
+    private fun statusFileName(chapterUrl: String): String {
+        return "$STATUS_FILE_PREFIX${MD5Utils.md5Encode16(chapterUrl.trim())}$FILE_SUFFIX"
+    }
+
     private fun reviewFiles(book: Book): Array<File> {
         return reviewsDir(book).listFiles()
             ?.filter { it.name.startsWith(FILE_PREFIX) && it.name.endsWith(FILE_SUFFIX) }
+            ?.toTypedArray()
+            ?: emptyArray()
+    }
+
+    private fun statusFiles(book: Book): Array<File> {
+        return reviewsDir(book).listFiles()
+            ?.filter { it.name.startsWith(STATUS_FILE_PREFIX) && it.name.endsWith(FILE_SUFFIX) }
             ?.toTypedArray()
             ?: emptyArray()
     }
@@ -160,6 +201,7 @@ object ReviewSnapshotStore {
                 if (matches) file.delete()
             }
         }
+        File(reviewsDir(book), statusFileName(chapter.url)).delete()
     }
 
     /**
@@ -175,12 +217,59 @@ object ReviewSnapshotStore {
             .toSet()
     }
 
+    /** Counts persisted snapshots without reading their potentially huge HTML fields. */
+    fun snapshotCounts(book: Book): ReviewSnapshotCounts {
+        val byChapterUrl = hashMapOf<String, Int>()
+        val byChapterIndex = hashMapOf<Int, Int>()
+        reviewFiles(book).forEach { file ->
+            readMetadata(file)?.let { snapshot ->
+                if (snapshot.chapterUrl.isNotBlank()) {
+                    val key = snapshot.chapterUrl.trim()
+                    byChapterUrl[key] = (byChapterUrl[key] ?: 0) + 1
+                } else {
+                    byChapterIndex[snapshot.chapterIndex] =
+                        (byChapterIndex[snapshot.chapterIndex] ?: 0) + 1
+                }
+            }
+        }
+        return ReviewSnapshotCounts(byChapterUrl, byChapterIndex)
+    }
+
+    /** Latest completed capture result for every chapter that has been attempted. */
+    fun chapterStatuses(book: Book): List<ReviewChapterSnapshotStatus> {
+        return statusFiles(book).mapNotNull(::readChapterStatus)
+    }
+
+    fun isChapterStatusFile(file: File): Boolean {
+        return file.name.startsWith(STATUS_FILE_PREFIX) && file.name.endsWith(FILE_SUFFIX)
+    }
+
+    fun readChapterStatus(file: File): ReviewChapterSnapshotStatus? {
+        if (!isChapterStatusFile(file)) return null
+        return runCatching {
+            file.bufferedReader(Charsets.UTF_8).use { reader ->
+                GSON.fromJson(reader, ReviewChapterSnapshotStatus::class.java)
+            }
+        }.getOrNull()?.takeIf { it.chapterUrl.isNotBlank() && it.totalSnapshots > 0 }
+    }
+
+    /** Persists status independently of the successful snapshot payloads. */
+    fun putChapterStatus(book: Book, status: ReviewChapterSnapshotStatus) {
+        require(status.chapterUrl.isNotBlank()) { "review status requires chapterUrl" }
+        require(status.totalSnapshots > 0) { "review status requires totalSnapshots" }
+        val dir = reviewsDir(book)
+        if (!dir.exists()) check(dir.mkdirs()) { "cannot create review status directory: ${dir.absolutePath}" }
+        File(dir, statusFileName(status.chapterUrl)).bufferedWriter(Charsets.UTF_8).use { writer ->
+            GSON.toJson(status, writer)
+        }
+    }
+
     /** 按原文件字节流导出，避免“读取所有快照 -> 重新序列化所有快照”的全量内存占用。 */
     fun copyAllTo(book: Book, targetDir: File) {
         check(targetDir.isDirectory || targetDir.mkdirs()) {
             "无法创建评论快照导出目录: ${targetDir.absolutePath}"
         }
-        reviewFiles(book).forEach { source ->
+        (reviewFiles(book).asList() + statusFiles(book).asList()).forEach { source ->
             File(targetDir, source.name).outputStream().buffered().use { output ->
                 source.inputStream().buffered().use { input ->
                     input.copyTo(output)

@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="20dp"
+    android:paddingTop="12dp"
+    android:paddingEnd="16dp"
+    android:paddingBottom="12dp">
+
+    <TextView
+        android:id="@+id/tv_chapter"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textColor="@color/primaryText"
+        android:textSize="14sp" />
+
+    <TextView
+        android:id="@+id/tv_progress"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="12dp"
+        android:gravity="end"
+        android:textColor="@color/secondaryText"
+        android:textSize="13sp" />
+
+    <TextView
+        android:id="@+id/tv_state"
+        android:layout_width="wrap_content"
+        android:layout_height="26dp"
+        android:layout_marginStart="10dp"
+        android:background="@drawable/bg_discover_embedded_chip"
+        android:gravity="center"
+        android:minWidth="54dp"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:textColor="@color/secondaryText"
+        android:textSize="12sp" />
+
+    <io.legado.app.ui.widget.text.AccentTextView
+        android:id="@+id/btn_retry"
+        android:layout_width="wrap_content"
+        android:layout_height="34dp"
+        android:layout_marginStart="8dp"
+        android:gravity="center"
+        android:minWidth="52dp"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:text="@string/cache_manage_review_retry"
+        android:textSize="13sp"
+        android:visibility="gone" />
+
+</LinearLayout>

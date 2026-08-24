@@ -492,6 +492,20 @@ object ReviewSnapshotManager {
                 failedButtons++
             }
         }
+        if (snapshotButtons.isNotEmpty()) {
+            ReviewSnapshotStore.putChapterStatus(
+                book,
+                ReviewChapterSnapshotStatus(
+                    bookUrl = book.bookUrl,
+                    chapterUrl = chapter.url,
+                    chapterIndex = chapter.index,
+                    chapterTitle = chapter.title,
+                    totalSnapshots = snapshotButtons.size,
+                    failedSnapshots = failedButtons,
+                    updatedAt = System.currentTimeMillis(),
+                )
+            )
+        }
         // 该章所有需要刷新的评论按钮全部成功处理，才清除“评论待刷新”持久标记
         if (force && !hasFailure) {
             clearUserRefresh(bookUrl, chapterIndex)

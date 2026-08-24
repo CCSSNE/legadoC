@@ -162,6 +162,56 @@ object CacheCoordinator : CacheUiPort {
         ReviewSnapshotManager.markUserRefresh(bookUrl, chapterIndex)
     }
 
+    /** Cache-management retry boundary for one chapter's failed review snapshots. */
+    fun retryReviewSnapshots(book: Book, chapter: BookChapter): Boolean {
+        return retryReviewSnapshots(book, listOf(chapter)) == 1
+    }
+
+    /**
+     * Retries failed review snapshots as one Coordinator task. Existing owners
+     * keep their unit; the durable refresh mark makes them perform a forced
+     * capture instead of creating competing work for the same chapter.
+     */
+    fun retryReviewSnapshots(book: Book, chapters: List<BookChapter>): Int {
+        if (!AppConfig.syncCacheReview || book.isLocal) return 0
+        val requested = chapters
+            .asSequence()
+            .filterNot { it.isVolume }
+            .distinctBy { it.index }
+            .toList()
+        if (requested.isEmpty()) return 0
+        synchronized(readerReviewLock) {
+            val activeIndexes = snapshot.value.sessions.asSequence()
+                .flatMap { it.tasks.asSequence() }
+                .filter {
+                    it.kind == CacheKind.TEXT &&
+                        it.phase == CachePhase.REVIEW &&
+                        it.bookUrl == book.bookUrl &&
+                        !CacheLifecycleRules.isTerminal(it.status)
+                }
+                .flatMap { task -> task.units.asSequence().map { it.key.chapterIndex } }
+                .toHashSet()
+            requested.forEach { chapter ->
+                ReviewSnapshotManager.markUserRefresh(book.bookUrl, chapter.index)
+            }
+            val unowned = requested.filterNot { it.index in activeIndexes }
+            if (unowned.isNotEmpty()) {
+                submit(
+                    CacheRequest(
+                        source = CacheRequestSource.READER,
+                        kind = CacheKind.TEXT,
+                        phase = CachePhase.REVIEW,
+                        bookUrl = book.bookUrl,
+                        bookName = book.name,
+                        units = unowned.map { CacheUnitKey(book.bookUrl, it.index) },
+                        reviewEnabled = true,
+                    )
+                )
+            }
+            return requested.size
+        }
+    }
+
     private fun commandAll(command: (CacheSubmission) -> Boolean): Int {
         val submissions = snapshot.value.sessions
             .flatMap { it.tasks }
