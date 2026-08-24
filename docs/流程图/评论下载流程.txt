@@ -1,0 +1,72 @@
+ReviewCacheService
+│
+├─ 章节消费者
+│   当前固定：1
+│   → 同一时间只消费 1 个章节任务
+│
+▼
+ReviewSnapshotManager
+│
+├─ mapAsyncIndexed(2)
+├─ 当前章节按钮并发上限 = 2
+│     ├─ 按钮 A 协程
+│     └─ 按钮 B 协程
+│
+├─ 全局 Capture Pipeline 上限 = 2
+├─ CAPTURE_PIPELINE_CONCURRENCY = 2
+├─ activePipelines
+├─ pipelineLock
+└─ withPipelinePermit()
+      ├─ Permit 1 → Capture A
+      └─ Permit 2 → Capture B
+                │
+                ▼
+       URL解析 Resolve
+       【每条 Capture 独立】
+                │
+                ▼
+       PAGE 加载 / 展开
+       【A、B 可以并行】
+                │
+                ▼
+        HEAVY_STAGE_WAIT
+       【最多一条在等 Heavy】
+                │
+                ▼
+        ┌────────────────┐
+        │ Semaphore(1)   │
+        └────────────────┘
+                │
+       Heavy Capture 并发
+          当前固定 = 1
+                │
+                ▼
+        HEAVY_STAGE_WORK
+                │
+                ├─ 收集资源 URL
+                │
+                ├─ 资源网络下载
+                │   【并发数 = 设置项】
+                │   默认：8
+                │   可调：1～32
+                │
+                │   ├─ HTTP 资源1 ─┐
+                │   ├─ HTTP 资源2 ─┤
+                │   ├─ HTTP 资源3 ─┤
+                │   └─ ...最多 N 路 ┘
+                │
+                │   ↓ 32KB buffer 流式写
+                │
+                ├─ 临时文件暂存
+                │   【避免 N 份完整 byte[] 同驻内存】
+                │
+                ├─ 所有资源下载完成
+                │
+                ├─ 逐个读取临时文件
+                ├─ 逐个 Base64 / CSS 转换
+                ├─ DOM apply
+                ├─ outerHTML
+                └─ decode
+                │
+                ▼
+          Snapshot 落盘
