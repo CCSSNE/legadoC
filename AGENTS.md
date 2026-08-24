@@ -178,6 +178,8 @@ $versionName = '3.26.<MMddHH>' # <MMddHH> uses UTC; appC automatically appends c
 - 2026-08-16：新增被 XML 引用的字符串只写入 `values-zh` 会在 `appC` 资源链接时被移除，最终报“resource string not found”。所有新增字符串必须先定义在默认 `values/strings.xml`，再补充语言覆盖；首次链接失败包不产出，补齐默认资源后以同一版本重编译。
 - 2026-08-19：`assembleAppC` 增量 daemon 编译在 `compileAppCJavaWithJavac` 阶段报“Gradle build daemon disappeared unexpectedly”，`hs_err_pid*.log` 显示 JVM 原生内存不足（native OOM，malloc 失败）。根因是系统物理内存/交换空间不足，不是源码错误。清理残留 Gradle/Kotlin/Java 进程后，按冷编译参数 `--no-daemon --max-workers=1 -Dkotlin.incremental=false -Dksp.incremental=false -Dkotlin.compiler.execution.strategy=in-process` 全量重编译成功。本机内存压力下再次构建应直接采用该冷编译参数，不要盲目重跑 daemon 增量编译。
 - 2026-08-22：另一会话在同一工作区运行 Gradle 时并行启动 `assembleAppC`，`processAppCResources` 报 `Couldn't delete ...\R.jar` 失败（跨进程文件锁，非源码错误）。同一检出目录同时只允许一个构建；正式编译前必须确认无其他活跃 `GradleWrapperMain` / 临时编译脚本，发现冲突先协调等待，不得擅自杀死不属于本次构建的进程。另外：经 PowerShell 管道截断（如 `Select-Object -First N`）读取 `.bat` 包装工具输出会污染 `$LASTEXITCODE`，校验退出码必须完整执行后读取。
+- 2026-08-24：Kotlin 字符串模板 `$total章` 报 `Unresolved reference 'total章'`——Kotlin 标识符允许 Unicode 字母，模板变量后紧跟 CJK 字符会被并入标识符解析；非 ASCII 后缀前必须用 `${var}` 显式终止引用。
+- 2026-08-24：用 PowerShell 字符串拼接生成后台构建 `.bat` 时，含拼接表达式的行被拆成多行、重定向路径断裂，进程秒退且无任何日志文件。此类"启动器损坏"一律按未启动处理，不得等待或误判为编译卡死；生成脚本改用纯字面量 here-string（长路径经 `%VAR%` 间接引用），且必须先回读校验行数与内容再 `Start-Process` 启动。
 
 ### 产物验证
 
@@ -247,6 +249,6 @@ uiautomator2 / ADB
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- `3.26.082400c` / `10720`，2026-08-24（UTC），`own` 主线（基于 `223c21e` 编译：fix(cache) resolve compile errors in diagnostics integration；版本号在先前交付 `10719` 之上单调递增，与 10719 同 UTC 小时故版本名同名，仅展示用，升级判断以 versionCode 为准）。用户明确要求正式编译其新提交（`8dbc144`、`33c9b76`）。首次编译在 `compileAppCKotlin` 失败，四处错误同源于诊断子系统集成代码：① `CacheOperationDiagnostics.begin()` 调用嵌套类 `Operation` 的 `private emit()`（Kotlin 嵌套类私有成员对外部类不可见）——改用类内公开入口 `mark()`；②③ public 函数 `ReviewSnapshotCapture.capture` / `ReviewSnapshotStore.put` 暴露 internal 类型 `CacheOperationDiagnostics.Context` 参数——两函数仅本模块调用，改为 `internal`；④ `ReviewSnapshotCapture.kt:525` 数据类闭合后残留孤立 `)`——删除。修复提交为 `223c21e`，以同一 versionCode/versionName 重编译成功（BUILD SUCCESSFUL in 4m 11s，退出码 0）。`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.082400c` / `10720`、中文名 `阅读 C`（zh locale）、架构 `arm64-v8a`、compileSdk/targetSdk 36；`apksigner` 完整执行退出码 0（仅 META-INF 未签名条目警告，可接受）。产物文件名原为 `legado_app_3.26.082400_10720.apk`，内部元数据正确，按规则仅修正文件名末尾的 `c`，未为此重编译。构建期间分支无新提交（HEAD 保持 `223c21e`），无需重编。收尾无残留 java 进程，守护进程已停。基线记录提交正常推送；未安装到模拟器、未做正式回归。
+- `3.26.082401c` / `10721`，2026-08-24（UTC），`own` 主线（基于 `6b03e9f` 编译；版本号在先前交付 `10720` 之上单调递增）。用户明确要求正式编译。首次编译在 `compileAppCKotlin` 失败：`CacheNotificationBridge.kt:249` 的字符串模板 `$total章` 被解析为标识符 `total章`（Kotlin 标识符接受 Unicode 字母），修复为 `${total}章`，提交 `3edf1c5`。另发现另一会话在工作区遗留未提交的 `docs/重构下载架构.md` 重写（构建启动后 5 秒写入），经用户确认由本会话代为提交（`6b03e9f`）后基于该 HEAD 重编译，同一 versionCode/versionName（失败包未产出、未交付），BUILD SUCCESSFUL in 3m 7s，退出码 0。`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.082401c` / `10721`、中文名 `阅读 C`（zh locale）、架构 `arm64-v8a`、compileSdk/targetSdk 36；`apksigner` 完整执行退出码 0（仅 META-INF 未签名条目警告，可接受）。产物文件名原为 `legado_app_3.26.082401_10721.apk`，内部元数据正确，按规则仅改名补 `c` 为 `legado_app_3.26.082401c_10721.apk`，未为此重编译。构建期间分支无新提交（HEAD 保持 `6b03e9f`）。收尾 `gradlew --stop`，无残留 java 进程。基线记录提交正常推送；未安装到模拟器、未做正式回归。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
