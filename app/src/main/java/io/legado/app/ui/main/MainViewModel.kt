@@ -22,11 +22,7 @@ import io.legado.app.help.book.isUpError
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.sync
 import io.legado.app.help.cache.CacheCoordinator
-import io.legado.app.help.cache.CacheKind
-import io.legado.app.help.cache.CachePhase
-import io.legado.app.help.cache.CacheRequest
 import io.legado.app.help.cache.CacheRequestSource
-import io.legado.app.help.cache.CacheUnitKey
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.ReadBook
 import io.legado.app.model.webBook.WebBook
@@ -207,7 +203,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
             appDb.bookChapterDao.delByBook(bookUrl)
             appDb.bookChapterDao.insert(*toc.toTypedArray())
             ReadBook.onChapterListUpdated(book)
-            addDownload(source, book)
+            addDownload(book)
         }.onFailure {
             currentCoroutineContext().ensureActive()
             AppLog.put("${book.name} 更新目录失败\n${it.localizedMessage}", it)
@@ -234,25 +230,20 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
     }
 
     @Synchronized
-    private fun addDownload(source: BookSource, book: Book) {
-        if (AppConfig.preDownloadNum == 0) return
-        val endIndex = min(
-            book.totalChapterNum - 1,
-            book.durChapterIndex.plus(AppConfig.preDownloadNum)
+    private fun addDownload(book: Book) {
+        val reviewEnabled = AppConfig.syncCacheReview && AppConfig.autoDownloadReview
+        if (AppConfig.preDownloadNum == 0 && !reviewEnabled) return
+        val chapterIndexes = CacheCoordinator.automaticChapterIndexes(
+            startIndex = book.durChapterIndex,
+            chapterCount = book.totalChapterNum,
+            preDownloadCount = AppConfig.preDownloadNum,
         )
-        if (endIndex < book.durChapterIndex) return
-        CacheCoordinator.submit(
-            CacheRequest(
-                source = CacheRequestSource.AUTO_PRECACHE,
-                kind = CacheKind.TEXT,
-                phase = CachePhase.BODY,
-                bookUrl = book.bookUrl,
-                bookName = book.name,
-                units = (book.durChapterIndex..endIndex).map {
-                    CacheUnitKey(book.bookUrl, it)
-                },
-                reviewEnabled = AppConfig.syncCacheReview,
-            )
+        if (chapterIndexes.isEmpty()) return
+        CacheCoordinator.submitTextDownload(
+            book = book,
+            chapterIndexes = chapterIndexes,
+            source = CacheRequestSource.AUTO_PRECACHE,
+            reviewEnabled = reviewEnabled,
         )
     }
 

@@ -42,10 +42,8 @@ import io.legado.app.help.cache.CacheKind
 import io.legado.app.help.cache.CacheLifecycle
 import io.legado.app.help.cache.CacheLifecycleRules
 import io.legado.app.help.cache.CachePhase
-import io.legado.app.help.cache.CacheRequest
 import io.legado.app.help.cache.CacheRequestSource
 import io.legado.app.help.cache.CacheSubmission
-import io.legado.app.help.cache.CacheUnitKey
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
@@ -274,16 +272,10 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
 
     private fun submitBodyCache(book: Book, start: Int, end: Int) {
         if (end < start) return
-        CacheCoordinator.submit(
-            CacheRequest(
-                source = CacheRequestSource.CACHE_ACTIVITY,
-                kind = CacheKind.TEXT,
-                phase = CachePhase.BODY,
-                bookUrl = book.bookUrl,
-                bookName = book.name,
-                units = (start..end).map { CacheUnitKey(book.bookUrl, it) },
-                reviewEnabled = AppConfig.syncCacheReview,
-            )
+        CacheCoordinator.submitTextDownload(
+            book = book,
+            chapterIndexes = start..end,
+            source = CacheRequestSource.CACHE_ACTIVITY,
         )
     }
 

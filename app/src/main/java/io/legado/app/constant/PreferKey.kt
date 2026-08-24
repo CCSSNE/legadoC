@@ -104,6 +104,7 @@ object PreferKey {
     const val aiModelList = "aiModelList"
     const val enableReview = "enableReview"
     const val syncCacheReview = "syncCacheReview"
+    const val autoDownloadReview = "autoDownloadReview"
     const val cacheReviewAvatars = "cacheReviewAvatars"
     const val cacheReviewImages = "cacheReviewImages"
     const val compressReviewAvatars = "compressReviewAvatars"
