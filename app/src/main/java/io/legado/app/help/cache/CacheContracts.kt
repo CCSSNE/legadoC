@@ -133,6 +133,13 @@ data class CacheTaskState(
     val updatedAt: Long = 0L,
 )
 
+/** Units that may be handed to an executor after submit, resume, or process recovery. */
+internal fun CacheTaskState.runnableUnits(): List<CacheUnitState> = units.filter { unit ->
+    unit.status == CacheUnitStatus.PENDING ||
+        unit.status == CacheUnitStatus.RUNNING ||
+        unit.status == CacheUnitStatus.REVIEW_ELIGIBLE
+}
+
 data class CacheSessionState(
     val sessionId: String,
     val title: String,
