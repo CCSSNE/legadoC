@@ -1523,6 +1523,8 @@
     <string name="export_bookmarks">Export bookmarks</string>
     <string name="sync_cache_review">Cache comments</string>
     <string name="sync_cache_review_summary">After body caching, fetch real comment-page snapshots in the background; comment failures never affect body content</string>
+    <string name="auto_download_review">Download chapter comments on refresh</string>
+    <string name="auto_download_review_summary">After every chapter body in the current predownload window finishes, run the same body-to-comment download task as the Download button</string>
     <string name="cache_review_avatars">Cache comment avatars</string>
     <string name="cache_review_avatars_summary">Save commenter avatars for offline comment snapshots</string>
     <string name="cache_review_images">Cache comment images</string>

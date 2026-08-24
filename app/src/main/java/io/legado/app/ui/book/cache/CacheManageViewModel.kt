@@ -35,7 +35,6 @@ import io.legado.app.help.cache.CachePhase
 import io.legado.app.help.cache.CacheRequest
 import io.legado.app.help.cache.CacheRequestSource
 import io.legado.app.help.cache.CacheUnitKey
-import io.legado.app.help.config.AppConfig
 import io.legado.app.help.review.ReviewSnapshotStore
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.AnalyzeUrl.Companion.getMediaRequest
@@ -338,16 +337,10 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
             .sorted()
             .toList()
         if (indexes.isEmpty()) return 0
-        CacheCoordinator.submit(
-            CacheRequest(
-                source = CacheRequestSource.CACHE_MANAGE,
-                kind = CacheKind.TEXT,
-                phase = CachePhase.BODY,
-                bookUrl = book.bookUrl,
-                bookName = book.name,
-                units = indexes.map { CacheUnitKey(book.bookUrl, it) },
-                reviewEnabled = AppConfig.syncCacheReview,
-            )
+        CacheCoordinator.submitTextDownload(
+            book = book,
+            chapterIndexes = indexes,
+            source = CacheRequestSource.CACHE_MANAGE,
         )
         return indexes.size
     }

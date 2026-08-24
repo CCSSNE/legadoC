@@ -13,7 +13,6 @@ import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.CacheManifestHelper
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.cache.CacheOperationDiagnostics
-import io.legado.app.help.cache.ReviewWorkerAdapter
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.cache.CacheWorkerLease
 import io.legado.app.help.coroutine.CompositeCoroutine
@@ -210,6 +209,16 @@ object CacheBook {
 
     internal fun hasActiveBook(bookUrl: String): Boolean = models[bookUrl]?.hasWork() == true
 
+    /** Hand the book from direct reader loads to the Coordinator without keeping dead retries. */
+    @Synchronized
+    internal fun prepareForCoordinator(bookUrl: String): Boolean {
+        val model = models[bookUrl] ?: return true
+        if (!model.canDetachReaderQueue()) return false
+        model.stop()
+        models.remove(bookUrl, model)
+        return true
+    }
+
     class CacheBookModel(var bookSource: BookSource, var book: Book) {
 
         private val waitDownloadSet = linkedSetOf<Int>()
@@ -229,6 +238,11 @@ object CacheBook {
         @Synchronized
         internal fun isLoading(): Boolean {
             return isLoading
+        }
+
+        @Synchronized
+        internal fun canDetachReaderQueue(): Boolean {
+            return !isLoading && onDownloadSet.isEmpty()
         }
 
         @Synchronized
@@ -378,11 +392,9 @@ object CacheBook {
                 return
             }
             if (BookHelp.hasImageContent(book, chapter)) {
-                // 正文已缓存（图片也齐），无任何正文工作在进行：
-                // 用户重新缓存该章，直接补/覆盖评论（force）
+                // 正文与图片均已完整，本章 BODY 直接成功。
                 onSuccess(chapter, executionLease)
                 waitDownloadSet.remove(chapterIndex)
-                reviewEnqueue(book, chapter, force = true, executionLease = executionLease)
                 onFinally(executionLease)
                 return
             }
@@ -401,7 +413,7 @@ object CacheBook {
                         "BODY_IMAGE_REPAIR",
                     )
                 }
-                // 正文已缓存但缺图片：先补完图片、成功状态结束，再入队补评论（force）
+                // 正文已缓存但缺图片：先补完图片，再结束本章 BODY。
                 Coroutine.async(scope, context, executeContext = context) {
                     BookHelp.getContent(book, chapter)?.let { content ->
                         BookHelp.saveImages(bookSource, book, chapter, content, 1)
@@ -413,7 +425,6 @@ object CacheBook {
                         "BODY_IMAGES_SAVED",
                     )
                     onSuccess(chapter, executionLease)
-                    reviewEnqueue(book, chapter, force = true, executionLease = executionLease)
                 }.onError {
                     imageTrace?.fail(it)
                     onPreError(chapter, it)
@@ -457,7 +468,7 @@ object CacheBook {
                     "BODY_CONTENT_SAVED",
                 )
                 onSuccess(chapter, executionLease)
-                downloadFinish(chapter, content, executionLease = executionLease)
+                downloadFinish(chapter, content)
             }.onError {
                 bodyTrace?.fail(it)
                 onPreError(chapter, it)
@@ -467,8 +478,6 @@ object CacheBook {
                 downloadFinish(
                     chapter,
                     "获取正文失败\n${it.localizedMessage}",
-                    success = false,
-                    executionLease = executionLease,
                 )
             }.onCancel {
                 bodyTrace?.cancelled()
@@ -490,8 +499,7 @@ object CacheBook {
                 onSuccess(chapter)
                 ReadBook.downloadedChapters.add(chapter.index)
                 ReadBook.downloadFailChapters.remove(chapter.index)
-                // 注意：这里不提前入队评论——downloadAwait 调用方拿到正文后
-                // 还要做正文排版/刷新状态收尾，由 ReadBook 在真正完成后入队
+                // downloadAwait 只负责正文；评论由完整的 Coordinator BODY→REVIEW 会话处理。
                 return content
             } catch (e: Exception) {
                 if (e is CancellationException) {
@@ -534,65 +542,29 @@ object CacheBook {
                 onError(chapter, it)
                 ReadBook.downloadFailChapters[chapter.index] =
                     (ReadBook.downloadFailChapters[chapter.index] ?: 0) + 1
-                downloadFinish(chapter, "获取正文失败\n${it.localizedMessage}", resetPageOffset, success = false)
+                downloadFinish(chapter, "获取正文失败\n${it.localizedMessage}", resetPageOffset)
             }.onCancel {
                 onCancel(chapter.index)
-                downloadFinish(chapter, "download canceled", resetPageOffset, true, success = false)
+                downloadFinish(chapter, "download canceled", resetPageOffset, canceled = true)
             }.onFinally {
             }.start()
         }
 
         /**
-         * 该章正文全部完成（文本/图片/成功状态/正文刷新状态）之后的统一评论入队出口。
-         * 只允许在各下载路径的成功收尾调用；评论任务本身低优先级、失败不影响正文。
-         */
-        private fun reviewEnqueue(
-            book: Book,
-            chapter: BookChapter,
-            force: Boolean,
-            executionLease: CacheWorkerLease? = null,
-        ) {
-            if (executionLease != null) return
-            if (io.legado.app.help.cache.CacheBodyWorkerRegistry.isCoordinatorManaged(book.bookUrl)) {
-                return
-            }
-            ReviewWorkerAdapter.enqueueReaderReviewIfEnabled(book, chapter, force = force)
-        }
-
-        /**
-         * 下载收尾的统一出口：
-         * - 当前阅读中的书：正文刷新（异步排版 job 完成、callBack 通知后）真正结束，
-         *   contentLoadFinish 的 success 回调才入队评论；
-         * - 非当前书（批量缓存等）：无排版流程，正文下载完成即入队；
-         * - 失败/取消不传 success，绝不入队评论。
+         * 把正文下载结果交回当前阅读会话；评论只由 Coordinator 的后续阶段处理。
          */
         private fun downloadFinish(
             chapter: BookChapter,
             content: String,
             resetPageOffset: Boolean = false,
             canceled: Boolean = false,
-            success: Boolean = true,
-            executionLease: CacheWorkerLease? = null,
         ) {
-            val enqueueAfterFinish = {
-                reviewEnqueue(
-                    book, chapter,
-                    force = io.legado.app.help.review.ReviewSnapshotManager
-                        .isUserRefreshActive(book.bookUrl, chapter.index),
-                    executionLease = executionLease,
-                )
-            }
             if (ReadBook.book?.bookUrl == book.bookUrl) {
                 ReadBook.contentLoadFinish(
                     book, chapter, content,
                     resetPageOffset = resetPageOffset,
                     canceled = canceled,
-                    success = {
-                        if (success && !canceled) enqueueAfterFinish()
-                    }
                 )
-            } else if (success && !canceled) {
-                enqueueAfterFinish()
             }
         }
 

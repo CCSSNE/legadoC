@@ -1,7 +1,5 @@
 package io.legado.app.help.cache
 
-import io.legado.app.data.entities.Book
-import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.review.ReviewResourceEpoch
 import io.legado.app.help.review.ReviewSnapshotManager
 import io.legado.app.data.appDb
@@ -12,17 +10,6 @@ import java.util.concurrent.ConcurrentHashMap
 internal class ReviewWorkerAdapter(
     private val workerPort: CacheWorkerPort,
 ) {
-
-    companion object {
-        /** Coordinator entry for reader-triggered review caching. */
-        internal fun enqueueReaderReviewIfEnabled(
-            book: Book,
-            chapter: BookChapter,
-            force: Boolean = false,
-        ): Boolean {
-            return CacheCoordinator.submitReaderReview(book, chapter, force)
-        }
-    }
 
     init {
         CacheReviewWorkerRegistry.bind(workerPort)
