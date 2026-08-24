@@ -1204,7 +1204,7 @@ object ReviewSnapshotCapture {
                     }
                 }
             } catch (error: Throwable) {
-                futures.forEach { it.cancel(true) }
+                futures.forEach { (_, future) -> future.cancel(true) }
                 cancelActiveResourceCalls()
                 throw error
             } finally {

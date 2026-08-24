@@ -117,7 +117,7 @@ class BookGroupSelectDialog() : BaseBottomSheetDialogFragment(R.layout.dialog_bo
         if (updatedBooks.isNotEmpty()) {
             appDb.bookDao.update(*updatedBooks.toTypedArray())
         }
-        shortcutIds.mapNotNull { shortcutId ->
+        shortcutIds.toList().mapNotNull { shortcutId ->
             appDb.bookShortcutDao.get(shortcutId)?.let {
                 it.copy(group = it.group or groupId)
             }
