@@ -792,6 +792,8 @@
     <string name="plus">加</string>
     <string name="system_typeface">系统内置字体样式</string>
     <string name="delete_book_file">删除源文件</string>
+    <string name="add_book_shortcut">添加快捷方式</string>
+    <string name="delete_book_body">删除本体</string>
     <string name="delete_book_cache">删除缓存</string>
     <string name="text_default">默认</string>
     <string name="default1">预设一</string>
