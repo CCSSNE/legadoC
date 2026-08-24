@@ -295,7 +295,7 @@ abstract class BaseReadBookActivity :
                         val first = start - 1
                         val last = end - 1
                         if (last >= first) {
-                            CacheCoordinator.submitTextDownload(
+                            CacheCoordinator.submitBookDownload(
                                 book = book,
                                 chapterIndexes = first..last,
                                 source = CacheRequestSource.READER,
