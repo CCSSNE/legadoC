@@ -70,7 +70,7 @@ internal object CacheOperationDiagnostics {
             activeKey = key,
             activeAtStart = active,
             sampled = sequence <= SAMPLE_FIRST || sequence % SAMPLE_EVERY == 0L,
-        ).also { it.emit("${operation}_START", metrics, active) }
+        ).also { it.mark("${operation}_START", metrics) }
     }
 
     class Operation internal constructor(
