@@ -73,6 +73,13 @@ internal class MediaWorkerAdapter(
             },
             onChapterFinished = chapterFinished,
             onFinished = finished,
+            diagnostics = CacheOperationDiagnostics.Context(
+                domain = CacheOperationDiagnostics.Domain.MEDIA,
+                sessionId = lease.sessionId,
+                taskId = lease.taskId,
+                generation = lease.generation,
+                unitCount = validKeys.size,
+            ),
         )
         if (!started) CacheMediaWorkerRegistry.fail(lease, "media task was already active")
     }

@@ -5,6 +5,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.help.book.isVideo
+import io.legado.app.help.cache.CacheOperationDiagnostics
 import io.legado.app.utils.ConvertUtils
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,6 +46,7 @@ internal object AudioCacheTaskManager {
         onChapterResolved: ((BookChapter, ExoPlayerHelper.MediaRequest) -> Unit)? = null,
         onChapterFinished: ((BookChapter, Boolean, String?) -> Unit)? = null,
         onFinished: (() -> Unit)? = null,
+        diagnostics: CacheOperationDiagnostics.Context? = null,
     ): Boolean {
         if (chapters.isEmpty()) return false
         val existing = _states.value[book.bookUrl]
@@ -58,6 +60,7 @@ internal object AudioCacheTaskManager {
             onChapterResolved = onChapterResolved,
             onChapterFinished = onChapterFinished,
             onFinished = onFinished,
+            diagnostics = diagnostics,
             totalChapters = chapters.size
         )
         if (requests.putIfAbsent(book.bookUrl, request) != null) return false
@@ -111,6 +114,7 @@ internal object AudioCacheTaskManager {
             var knownTotalBytes = 0L
             var speedBytes = 0L
             var speedWindowStart = System.currentTimeMillis()
+            var activeTrace: CacheOperationDiagnostics.Operation? = null
             try {
                 chapters.forEach { chapter ->
                     if (cancelFlag.get()) throw CancellationException("cancelled")
@@ -134,11 +138,27 @@ internal object AudioCacheTaskManager {
                             )
                         )
                     }
+                    val chapterDiagnostics = request.diagnostics?.forChapter(chapter.index)
+                    activeTrace = chapterDiagnostics?.let {
+                        CacheOperationDiagnostics.begin(it, "MEDIA_RESOLVE")
+                    }
                     val mediaRequest = runBlocking {
                         request.resolver(book, chapter)
                     }
+                    activeTrace?.done(
+                        CacheOperationDiagnostics.Metrics(outputChars = mediaRequest.url.length),
+                        "MEDIA_URL_READY",
+                    )
+                    activeTrace = null
                     request.onChapterResolved?.invoke(chapter, mediaRequest)
                     var chapterKnownLength = 0L
+                    activeTrace = chapterDiagnostics?.let {
+                        CacheOperationDiagnostics.begin(
+                            it,
+                            "MEDIA_CACHE",
+                            CacheOperationDiagnostics.Metrics(inputChars = mediaRequest.url.length),
+                        )
+                    }
                     ExoPlayerHelper.cacheMedia(
                         request = mediaRequest,
                         useVideoCache = book.isVideo,
@@ -183,6 +203,11 @@ internal object AudioCacheTaskManager {
                         },
                         shouldCancel = { cancelFlag.get() }
                     )
+                    activeTrace?.done(
+                        CacheOperationDiagnostics.Metrics(outputBytes = chapterKnownLength),
+                        "MEDIA_CACHE_WRITTEN",
+                    )
+                    activeTrace = null
                     request.onChapterFinished?.invoke(chapter, true, null)
                     activeChapter = null
                     completed += 1
@@ -217,6 +242,8 @@ internal object AudioCacheTaskManager {
                 }
                 finalStatus = CacheTaskStatus.COMPLETED
             } catch (e: CancellationException) {
+                activeTrace?.cancelled()
+                activeTrace = null
                 finalStatus = if (pausingBookUrls.contains(book.bookUrl)) {
                     CacheTaskStatus.PAUSED
                 } else {
@@ -237,6 +264,8 @@ internal object AudioCacheTaskManager {
                     )
                 }
             } catch (e: Exception) {
+                activeTrace?.fail(e)
+                activeTrace = null
                 activeChapter?.let { chapter ->
                     request.onChapterFinished?.invoke(chapter, false, e.localizedMessage)
                 }
@@ -258,6 +287,7 @@ internal object AudioCacheTaskManager {
                     )
                 }
             } finally {
+                activeTrace?.cancelled()
                 val shouldResume = finalStatus == CacheTaskStatus.PAUSED &&
                     pendingResumeBookUrls.remove(book.bookUrl)
                 val remainingChapters = if (shouldResume) {
@@ -429,6 +459,7 @@ private data class AudioCacheTaskRequest(
     val onChapterResolved: ((BookChapter, ExoPlayerHelper.MediaRequest) -> Unit)?,
     val onChapterFinished: ((BookChapter, Boolean, String?) -> Unit)?,
     val onFinished: (() -> Unit)?,
+    val diagnostics: CacheOperationDiagnostics.Context?,
     val totalChapters: Int
 )
 

@@ -3,6 +3,7 @@ package io.legado.app.help.review
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.cache.CacheOperationDiagnostics
 import io.legado.app.utils.GSON
 import io.legado.app.utils.MD5Utils
 import com.google.gson.stream.JsonReader
@@ -70,23 +71,43 @@ object ReviewSnapshotStore {
             ?: emptyArray()
     }
 
-    fun put(book: Book, snapshot: ReviewSnapshot) {
+    fun put(
+        book: Book,
+        snapshot: ReviewSnapshot,
+        diagnostics: CacheOperationDiagnostics.Context? = null,
+    ) {
         if (snapshot.html.isBlank()) return
+        val trace = CacheOperationDiagnostics.begin(
+            diagnostics?.forChapter(snapshot.chapterIndex)
+                ?: CacheOperationDiagnostics.Context(
+                    domain = CacheOperationDiagnostics.Domain.REVIEW,
+                    chapterIndex = snapshot.chapterIndex,
+                ),
+            "SNAPSHOT_WRITE",
+            CacheOperationDiagnostics.Metrics(inputChars = snapshot.html.length),
+        )
         val dir = reviewsDir(book)
-        if (!dir.exists()) dir.mkdirs()
-        val name = if (snapshot.chapterUrl.isNotBlank()) {
-            fileName(snapshot.chapterUrl, snapshot.buttonSrc)
-        } else {
-            legacyFileName(snapshot.chapterIndex, snapshot.buttonSrc)
+        try {
+            if (!dir.exists()) dir.mkdirs()
+            val name = if (snapshot.chapterUrl.isNotBlank()) {
+                fileName(snapshot.chapterUrl, snapshot.buttonSrc)
+            } else {
+                legacyFileName(snapshot.chapterIndex, snapshot.buttonSrc)
+            }
+            val target = File(dir, name)
+            // 快照 HTML 可能很大。Gson 直接写入 Writer，避免先构造整份 JSON String 和 UTF-8
+            // ByteArray；它们会在原 HTML 仍存活时额外复制完整快照，放大 Java heap 峰值。
+            target.bufferedWriter(Charsets.UTF_8).use { writer ->
+                GSON.toJson(snapshot, writer)
+            }
+            // 主键变化后清理旧 index 键文件，避免重复占用
+            val legacy = File(dir, legacyFileName(snapshot.chapterIndex, snapshot.buttonSrc))
+            if (legacy.exists() && legacy.name != name) legacy.delete()
+            trace.done(CacheOperationDiagnostics.Metrics(outputBytes = target.length()))
+        } catch (error: Throwable) {
+            trace.fail(error)
+            throw error
         }
-        // 快照 HTML 可能很大。Gson 直接写入 Writer，避免先构造整份 JSON String 和 UTF-8
-        // ByteArray；它们会在原 HTML 仍存活时额外复制完整快照，放大 Java heap 峰值。
-        File(dir, name).bufferedWriter(Charsets.UTF_8).use { writer ->
-            GSON.toJson(snapshot, writer)
-        }
-        // 主键变化后清理旧 index 键文件，避免重复占用
-        val legacy = File(dir, legacyFileName(snapshot.chapterIndex, snapshot.buttonSrc))
-        if (legacy.exists() && legacy.name != name) legacy.delete()
     }
 
     fun get(book: Book, chapter: BookChapter, buttonSrc: String): ReviewSnapshot? {
