@@ -479,6 +479,7 @@ data class Book(
         }
         if (isLocal) {
             LocalBook.clearBookShelfCache(this)
+            LocalBook.deletePersistentBookResources(this)
         }
         appDb.bookDao.delete(this)
     }

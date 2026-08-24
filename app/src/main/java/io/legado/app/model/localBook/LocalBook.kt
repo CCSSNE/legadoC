@@ -643,19 +643,19 @@ object LocalBook {
         book.addType(BookType.audio, BookType.local, BookType.archive)
         book.syncMediaType()
         book.canUpdate = false
-        val targetDir = File(BookHelp.getCacheDir(book), "audio_archive")
+        val targetDir = AudioBookArchive.persistentMediaDir(book)
         val stagingDir = File(
             targetDir.parentFile,
             ".audio_archive_import_${System.currentTimeMillis()}"
         )
-        FileUtils.delete(stagingDir)
+        FileUtils.delete(stagingDir, deleteRootDir = true)
         stagingDir.mkdirs()
         try {
             expectedPaths.forEach { path ->
                 val source = requireNotNull(extractedByName[path.substringAfterLast('/')])
                 source.copyTo(File(stagingDir, source.name), overwrite = true)
             }
-            FileUtils.delete(targetDir)
+            FileUtils.delete(targetDir, deleteRootDir = true)
             require(stagingDir.renameTo(targetDir)) {
                 "Audio TXT-ZIP import failed: cannot install extracted audio"
             }
@@ -675,7 +675,7 @@ object LocalBook {
             appDb.bookChapterDao.update(*chapterAssignments.map { it.second }.toTypedArray())
             appDb.bookDao.update(book)
         } finally {
-            if (stagingDir.exists()) FileUtils.delete(stagingDir)
+            if (stagingDir.exists()) FileUtils.delete(stagingDir, deleteRootDir = true)
         }
     }
 
@@ -988,6 +988,7 @@ object LocalBook {
 
     fun deleteBook(book: Book, deleteOriginal: Boolean) {
         clearBookShelfCache(book)
+        deletePersistentBookResources(book)
         if (deleteOriginal) {
             if (book.isArchive) {
                 val archiveFile = book.getArchiveUri()?.let { FileDoc.fromUri(it, false) }
@@ -1008,7 +1009,7 @@ object LocalBook {
 
     fun clearBookShelfCache(book: Book) {
         kotlin.runCatching {
-            BookHelp.clearCache(book)
+            BookHelp.deleteCache(book)
             clearManagedCoverCache(book)
             if (book.isEpub) {
                 EpubFile.clearCache(book)
@@ -1016,6 +1017,11 @@ object LocalBook {
             }
             book.removeLocalUriCache()
         }
+    }
+
+    /** Imported audio is entity-owned storage, never a cache-cleanup target. */
+    fun deletePersistentBookResources(book: Book) {
+        AudioBookArchive.deletePersistentMedia(book)
     }
 
     private fun clearManagedCoverCache(book: Book) {
