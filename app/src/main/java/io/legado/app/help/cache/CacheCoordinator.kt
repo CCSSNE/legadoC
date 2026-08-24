@@ -59,6 +59,11 @@ internal interface CacheWorkerPort {
         result: CacheResult,
         error: String? = null,
     ): Boolean
+    fun skip(
+        lease: CacheWorkerLease,
+        reason: CacheTaskSkipReason,
+        detail: String,
+    ): Boolean
     fun confirmCancelled(submission: CacheSubmission): Boolean
 }
 
@@ -115,6 +120,14 @@ object CacheCoordinator : CacheUiPort {
             error: String?,
         ): Boolean {
             return store.finishTask(lease, result, error)
+        }
+
+        override fun skip(
+            lease: CacheWorkerLease,
+            reason: CacheTaskSkipReason,
+            detail: String,
+        ): Boolean {
+            return store.skipTask(lease, reason, detail)
         }
 
         override fun confirmCancelled(submission: CacheSubmission): Boolean {
@@ -372,6 +385,9 @@ object CacheCoordinator : CacheUiPort {
             prerequisite.status == CacheLifecycle.COMPLETED ||
                 prerequisite.status == CacheLifecycle.FAILED
         ) { "review task cannot be appended before prerequisite completion" }
+        require(prerequisite.result != CacheResult.SKIPPED) {
+            "review task cannot follow a skipped prerequisite"
+        }
         store.findTask(
             sessionId,
             prerequisite.kind,
@@ -422,6 +438,7 @@ object CacheCoordinator : CacheUiPort {
         if (task != null &&
             task.kind.reviewPrerequisitePhase() == task.phase &&
             task.reviewEnabled &&
+            task.result != CacheResult.SKIPPED &&
             task.status in setOf(CacheLifecycle.COMPLETED, CacheLifecycle.FAILED)
         ) {
             appendReviewTask(task.sessionId, task.taskId)

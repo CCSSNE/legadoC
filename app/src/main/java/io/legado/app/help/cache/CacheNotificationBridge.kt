@@ -83,6 +83,7 @@ internal object CacheNotificationBridge {
             CacheResult.SUCCEEDED -> "Cache completed"
             CacheResult.PARTIAL -> "Cache partially completed"
             CacheResult.FAILED -> "Cache failed${error?.let { ": $it" }.orEmpty()}"
+            CacheResult.SKIPPED -> "Cache skipped${error?.let { ": $it" }.orEmpty()}"
             CacheResult.CANCELLED -> "Cache stopped"
         }
         val active = snapshot.sessions.filter { activeSession ->

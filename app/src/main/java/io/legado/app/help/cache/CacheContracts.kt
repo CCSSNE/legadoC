@@ -54,7 +54,13 @@ enum class CacheResult {
     SUCCEEDED,
     PARTIAL,
     FAILED,
+    SKIPPED,
     CANCELLED,
+}
+
+/** A task-level skip is a scheduler decision, not a worker or chapter failure. */
+enum class CacheTaskSkipReason {
+    ALREADY_RUNNING,
 }
 
 enum class CacheUnitStatus {
@@ -62,6 +68,7 @@ enum class CacheUnitStatus {
     RUNNING,
     SUCCEEDED,
     FAILED,
+    SKIPPED,
     REVIEW_ELIGIBLE,
     REVIEW_BLOCKED,
     NOT_APPLICABLE,
@@ -118,6 +125,7 @@ data class CacheTaskState(
     val reviewRetryTargets: List<CacheReviewRetryTarget> = emptyList(),
     val status: CacheLifecycle = CacheLifecycle.QUEUED,
     val result: CacheResult? = null,
+    val skipReason: CacheTaskSkipReason? = null,
     val generation: Long = 0L,
     val error: String? = null,
     val updatedAt: Long = 0L,

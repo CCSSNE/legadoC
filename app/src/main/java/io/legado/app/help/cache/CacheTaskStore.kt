@@ -379,8 +379,8 @@ internal class CacheTaskStore(
         result: CacheResult,
         error: String? = null,
     ): Boolean {
-        require(result != CacheResult.CANCELLED) {
-            "cancelled tasks must use beginCancel/confirmCancelled"
+        require(result != CacheResult.CANCELLED && result != CacheResult.SKIPPED) {
+            "cancelled and skipped tasks must use their dedicated terminal transitions"
         }
         var aggregateResult: CacheResult? = null
         var autoFailedUnits: List<CacheUnitKey> = emptyList()
@@ -456,6 +456,67 @@ internal class CacheTaskStore(
             lease.sessionId,
             lease.taskId,
             "result=$aggregateResult requested=$result${error?.let { " error=$it" }.orEmpty()}",
+        )
+        return true
+    }
+
+    /**
+     * Finish an unstarted task because scheduling rejected it. This transition is atomic so a
+     * scheduler conflict cannot be represented as a row of synthetic chapter failures.
+     */
+    fun skipTask(
+        lease: CacheWorkerLease,
+        reason: CacheTaskSkipReason,
+        detail: String,
+    ): Boolean {
+        require(detail.isNotBlank()) { "skipped cache task requires a diagnostic detail" }
+        var skippedUnits: List<CacheUnitKey> = emptyList()
+        synchronized(lock) {
+            val task = requireTaskLocked(lease.sessionId, lease.taskId)
+            if (!isCurrentLease(task, lease) || task.status != CacheLifecycle.RUNNING) {
+                logStaleUpdate(lease, "skip=$reason")
+                return false
+            }
+            val skippable = task.units.filter {
+                it.status == CacheUnitStatus.PENDING ||
+                    it.status == CacheUnitStatus.RUNNING ||
+                    it.status == CacheUnitStatus.REVIEW_ELIGIBLE
+            }
+            check(skippable.size == task.units.size) {
+                "cannot skip cache task after a unit reached a terminal state: task=${task.taskId}"
+            }
+            skippedUnits = skippable.map { it.key }
+            val updatedAt = System.currentTimeMillis()
+            replaceTaskLocked(task.copy(
+                units = task.units.map { unit ->
+                    unit.copy(
+                        status = CacheUnitStatus.SKIPPED,
+                        error = detail,
+                        updatedAt = updatedAt,
+                    )
+                },
+                status = CacheLifecycle.COMPLETED,
+                result = CacheResult.SKIPPED,
+                skipReason = reason,
+                error = detail,
+                updatedAt = updatedAt,
+            ))
+            removeTaskProgressLocked(lease.sessionId, lease.taskId)
+            publishLocked()
+        }
+        skippedUnits.forEach { key ->
+            record(
+                CacheLogEventType.UNIT_SKIPPED,
+                lease.sessionId,
+                lease.taskId,
+                "chapter=${key.chapterIndex} status=${CacheUnitStatus.SKIPPED} reason=$reason detail=$detail",
+            )
+        }
+        record(
+            CacheLogEventType.TASK_FINISHED,
+            lease.sessionId,
+            lease.taskId,
+            "result=${CacheResult.SKIPPED} reason=$reason error=$detail",
         )
         return true
     }
@@ -613,6 +674,7 @@ internal class CacheTaskStore(
     private fun isTerminalUnitStatus(status: CacheUnitStatus): Boolean = status in setOf(
         CacheUnitStatus.SUCCEEDED,
         CacheUnitStatus.FAILED,
+        CacheUnitStatus.SKIPPED,
         CacheUnitStatus.REVIEW_BLOCKED,
         CacheUnitStatus.NOT_APPLICABLE,
         CacheUnitStatus.CANCELLED,
@@ -670,6 +732,8 @@ internal class CacheTaskStore(
                 }
             }
             session.tasks.any { it.result == CacheResult.PARTIAL } -> CacheResult.PARTIAL
+            session.tasks.all { it.result == CacheResult.SKIPPED } -> CacheResult.SKIPPED
+            session.tasks.any { it.result == CacheResult.SKIPPED } -> CacheResult.PARTIAL
             else -> CacheResult.SUCCEEDED
         }
         return session.copy(status = status, result = result, updatedAt = System.currentTimeMillis())
@@ -688,15 +752,19 @@ internal class CacheTaskStore(
                 to == CacheUnitStatus.REVIEW_ELIGIBLE ||
                 to == CacheUnitStatus.REVIEW_BLOCKED ||
                 to == CacheUnitStatus.NOT_APPLICABLE ||
+                to == CacheUnitStatus.SKIPPED ||
                 to == CacheUnitStatus.CANCELLED
             CacheUnitStatus.RUNNING -> to == CacheUnitStatus.SUCCEEDED ||
                 to == CacheUnitStatus.FAILED ||
+                to == CacheUnitStatus.SKIPPED ||
                 to == CacheUnitStatus.CANCELLED
             CacheUnitStatus.REVIEW_ELIGIBLE -> to == CacheUnitStatus.RUNNING ||
                 to == CacheUnitStatus.REVIEW_BLOCKED ||
+                to == CacheUnitStatus.SKIPPED ||
                 to == CacheUnitStatus.CANCELLED
             CacheUnitStatus.SUCCEEDED,
             CacheUnitStatus.FAILED,
+            CacheUnitStatus.SKIPPED,
             CacheUnitStatus.REVIEW_BLOCKED,
             CacheUnitStatus.NOT_APPLICABLE,
             CacheUnitStatus.CANCELLED -> false
