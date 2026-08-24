@@ -8,6 +8,8 @@ import io.legado.app.R
 import io.legado.app.base.adapter.DiffRecyclerAdapter
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.databinding.ItemCacheManageBookBinding
+import io.legado.app.help.cache.CacheTaskStatus
+import io.legado.app.help.cache.MediaCacheTaskState
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.utils.gone
 import io.legado.app.utils.visible
@@ -17,7 +19,7 @@ class CacheManageAdapter(
     private val callback: Callback
 ) : DiffRecyclerAdapter<CacheBookItem, ItemCacheManageBookBinding>(context) {
 
-    private var taskStates: Map<String, AudioCacheTaskState> = emptyMap()
+    private var taskStates: Map<String, MediaCacheTaskState> = emptyMap()
 
     override val diffItemCallback: DiffUtil.ItemCallback<CacheBookItem> =
         object : DiffUtil.ItemCallback<CacheBookItem>() {
@@ -163,7 +165,7 @@ class CacheManageAdapter(
         }
     }
 
-    fun updateTaskStates(states: Map<String, AudioCacheTaskState>) {
+    fun updateTaskStates(states: Map<String, MediaCacheTaskState>) {
         val changedBookUrls = (taskStates.keys + states.keys)
             .filterTo(hashSetOf<String>()) { taskStates[it] != states[it] }
         taskStates = states
@@ -189,7 +191,7 @@ class CacheManageAdapter(
         return book.bookUrl in bookUrls || sourceVariants.any { it.book.bookUrl in bookUrls }
     }
 
-    private fun taskStateFor(item: CacheBookItem): AudioCacheTaskState? {
+    private fun taskStateFor(item: CacheBookItem): MediaCacheTaskState? {
         taskStates[item.book.bookUrl]?.let { return it }
         item.sourceVariants.forEach { variant ->
             taskStates[variant.book.bookUrl]?.let { return it }

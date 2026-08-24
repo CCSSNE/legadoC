@@ -4,11 +4,10 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.AudioOfflineState
 import io.legado.app.help.book.CacheManifestHelper
-import io.legado.app.ui.book.cache.AudioCacheTaskManager
-import io.legado.app.ui.book.cache.CacheTaskStatus
+import io.legado.app.help.cache.MediaCacheTaskManager
 import java.util.concurrent.ConcurrentHashMap
 
-/** Coordinator adapter over AudioCacheTaskManager's media execution core. */
+/** Coordinator adapter over MediaCacheTaskManager's media execution core. */
 internal class MediaWorkerAdapter(
     private val workerPort: CacheWorkerPort,
 ) {
@@ -80,9 +79,9 @@ internal class MediaWorkerAdapter(
             CacheManifestHelper.refreshAsync(book)
             CacheMediaWorkerRegistry.onFinished(lease)
         }
-        val state = AudioCacheTaskManager.snapshot(task.bookUrl)
+        val state = MediaCacheTaskManager.snapshot(task.bookUrl)
         if (state?.status == CacheTaskStatus.PAUSED) {
-            if (!AudioCacheTaskManager.resume(
+            if (!MediaCacheTaskManager.resume(
                     task.bookUrl,
                     validKeys.mapTo(hashSetOf()) { it.chapterIndex },
                     chapterStarted,
@@ -102,7 +101,7 @@ internal class MediaWorkerAdapter(
             }
             return
         }
-        val started = AudioCacheTaskManager.start(
+        val started = MediaCacheTaskManager.start(
             book = book,
             chapters = chapters.map { it.second },
             resolver = MediaCacheResolver::resolve,
@@ -129,7 +128,7 @@ internal class MediaWorkerAdapter(
 
     fun pause(submission: CacheSubmission) {
         val task = CacheCoordinator.currentTask(submission) ?: return
-        AudioCacheTaskManager.pause(task.bookUrl) {
+        MediaCacheTaskManager.pause(task.bookUrl) {
             CacheMediaWorkerRegistry.remove(submission.sessionId, submission.taskId)
             CacheCoordinator.workerPort.confirmPaused(submission)
         }
@@ -137,7 +136,7 @@ internal class MediaWorkerAdapter(
 
     fun cancel(submission: CacheSubmission) {
         val task = CacheCoordinator.currentTask(submission) ?: return
-        AudioCacheTaskManager.cancel(task.bookUrl) {
+        MediaCacheTaskManager.cancel(task.bookUrl) {
             CacheMediaWorkerRegistry.remove(submission.sessionId, submission.taskId)
             workerPort.confirmCancelled(submission)
         }
@@ -238,7 +237,7 @@ private object CacheMediaWorkerRegistry {
 
     fun onFinished(lease: CacheWorkerLease) {
         val binding = bindingFor(lease) ?: return
-        val state = AudioCacheTaskManager.snapshot(binding.bookUrl)
+        val state = MediaCacheTaskManager.snapshot(binding.bookUrl)
             ?: run {
                 fail(lease, "media worker finished without a state")
                 return

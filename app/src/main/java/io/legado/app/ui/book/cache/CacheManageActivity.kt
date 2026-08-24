@@ -21,7 +21,9 @@ import io.legado.app.databinding.ActivityCacheManageBinding
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.cache.CacheCoordinator
 import io.legado.app.help.cache.CacheLifecycle
+import io.legado.app.help.cache.CacheTaskStatus
 import io.legado.app.help.cache.CacheTaskState
+import io.legado.app.help.cache.MediaCacheTaskState
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.SegmentedControlStyle
@@ -155,7 +157,7 @@ class CacheManageActivity :
         }
     }
 
-    private fun reloadAudioItemsWhenNeeded(states: Map<String, AudioCacheTaskState>) {
+    private fun reloadAudioItemsWhenNeeded(states: Map<String, MediaCacheTaskState>) {
         val stateValues = states.values
         val activeTaskBookUrls = stateValues
             .asSequence()

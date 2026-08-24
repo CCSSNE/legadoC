@@ -5,8 +5,10 @@ import io.legado.app.help.cache.CacheLifecycle
 import io.legado.app.help.cache.CacheLifecycleRules
 import io.legado.app.help.cache.CacheSnapshot
 import io.legado.app.help.cache.CacheSubmission
+import io.legado.app.help.cache.CacheTaskStatus
 import io.legado.app.help.cache.CacheTaskState
 import io.legado.app.help.cache.CacheUnitStatus
+import io.legado.app.help.cache.MediaCacheTaskState
 import io.legado.app.help.cache.supports
 
 internal fun CacheTaskState.isCoordinatorDownloadTask(): Boolean = kind.supports(phase)
@@ -19,12 +21,12 @@ private val currentTaskComparator =
         if (CacheLifecycleRules.isTerminal(it.status)) 0 else 1
     }.thenBy { it.updatedAt }
 
-internal fun CacheSnapshot.toMediaTaskStates(): Map<String, AudioCacheTaskState> {
+internal fun CacheSnapshot.toMediaTaskStates(): Map<String, MediaCacheTaskState> {
     return sessions.asSequence()
         .flatMap { it.tasks.asSequence() }
         .filter { it.isMediaCacheManageTask() }
         .groupBy { it.bookUrl }
-        .mapValues { (_, tasks) -> tasks.maxWith(currentTaskComparator).toAudioTaskState() }
+        .mapValues { (_, tasks) -> tasks.maxWith(currentTaskComparator).toMediaTaskState() }
 }
 
 internal fun CacheSnapshot.findMediaDownloadTask(
@@ -37,7 +39,7 @@ internal fun CacheSnapshot.findMediaDownloadTask(
     return task?.let { CacheSubmission(it.sessionId, it.taskId) to it }
 }
 
-private fun CacheTaskState.toAudioTaskState(): AudioCacheTaskState {
+private fun CacheTaskState.toMediaTaskState(): MediaCacheTaskState {
     val completed = units.count { it.status == CacheUnitStatus.SUCCEEDED }
     val status = when (this.status) {
         CacheLifecycle.QUEUED -> CacheTaskStatus.PENDING
@@ -50,7 +52,7 @@ private fun CacheTaskState.toAudioTaskState(): AudioCacheTaskState {
         CacheLifecycle.FAILED -> CacheTaskStatus.FAILED
         CacheLifecycle.INTERRUPTED -> CacheTaskStatus.PENDING
     }
-    return AudioCacheTaskState(
+    return MediaCacheTaskState(
         bookUrl = bookUrl,
         bookName = bookName,
         totalChapters = units.size,

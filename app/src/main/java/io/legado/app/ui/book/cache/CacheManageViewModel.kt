@@ -31,6 +31,8 @@ import io.legado.app.help.book.isVideo
 import io.legado.app.help.book.removeType
 import io.legado.app.help.cache.CacheCoordinator
 import io.legado.app.help.cache.CacheRequestSource
+import io.legado.app.help.cache.CacheTaskStatus
+import io.legado.app.help.cache.MediaCacheTaskState
 import io.legado.app.help.review.ReviewSnapshotStore
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
@@ -577,7 +579,7 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
         book: Book,
         mode: CacheManageMode,
         initialManifest: CacheBookManifest?,
-        taskState: AudioCacheTaskState?
+        taskState: MediaCacheTaskState?
     ): CacheBookItem? {
         val manifest = initialManifest
         if (manifest == null) return null
@@ -1160,7 +1162,7 @@ data class CacheBookItem(
     val storageSizeBytes: Long = 0L,
     val storageSummary: String = "",
     val storageCalculated: Boolean = false,
-    val taskState: AudioCacheTaskState? = null,
+    val taskState: MediaCacheTaskState? = null,
     val manifest: CacheBookManifest? = null,
     val inBookshelf: Boolean = true,
     val sourceAvailable: Boolean = true,
@@ -1176,7 +1178,7 @@ data class CacheBookSourceVariant(
     val storageSizeBytes: Long = 0L,
     val storageSummary: String = "",
     val storageCalculated: Boolean = false,
-    val taskState: AudioCacheTaskState? = null,
+    val taskState: MediaCacheTaskState? = null,
     val manifest: CacheBookManifest? = null,
     val inBookshelf: Boolean = true,
     val sourceAvailable: Boolean = true
@@ -1279,7 +1281,7 @@ private val Book.isMedia: Boolean
 private val Book.cacheManageMode: CacheManageMode
     get() = if (isVideo) CacheManageMode.VIDEO else CacheManageMode.AUDIO
 
-private fun AudioCacheTaskState?.isVisibleAudioTask(): Boolean {
+private fun MediaCacheTaskState?.isVisibleAudioTask(): Boolean {
     return this?.active == true || this?.status == CacheTaskStatus.PAUSED
 }
 

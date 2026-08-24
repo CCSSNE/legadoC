@@ -1,4 +1,4 @@
-package io.legado.app.ui.book.cache
+package io.legado.app.help.cache
 
 import io.legado.app.R
 import io.legado.app.constant.AppLog
@@ -7,8 +7,6 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.AudioOfflineState
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.help.book.isVideo
-import io.legado.app.help.cache.ChapterDownloadPacer
-import io.legado.app.help.cache.CacheOperationDiagnostics
 import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.ConvertUtils
 import kotlinx.coroutines.CancellationException
@@ -25,11 +23,11 @@ import java.util.concurrent.ThreadFactory
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.max
 
-internal object AudioCacheTaskManager {
+internal object MediaCacheTaskManager {
 
     private val executor: ExecutorService = Executors.newSingleThreadExecutor(
         ThreadFactory { runnable ->
-            Thread(runnable, "audio-cache-worker").apply {
+            Thread(runnable, "media-cache-worker").apply {
                 isDaemon = true
                 priority = Thread.NORM_PRIORITY - 1
             }
@@ -38,11 +36,11 @@ internal object AudioCacheTaskManager {
     private val cancelFlags = ConcurrentHashMap<String, AtomicBoolean>()
     private val futures = ConcurrentHashMap<String, Future<*>>()
     private val workerThreads = ConcurrentHashMap<String, Thread>()
-    private val requests = ConcurrentHashMap<String, AudioCacheTaskRequest>()
+    private val requests = ConcurrentHashMap<String, MediaCacheTaskRequest>()
     private val stopRequests = ConcurrentHashMap<String, StopRequest>()
     private val preparingResumeBookUrls = ConcurrentHashMap.newKeySet<String>()
-    private val _states = MutableStateFlow<Map<String, AudioCacheTaskState>>(emptyMap())
-    internal fun snapshot(bookUrl: String): AudioCacheTaskState? = _states.value[bookUrl]
+    private val _states = MutableStateFlow<Map<String, MediaCacheTaskState>>(emptyMap())
+    internal fun snapshot(bookUrl: String): MediaCacheTaskState? = _states.value[bookUrl]
 
     internal fun start(
         book: Book,
@@ -60,7 +58,7 @@ internal object AudioCacheTaskManager {
         if (existing?.active == true) return false
         if (existing?.status == CacheTaskStatus.PAUSED) return false
         if (futures.containsKey(book.bookUrl)) return false
-        val request = AudioCacheTaskRequest(
+        val request = MediaCacheTaskRequest(
             book = book,
             chapters = chapters,
             resolver = resolver,
@@ -79,7 +77,7 @@ internal object AudioCacheTaskManager {
     }
 
     private fun startRequest(
-        request: AudioCacheTaskRequest,
+        request: MediaCacheTaskRequest,
         chapters: List<BookChapter>,
         completedOffset: Int
     ): Boolean {
@@ -87,7 +85,7 @@ internal object AudioCacheTaskManager {
         if (chapters.isEmpty()) {
             updateState(
                 book.bookUrl,
-                AudioCacheTaskState(
+                MediaCacheTaskState(
                     bookUrl = book.bookUrl,
                     bookName = book.name,
                     totalChapters = request.totalChapters,
@@ -105,7 +103,7 @@ internal object AudioCacheTaskManager {
         cancelFlags[book.bookUrl] = cancelFlag
         updateState(
             book.bookUrl,
-            AudioCacheTaskState(
+            MediaCacheTaskState(
                 bookUrl = book.bookUrl,
                 bookName = book.name,
                 totalChapters = request.totalChapters,
@@ -538,7 +536,7 @@ internal object AudioCacheTaskManager {
         }
     }
 
-    private fun updateState(bookUrl: String, transform: (AudioCacheTaskState) -> AudioCacheTaskState) {
+    private fun updateState(bookUrl: String, transform: (MediaCacheTaskState) -> MediaCacheTaskState) {
         _states.update { states ->
             val current = states[bookUrl] ?: return@update states
             val updated = transform(current)
@@ -552,7 +550,7 @@ internal object AudioCacheTaskManager {
         }
     }
 
-    private fun updateState(bookUrl: String, state: AudioCacheTaskState) {
+    private fun updateState(bookUrl: String, state: MediaCacheTaskState) {
         _states.update { states ->
             states.toMutableMap().apply {
                 put(bookUrl, state)
@@ -571,7 +569,7 @@ enum class CacheTaskStatus {
     FAILED
 }
 
-private data class AudioCacheTaskRequest(
+private data class MediaCacheTaskRequest(
     val book: Book,
     val chapters: List<BookChapter>,
     val resolver: suspend (Book, BookChapter) -> ExoPlayerHelper.MediaRequest,
@@ -596,7 +594,7 @@ private data class StopRequest(
 
 private const val PROGRESS_STATE_INTERVAL_MS = 750L
 
-data class AudioCacheTaskState(
+data class MediaCacheTaskState(
     val bookUrl: String,
     val bookName: String,
     val totalChapters: Int,
