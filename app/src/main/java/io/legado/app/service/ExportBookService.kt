@@ -31,8 +31,6 @@ import io.legado.app.help.book.AudioBookArchiveManifest
 import io.legado.app.help.book.AudioOfflineState
 import io.legado.app.help.book.AudioTextFusion
 import io.legado.app.help.book.ContentProcessor
-import io.legado.app.help.book.SourceAudioResolver
-import io.legado.app.help.book.getBookSource
 import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.book.getLiteralExportFileName
 import io.legado.app.help.book.isAudio
@@ -525,7 +523,7 @@ class ExportBookService : BaseService() {
             } else {
                 val charset = Charset.forName(config.charset)
                 tmpTxt.bufferedWriter(charset).use { bw ->
-                    getAllContents(book, config) { text, _ ->
+                    getAllContents(book, config, reportProgress = !book.isAudio) { text, _ ->
                         bw.write(text)
                     }
                 }
@@ -585,16 +583,21 @@ class ExportBookService : BaseService() {
         val chapters = appDb.bookChapterDao.getChapterList(book.bookUrl)
             .filterNot { it.isVolume }
         require(chapters.isNotEmpty()) { "Audio TXT-ZIP export failed: chapter list is empty" }
-        val source = book.getBookSource()
         val audioDir = File(tmpRoot, AudioBookArchive.MEDIA_DIR_NAME).apply { mkdirs() }
-        val manifestChapters = chapters.map { chapter ->
+        val manifestChapters = chapters.mapIndexed { index, chapter ->
             currentCoroutineContext().ensureActive()
-            // SourceAudioResolver performs the one audio-source parse needed for both
-            // transcript and media, without ever writing a normal text-body cache.
-            val resolved = SourceAudioResolver.resolve(book, source, chapter)
+            val offlineState = AudioOfflineState.inspect(book, chapter)
+            require(offlineState.isComplete) {
+                "Audio TXT-ZIP export failed: ${offlineState.incompleteReason()} " +
+                    "chapter=${chapter.index + 1} ${chapter.title}"
+            }
+            val resourceUrl = requireNotNull(chapter.resourceUrl) {
+                "Audio TXT-ZIP export failed: media address is missing " +
+                    "chapter=${chapter.index + 1} ${chapter.title}"
+            }
             val prefix = "chapter_${chapter.index.toString().padStart(6, '0')}"
             val mediaFiles = ExoPlayerHelper.exportAudioFiles(
-                request = resolved.request,
+                resourceUrl = resourceUrl,
                 book = book,
                 targetDir = audioDir,
                 filePrefix = prefix,
@@ -602,11 +605,8 @@ class ExportBookService : BaseService() {
             require(mediaFiles.isNotEmpty()) {
                 "Audio TXT-ZIP export failed: no audio for chapter ${chapter.index + 1} ${chapter.title}"
             }
-            val offlineState = AudioOfflineState.inspect(book, chapter)
-            require(offlineState.isComplete) {
-                "Audio TXT-ZIP export failed: ${offlineState.incompleteReason()} " +
-                    "chapter=${chapter.index + 1} ${chapter.title}"
-            }
+            exportProgress[book.bookUrl] = index + 1
+            postEvent(EventBus.EXPORT_BOOK, book.bookUrl)
             AudioBookArchiveChapter(
                 index = chapter.index,
                 title = chapter.title,
@@ -774,6 +774,7 @@ class ExportBookService : BaseService() {
     private suspend fun getAllContents(
         book: Book,
         config: ExportConfig,
+        reportProgress: Boolean = true,
         append: (text: String, srcList: ArrayList<SrcData>?) -> Unit
     ) = coroutineScope {
         val useReplace = config.useReplace && book.getUseReplaceRule()
@@ -799,8 +800,10 @@ class ExportBookService : BaseService() {
         }.mapAsync(threads) { chapter ->
             getExportData(book, chapter, contentProcessor, useReplace, config)
         }.collectIndexed { index, result ->
-            postEvent(EventBus.EXPORT_BOOK, book.bookUrl)
-            exportProgress[book.bookUrl] = index
+            if (reportProgress) {
+                exportProgress[book.bookUrl] = index
+                postEvent(EventBus.EXPORT_BOOK, book.bookUrl)
+            }
             append.invoke(result.first, result.second)
         }
 
