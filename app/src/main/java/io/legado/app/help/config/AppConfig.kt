@@ -1054,6 +1054,20 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefBoolean(PreferKey.syncCacheReview, value)
         }
 
+    /** 缓存评论快照时内联评论者头像。 */
+    var cacheReviewAvatars: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.cacheReviewAvatars, true)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.cacheReviewAvatars, value)
+        }
+
+    /** 缓存评论快照时内联非头像的评论图片。 */
+    var cacheReviewImages: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.cacheReviewImages, true)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.cacheReviewImages, value)
+        }
+
     /** 评论快照资源下载线程数；页面与 Heavy 并发由固定调度策略控制。 */
     var reviewResourceDownloadConcurrency: Int
         get() = appCtx.getPrefInt(PreferKey.reviewCacheConcurrency, 8)

@@ -1522,6 +1522,10 @@
     <string name="export_bookmarks">Export bookmarks</string>
     <string name="sync_cache_review">Cache comments</string>
     <string name="sync_cache_review_summary">After body caching, fetch real comment-page snapshots in the background; comment failures never affect body content</string>
+    <string name="cache_review_avatars">Cache comment avatars</string>
+    <string name="cache_review_avatars_summary">Inline commenter avatars in offline comment snapshots</string>
+    <string name="cache_review_images">Cache comment images</string>
+    <string name="cache_review_images_summary">Inline non-avatar images in offline comment snapshots</string>
     <string name="comment_cache_concurrency">Comment resource download concurrency</string>
     <string name="comment_cache_concurrency_summary">Maximum concurrent resource downloads while caching one comment-page snapshot, default 8</string>
     <string name="export_reviews">Export comments</string>
