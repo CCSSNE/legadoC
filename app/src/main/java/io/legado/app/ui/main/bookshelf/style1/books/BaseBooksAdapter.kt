@@ -14,6 +14,7 @@ import io.legado.app.R
 import io.legado.app.base.adapter.DiffRecyclerAdapter
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.data.entities.Book
+import io.legado.app.help.book.shelfKey
 import io.legado.app.ui.main.bookshelf.BookCollectionShelfItem
 
 abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
@@ -47,18 +48,16 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
             override fun areContentsTheSame(oldItem: Any, newItem: Any): Boolean {
                 return when {
                     oldItem is Book && newItem is Book -> {
-                        val oldBook = oldItem
-                        val newBook = newItem
                         when {
-                            oldBook.durChapterTime != newBook.durChapterTime -> false
-                            oldBook.name != newBook.name -> false
-                            oldBook.author != newBook.author -> false
-                            oldBook.durChapterTitle != newBook.durChapterTitle -> false
-                            oldBook.latestChapterTitle != newBook.latestChapterTitle -> false
-                            oldBook.lastCheckCount != newBook.lastCheckCount -> false
-                            oldBook.type != newBook.type -> false
-                            oldBook.getDisplayCover() != newBook.getDisplayCover() -> false
-                            oldBook.getUnreadChapterNum() != newBook.getUnreadChapterNum() -> false
+                            oldItem.durChapterTime != newItem.durChapterTime -> false
+                            oldItem.name != newItem.name -> false
+                            oldItem.author != newItem.author -> false
+                            oldItem.durChapterTitle != newItem.durChapterTitle -> false
+                            oldItem.latestChapterTitle != newItem.latestChapterTitle -> false
+                            oldItem.lastCheckCount != newItem.lastCheckCount -> false
+                            oldItem.type != newItem.type -> false
+                            oldItem.getDisplayCover() != newItem.getDisplayCover() -> false
+                            oldItem.getUnreadChapterNum() != newItem.getUnreadChapterNum() -> false
                             else -> true
                         }
                     }
@@ -78,35 +77,33 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
                 if (oldItem !is Book || newItem !is Book) {
                     return null
                 }
-                val oldBook = oldItem
-                val newBook = newItem
                 val bundle = bundleOf()
-                if (oldBook.name != newBook.name) {
-                    bundle.putString("name", newBook.name)
+                if (oldItem.name != newItem.name) {
+                    bundle.putString("name", newItem.name)
                 }
-                if (oldBook.author != newBook.author) {
-                    bundle.putString("author", newBook.author)
+                if (oldItem.author != newItem.author) {
+                    bundle.putString("author", newItem.author)
                 }
-                if (oldBook.durChapterTitle != newBook.durChapterTitle) {
-                    bundle.putString("dur", newBook.durChapterTitle)
+                if (oldItem.durChapterTitle != newItem.durChapterTitle) {
+                    bundle.putString("dur", newItem.durChapterTitle)
                 }
-                if (oldBook.latestChapterTitle != newBook.latestChapterTitle) {
-                    bundle.putString("last", newBook.latestChapterTitle)
+                if (oldItem.latestChapterTitle != newItem.latestChapterTitle) {
+                    bundle.putString("last", newItem.latestChapterTitle)
                 }
-                if (oldBook.getDisplayCover() != newBook.getDisplayCover()) {
-                    bundle.putString("cover", newBook.getDisplayCover())
+                if (oldItem.getDisplayCover() != newItem.getDisplayCover()) {
+                    bundle.putString("cover", newItem.getDisplayCover())
                 }
-                if (oldBook.lastCheckCount != newBook.lastCheckCount
-                    || oldBook.durChapterTime != newBook.durChapterTime
-                    || oldBook.getUnreadChapterNum() != newBook.getUnreadChapterNum()
-                    || oldBook.lastCheckCount != newBook.lastCheckCount
+                if (oldItem.lastCheckCount != newItem.lastCheckCount
+                    || oldItem.durChapterTime != newItem.durChapterTime
+                    || oldItem.getUnreadChapterNum() != newItem.getUnreadChapterNum()
+                    || oldItem.lastCheckCount != newItem.lastCheckCount
                 ) {
                     bundle.putBoolean("refresh", true)
                 }
-                if (oldBook.latestChapterTime != newBook.latestChapterTime) {
+                if (oldItem.latestChapterTime != newItem.latestChapterTime) {
                     bundle.putBoolean("lastUpdateTime", true)
                 }
-                if (oldBook.type != newBook.type) {
+                if (oldItem.type != newItem.type) {
                     bundle.putBoolean("type", true)
                 }
                 if (bundle.isEmpty) return null

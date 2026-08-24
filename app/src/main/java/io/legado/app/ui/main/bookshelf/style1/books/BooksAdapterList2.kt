@@ -9,7 +9,6 @@ import androidx.viewbinding.ViewBinding
 import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.data.entities.Book
-import io.legado.app.help.book.isShortcut
 import io.legado.app.databinding.ItemBookshelfCollectionListBinding
 import io.legado.app.databinding.ItemBookshelfList2Binding
 import io.legado.app.help.book.isLocal
@@ -71,7 +70,6 @@ class BooksAdapterList2(
             return
         }
         if (item !is Book || binding !is ItemBookshelfList2Binding) return
-        val book = item
         binding.run {
             ivCover.alpha = UiCorner.bookshelfCoverAlpha()
             renderSelectionMark(selectionOuter, selectionDot, item, callBack)
@@ -95,7 +93,7 @@ class BooksAdapterList2(
                             "dur" -> tvRead.text = item.durChapterTitle
                             "last" -> tvLast.text = item.latestChapterTitle
                             "cover" -> ivCover.loadThumb(
-                                book,
+                                item,
                                 false,
                                 fragment,
                                 lifecycle

@@ -19,7 +19,6 @@ import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookCollectionWithItems
-import io.legado.app.data.entities.ShelfEntry
 import io.legado.app.databinding.DialogBookCollectionSelectBinding
 import io.legado.app.databinding.ItemBookCollectionSelectBinding
 import io.legado.app.lib.dialogs.alert
@@ -49,30 +48,6 @@ class BookCollectionSelectDialog() : BaseBottomSheetDialogFragment(R.layout.dial
         }
     }
 
-    constructor(bookUrls: ArrayList<String>, shortcutIds: LongArray, collectionIds: LongArray) : this(
-        bookUrls,
-        shortcutIds,
-        collectionIds,
-        false,
-        0L
-    )
-
-    constructor(
-        bookUrls: ArrayList<String>,
-        shortcutIds: LongArray,
-        collectionIds: LongArray,
-        openCreate: Boolean = false,
-        parentCollectionId: Long = 0L
-    ) : this() {
-        arguments = Bundle().apply {
-            putStringArrayList("bookUrls", bookUrls)
-            putLongArray("shortcutIds", shortcutIds)
-            putLongArray("collectionIds", collectionIds)
-            putBoolean("openCreate", openCreate)
-            putLong("parentCollectionId", parentCollectionId)
-        }
-    }
-
     constructor(
         bookUrls: ArrayList<String>,
         collectionIds: LongArray,
@@ -93,8 +68,6 @@ class BookCollectionSelectDialog() : BaseBottomSheetDialogFragment(R.layout.dial
         get() = arguments?.getStringArrayList("bookUrls").orEmpty()
     private val collectionIds: List<Long>
         get() = arguments?.getLongArray("collectionIds")?.toList().orEmpty()
-    private val shortcutIds: List<Long>
-        get() = arguments?.getLongArray("shortcutIds")?.toList().orEmpty()
     private val parentCollectionId: Long
         get() = arguments?.getLong("parentCollectionId") ?: 0L
 
@@ -174,12 +147,9 @@ class BookCollectionSelectDialog() : BaseBottomSheetDialogFragment(R.layout.dial
     }
 
     private fun moveToRoot() {
-        if (bookUrls.isEmpty() && shortcutIds.isEmpty() && collectionIds.isEmpty()) return
+        if (bookUrls.isEmpty() && collectionIds.isEmpty()) return
         lifecycleScope.launch(Dispatchers.IO) {
-            appDb.bookCollectionDao.moveEntriesToRoot(
-                shelfEntries(),
-                collectionIds
-            )
+            appDb.bookCollectionDao.moveItemsToRoot(bookUrls, collectionIds)
             withContext(Dispatchers.Main) {
                 postEvent(EventBus.BOOKSHELF_REFRESH, "")
                 dismissAllowingStateLoss()
@@ -210,7 +180,7 @@ class BookCollectionSelectDialog() : BaseBottomSheetDialogFragment(R.layout.dial
                 if (name.isBlank()) return@okButton
                 lifecycleScope.launch(Dispatchers.IO) {
                     val collectionId = appDb.bookCollectionDao.createCollection(name)
-                    appDb.bookCollectionDao.addEntries(collectionId, shelfEntries())
+                    appDb.bookCollectionDao.addBookUrls(collectionId, bookUrls)
                     appDb.bookCollectionDao.addChildCollectionIds(collectionId, collectionIds)
                     if (parentCollectionId > 0) {
                         appDb.bookCollectionDao.addChildCollectionIds(
@@ -231,7 +201,7 @@ class BookCollectionSelectDialog() : BaseBottomSheetDialogFragment(R.layout.dial
 
     private fun addToCollection(item: CollectionSelectItem) {
         lifecycleScope.launch(Dispatchers.IO) {
-            appDb.bookCollectionDao.addEntries(item.source.collection.collectionId, shelfEntries())
+            appDb.bookCollectionDao.addBookUrls(item.source.collection.collectionId, bookUrls)
             appDb.bookCollectionDao.addChildCollectionIds(
                 item.source.collection.collectionId,
                 collectionIds
@@ -242,18 +212,6 @@ class BookCollectionSelectDialog() : BaseBottomSheetDialogFragment(R.layout.dial
                 dismissAllowingStateLoss()
             }
         }
-    }
-
-    private fun shelfEntries(): List<ShelfEntry> {
-        val entries = bookUrls.mapNotNull { url ->
-            appDb.bookDao.getBook(url)?.let(ShelfEntry::Body)
-        }.toMutableList()
-        shortcutIds.mapNotNull { id ->
-            val shortcut = appDb.bookShortcutDao.get(id) ?: return@mapNotNull null
-            val book = appDb.bookDao.getBook(shortcut.bookUrl) ?: return@mapNotNull null
-            ShelfEntry.Shortcut(shortcut, book)
-        }.let(entries::addAll)
-        return entries
     }
 
     private inner class CollectionAdapter :
