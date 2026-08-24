@@ -569,6 +569,23 @@ internal class CacheTaskStore(
         sessions[sessionId]?.tasks?.firstOrNull { it.taskId == taskId }
     }
 
+    /**
+     * Execute one durable artifact commit while the lease is still owned by this RUNNING task.
+     * The Store lock covers both the lease check and the write callback so pause/cancel cannot
+     * invalidate the generation between the check and the commit boundary.
+     */
+    fun commitIfLeaseActive(lease: CacheWorkerLease, action: () -> Unit): Boolean = synchronized(lock) {
+        val task = sessions[lease.sessionId]
+            ?.tasks
+            ?.firstOrNull { it.taskId == lease.taskId }
+        if (task == null || !isCurrentLease(task, lease) || task.status != CacheLifecycle.RUNNING) {
+            logStaleUpdate(lease, "artifact commit rejected")
+            return@synchronized false
+        }
+        action()
+        true
+    }
+
     fun findTask(sessionId: String, kind: CacheKind, phase: CachePhase, bookUrl: String): CacheTaskState? =
         synchronized(lock) {
             sessions[sessionId]?.tasks?.firstOrNull {

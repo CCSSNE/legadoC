@@ -40,6 +40,7 @@ internal interface CacheWorkerPort {
     fun reclaim(submission: CacheSubmission): CacheWorkerLease?
     fun failQueued(submission: CacheSubmission, error: String): Boolean
     fun confirmPaused(submission: CacheSubmission): Boolean
+    fun commitIfLeaseActive(lease: CacheWorkerLease, action: () -> Unit): Boolean
     fun updateUnit(
         lease: CacheWorkerLease,
         key: CacheUnitKey,
@@ -94,6 +95,10 @@ object CacheCoordinator : CacheUiPort {
 
         override fun confirmPaused(submission: CacheSubmission): Boolean {
             return store.confirmPaused(submission.sessionId, submission.taskId)
+        }
+
+        override fun commitIfLeaseActive(lease: CacheWorkerLease, action: () -> Unit): Boolean {
+            return store.commitIfLeaseActive(lease, action)
         }
 
         override fun updateUnit(
