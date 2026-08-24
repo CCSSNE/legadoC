@@ -1190,7 +1190,7 @@ object ReviewSnapshotCapture {
                         future.get()
                     } catch (error: java.util.concurrent.ExecutionException) {
                         val cause = error.cause ?: error
-                        if (cause is ResourceDownloadException) {
+                        if (cause is ResourceDownloadException && target.kind != ResourceKind.CSS) {
                             diagnostics?.warn("RESOURCE_DOWNLOAD_SKIPPED", cause)
                             null
                         } else {
@@ -1484,10 +1484,22 @@ object ReviewSnapshotCapture {
                 "var cacheCommentImages=${inline.cacheCommentImages};" +
                 "var removeUnstaged=${inline.removeUnstagedExternalResources};" +
                 IMAGE_CLASSIFIER_HELPER_JS +
-                "root.querySelectorAll('img[src]').forEach(function(el){" +
+                "root.querySelectorAll('img').forEach(function(el){" +
                 "if(!(isAvatarImage(el)?cacheAvatars:cacheCommentImages))return;" +
-                "if(!/^https?:\\/\\//i.test(el.src))return;var d=m[el.src];" +
-                "if(d)el.src=d;else if(removeUnstaged)el.removeAttribute('src');});" +
+                "var source=el.getAttribute('src');" +
+                "if(source&&/^https?:\\/\\//i.test(el.src)){var d=m[el.src]||m[source];" +
+                "if(d)el.src=d;else if(removeUnstaged)el.removeAttribute('src');}" +
+                "var set=el.getAttribute('srcset');if(!set)return;" +
+                "var rewritten=[],unresolved=false;" +
+                "set.split(',').forEach(function(part){var bits=part.trim().split(/\\s+/);" +
+                "var raw=bits.shift();if(!raw)return;var resolved=raw;" +
+                "try{resolved=new URL(raw,document.baseURI).href;}catch(e){}" +
+                "var mapped=m[resolved];" +
+                "if(mapped)rewritten.push(mapped+(bits.length?' '+bits.join(' '):''));" +
+                "else if(/^(data:|review-resource:|#|about:blank)/i.test(resolved))rewritten.push(part.trim());" +
+                "else unresolved=true;});" +
+                "if(unresolved){if(removeUnstaged)el.removeAttribute('srcset');}" +
+                "else if(rewritten.length)el.setAttribute('srcset',rewritten.join(', '));});" +
                 "root.querySelectorAll('link[rel=\"stylesheet\"]').forEach(function(el){" +
                 "if(!/^https?:\\/\\//i.test(el.href))return;var d=c[el.href];" +
                 "if(d){var s=document.createElement('style');" +
@@ -1507,11 +1519,26 @@ object ReviewSnapshotCapture {
                 "for(var i=scripts.length-1;i>=0;i--){var e=scripts[i];" +
                 "if(e.parentNode)e.parentNode.removeChild(e);}" +
                 "var unresolved=[];" +
-                "root.querySelectorAll('img[src]').forEach(function(el){" +
+                "function unresolvedCss(css){" +
+                "var cssUrl=/url\\s*\\(\\s*([\"']?)([^\"')\\s]+)\\1\\s*\\)/ig;var match;" +
+                "while((match=cssUrl.exec(css))!==null){var value=match[2];" +
+                "if(!/^(data:|review-resource:|#|about:blank)/i.test(value))return value;}" +
+                "var cssImport=/@import\\s*[\"']([^\"']+)[\"']/ig;" +
+                "while((match=cssImport.exec(css))!==null){var imported=match[1];" +
+                "if(!/^(data:|review-resource:|#|about:blank)/i.test(imported))return imported;}" +
+                "return null;}" +
+                "root.querySelectorAll('img').forEach(function(el){" +
                 "if(!(isAvatarImage(el)?cacheAvatars:cacheCommentImages))return;" +
-                "if(/^https?:\\/\\//i.test(el.src))unresolved.push(el.src);});" +
+                "var source=el.getAttribute('src');" +
+                "if(source&&/^(https?|blob):/i.test(el.src))unresolved.push(el.src);" +
+                "var set=el.getAttribute('srcset')||'';set.split(',').forEach(function(part){" +
+                "var raw=part.trim().split(/\\s+/)[0];if(!raw)return;var resolved=raw;" +
+                "try{resolved=new URL(raw,document.baseURI).href;}catch(e){}" +
+                "if(!/^(data:|review-resource:|#|about:blank)/i.test(resolved))unresolved.push(resolved);});});" +
                 "root.querySelectorAll('link[rel=\"stylesheet\"][href]').forEach(function(el){" +
-                "if(/^https?:\\/\\//i.test(el.href))unresolved.push(el.href);});" +
+                "if(!/^(data:|review-resource:|about:blank)/i.test(el.href))unresolved.push(el.href);});" +
+                "root.querySelectorAll('style').forEach(function(el){" +
+                "var bad=unresolvedCss(el.textContent||'');if(bad)unresolved.push(bad);});" +
                 "if(unresolved.length)return '$SNAPSHOT_RESOURCE_INCOMPLETE_PREFIX'+" +
                 "unresolved.length+' 个外部资源未入库，首个: '+unresolved[0];" +
                 "return root.outerHTML;" +
@@ -1558,8 +1585,15 @@ object ReviewSnapshotCapture {
             "window.__legadoReviewSnapshotRoot=root;" +
             IMAGE_CLASSIFIER_HELPER_JS +
             "var img=[],css=[];" +
-            "root.querySelectorAll('img[src]').forEach(function(el){" +
-            "img.push({url:el.src,kind:isAvatarImage(el)?'avatar':'comment'});});" +
+            "function addImage(el,raw){" +
+            "var value=(raw||'').trim();if(!value)return;" +
+            "try{value=new URL(value,document.baseURI).href;}catch(e){}" +
+            "img.push({url:value,kind:isAvatarImage(el)?'avatar':'comment'});}" +
+            "root.querySelectorAll('img').forEach(function(el){" +
+            "var source=el.getAttribute('src');if(source)addImage(el,source);" +
+            "var set=el.getAttribute('srcset')||'';" +
+            "set.split(',').forEach(function(part){var candidate=part.trim().split(/\\s+/)[0];" +
+            "if(candidate)addImage(el,candidate);});});" +
             "root.querySelectorAll('link[rel=\"stylesheet\"][href]').forEach(function(el){css.push(el.href);});" +
             "return JSON.stringify({img:img,css:css});" +
             "})()"
