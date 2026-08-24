@@ -17,7 +17,6 @@ import io.legado.app.help.book.isVideo
 import io.legado.app.help.cache.CacheCoordinator
 import io.legado.app.help.cache.CacheKind
 import io.legado.app.help.cache.CacheLifecycleRules
-import io.legado.app.help.cache.CachePhase
 import io.legado.app.help.cache.CacheSubmission
 import io.legado.app.utils.gone
 import io.legado.app.utils.visible
@@ -152,16 +151,17 @@ class CacheAdapter(context: Context, private val callBack: CallBack) :
 private fun io.legado.app.help.cache.CacheSnapshot.findDownloadTask(
     book: Book,
 ): CacheSubmission? {
+    val kind = when {
+        book.isAudio -> CacheKind.AUDIO
+        book.isVideo -> CacheKind.VIDEO
+        else -> CacheKind.TEXT
+    }
     val task = sessions.asSequence()
         .flatMap { it.tasks.asSequence() }
         .firstOrNull {
             it.bookUrl == book.bookUrl &&
-                (if (book.isAudio || book.isVideo) {
-                    (it.kind == CacheKind.AUDIO || it.kind == CacheKind.VIDEO) &&
-                        it.phase == CachePhase.MEDIA
-                } else {
-                    it.kind == CacheKind.TEXT && it.phase == CachePhase.BODY
-                }) &&
+                it.kind == kind &&
+                it.isCoordinatorDownloadTask() &&
                 !CacheLifecycleRules.isTerminal(it.status)
         }
     return task?.let { CacheSubmission(it.sessionId, it.taskId) }

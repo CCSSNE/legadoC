@@ -39,7 +39,6 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.cache.CacheCoordinator
 import io.legado.app.help.cache.CacheKind
-import io.legado.app.help.cache.CacheLifecycle
 import io.legado.app.help.cache.CacheLifecycleRules
 import io.legado.app.help.cache.CachePhase
 import io.legado.app.help.cache.CacheRequestSource
@@ -96,6 +95,7 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
 
     private val exportBookPathKey = "exportBookPath"
     private val exportTypes = arrayListOf("txt", "txt_zip", "epub", "pdf")
+    private val audioExportTypes = listOf("txt_zip")
     private val layoutManager by lazy { LinearLayoutManager(this) }
     private val adapter by lazy { CacheAdapter(this, this) }
     private var booksFlowJob: Job? = null
@@ -391,18 +391,8 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
     private fun hasCoordinatorDownloadTask(): Boolean {
         return CacheCoordinator.snapshot.value.sessions.any { session ->
             session.tasks.any {
-                ((it.kind == CacheKind.TEXT &&
-                    (it.phase == CachePhase.BODY || it.phase == CachePhase.REVIEW)) ||
-                    ((it.kind == CacheKind.AUDIO || it.kind == CacheKind.VIDEO) &&
-                        it.phase == CachePhase.MEDIA)) &&
-                    it.status in setOf(
-                        CacheLifecycle.QUEUED,
-                        CacheLifecycle.RUNNING,
-                        CacheLifecycle.PAUSING,
-                        CacheLifecycle.PAUSED,
-                        CacheLifecycle.INTERRUPTED,
-                        CacheLifecycle.CANCELLING,
-                    )
+                it.isCoordinatorDownloadTask() &&
+                    !CacheLifecycleRules.isTerminal(it.status)
             }
         }
     }
@@ -411,10 +401,7 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
         CacheCoordinator.snapshot.value.sessions
             .flatMap { it.tasks }
             .filter {
-                ((it.kind == CacheKind.TEXT &&
-                    (it.phase == CachePhase.BODY || it.phase == CachePhase.REVIEW)) ||
-                    ((it.kind == CacheKind.AUDIO || it.kind == CacheKind.VIDEO) &&
-                        it.phase == CachePhase.MEDIA)) &&
+                it.isCoordinatorDownloadTask() &&
                     !CacheLifecycleRules.isTerminal(it.status)
             }
             .forEach { CacheCoordinator.cancel(CacheSubmission(it.sessionId, it.taskId)) }
@@ -430,8 +417,10 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
     }
 
     override fun export(position: Int) {
-        selector(R.string.export_type, exportTypes) { _, index ->
-            showExportConfigDialog(position, exportTypes[index])
+        val book = adapter.getItem(position) ?: return
+        val availableTypes = if (book.isAudio) audioExportTypes else exportTypes
+        selector(R.string.export_type, availableTypes) { _, index ->
+            showExportConfigDialog(position, availableTypes[index])
         }
     }
 
