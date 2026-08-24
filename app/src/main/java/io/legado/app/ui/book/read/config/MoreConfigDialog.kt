@@ -802,6 +802,8 @@ class MoreConfigDialog : BaseReaderSheetPrefDialogFragment() {
                     getString(R.string.page_animation_speed_value, value)
                 PreferKey.keyPageAnimationSpeed -> preference.summary =
                     getString(R.string.page_animation_speed_value, value)
+                PreferKey.compressReviewAvatars,
+                PreferKey.compressReviewImages -> preference.summary = value
             }
         }
 
