@@ -18,17 +18,16 @@ import io.legado.app.ui.login.SourceLoginJsExtensions
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.mapAsyncIndexed
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.withTimeout
 import splitties.init.appCtx
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicReference
 
 /**
  * 评论快照抓取调度器（登记端）。
@@ -531,8 +530,15 @@ object ReviewSnapshotManager {
             resolveReviewPageUrl(book, bookSource, chapter, button)
         }
         if (resolveResult.isFailure) {
-            sb.append("   解析真实评论页 URL：失败（JS 执行异常）\n")
-            sb.append("   ").append(resolveResult.exceptionOrNull()!!.stackTraceToString()).append('\n')
+            val error = resolveResult.exceptionOrNull()!!
+            val reason = when (error) {
+                is kotlinx.coroutines.TimeoutCancellationException ->
+                    "click/js 执行与 browser open/showBrowser 等待总超时(${RESOLVE_TIMEOUT_MS / 1000}s)"
+                is kotlinx.coroutines.CancellationException -> "任务被取消"
+                else -> "JS 执行异常"
+            }
+            sb.append("   解析真实评论页 URL：失败（").append(reason).append("）\n")
+            sb.append("   ").append(error.stackTraceToString()).append('\n')
             return ButtonOutcome(buttonIndex, sb.toString(), failed = true)
         }
         val page = resolveResult.getOrNull()!!
@@ -607,6 +613,11 @@ object ReviewSnapshotManager {
      * 或 qread 的 `java.startBrowserDp(url, title)`，或老式 startBrowser 路径；
      * showBrowser 时书源已用 ajax 取回渲染 HTML，一并记录，抓取阶段可直接
      * 作为初始页面，不用再开网络请求。
+     *
+     * [RESOLVE_TIMEOUT_MS] 覆盖 click/js 的实际执行和 browser open 回调等待。
+     * 不能先同步执行脚本、再给回调等待另起一段完整预算；否则卡住的脚本会无限占用
+     * Review pipeline 配额。Rhino 在指令观察点感知该协程取消；不响应取消的宿主调用则
+     * 必须由宿主调用自身暴露并修复，不能伪装成已中断。
      */
     data class ReviewPage(
         val url: String?,
@@ -622,83 +633,77 @@ object ReviewSnapshotManager {
         chapter: BookChapter,
         button: ReviewButton
     ): ReviewPage {
-        val resolvedUrl = AtomicReference<String>()
-        val resolvedHtml = AtomicReference<String?>()
-        val resolvedPreloadJs = AtomicReference<String?>()
-        val latch = CountDownLatch(1)
+        val resolvedPage = CompletableDeferred<ReviewPage>()
         fun record(url: String, html: String? = null, preloadJs: String? = null) {
-            if (resolvedUrl.compareAndSet(null, url)) {
-                resolvedHtml.compareAndSet(null, html)
-                resolvedPreloadJs.compareAndSet(null, preloadJs)
-                latch.countDown()
-            }
+            resolvedPage.complete(ReviewPage(url, html, preloadJs))
         }
-        if (!button.click.isNullOrBlank()) {
-            val host = object : SourceLoginJsExtensions(null, bookSource, BookType.text) {
-                override fun startBrowser(url: String, title: String) {
-                    record(url)
-                }
+        return withTimeout(RESOLVE_TIMEOUT_MS) {
+            if (!button.click.isNullOrBlank()) {
+                val host = object : SourceLoginJsExtensions(null, bookSource, BookType.text) {
+                    override fun startBrowser(url: String, title: String) {
+                        record(url)
+                    }
 
-                override fun startBrowser(url: String, title: String, html: String?) {
-                    record(url, html)
-                }
+                    override fun startBrowser(url: String, title: String, html: String?) {
+                        record(url, html)
+                    }
 
-                override fun startBrowserAwait(url: String, title: String): StrResponse {
-                    record(url)
-                    return StrResponse(url, "")
-                }
+                    override fun startBrowserAwait(url: String, title: String): StrResponse {
+                        record(url)
+                        return StrResponse(url, "")
+                    }
 
-                override fun startBrowserAwait(
-                    url: String,
-                    title: String,
-                    refetchAfterSuccess: Boolean
-                ): StrResponse {
-                    record(url)
-                    return StrResponse(url, "")
-                }
+                    override fun startBrowserAwait(
+                        url: String,
+                        title: String,
+                        refetchAfterSuccess: Boolean
+                    ): StrResponse {
+                        record(url)
+                        return StrResponse(url, "")
+                    }
 
-                override fun startBrowserAwait(
-                    url: String,
-                    title: String,
-                    refetchAfterSuccess: Boolean,
-                    html: String?
-                ): StrResponse {
-                    record(url, html)
-                    return StrResponse(url, "")
-                }
+                    override fun startBrowserAwait(
+                        url: String,
+                        title: String,
+                        refetchAfterSuccess: Boolean,
+                        html: String?
+                    ): StrResponse {
+                        record(url, html)
+                        return StrResponse(url, "")
+                    }
 
-                /** 改版 app 弹窗路径：书源评论实际走这里 */
-                override fun showBrowser(
-                    url: String,
-                    html: String?,
-                    preloadJs: String?,
-                    config: String?
-                ) {
-                    record(url, html, preloadJs)
-                }
+                    /** 改版 app 弹窗路径：书源评论实际走这里 */
+                    override fun showBrowser(
+                        url: String,
+                        html: String?,
+                        preloadJs: String?,
+                        config: String?
+                    ) {
+                        record(url, html, preloadJs)
+                    }
 
-                /** qread 弹窗路径兼容 */
-                fun startBrowserDp(url: String, title: String) {
-                    record(url)
+                    /** qread 弹窗路径兼容 */
+                    fun startBrowserDp(url: String, title: String) {
+                        record(url)
+                    }
+                }
+                BookImgClick.executeClick(book, bookSource, chapter, button.click, button.src) { host }
+            } else {
+                val js = button.js.orEmpty()
+                val urlNoOption = button.urlNoOption.orEmpty()
+                BookImgClick.executeJs(book, bookSource, chapter, js, urlNoOption) {
+                    onBrowserOpenRequestedHook = { url, _, _ ->
+                        record(url)
+                        true
+                    }
+                    onBrowserAwaitRequestedHook = { url, _, _ ->
+                        record(url)
+                        StrResponse(url, "")
+                    }
                 }
             }
-            BookImgClick.executeClick(book, bookSource, chapter, button.click, button.src) { host }
-        } else {
-            val js = button.js.orEmpty()
-            val urlNoOption = button.urlNoOption.orEmpty()
-            BookImgClick.executeJs(book, bookSource, chapter, js, urlNoOption) {
-                onBrowserOpenRequestedHook = { url, _, _ ->
-                    record(url)
-                    true
-                }
-                onBrowserAwaitRequestedHook = { url, _, _ ->
-                    record(url)
-                    StrResponse(url, "")
-                }
-            }
+            resolvedPage.await()
         }
-        latch.await(RESOLVE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-        return ReviewPage(resolvedUrl.get(), resolvedHtml.get(), resolvedPreloadJs.get())
     }
 
     /**
