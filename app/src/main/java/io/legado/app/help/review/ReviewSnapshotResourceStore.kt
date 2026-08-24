@@ -196,6 +196,31 @@ object ReviewSnapshotResourceStore {
         }
     }
 
+    /** Copies only resources referenced by [snapshotFiles], keeping a self-contained index. */
+    fun copyReferencedTo(
+        book: Book,
+        targetDir: File,
+        snapshotFiles: Collection<File>,
+    ) = synchronized(lock) {
+        val sourceDir = ReviewSnapshotStore.reviewsDir(book)
+        val index = requireDatabase(book)
+        val referencedKeys = snapshotFiles
+            .flatMapTo(linkedSetOf(), ::resourceKeysIn)
+        val indexedKeys = index.resources.mapTo(hashSetOf()) { it.key }
+        require(indexedKeys.containsAll(referencedKeys)) {
+            "评论快照引用了资源数据库中不存在的资源"
+        }
+        val selectedEntries = index.resources.filter { it.key in referencedKeys }
+        selectedEntries.forEach { validateEntry(sourceDir, it) }
+        writeDatabase(
+            targetDir,
+            ReviewSnapshotResourceDatabase(resources = selectedEntries),
+        )
+        referencedKeys.forEach { key ->
+            copyFile(blobFile(sourceDir, key), blobFile(targetDir, key))
+        }
+    }
+
     /** Restores the index and every referenced blob from a TXT-ZIP extraction. */
     fun importFrom(book: Book, extractedFiles: List<File>) = synchronized(lock) {
         val snapshotFiles = extractedFiles.filter(ReviewSnapshotStore::isSnapshotFile)

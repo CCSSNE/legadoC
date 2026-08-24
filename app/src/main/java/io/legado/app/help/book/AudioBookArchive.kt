@@ -5,6 +5,7 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
+import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.getFile
@@ -16,7 +17,8 @@ import java.io.File
 object AudioBookArchive {
     const val MANIFEST_FILE_NAME = "audio_book.json"
     const val MEDIA_DIR_NAME = "audio"
-    const val VERSION = 1
+    const val MIN_SUPPORTED_VERSION = 1
+    const val VERSION = 2
 
     /** Imported media is book content, deliberately outside BookHelp's cache domain. */
     const val PERSISTENT_MEDIA_DIR_NAME = "audio_book_resources"
@@ -28,6 +30,12 @@ object AudioBookArchive {
         } else {
             "audio_$fileName"
         }
+    }
+
+    fun importedChapterUrl(bookUrl: String, order: Int): String {
+        require(bookUrl.isNotBlank()) { "Audio archive book URL must not be blank" }
+        require(order >= 0) { "Audio archive chapter order must be non-negative" }
+        return "audio-archive://${MD5Utils.md5Encode16(bookUrl)}/chapter/$order"
     }
 
     fun persistentMediaDir(book: Book): File {
@@ -145,6 +153,8 @@ data class AudioBookArchiveManifest(
 data class AudioBookArchiveChapter(
     val index: Int = 0,
     val title: String = "",
+    /** Stable source identity used to remap chapter-owned sidecars after import. */
+    val sourceChapterUrl: String? = null,
     val mediaFiles: List<String> = emptyList(),
     val variable: String? = null,
     val start: Long? = null,
