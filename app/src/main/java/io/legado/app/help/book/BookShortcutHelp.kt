@@ -116,7 +116,11 @@ object BookShortcutHelp {
     private fun matchesGroup(groupId: Long, shortcut: BookShortcut, body: Book): Boolean {
         return when {
             groupId == BookGroup.IdAll || groupId == BookGroup.IdPrimaryAll -> true
-            groupId == BookGroup.IdRoot || groupId == BookGroup.IdUngrouped -> shortcut.group == 0L
+            groupId == BookGroup.IdRoot ->
+                shortcut.group == 0L &&
+                    body.type and BookType.text > 0 &&
+                    body.type and BookType.local == 0
+            groupId == BookGroup.IdUngrouped -> shortcut.group == 0L
             groupId == BookGroup.IdNovel -> body.type and BookType.text > 0
             groupId == BookGroup.IdLocal -> body.type and BookType.local > 0
             groupId == BookGroup.IdAudio -> body.type and BookType.audio > 0
