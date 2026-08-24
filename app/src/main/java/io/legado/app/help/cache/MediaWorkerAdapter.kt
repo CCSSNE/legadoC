@@ -130,9 +130,7 @@ internal class MediaWorkerAdapter(
         val task = CacheCoordinator.currentTask(submission) ?: return
         AudioCacheTaskManager.cancel(task.bookUrl) {
             CacheMediaWorkerRegistry.remove(submission.sessionId, submission.taskId)
-            if (workerPort.confirmCancelled(submission)) {
-                CacheCoordinator.notifyTaskFinished(submission, CacheResult.CANCELLED)
-            }
+            workerPort.confirmCancelled(submission)
         }
     }
 }
@@ -179,9 +177,7 @@ private object CacheMediaWorkerRegistry {
                 }
                 port.updateUnit(lease, unit.key, CacheUnitStatus.FAILED, error)
             }
-        if (port.finish(lease, CacheResult.FAILED, error)) {
-            CacheCoordinator.notifyTaskFinished(lease, CacheResult.FAILED, error)
-        }
+        port.finish(lease, CacheResult.FAILED, error)
         removeBinding(lease)
     }
 
@@ -264,13 +260,7 @@ private object CacheMediaWorkerRegistry {
         } else {
             CacheResult.SUCCEEDED
         }
-        if (requirePort().finish(lease, result, state.message.takeIf { result == CacheResult.FAILED })) {
-            CacheCoordinator.notifyTaskFinished(
-                lease,
-                result,
-                state.message.takeIf { result == CacheResult.FAILED },
-            )
-        }
+        requirePort().finish(lease, result, state.message.takeIf { result == CacheResult.FAILED })
         removeBinding(lease)
     }
 

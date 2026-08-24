@@ -80,9 +80,7 @@ internal class ReviewWorkerAdapter(
                 .forEach { unit ->
                     workerPort.updateUnit(lease, unit.key, CacheUnitStatus.FAILED, error)
                 }
-            if (workerPort.finish(lease, CacheResult.FAILED, error)) {
-                CacheCoordinator.notifyTaskFinished(lease, CacheResult.FAILED, error)
-            }
+            workerPort.finish(lease, CacheResult.FAILED, error)
             return
         }
         if (validKeys.isEmpty()) {
@@ -132,9 +130,7 @@ internal class ReviewWorkerAdapter(
     fun cancel(submission: CacheSubmission) {
         ReviewSnapshotManager.cancelTask(submission.sessionId, submission.taskId)
         CacheReviewWorkerRegistry.remove(submission.sessionId, submission.taskId)
-        if (workerPort.confirmCancelled(submission)) {
-            CacheCoordinator.notifyTaskFinished(submission, CacheResult.CANCELLED)
-        }
+        workerPort.confirmCancelled(submission)
     }
 
     fun pause(submission: CacheSubmission) {
@@ -202,7 +198,6 @@ internal object CacheReviewWorkerRegistry {
     fun finish(lease: CacheWorkerLease, failed: Boolean, error: String?) {
         val result = if (failed) CacheResult.FAILED else CacheResult.SUCCEEDED
         if (requireWorkerPort().finish(lease, result, error)) {
-            CacheCoordinator.notifyTaskFinished(lease, result, error)
             bindings.remove(taskKey(lease))
         }
     }
@@ -285,10 +280,7 @@ internal object CacheReviewWorkerRegistry {
     }
 
     private fun failTask(lease: CacheWorkerLease, error: String) {
-        val finished = requireWorkerPort().finish(lease, CacheResult.FAILED, error)
-        if (finished) {
-            CacheCoordinator.notifyTaskFinished(lease, CacheResult.FAILED, error)
-        }
+        requireWorkerPort().finish(lease, CacheResult.FAILED, error)
         bindings.remove(taskKey(lease))
     }
 
@@ -296,17 +288,11 @@ internal object CacheReviewWorkerRegistry {
         val complete = synchronized(lock) { binding.completed.size == binding.expected.size }
         if (!complete) return
         val failed = synchronized(lock) { binding.completed.values.any { !it } }
-        val finished = requireWorkerPort().finish(
+        if (requireWorkerPort().finish(
             binding.lease,
             if (failed) CacheResult.FAILED else CacheResult.SUCCEEDED,
             if (failed) "one or more review chapters failed" else null,
-        )
-        if (finished) {
-            CacheCoordinator.notifyTaskFinished(
-                binding.lease,
-                if (failed) CacheResult.FAILED else CacheResult.SUCCEEDED,
-                if (failed) "one or more review chapters failed" else null,
-            )
+        )) {
             bindings.remove(taskKey(binding.lease))
         }
     }

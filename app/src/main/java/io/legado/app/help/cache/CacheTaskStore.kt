@@ -160,6 +160,7 @@ internal class CacheTaskStore(
                 status = CacheLifecycle.FAILED,
                 result = CacheResult.FAILED,
                 error = error,
+                terminalEffectsPending = true,
                 updatedAt = System.currentTimeMillis(),
             ))
             removeTaskProgressLocked(sessionId, taskId)
@@ -258,6 +259,7 @@ internal class CacheTaskStore(
             replaceTaskLocked(task.copy(
                 status = CacheLifecycle.CANCELLED,
                 result = CacheResult.CANCELLED,
+                terminalEffectsPending = true,
                 updatedAt = System.currentTimeMillis(),
             ))
             removeTaskProgressLocked(sessionId, taskId)
@@ -438,6 +440,7 @@ internal class CacheTaskStore(
                 status = lifecycle,
                 result = finalResult,
                 error = error,
+                terminalEffectsPending = true,
                 updatedAt = System.currentTimeMillis(),
             ))
             removeTaskProgressLocked(lease.sessionId, lease.taskId)
@@ -499,6 +502,7 @@ internal class CacheTaskStore(
                 result = CacheResult.SKIPPED,
                 skipReason = reason,
                 error = detail,
+                terminalEffectsPending = true,
                 updatedAt = updatedAt,
             ))
             removeTaskProgressLocked(lease.sessionId, lease.taskId)
@@ -519,6 +523,28 @@ internal class CacheTaskStore(
             "result=${CacheResult.SKIPPED} reason=$reason error=$detail",
         )
         return true
+    }
+
+    fun pendingTerminalEffects(): List<CacheTaskState> = synchronized(lock) {
+        sessions.values.asSequence()
+            .flatMap { it.tasks.asSequence() }
+            .filter { CacheLifecycleRules.isTerminal(it.status) && it.terminalEffectsPending }
+            .toList()
+    }
+
+    fun completeTerminalEffects(sessionId: String, taskId: String): Boolean {
+        synchronized(lock) {
+            val task = requireTaskLocked(sessionId, taskId)
+            if (!CacheLifecycleRules.isTerminal(task.status) || !task.terminalEffectsPending) {
+                return false
+            }
+            replaceTaskLocked(task.copy(
+                terminalEffectsPending = false,
+                updatedAt = System.currentTimeMillis(),
+            ))
+            publishLocked()
+            return true
+        }
     }
 
     private fun aggregateTaskResult(task: CacheTaskState, requested: CacheResult): CacheResult {
@@ -812,6 +838,7 @@ internal class CacheTaskStore(
                             status = CacheLifecycle.CANCELLED,
                             result = CacheResult.CANCELLED,
                             generation = task.generation + 1,
+                            terminalEffectsPending = true,
                             updatedAt = System.currentTimeMillis(),
                         )
                         CacheLifecycle.PAUSING -> task.copy(

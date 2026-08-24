@@ -128,6 +128,8 @@ data class CacheTaskState(
     val skipReason: CacheTaskSkipReason? = null,
     val generation: Long = 0L,
     val error: String? = null,
+    /** Durable outbox bit for Coordinator-owned terminal side effects. */
+    val terminalEffectsPending: Boolean = false,
     val updatedAt: Long = 0L,
 )
 
