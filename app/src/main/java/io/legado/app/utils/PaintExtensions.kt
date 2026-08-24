@@ -2,6 +2,7 @@ package io.legado.app.utils
 
 import android.os.Build
 import android.text.TextPaint
+import io.legado.app.ui.book.read.page.provider.ChapterProvider.hiddenReviewChar
 import io.legado.app.ui.book.read.page.provider.ChapterProvider.reviewChar
 
 val TextPaint.textHeight: Float
@@ -19,6 +20,11 @@ val TextPaint.textHeight: Float
  */
 fun TextPaint.getTextWidthsCompat(text: String, widths: FloatArray, reviewCharWidth: Float) {
     getTextWidths(text, widths)
+    text.forEachIndexed { index, char ->
+        if (char == hiddenReviewChar) {
+            widths[index] = 0f
+        }
+    }
     val lastReview = text.lastOrNull() == reviewChar
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
         val letterSpacing = letterSpacing * textSize

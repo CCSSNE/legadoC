@@ -41,6 +41,8 @@ object ChapterProvider {
     //用于评论按钮的替换
     const val reviewStr = "꧁"
     const val reviewChar = '꧁'
+    // WORD JOINER：所有排版引擎中零宽且不提供断行机会，用作零评论泡的语义占位。
+    const val hiddenReviewChar = '\u2060'
     const val indentChar = "　"
 
     @JvmStatic

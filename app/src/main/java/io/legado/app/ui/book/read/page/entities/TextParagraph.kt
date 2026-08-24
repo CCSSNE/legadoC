@@ -1,5 +1,7 @@
 package io.legado.app.ui.book.read.page.entities
 
+import io.legado.app.ui.book.read.page.entities.column.HiddenReviewColumn
+
 @Suppress("unused", "MemberVisibilityCanBePrivate")
 data class TextParagraph(
     var num: Int,
@@ -13,6 +15,13 @@ data class TextParagraph(
      * 按段落内顺序排列；评论节点带原始 src/click，供阅读页与沉浸听书页共用。
      */
     val segments: List<ParagraphSegment> get() = ParagraphSegment.build(this)
+    /**
+     * 已从正文移除的零评论泡入口。它们没有绘制列或触摸热区，只供选区菜单使用。
+     */
+    val hiddenReviewButtons: List<ReviewButton>
+        get() = textLines.flatMap { line ->
+            line.columns.filterIsInstance<HiddenReviewColumn>().map { it.reviewButton }
+        }
     val firstLine: TextLine get() = textLines.first()
     val lastLine: TextLine get() = textLines.last()
     val chapterIndices: IntRange get() = firstLine.chapterPosition..lastLine.chapterPosition + lastLine.charSize

@@ -31,6 +31,10 @@
         android:title="@string/ask_ai" />
 
     <item
+        android:id="@+id/menu_review"
+        android:title="@string/review" />
+
+    <item
         android:id="@+id/menu_search_content"
         android:title="@string/search_content"
         app:showAsAction="never" />

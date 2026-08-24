@@ -4,6 +4,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.text.Layout
+import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.StaticLayout
 import android.text.TextPaint
@@ -40,6 +41,10 @@ import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.read.page.entities.TextChapter
 import io.legado.app.ui.book.read.page.entities.TextLine
 import io.legado.app.ui.book.read.page.entities.TextPage
+import io.legado.app.ui.book.read.page.entities.ReviewBubble
+import io.legado.app.ui.book.read.page.entities.ReviewButton
+import io.legado.app.ui.book.read.page.entities.column.HiddenReviewColumn
+import io.legado.app.ui.book.read.page.entities.column.HiddenReviewSpan
 import io.legado.app.ui.book.read.page.entities.column.ImageColumn
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import io.legado.app.utils.dpToPx
@@ -82,6 +87,7 @@ import io.legado.app.model.localBook.EpubPageColor
 import io.legado.app.ui.book.read.page.entities.column.BaseColumn
 import io.legado.app.ui.book.read.page.entities.column.TextBaseColumn
 import io.legado.app.ui.book.read.page.provider.ChapterProvider.reviewChar
+import io.legado.app.ui.book.read.page.provider.ChapterProvider.hiddenReviewChar
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 import org.jsoup.Jsoup
@@ -196,6 +202,14 @@ class TextChapterLayout(
 
     private fun isInlineImageStyle(style: String?): Boolean {
         return style == "text" || style == "TEXT"
+    }
+
+    private fun reviewPlaceholder(src: String): Char {
+        return if (ReviewBubble.hasZeroCount(src)) {
+            hiddenReviewChar
+        } else {
+            reviewChar
+        }
     }
 
 
@@ -360,7 +374,7 @@ class TextChapterLayout(
                             else -> {
                                 srcList.add(titleImg)
                                 clickList.add(click)
-                                reviewChar
+                                reviewPlaceholder(titleImg)
                             }
                         }
                     } else {
@@ -384,7 +398,7 @@ class TextChapterLayout(
                             "TEXT" -> {
                                 srcList.add(titleImg)
                                 clickList.add(click)
-                                reviewChar
+                                reviewPlaceholder(titleImg)
                             }
                             else -> {
                                 setTypeImage(
@@ -547,7 +561,9 @@ class TextChapterLayout(
                             }
                             when (style) {
                                 "TEXT" -> {
-                                    sb.append(reviewChar)
+                                    sb.append(
+                                        reviewPlaceholder(imgSrc)
+                                    )
                                     srcList.add(imgSrc)
                                     clickList.add(click)
                                 }
@@ -587,7 +603,9 @@ class TextChapterLayout(
                             }
                         } else when (style) {
                             "TEXT" -> {
-                                sb.append(reviewChar)
+                                sb.append(
+                                    reviewPlaceholder(imgSrc)
+                                )
                                 srcList.add(imgSrc)
                                 clickList.add(click)
                             }
@@ -1873,7 +1891,10 @@ class TextChapterLayout(
         if (isInlineImageStyle(style)) {
             setTypeText(
                 book = book,
-                text = if (style == "TEXT") reviewChar.toString() else srcReplaceChar.toString(),
+                text = when (style) {
+                    "TEXT" -> reviewPlaceholder(src).toString()
+                    else -> srcReplaceChar.toString()
+                },
                 textPaint = contentPaint,
                 textHeight = contentPaintTextHeight,
                 fontMetrics = contentPaintFontMetrics,
@@ -1900,6 +1921,37 @@ class TextChapterLayout(
             imgSize,
             click
         )
+    }
+
+    /**
+     * HtmlCompat 会把 img 变成 [ImageSpan]。零评论泡在这里换成零宽语义 span，
+     * 从而不参与正文绘制与命中，同时让其所属段落保留书源点击载荷。
+     */
+    private fun replaceZeroReviewImageSpans(spanned: SpannableStringBuilder) {
+        spanned.getSpans(0, spanned.length, ImageSpan::class.java).forEach { imageSpan ->
+            val src = imageSpan.source ?: return@forEach
+            val matcher = paramPattern.matcher(src)
+            if (!matcher.find()) return@forEach
+            val options = GSON.fromJsonObject<Map<String, String>>(src.substring(matcher.end()))
+                .getOrNull() ?: return@forEach
+            if (!options["style"].equals("TEXT", ignoreCase = true) ||
+                !ReviewBubble.hasZeroCount(src)
+            ) return@forEach
+            val start = spanned.getSpanStart(imageSpan)
+            val end = spanned.getSpanEnd(imageSpan)
+            if (start < 0 || end != start + 1) {
+                AppLog.put("零评论泡无法建立零宽段评入口: span=$start..$end, src=$src")
+                return@forEach
+            }
+            spanned.removeSpan(imageSpan)
+            spanned.replace(start, end, hiddenReviewChar.toString())
+            spanned.setSpan(
+                HiddenReviewSpan(ReviewButton(src, options["click"])),
+                start,
+                start + 1,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+        }
     }
 
     private fun Element.hasHtmlImage(): Boolean {
@@ -1956,7 +2008,9 @@ class TextChapterLayout(
     ) {
         breakAfterSingleImageIfNeed()
         val textViewTagHandler = TextViewTagHandler()
-        val spanned = htmlContent.parseAsHtml(HtmlCompat.FROM_HTML_MODE_COMPACT, tagHandler = textViewTagHandler)
+        val spanned = SpannableStringBuilder(
+            htmlContent.parseAsHtml(HtmlCompat.FROM_HTML_MODE_COMPACT, tagHandler = textViewTagHandler)
+        ).also(::replaceZeroReviewImageSpans)
         val width = layoutWidth.coerceIn(1, visibleWidth)
         val lineAbsStartX = absStartX + layoutStartOffset
         val textPaint = contentPaint
@@ -2023,6 +2077,17 @@ class TextChapterLayout(
                     charX + charWidth
                 }
                 var needAddText = true
+                spanned.getSpans(charIndex, charIndex + 1, HiddenReviewSpan::class.java)
+                    .firstOrNull()?.let { span ->
+                        columns.add(
+                            HiddenReviewColumn(
+                                start = lineAbsStartX + charX,
+                                end = lineAbsStartX + charX,
+                                reviewButton = span.reviewButton
+                            )
+                        )
+                        needAddText = false
+                    }
                 spanned.getSpans(charIndex, charIndex + 1, ImageSpan::class.java).firstOrNull()?.let { span -> //处理图片
                     val source = span.source ?: return@let
                     val urlMatcher = paramPattern.matcher(source)
@@ -2824,16 +2889,26 @@ class TextChapterLayout(
         style: InlineColumnStyle? = null
     ) {
         val column = when {
-            !srcList.isNullOrEmpty() && (char == srcReplaceStr || char == reviewStr) -> {
+            !srcList.isNullOrEmpty() && (
+                char == srcReplaceStr || char == reviewStr || char == hiddenReviewChar.toString()
+                ) -> {
                 val src = srcList.removeFirst()
                 val click = clickList?.removeFirst()
-                ImageColumn(
-                    start = absStartX + xStart,
-                    end = absStartX + xEnd,
-                    src = src,
-                    click = click,
-                    lazyLoad = true
-                )
+                if (char == hiddenReviewChar.toString()) {
+                    HiddenReviewColumn(
+                        start = absStartX + xStart,
+                        end = absStartX + xStart,
+                        reviewButton = ReviewButton(src, click)
+                    )
+                } else {
+                    ImageColumn(
+                        start = absStartX + xStart,
+                        end = absStartX + xEnd,
+                        src = src,
+                        click = click,
+                        lazyLoad = true
+                    )
+                }
             }
 //            isLineEnd && char == ChapterProvider.reviewChar -> {
 //                ReviewColumn(
