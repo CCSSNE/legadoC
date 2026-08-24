@@ -27,6 +27,8 @@ import io.legado.app.help.AppWebDav
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.AudioBookArchive
 import io.legado.app.help.book.AudioBookArchiveManifest
+import io.legado.app.help.book.BookArchive
+import io.legado.app.help.book.BookArchiveManifest
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.archiveName
@@ -93,6 +95,11 @@ object LocalBook {
         val bookUrl: String,
         val chaptersBySourceUrl: Map<String, BookChapter>?,
         val legacyChapters: Map<AudioArchiveChapterIdentity, BookChapter>?,
+    )
+
+    private data class ImportedArchiveBook(
+        val entryName: String,
+        val book: Book,
     )
 
     private val nameAuthorPatterns = arrayOf(
@@ -534,13 +541,17 @@ object LocalBook {
         filter: ((String) -> Boolean)? = null
     ): List<Book> {
         val archiveFileDoc = FileDoc.fromUri(archiveFileUri, false)
+        val bookManifest = readBookArchiveManifest(archiveFileDoc)
         val audioManifest = readAudioBookArchiveManifest(archiveFileDoc)
         val files = ArchiveUtils.deCompress(archiveFileDoc, filter = filter)
         if (files.isEmpty()) {
             throw NoStackTraceException(appCtx.getString(R.string.unsupport_archivefile_entry))
         }
-        val books = files.map {
-            saveBookFile(FileInputStream(it), saveFileName ?: it.name).let { uri ->
+        val importedArchiveBooks = files.map { extractedFile ->
+            val book = saveBookFile(
+                FileInputStream(extractedFile),
+                saveFileName ?: extractedFile.name,
+            ).let { uri ->
                 importFile(uri).apply {
                     //附加压缩包名称 以便解压文件被删后再解压
                     // Keep both a stable display name and the original URI. The URI is
@@ -551,12 +562,95 @@ object LocalBook {
                     save()
                 }
             }
+            ImportedArchiveBook(extractedFile.name, book)
         }
+        val books = importedArchiveBooks.map { it.book }
         val audioChapterMapping = audioManifest?.let { manifest ->
-            restoreAudioBookFromArchive(archiveFileDoc, books, manifest)
+            restoreAudioBookFromArchive(archiveFileDoc, importedArchiveBooks, manifest)
+        }
+        bookManifest?.let { manifest ->
+            restoreBookCoverFromArchive(archiveFileDoc, importedArchiveBooks, manifest)
         }
         restoreIllustrationsFromArchive(archiveFileDoc, books, audioChapterMapping)
         return books
+    }
+
+    private fun readBookArchiveManifest(
+        archiveFileDoc: FileDoc,
+    ): BookArchiveManifest? {
+        val manifestEntries = ArchiveUtils.getArchiveFilesName(archiveFileDoc) { entryName ->
+            entryName.replace('\\', '/').removePrefix("./") == BookArchive.MANIFEST_FILE_NAME
+        }
+        if (manifestEntries.isEmpty()) return null
+        require(manifestEntries.size == 1) {
+            "TXT-ZIP import failed: expected one ${BookArchive.MANIFEST_FILE_NAME}"
+        }
+        val manifestFiles = ArchiveUtils.deCompress(archiveFileDoc) { entryName ->
+            entryName.replace('\\', '/').removePrefix("./") == BookArchive.MANIFEST_FILE_NAME
+        }
+        val manifestFile = manifestFiles.singleOrNull {
+            it.name == BookArchive.MANIFEST_FILE_NAME
+        } ?: error("TXT-ZIP import failed: book manifest was not extracted")
+        val manifest = GSON.fromJsonObject<BookArchiveManifest>(manifestFile.readText())
+            .getOrThrow()
+        require(manifest.version in BookArchive.MIN_SUPPORTED_VERSION..BookArchive.VERSION) {
+            "TXT-ZIP import failed: unsupported book manifest version ${manifest.version}"
+        }
+        validateArchiveTextFile(manifest.textFile, "TXT-ZIP import failed")
+        manifest.coverFile?.let { coverFile ->
+            require(coverFile == BookArchive.COVER_FILE_NAME) {
+                "TXT-ZIP import failed: invalid cover path $coverFile"
+            }
+        }
+        return manifest
+    }
+
+    private fun restoreBookCoverFromArchive(
+        archiveFileDoc: FileDoc,
+        importedBooks: List<ImportedArchiveBook>,
+        manifest: BookArchiveManifest,
+    ) {
+        val book = importedBooks.singleOrNull { it.entryName == manifest.textFile }?.book
+            ?: error(
+                "TXT-ZIP import failed: expected exactly one imported text file " +
+                    manifest.textFile
+            )
+        val coverPath = manifest.coverFile ?: return
+        val coverEntries = ArchiveUtils.getArchiveFilesName(archiveFileDoc) { entryName ->
+            entryName.replace('\\', '/').removePrefix("./") == coverPath
+        }
+        require(coverEntries.size == 1) {
+            "TXT-ZIP import failed: expected one cover file $coverPath"
+        }
+        val extractedFiles = ArchiveUtils.deCompress(archiveFileDoc) { entryName ->
+            entryName.replace('\\', '/').removePrefix("./") == coverPath
+        }
+        val source = extractedFiles.singleOrNull { it.isFile && it.name == coverPath }
+            ?: error("TXT-ZIP import failed: cover file $coverPath was not extracted")
+        require(source.length() > 0L) {
+            "TXT-ZIP import failed: cover file $coverPath is empty"
+        }
+        val target = BookArchive.persistentCoverFile(book)
+        val staging = File(
+            target.parentFile,
+            ".${BookArchive.COVER_FILE_NAME}.${System.currentTimeMillis()}.tmp",
+        )
+        target.parentFile?.mkdirs()
+        try {
+            source.copyTo(staging, overwrite = true)
+            require(staging.isFile && staging.length() == source.length()) {
+                "TXT-ZIP import failed: cover copy is incomplete"
+            }
+            FileUtils.delete(target)
+            require(staging.renameTo(target)) {
+                "TXT-ZIP import failed: cannot install cover"
+            }
+            book.coverUrl = target.absolutePath
+            book.customCoverUrl = null
+            appDb.bookDao.update(book)
+        } finally {
+            if (staging.exists()) FileUtils.delete(staging)
+        }
     }
 
     private fun readAudioBookArchiveManifest(
@@ -579,9 +673,7 @@ object LocalBook {
         require(manifest.version in AudioBookArchive.MIN_SUPPORTED_VERSION..AudioBookArchive.VERSION) {
             "Audio TXT-ZIP import failed: unsupported manifest version ${manifest.version}"
         }
-        require(manifest.textFile.isNotBlank() && manifest.textFile.endsWith(".txt", true)) {
-            "Audio TXT-ZIP import failed: invalid text file ${manifest.textFile}"
-        }
+        validateArchiveTextFile(manifest.textFile, "Audio TXT-ZIP import failed")
         require(manifest.name.isNotBlank()) {
             "Audio TXT-ZIP import failed: book name is empty"
         }
@@ -612,11 +704,14 @@ object LocalBook {
 
     private fun restoreAudioBookFromArchive(
         archiveFileDoc: FileDoc,
-        importedBooks: List<Book>,
+        importedBooks: List<ImportedArchiveBook>,
         manifest: AudioBookArchiveManifest,
     ): AudioArchiveImportMapping {
-        val book = importedBooks.singleOrNull { it.originName == manifest.textFile }
-            ?: error("Audio TXT-ZIP import failed: text file ${manifest.textFile} was not imported")
+        val book = importedBooks.singleOrNull { it.entryName == manifest.textFile }?.book
+            ?: error(
+                "Audio TXT-ZIP import failed: expected exactly one imported text file " +
+                    manifest.textFile
+            )
         val mediaPaths = manifest.chapters.flatMap { chapter ->
             require(chapter.title.isNotBlank()) {
                 "Audio TXT-ZIP import failed: chapter ${chapter.index + 1} has no title"
@@ -1104,9 +1199,22 @@ object LocalBook {
         }
     }
 
-    /** Imported audio is entity-owned storage, never a cache-cleanup target. */
+    /** Imported archive resources are entity-owned storage, never cache-cleanup targets. */
     fun deletePersistentBookResources(book: Book) {
+        BookArchive.deletePersistentResources(book)
         AudioBookArchive.deletePersistentMedia(book)
+    }
+
+    private fun validateArchiveTextFile(textFile: String, failurePrefix: String) {
+        val normalized = textFile.replace('\\', '/').removePrefix("./")
+        require(
+            textFile.isNotBlank() &&
+                normalized == textFile &&
+                !normalized.contains('/') &&
+                normalized.endsWith(".txt", true)
+        ) {
+            "$failurePrefix: invalid text file $textFile"
+        }
     }
 
     private fun clearManagedCoverCache(book: Book) {
