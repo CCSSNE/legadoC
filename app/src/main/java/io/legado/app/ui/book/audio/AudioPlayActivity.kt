@@ -31,7 +31,6 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.SeekBar
 import androidx.activity.addCallback
-import androidx.activity.viewModels
 import androidx.core.view.doOnLayout
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
@@ -50,6 +49,9 @@ import io.legado.app.help.book.AudioTextMapping
 import io.legado.app.help.book.BookImgClick
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.cache.CacheCoordinator
+import io.legado.app.help.cache.CacheRequestSource
+import io.legado.app.help.book.isLocal
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.permission.NotificationPermission
 import io.legado.app.model.BookCover
@@ -68,7 +70,6 @@ import io.legado.app.ui.book.audio.SliderPopup.Companion.TIMER
 import io.legado.app.ui.book.audio.config.AudioPlayDisplaySettingDialog
 import io.legado.app.ui.book.audio.config.AudioSkipCredits
 import io.legado.app.ui.book.read.config.SpeakEngineDialog
-import io.legado.app.ui.book.cache.CacheManageViewModel
 import io.legado.app.ui.book.cache.CacheManageActivity
 import io.legado.app.ui.book.toc.TocActivityResult
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
@@ -86,18 +87,15 @@ import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
 import io.legado.app.utils.getPrefBoolean
-import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 @SuppressLint("ObsoleteSdkInt")
 class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = Theme.Dark) {
 
     override val binding by viewBinding(ActivityAudioPlayBinding::inflate)
-    private val cacheViewModel by viewModels<CacheManageViewModel>()
     private val timerSliderPopup by lazy {
         SliderPopup(this, TIMER, ::updateSessionIndicators)
     }
@@ -241,7 +239,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             speedControlPopup.showAsDropDown(it, 0, (-100).dpToPx(), Gravity.TOP)
         }
         ivChapter.setOnClickListener { tocActivityResult.launch(book.bookUrl) }
-        ivCache?.setOnClickListener { showAudioCacheRangeDialog(book) }
+        ivCache?.setOnClickListener { showBookDownloadRangeDialog(book) }
         listeningTextScroll.setOnTouchListener { _, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
@@ -272,8 +270,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     }
 
     private fun updateEngineUi() = binding.run {
-        val sourceAudio = ReadAloud.selectedEngineType == ReadAloudEngineType.SOURCE_AUDIO
-        ivCache?.visible(sourceAudio)
+        ivCache?.visible(ReadBook.book?.isLocal == false)
         bindListeningText()
         invalidateOptionsMenu()
     }
@@ -867,7 +864,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         tvTimer.visible(timer > 0)
     }
 
-    private fun showAudioCacheRangeDialog(book: Book) {
+    private fun showBookDownloadRangeDialog(book: Book) {
         alert(titleResource = R.string.offline_cache) {
             val total = ReadBook.simulatedChapterSize.coerceAtLeast(book.totalChapterNum).coerceAtLeast(1)
             val alertBinding = DialogDownloadChoiceBinding.inflate(layoutInflater).apply {
@@ -879,30 +876,22 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
                 NotificationPermission.ensure(
                     this@AudioPlayActivity,
                     onGranted = {
-                        lifecycleScope.launch {
-                            val start = alertBinding.editStart.text?.toString()?.toIntOrNull()
-                                ?.coerceIn(1, total) ?: 1
-                            val end = alertBinding.editEnd.text?.toString()?.toIntOrNull()
-                                ?.coerceIn(start, total) ?: total
-                            val chapters = withContext(IO) {
-                                appDb.bookChapterDao.getChapterList(book.bookUrl, start - 1, end - 1)
-                            }
-                            if (chapters.isEmpty()) {
-                                toastOnUi(R.string.chapter_list_empty)
-                                return@launch
-                            }
-                            runCatching { cacheViewModel.cacheAudioChapters(book, chapters) }
-                                .onSuccess { count ->
-                                    if (count > 0) {
-                                        toastOnUi(getString(R.string.cache_manage_audio_cache_started, count))
-                                    } else {
-                                        toastOnUi(R.string.cache_manage_batch_empty)
-                                    }
-                                }
-                                .onFailure {
-                                    toastOnUi(getString(R.string.cache_manage_cache_failed, it.localizedMessage))
-                                }
-                        }
+                        val start = alertBinding.editStart.text?.toString()?.toIntOrNull()
+                            ?.coerceIn(1, total) ?: 1
+                        val end = alertBinding.editEnd.text?.toString()?.toIntOrNull()
+                            ?.coerceIn(start, total) ?: total
+                        val chapterIndexes = (start - 1)..(end - 1)
+                        CacheCoordinator.submitBookDownload(
+                            book = book,
+                            chapterIndexes = chapterIndexes,
+                            source = CacheRequestSource.READER,
+                        )
+                        toastOnUi(
+                            getString(
+                                R.string.cache_manage_cache_selected_done,
+                                chapterIndexes.count(),
+                            )
+                        )
                     },
                     onDenied = {
                         toastOnUi(R.string.notification_permission_required_for_download)
