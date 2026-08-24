@@ -12,6 +12,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ItemBookshelfCollectionListBinding
 import io.legado.app.databinding.ItemBookshelfListBinding
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.isShortcut
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.ui.main.bookshelf.BookCollectionShelfItem
@@ -70,6 +71,7 @@ class BooksAdapterList(
         binding.run {
             ivCover.alpha = UiCorner.bookshelfCoverAlpha()
             renderSelectionMark(selectionOuter, selectionDot, item, callBack)
+            ivShortcut.visible(item.isShortcut)
             if (payloads.isEmpty()) {
                 tvName.text = item.name
                 tvAuthor.text = item.author
