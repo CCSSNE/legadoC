@@ -62,6 +62,11 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
             field = value
             upMenu()
         }
+    var reviewEnabled: Boolean = false
+        set(value) {
+            field = value
+            upMenu()
+        }
 
     private val configuredActionIds: Set<String>
         get() = context.getPrefStringSet(
@@ -136,6 +141,7 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
         return allMenuItems.filter { item ->
             when (item.itemId) {
                 R.id.menu_illustration -> illustrationEnabled
+                R.id.menu_review -> reviewEnabled
                 else -> menuItemToActionId(item.itemId)?.let { configuredActionIds.contains(it) } ?: false
             }
         }

@@ -107,6 +107,7 @@ import io.legado.app.ui.book.read.page.ReadView
 import io.legado.app.ui.book.read.page.SelectionHandleDrawable
 import io.legado.app.ui.book.read.page.delegate.ScrollPageDelegate
 import io.legado.app.ui.book.read.page.entities.PageDirection
+import io.legado.app.ui.book.read.page.entities.ReviewButton
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.provider.ChapterProvider
 import io.legado.app.ui.book.read.page.provider.LayoutProgressListener
@@ -257,6 +258,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     private var aiChapterPurifyPendingSource: String? = null
     private var aiChapterPurifyRefreshChapterIndex: Int? = null
     private var illustrationAnchor: IllustrationAnchor? = null
+    private var selectedReviewButton: ReviewButton? = null
     val textActionMenu: TextActionMenu by lazy {
         TextActionMenu(this, this)
     }
@@ -1074,6 +1076,8 @@ class ReadBookActivity : BaseReadBookActivity(),
      * 取消文字选择
      */
     override fun onCancelSelect() = binding.run {
+        selectedReviewButton = null
+        textActionMenu.reviewEnabled = false
         cursorLeft.invisible()
         cursorRight.invisible()
         selectionMagnifierView.dismiss()
@@ -1090,6 +1094,8 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun showTextActionMenu() {
         illustrationAnchor = computeIllustrationAnchor()
         textActionMenu.illustrationEnabled = illustrationAnchor != null
+        selectedReviewButton = findSelectedHiddenReviewButton()
+        textActionMenu.reviewEnabled = selectedReviewButton != null
         val navigationBarHeight =
             if (!ReadBookConfig.hideNavigationBar && navigationBarGravity == Gravity.BOTTOM)
                 binding.navigationBar.height else 0
@@ -1116,6 +1122,26 @@ class ReadBookActivity : BaseReadBookActivity(),
             endX,
             endBottomY
         )
+    }
+
+    /**
+     * 段评菜单只对应选区起始段落；跨段选区沿用配图入口的“取第一段”语义。
+     */
+    private fun findSelectedHiddenReviewButton(): ReviewButton? {
+        val chapter = ReadBook.curTextChapter ?: return null
+        val pageView = binding.readView.curPage
+        val startPos = pageView.selectStartPos
+        val endPos = pageView.selectEndPos
+        if (!startPos.isSelected() || !endPos.isSelected()) return null
+        val startPage = pageView.relativePage(startPos.relativePagePos)
+        val endPage = pageView.relativePage(endPos.relativePagePos)
+        val startParaNum = startPage.getLine(startPos.lineIndex).paragraphNum
+        val endParaNum = endPage.getLine(endPos.lineIndex).paragraphNum
+        if (startParaNum <= 0 || endParaNum <= 0) return null
+        return chapter.paragraphs
+            .getOrNull(min(startParaNum, endParaNum) - 1)
+            ?.hiddenReviewButtons
+            ?.firstOrNull { button -> BookImgClick.hasAction(button.src, button.click) }
     }
 
     /**
@@ -1180,6 +1206,17 @@ class ReadBookActivity : BaseReadBookActivity(),
                         ReadBook.loadContent(resetPageOffset = true)
                     }
                     showDialogFragment(dialog)
+                }
+                return true
+            }
+
+            R.id.menu_review -> {
+                selectedReviewButton?.let { button ->
+                    if (button.click.isNullOrBlank()) {
+                        oldClickImg(button.src)
+                    } else {
+                        clickImg(button.click, button.src)
+                    }
                 }
                 return true
             }

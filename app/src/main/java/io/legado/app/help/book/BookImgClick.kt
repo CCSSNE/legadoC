@@ -54,6 +54,13 @@ object BookImgClick {
 
     private fun openMode(): String = AppConfig.reviewOpenMode
 
+    /** 与图片点击入口共用同一判定，避免给没有 click/js 的零评论泡暴露段评菜单。 */
+    fun hasAction(src: String, click: String?): Boolean {
+        if (!click.isNullOrBlank()) return true
+        val options = parseSrcOptions(src)?.second ?: return false
+        return !options["click"].isNullOrBlank() || !options["js"].isNullOrBlank()
+    }
+
     /**
      * 评论快照定位不依赖网络执行条件。书源缺失时仍可用 book/chapter 读取并打开
      * 已落盘的快照；只有真正执行 click/js 时才解析并要求书源存在。
