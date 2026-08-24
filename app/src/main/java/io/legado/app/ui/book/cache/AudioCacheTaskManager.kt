@@ -5,7 +5,6 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.help.book.isVideo
-import io.legado.app.help.cache.CacheNotificationBridge
 import io.legado.app.help.cache.CacheOperationDiagnostics
 import io.legado.app.utils.ConvertUtils
 import kotlinx.coroutines.CancellationException
@@ -45,6 +44,8 @@ internal object AudioCacheTaskManager {
         chapters: List<BookChapter>,
         resolver: suspend (Book, BookChapter) -> ExoPlayerHelper.MediaRequest,
         onChapterResolved: ((BookChapter, ExoPlayerHelper.MediaRequest) -> Unit)? = null,
+        onChapterStarted: ((BookChapter) -> Unit)? = null,
+        onChapterProgress: ((BookChapter, Long, Long?) -> Unit)? = null,
         onChapterFinished: ((BookChapter, Boolean, String?) -> Unit)? = null,
         onFinished: (() -> Unit)? = null,
         diagnostics: CacheOperationDiagnostics.Context? = null,
@@ -59,6 +60,8 @@ internal object AudioCacheTaskManager {
             chapters = chapters,
             resolver = resolver,
             onChapterResolved = onChapterResolved,
+            onChapterStarted = onChapterStarted,
+            onChapterProgress = onChapterProgress,
             onChapterFinished = onChapterFinished,
             onFinished = onFinished,
             diagnostics = diagnostics,
@@ -139,6 +142,7 @@ internal object AudioCacheTaskManager {
                             )
                         )
                     }
+                    request.onChapterStarted?.invoke(chapter)
                     val chapterDiagnostics = request.diagnostics?.forChapter(chapter.index)
                     activeTrace = chapterDiagnostics?.let {
                         CacheOperationDiagnostics.begin(it, "MEDIA_RESOLVE")
@@ -201,6 +205,11 @@ internal object AudioCacheTaskManager {
                                     )
                                 )
                             }
+                            request.onChapterProgress?.invoke(
+                                chapter,
+                                bytesCached.coerceAtLeast(0L),
+                                chapterKnownLength.takeIf { value -> value > 0L },
+                            )
                         },
                         shouldCancel = { cancelFlag.get() }
                     )
@@ -209,6 +218,11 @@ internal object AudioCacheTaskManager {
                         "MEDIA_CACHE_WRITTEN",
                     )
                     activeTrace = null
+                    request.onChapterProgress?.invoke(
+                        chapter,
+                        chapterKnownLength.coerceAtLeast(0L),
+                        chapterKnownLength.takeIf { value -> value > 0L },
+                    )
                     request.onChapterFinished?.invoke(chapter, true, null)
                     activeChapter = null
                     completed += 1
@@ -349,6 +363,8 @@ internal object AudioCacheTaskManager {
 
     internal fun resume(
         bookUrl: String,
+        onChapterStarted: ((BookChapter) -> Unit)? = null,
+        onChapterProgress: ((BookChapter, Long, Long?) -> Unit)? = null,
         onChapterFinished: ((BookChapter, Boolean, String?) -> Unit)? = null,
         onFinished: (() -> Unit)? = null,
     ): Boolean {
@@ -362,8 +378,12 @@ internal object AudioCacheTaskManager {
         executor.execute {
             try {
                 var request = requests[bookUrl] ?: return@execute
-                if (onChapterFinished != null || onFinished != null) {
+                if (onChapterStarted != null || onChapterProgress != null ||
+                    onChapterFinished != null || onFinished != null
+                ) {
                     request = request.copy(
+                        onChapterStarted = onChapterStarted ?: request.onChapterStarted,
+                        onChapterProgress = onChapterProgress ?: request.onChapterProgress,
                         onChapterFinished = onChapterFinished ?: request.onChapterFinished,
                         onFinished = onFinished ?: request.onFinished,
                     )
@@ -421,7 +441,7 @@ internal object AudioCacheTaskManager {
     private fun updateState(bookUrl: String, transform: (AudioCacheTaskState) -> AudioCacheTaskState) {
         _states.update { states ->
             val current = states[bookUrl] ?: return@update states
-            val updated = transform(current).copy(updatedAt = System.currentTimeMillis())
+            val updated = transform(current)
             // Resume replaces the state through startRequest; in-flight worker snapshots cannot do it.
             if (current.status == CacheTaskStatus.PAUSED && updated.active) {
                 return@update states
@@ -430,16 +450,14 @@ internal object AudioCacheTaskManager {
                 put(bookUrl, updated)
             }
         }
-        CacheNotificationBridge.renderCurrent()
     }
 
     private fun updateState(bookUrl: String, state: AudioCacheTaskState) {
         _states.update { states ->
             states.toMutableMap().apply {
-                put(bookUrl, state.copy(updatedAt = System.currentTimeMillis()))
+                put(bookUrl, state)
             }
         }
-        CacheNotificationBridge.renderCurrent()
     }
 }
 
@@ -458,6 +476,8 @@ private data class AudioCacheTaskRequest(
     val chapters: List<BookChapter>,
     val resolver: suspend (Book, BookChapter) -> ExoPlayerHelper.MediaRequest,
     val onChapterResolved: ((BookChapter, ExoPlayerHelper.MediaRequest) -> Unit)?,
+    val onChapterStarted: ((BookChapter) -> Unit)?,
+    val onChapterProgress: ((BookChapter, Long, Long?) -> Unit)?,
     val onChapterFinished: ((BookChapter, Boolean, String?) -> Unit)?,
     val onFinished: (() -> Unit)?,
     val diagnostics: CacheOperationDiagnostics.Context?,
@@ -481,5 +501,4 @@ data class AudioCacheTaskState(
     val status: CacheTaskStatus = CacheTaskStatus.PENDING,
     val message: String = "",
     val active: Boolean = true,
-    val updatedAt: Long = 0L,
 )

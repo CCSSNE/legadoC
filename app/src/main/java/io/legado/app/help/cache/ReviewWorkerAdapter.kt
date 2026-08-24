@@ -99,6 +99,14 @@ internal class ReviewWorkerAdapter(
                 force = task.source != CacheRequestSource.READER ||
                     ReviewSnapshotManager.isUserRefreshActive(book.bookUrl, chapter.index),
                 executionLease = lease,
+                reportProgress = { completedSnapshots, totalSnapshots ->
+                    CacheReviewWorkerRegistry.onSnapshotProgress(
+                        lease,
+                        chapter.index,
+                        completedSnapshots,
+                        totalSnapshots,
+                    )
+                },
             )
         }
         if (!ReviewCacheService.startSelf()) {
@@ -216,6 +224,27 @@ internal object CacheReviewWorkerRegistry {
             if (success) null else "review worker reported failure",
         )
         finishIfComplete(binding)
+    }
+
+    fun onSnapshotProgress(
+        lease: CacheWorkerLease,
+        chapterIndex: Int,
+        completedSnapshots: Int,
+        totalSnapshots: Int,
+    ) {
+        val binding = bindingFor(lease, "review progress chapter=$chapterIndex") ?: return
+        val key = binding.expected.firstOrNull { it.chapterIndex == chapterIndex } ?: return
+        require(totalSnapshots >= 0) { "review snapshot total must not be negative" }
+        require(completedSnapshots in 0..totalSnapshots) {
+            "review snapshot progress is invalid: $completedSnapshots/$totalSnapshots"
+        }
+        requireWorkerPort().updateProgress(
+            binding.lease,
+            key,
+            CacheProgressMode.SNAPSHOTS,
+            current = completedSnapshots.toLong(),
+            total = totalSnapshots.toLong(),
+        )
     }
 
     /** A normal empty queue means chapters had no review work and therefore completed. */

@@ -15,6 +15,7 @@ data class CacheSubmission(
 /** User-facing port. Worker leases and unit mutation are intentionally absent. */
 interface CacheUiPort {
     val snapshot: StateFlow<CacheSnapshot>
+    val progress: StateFlow<CacheProgressSnapshot>
 
     fun submit(request: CacheRequest): CacheSubmission
     fun pause(submission: CacheSubmission): Boolean
@@ -34,6 +35,13 @@ internal interface CacheWorkerPort {
         status: CacheUnitStatus,
         error: String? = null,
     ): Boolean
+    fun updateProgress(
+        lease: CacheWorkerLease,
+        unitKey: CacheUnitKey?,
+        mode: CacheProgressMode,
+        current: Long,
+        total: Long? = null,
+    ): Boolean
     fun finish(
         lease: CacheWorkerLease,
         result: CacheResult,
@@ -50,6 +58,7 @@ object CacheCoordinator : CacheUiPort {
 
     private val store = CacheTaskStore(onPublished = CacheNotificationBridge::render)
     override val snapshot: StateFlow<CacheSnapshot> = store.snapshot
+    override val progress: StateFlow<CacheProgressSnapshot> = store.progress
 
     internal val workerPort: CacheWorkerPort = object : CacheWorkerPort {
         override fun acquire(submission: CacheSubmission): CacheWorkerLease? {
@@ -75,6 +84,16 @@ object CacheCoordinator : CacheUiPort {
             error: String?,
         ): Boolean {
             return store.updateUnit(lease, key, status, error)
+        }
+
+        override fun updateProgress(
+            lease: CacheWorkerLease,
+            unitKey: CacheUnitKey?,
+            mode: CacheProgressMode,
+            current: Long,
+            total: Long?,
+        ): Boolean {
+            return store.updateProgress(lease, unitKey, mode, current, total)
         }
 
         override fun finish(
@@ -108,10 +127,7 @@ object CacheCoordinator : CacheUiPort {
             task.taskId,
             "source=${request.source} kind=${request.kind} phase=${request.phase}",
         )
-        return CacheSubmission(session.sessionId, task.taskId).also {
-            CacheNotificationBridge.started(task)
-            workerDispatcher.start(it)
-        }
+        return CacheSubmission(session.sessionId, task.taskId).also(workerDispatcher::start)
     }
 
     override fun pause(submission: CacheSubmission): Boolean {
@@ -122,7 +138,6 @@ object CacheCoordinator : CacheUiPort {
 
     override fun resume(submission: CacheSubmission): Boolean {
         val lease = store.resumeTask(submission.sessionId, submission.taskId) ?: return false
-        currentTask(submission)?.let(CacheNotificationBridge::started)
         workerDispatcher.resume(submission, lease)
         return true
     }
@@ -188,10 +203,7 @@ object CacheCoordinator : CacheUiPort {
             task.taskId,
             "appended=REVIEW units=${task.units.size}",
         )
-        return CacheSubmission(sessionId, task.taskId).also {
-            CacheNotificationBridge.started(task)
-            workerDispatcher.start(it)
-        }
+        return CacheSubmission(sessionId, task.taskId).also(workerDispatcher::start)
     }
 
     /**
@@ -267,7 +279,13 @@ object CacheCoordinator : CacheUiPort {
             appendReviewTask(task.sessionId, task.taskId)
         }
         val finalTask = currentTask(submission)
-        CacheNotificationBridge.finished(finalTask, finalTask?.result ?: result, error)
+        CacheNotificationBridge.finished(
+            snapshot = snapshot.value,
+            progress = progress.value,
+            task = finalTask,
+            result = finalTask?.result ?: result,
+            error = error,
+        )
     }
 
     private fun validateUiRequest(request: CacheRequest) {
