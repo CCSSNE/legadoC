@@ -107,6 +107,7 @@ internal class ReviewWorkerAdapter(
                     ),
                 retryButtonSources = retryButtonSources,
                 executionLease = lease,
+                commitIfLeaseActive = { action -> workerPort.commitIfLeaseActive(lease, action) },
                 reportProgress = { processedSnapshots, totalSnapshots, failedSnapshots ->
                     CacheReviewWorkerRegistry.onSnapshotProgress(
                         lease,
@@ -119,26 +120,28 @@ internal class ReviewWorkerAdapter(
             )
         }
         if (!ReviewCacheService.startSelf()) {
-            ReviewSnapshotManager.cancelTask(lease.sessionId, lease.taskId)
-            CacheReviewWorkerRegistry.onServiceStartFailed(
-                lease,
-                "评论缓存宿主启动失败，任务未执行",
-            )
+            ReviewSnapshotManager.stopTask(lease.sessionId, lease.taskId) {
+                CacheReviewWorkerRegistry.onServiceStartFailed(
+                    lease,
+                    "评论缓存宿主启动失败，任务未执行",
+                )
+            }
         }
     }
 
     fun cancel(submission: CacheSubmission) {
-        ReviewSnapshotManager.cancelTask(submission.sessionId, submission.taskId)
-        CacheReviewWorkerRegistry.remove(submission.sessionId, submission.taskId)
-        workerPort.confirmCancelled(submission)
+        ReviewSnapshotManager.stopTask(submission.sessionId, submission.taskId) {
+            CacheReviewWorkerRegistry.remove(submission.sessionId, submission.taskId)
+            workerPort.confirmCancelled(submission)
+        }
     }
 
     fun pause(submission: CacheSubmission) {
-        val task = CacheCoordinator.currentTask(submission)
-            ?: return
-        ReviewSnapshotManager.cancelTask(submission.sessionId, submission.taskId)
-        CacheReviewWorkerRegistry.remove(submission.sessionId, submission.taskId)
-        workerPort.confirmPaused(submission)
+        if (CacheCoordinator.currentTask(submission) == null) return
+        ReviewSnapshotManager.stopTask(submission.sessionId, submission.taskId) {
+            CacheReviewWorkerRegistry.remove(submission.sessionId, submission.taskId)
+            workerPort.confirmPaused(submission)
+        }
     }
 }
 

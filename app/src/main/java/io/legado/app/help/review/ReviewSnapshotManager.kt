@@ -20,8 +20,12 @@ import io.legado.app.ui.login.SourceLoginJsExtensions
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.mapAsyncIndexed
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.toList
@@ -84,12 +88,19 @@ object ReviewSnapshotManager {
         /** Null = normal/force chapter capture; non-null = only these failed button src values. */
         val retryButtonSources: Set<String>?,
         internal val executionLease: CacheWorkerLease,
+        internal val commitIfLeaseActive: ((() -> Unit) -> Boolean),
         internal val reportProgress: (
             processedSnapshots: Int,
             totalSnapshots: Int,
             failedSnapshots: Int,
         ) -> Unit,
     )
+
+    internal enum class TaskResult {
+        SUCCEEDED,
+        FAILED,
+        STOPPED,
+    }
 
     /**
      * 进程内存计数：bookUrl → 有评论快照的章 url 集合。
@@ -115,11 +126,21 @@ object ReviewSnapshotManager {
         val force: Boolean,
         val retryButtonSources: Set<String>?,
         val executionLease: CacheWorkerLease,
+        val commitIfLeaseActive: ((() -> Unit) -> Boolean),
         val reportProgress: (
             processedSnapshots: Int,
             totalSnapshots: Int,
             failedSnapshots: Int,
         ) -> Unit,
+    )
+
+    private data class ExecutionGroup(
+        val lease: CacheWorkerLease,
+        val queued: MutableSet<String> = linkedSetOf(),
+        val claimed: MutableSet<String> = linkedSetOf(),
+        val activeJobs: MutableMap<String, Job> = linkedMapOf(),
+        val stopCallbacks: MutableList<() -> Unit> = mutableListOf(),
+        var stopRequested: Boolean = false,
     )
 
     /** 评论按钮模型：click / 旧源 js 二选一 */
@@ -145,7 +166,7 @@ object ReviewSnapshotManager {
      */
     private val pendingForce = ConcurrentHashMap<String, PendingReview>()
     private val taskOutcomes = ConcurrentHashMap<String, Boolean>()
-    private val cancelledTasks = ConcurrentHashMap.newKeySet<String>()
+    private val executionGroups = linkedMapOf<String, ExecutionGroup>()
     private val queueLock = Any()
 
     /**
@@ -181,21 +202,33 @@ object ReviewSnapshotManager {
         force: Boolean,
         retryButtonSources: Set<String>? = null,
         executionLease: CacheWorkerLease,
+        commitIfLeaseActive: ((() -> Unit) -> Boolean),
         reportProgress: (
             processedSnapshots: Int,
             totalSnapshots: Int,
             failedSnapshots: Int,
         ) -> Unit,
     ) {
-        cancelledTasks.remove(taskKey(executionLease))
         synchronized(queueLock) {
             val key = keyOf(book, chapter)
+            val group = executionGroups.getOrPut(leaseKey(executionLease)) {
+                ExecutionGroup(executionLease)
+            }
+            check(group.lease == executionLease && !group.stopRequested) {
+                "review execution lease is already stopping: ${leaseKey(executionLease)}"
+            }
             require(retryButtonSources == null || retryButtonSources.all { it.isNotBlank() }) {
                 "review retry contains blank button source"
             }
             val existed = pendingForce.putIfAbsent(
                 key,
-                PendingReview(force, retryButtonSources, executionLease, reportProgress),
+                PendingReview(
+                    force,
+                    retryButtonSources,
+                    executionLease,
+                    commitIfLeaseActive,
+                    reportProgress,
+                ),
             )
             if (existed != null &&
                 taskKey(existed.executionLease) != taskKey(executionLease)
@@ -203,6 +236,7 @@ object ReviewSnapshotManager {
                 error("review chapter already owned by another Coordinator task: $key")
             }
             if (existed == null) {
+                check(group.queued.add(key)) { "review queue already contains chapter: $key" }
                 channel.trySend(Task(key, executionLease))
             } else if (force && !existed.force) {
                 // force 合并：已排队任务升级为强制重抓，不丢 true
@@ -212,6 +246,7 @@ object ReviewSnapshotManager {
                     existed.copy(
                         force = true,
                         executionLease = executionLease,
+                        commitIfLeaseActive = commitIfLeaseActive,
                         reportProgress = reportProgress,
                     ),
                 )
@@ -225,6 +260,15 @@ object ReviewSnapshotManager {
             val t = channel.tryReceive().getOrNull() ?: return null
             val pending = pendingForce.remove(t.key)
                 ?: error("review queue entry has no ownership: ${t.key}")
+            val group = requireNotNull(executionGroups[leaseKey(t.executionLease)]) {
+                "review queue entry has no execution group: ${t.key}"
+            }
+            check(group.queued.remove(t.key)) {
+                "review queue entry was not registered as queued: ${t.key}"
+            }
+            check(group.claimed.add(t.key)) {
+                "review queue entry was already claimed: ${t.key}"
+            }
             t to pending
         }
         return QueueTask(
@@ -233,31 +277,49 @@ object ReviewSnapshotManager {
             retryButtonSources = task.second.retryButtonSources,
             executionLease = task.second.executionLease,
             reportProgress = task.second.reportProgress,
+            commitIfLeaseActive = task.second.commitIfLeaseActive,
         )
     }
 
-    /** Cancel one Coordinator review task without affecting other task leases. */
-    internal fun cancelTask(sessionId: String, taskId: String) {
-        val taskKey = "$sessionId/$taskId"
-        cancelledTasks.add(taskKey)
+    /** Stop one Coordinator task and acknowledge only after every claimed/active chapter exits. */
+    internal fun stopTask(sessionId: String, taskId: String, onStopped: () -> Unit) {
+        val ownerKey = "$sessionId/$taskId"
+        val jobsToCancel = mutableListOf<Job>()
+        var callbacks = emptyList<() -> Unit>()
         synchronized(queueLock) {
+            val groups = executionGroups.values.filter { group -> taskKey(group.lease) == ownerKey }
+            check(groups.size <= 1) { "multiple review generations are active for $ownerKey" }
+            val group = groups.singleOrNull()
+            if (group == null) {
+                callbacks = listOf(onStopped)
+                return@synchronized
+            }
+            group.stopRequested = true
+            group.stopCallbacks += onStopped
             pendingForce.keys.toList()
                 .filter { key ->
-                    pendingForce[key]?.executionLease?.let { taskKey(it) == taskKey } == true
+                    pendingForce[key]?.executionLease?.let { taskKey(it) == ownerKey } == true
                 }
                 .forEach { pendingForce.remove(it) }
             val retained = ArrayList<Task>()
             while (true) {
                 val task = channel.tryReceive().getOrNull() ?: break
-                if (taskKey(task.executionLease) != taskKey) retained += task
+                if (taskKey(task.executionLease) != ownerKey) retained += task
             }
             retained.forEach { channel.trySend(it) }
+            group.queued.clear()
+            jobsToCancel += group.activeJobs.values
+            callbacks = completeExecutionGroupIfIdleLocked(group)
         }
-        AppLog.put("评论缓存取消 Coordinator 任务：$taskKey")
+        jobsToCancel.forEach { job ->
+            job.cancel(CancellationException("review Coordinator task stopped: $ownerKey"))
+        }
+        callbacks.forEach { it() }
+        AppLog.put("review cache stop requested: $ownerKey")
     }
 
     /** 评论服务处理任务（suspend：内部解析 URL、WebView 抓取、落盘） */
-    internal suspend fun processTask(task: QueueTask): Boolean {
+    internal suspend fun processTask(task: QueueTask): TaskResult {
         val lease = task.executionLease
         val outcomeKey = "${task.key}|${lease.sessionId}/${lease.taskId}/${lease.generation}"
         val diagnostics = CacheOperationDiagnostics.Context(
@@ -267,28 +329,94 @@ object ReviewSnapshotManager {
             generation = lease.generation,
             chapterIndex = task.key.substringAfter('|').toIntOrNull(),
         )
+        var group: ExecutionGroup? = null
         return try {
-            if (cancelledTasks.contains(taskKey(lease))) {
-                false
-            } else {
+            coroutineScope {
+                group = registerActiveExecution(
+                    task,
+                    currentCoroutineContext()[Job] ?: error("review task has no coroutine Job"),
+                )
+                if (group?.stopRequested == true) return@coroutineScope TaskResult.STOPPED
                 processTask(
                     task.key,
                     task.force,
                     task.retryButtonSources,
                     outcomeKey,
                     diagnostics,
+                    task.commitIfLeaseActive,
                     task.reportProgress,
                 )
-                taskOutcomes.remove(outcomeKey) == true
+                if (taskOutcomes.remove(outcomeKey) == true) {
+                    TaskResult.SUCCEEDED
+                } else {
+                    TaskResult.FAILED
+                }
             }
+        } catch (error: CancellationException) {
+            if (group?.let(::isStopRequested) == true) TaskResult.STOPPED else throw error
         } finally {
-            cancelledTasks.remove(taskKey(lease))
+            group?.let { unregisterActiveExecution(task, it) }
         }
     }
 
     private fun keyOf(book: Book, chapter: BookChapter) = "${book.bookUrl}|${chapter.index}"
 
+    private fun commitOrThrow(
+        commitIfLeaseActive: ((() -> Unit) -> Boolean),
+        boundary: String,
+        action: () -> Unit,
+    ) {
+        if (!commitIfLeaseActive(action)) {
+            throw CancellationException("review lease is no longer active at $boundary")
+        }
+    }
+
     private fun taskKey(lease: CacheWorkerLease): String = "${lease.sessionId}/${lease.taskId}"
+
+    private fun leaseKey(lease: CacheWorkerLease): String =
+        "${taskKey(lease)}/${lease.generation}"
+
+    private fun registerActiveExecution(task: QueueTask, job: Job): ExecutionGroup {
+        var callbacks = emptyList<() -> Unit>()
+        val group = synchronized(queueLock) {
+            val current = requireNotNull(executionGroups[leaseKey(task.executionLease)]) {
+                "review claimed task has no execution group: ${task.key}"
+            }
+            check(current.claimed.remove(task.key)) {
+                "review task was not claimed before execution: ${task.key}"
+            }
+            if (!current.stopRequested) {
+                check(current.activeJobs.put(task.key, job) == null) {
+                    "review task is already active: ${task.key}"
+                }
+            } else {
+                callbacks = completeExecutionGroupIfIdleLocked(current)
+            }
+            current
+        }
+        callbacks.forEach { it() }
+        return group
+    }
+
+    private fun unregisterActiveExecution(task: QueueTask, group: ExecutionGroup) {
+        val callbacks = synchronized(queueLock) {
+            group.activeJobs.remove(task.key)
+            completeExecutionGroupIfIdleLocked(group)
+        }
+        callbacks.forEach { it() }
+    }
+
+    private fun completeExecutionGroupIfIdleLocked(group: ExecutionGroup): List<() -> Unit> {
+        if (group.queued.isNotEmpty() || group.claimed.isNotEmpty() || group.activeJobs.isNotEmpty()) {
+            return emptyList()
+        }
+        executionGroups.remove(leaseKey(group.lease), group)
+        return if (group.stopRequested) group.stopCallbacks.toList() else emptyList()
+    }
+
+    private fun isStopRequested(group: ExecutionGroup): Boolean = synchronized(queueLock) {
+        group.stopRequested
+    }
 
     /** 用户明确刷新某章：登记“评论待刷新”并落盘，状态保持到该章评论真正处理成功后清除 */
     fun markUserRefresh(bookUrl: String, chapterIndex: Int) {
@@ -346,6 +474,7 @@ object ReviewSnapshotManager {
         retryButtonSources: Set<String>?,
         outcomeKey: String,
         diagnostics: CacheOperationDiagnostics.Context,
+        commitIfLeaseActive: ((() -> Unit) -> Boolean),
         reportProgress: (
             processedSnapshots: Int,
             totalSnapshots: Int,
@@ -363,9 +492,11 @@ object ReviewSnapshotManager {
                 sb,
                 outcomeKey,
                 diagnostics,
+                commitIfLeaseActive,
                 reportProgress,
             )
         }.exceptionOrNull()
+        if (unexpected is CancellationException) throw unexpected
         if (unexpected != null) {
             sb.append("\n异常：").append(unexpected.stackTraceToString())
         }
@@ -382,6 +513,7 @@ object ReviewSnapshotManager {
         sb: StringBuilder,
         outcomeKey: String,
         diagnostics: CacheOperationDiagnostics.Context,
+        commitIfLeaseActive: ((() -> Unit) -> Boolean),
         reportProgress: (
             processedSnapshots: Int,
             totalSnapshots: Int,
@@ -461,7 +593,9 @@ object ReviewSnapshotManager {
         if (snapshotButtons.isNotEmpty()) {
             // A capture with no image resources still belongs to the one resource-library
             // format, so establish its empty index before any snapshot/status can persist.
-            ReviewSnapshotResourceStore.prepareForCapture(book)
+            commitOrThrow(commitIfLeaseActive, "review resource database preparation") {
+                ReviewSnapshotResourceStore.prepareForCapture(book)
+            }
         }
         val processButtons = if (requestedRetrySources != null) {
             snapshotButtons.filter { it.src in requestedRetrySources }.also { selected ->
@@ -512,6 +646,7 @@ object ReviewSnapshotManager {
                     button,
                     force,
                     diagnostics,
+                    commitIfLeaseActive,
                     onSnapshotSaved = {
                         synchronized(progressLock) {
                             successfulSnapshots.updateAndGet { value ->
@@ -563,19 +698,21 @@ object ReviewSnapshotManager {
         val failedButtons = failedButtonSources.size
         val hasFailure = failedButtons > 0
         if (snapshotButtons.isNotEmpty()) {
-            ReviewSnapshotStore.putChapterStatus(
-                book,
-                ReviewChapterSnapshotStatus(
-                    bookUrl = book.bookUrl,
-                    chapterUrl = chapter.url,
-                    chapterIndex = chapter.index,
-                    chapterTitle = chapter.title,
-                    totalSnapshots = snapshotButtons.size,
-                    failedSnapshots = failedButtons,
-                    failedButtonSources = failedButtonSources,
-                    updatedAt = System.currentTimeMillis(),
+            commitOrThrow(commitIfLeaseActive, "review chapter status commit") {
+                ReviewSnapshotStore.putChapterStatus(
+                    book,
+                    ReviewChapterSnapshotStatus(
+                        bookUrl = book.bookUrl,
+                        chapterUrl = chapter.url,
+                        chapterIndex = chapter.index,
+                        chapterTitle = chapter.title,
+                        totalSnapshots = snapshotButtons.size,
+                        failedSnapshots = failedButtons,
+                        failedButtonSources = failedButtonSources,
+                        updatedAt = System.currentTimeMillis(),
+                    )
                 )
-            )
+            }
         }
         // 该章所有需要刷新的评论按钮全部成功处理，才清除“评论待刷新”持久标记
         if (force && !hasFailure) {
@@ -621,6 +758,7 @@ object ReviewSnapshotManager {
         button: ReviewButton,
         force: Boolean,
         diagnostics: CacheOperationDiagnostics.Context,
+        commitIfLeaseActive: ((() -> Unit) -> Boolean),
         onSnapshotSaved: () -> Unit,
     ): ButtonOutcome = withPipelinePermit {
         processButtonInPipeline(
@@ -631,6 +769,7 @@ object ReviewSnapshotManager {
             button,
             force,
             diagnostics,
+            commitIfLeaseActive,
             onSnapshotSaved,
         )
     }
@@ -643,6 +782,7 @@ object ReviewSnapshotManager {
         button: ReviewButton,
         force: Boolean,
         diagnostics: CacheOperationDiagnostics.Context,
+        commitIfLeaseActive: ((() -> Unit) -> Boolean),
         onSnapshotSaved: () -> Unit,
     ): ButtonOutcome {
         if (!button.hasAction) return ButtonOutcome(buttonIndex, button.src, "")
@@ -663,6 +803,7 @@ object ReviewSnapshotManager {
         }
         if (resolveResult.isFailure) {
             val error = resolveResult.exceptionOrNull()!!
+            if (error is CancellationException) throw error
             val reason = when (error) {
                 is kotlinx.coroutines.TimeoutCancellationException ->
                     "click/js 执行与 browser open/showBrowser 等待总超时(${RESOLVE_TIMEOUT_MS / 1000}s)"
@@ -700,10 +841,12 @@ object ReviewSnapshotManager {
                 page.html,
                 page.preloadJs,
                 diagnostics.forChapter(chapter.index),
+                commitIfLeaseActive,
             )
         }
         if (outcome.isFailure) {
             val e = outcome.exceptionOrNull()!!
+            if (e is CancellationException) throw e
             val reason = when {
                 e is kotlinx.coroutines.TimeoutCancellationException -> "WebView 抓取超时(60s)"
                 e is kotlinx.coroutines.CancellationException -> "任务被取消"
@@ -721,7 +864,12 @@ object ReviewSnapshotManager {
         sb.append("6. 最终 HTML：").append(capture.snapshot.html.length / 1024).append(" KB\n")
         // 诊断日志：put 失败必须留下原因
         val putResult = runCatching {
-            ReviewSnapshotStore.put(book, capture.snapshot, diagnostics.forChapter(chapter.index))
+            commitOrThrow(commitIfLeaseActive, "review snapshot commit") {
+                ReviewSnapshotStore.put(book, capture.snapshot, diagnostics.forChapter(chapter.index))
+            }
+        }
+        putResult.exceptionOrNull()?.let { error ->
+            if (error is CancellationException) throw error
         }
         if (putResult.isSuccess) {
             onSnapshotSaved()

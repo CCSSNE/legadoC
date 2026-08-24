@@ -75,21 +75,21 @@ class ReviewCacheService : BaseService() {
                         }
                         activeCount.incrementAndGet()
                         try {
-                            val success = runCatching { ReviewSnapshotManager.processTask(task) }
+                            val result = runCatching { ReviewSnapshotManager.processTask(task) }
                                 .onFailure {
                                     AppLog.put(
                                         "评论快照任务处理失败 ${task.key}\n${it.localizedMessage}",
                                         it,
                                     )
                                 }
-                                .getOrDefault(false)
+                                .getOrElse { ReviewSnapshotManager.TaskResult.FAILED }
                             val chapterIndex = task.key.substringAfter('|').toIntOrNull()
-                            if (chapterIndex != null) {
+                            if (chapterIndex != null && result != ReviewSnapshotManager.TaskResult.STOPPED) {
                                 task.executionLease?.let { lease ->
                                     CacheReviewWorkerRegistry.onChapterFinished(
                                         lease,
                                         chapterIndex,
-                                        success,
+                                        result == ReviewSnapshotManager.TaskResult.SUCCEEDED,
                                     )
                                 }
                             }

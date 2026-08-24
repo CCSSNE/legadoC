@@ -189,6 +189,7 @@ object ReviewSnapshotCapture {
         initialHtml: String? = null,
         preloadJs: String? = null,
         diagnostics: CacheOperationDiagnostics.Context? = null,
+        commitIfLeaseActive: ((() -> Unit) -> Boolean) = { action -> action(); true },
     ): CaptureOutcome {
         val trace = diagnostics?.let {
             CacheOperationDiagnostics.begin(
@@ -212,6 +213,7 @@ object ReviewSnapshotCapture {
                 initialHtml,
                 preloadJs,
                 trace,
+                commitIfLeaseActive,
             )
             CaptureOutcome(
                 snapshot = ReviewSnapshot(
@@ -257,6 +259,7 @@ object ReviewSnapshotCapture {
         initialHtml: String? = null,
         preloadJs: String? = null,
         diagnostics: CacheOperationDiagnostics.Operation? = null,
+        commitIfLeaseActive: ((() -> Unit) -> Boolean),
     ): SnapshotPageResult {
         val analyzeUrl = AnalyzeUrl(url, source = bookSource)
         val headerMap = analyzeUrl.headerMap
@@ -299,7 +302,14 @@ object ReviewSnapshotCapture {
                     } else {
                         null
                     }
-                    val session = SnapshotSession(webView, url, book, jsBridge, diagnostics) {
+                    val session = SnapshotSession(
+                        webView,
+                        url,
+                        book,
+                        jsBridge,
+                        diagnostics,
+                        commitIfLeaseActive,
+                    ) {
                         result, error, rounds, clicks, discardWebView, resourceKeys ->
                         sessionRef.set(null)
                         releaseOnce(discardWebView)
@@ -364,6 +374,7 @@ object ReviewSnapshotCapture {
         private val book: Book,
         private val jsBridge: PageJsBridge?,
         private val diagnostics: CacheOperationDiagnostics.Operation?,
+        private val commitIfLeaseActive: ((() -> Unit) -> Boolean),
         private val done: (String?, Throwable?, Int, Int, Boolean, List<String>) -> Unit
     ) {
 
@@ -1108,14 +1119,21 @@ object ReviewSnapshotCapture {
                         ResourceKind.IMAGE -> {
                             val image = prepareImage(staged)
                             resourceBytes += image.byteCount
-                            val stored = ReviewSnapshotResourceStore.put(
-                                book = book,
-                                url = staged.target.url,
-                                mimeType = image.mimeType,
-                                source = image.file,
-                            )
+                            var stored: ReviewSnapshotResourceEntry? = null
+                            val committedLease = commitIfLeaseActive.invoke {
+                                stored = ReviewSnapshotResourceStore.put(
+                                    book = book,
+                                    url = staged.target.url,
+                                    mimeType = image.mimeType,
+                                    source = image.file,
+                                )
+                            }
+                            if (!committedLease) {
+                                throw CancellationException("review lease is no longer active at resource commit")
+                            }
+                            val committed = checkNotNull(stored)
                             imgMap[staged.target.url] =
-                                ReviewSnapshotResourceStore.referenceFor(stored.key)
+                                ReviewSnapshotResourceStore.referenceFor(committed.key)
                         }
 
                         ResourceKind.CSS -> {
