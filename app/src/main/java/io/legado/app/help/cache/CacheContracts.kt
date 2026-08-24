@@ -9,7 +9,7 @@ enum class CacheRequestSource {
     SYSTEM,
 }
 
-/** The worker domain. Review is a phase of a text task, not a separate session. */
+/** The book/source domain. Review is a phase of a text or audio task, not a separate session. */
 enum class CacheKind {
     TEXT,
     AUDIO,
@@ -20,6 +20,20 @@ enum class CachePhase {
     BODY,
     REVIEW,
     MEDIA,
+}
+
+/** The legal artifact combinations owned by the cache domain. */
+internal fun CacheKind.supports(phase: CachePhase): Boolean = when (this) {
+    CacheKind.TEXT -> phase == CachePhase.BODY || phase == CachePhase.REVIEW
+    CacheKind.AUDIO -> phase == CachePhase.MEDIA || phase == CachePhase.REVIEW
+    CacheKind.VIDEO -> phase == CachePhase.MEDIA
+}
+
+/** A successful primary unit is the only unit allowed to create a REVIEW sibling. */
+internal fun CacheKind.reviewPrerequisitePhase(): CachePhase? = when (this) {
+    CacheKind.TEXT -> CachePhase.BODY
+    CacheKind.AUDIO -> CachePhase.MEDIA
+    CacheKind.VIDEO -> null
 }
 
 /** Operational lifecycle. PARTIAL deliberately does not belong here. */

@@ -28,6 +28,7 @@ import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.AudioBookArchive
 import io.legado.app.help.book.AudioBookArchiveChapter
 import io.legado.app.help.book.AudioBookArchiveManifest
+import io.legado.app.help.book.AudioOfflineState
 import io.legado.app.help.book.AudioTextFusion
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.SourceAudioResolver
@@ -322,6 +323,9 @@ class ExportBookService : BaseService() {
                 val book = appDb.bookDao.getBook(bookUrl)
                 try {
                     book ?: throw NoStackTraceException("获取${bookUrl}书籍出错")
+                    require(!book.isAudio || exportConfig.type == "txt_zip") {
+                        "Audio books can only be exported as complete TXT-ZIP archives"
+                    }
                     refreshChapterList(book)
                     if (exportConfig.type == "epub" &&
                         appDb.bookChapterDao.getChapterCount(book.bookUrl) == 0
@@ -597,6 +601,11 @@ class ExportBookService : BaseService() {
             )
             require(mediaFiles.isNotEmpty()) {
                 "Audio TXT-ZIP export failed: no audio for chapter ${chapter.index + 1} ${chapter.title}"
+            }
+            val offlineState = AudioOfflineState.inspect(book, chapter)
+            require(offlineState.isComplete) {
+                "Audio TXT-ZIP export failed: ${offlineState.incompleteReason()} " +
+                    "chapter=${chapter.index + 1} ${chapter.title}"
             }
             AudioBookArchiveChapter(
                 index = chapter.index,

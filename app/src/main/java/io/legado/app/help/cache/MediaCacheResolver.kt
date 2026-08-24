@@ -17,7 +17,6 @@ import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.isJsonArray
 import io.legado.app.utils.MD5Utils
-import io.legado.app.utils.externalCache
 import kotlinx.coroutines.currentCoroutineContext
 import splitties.init.appCtx
 import java.io.File
@@ -25,9 +24,8 @@ import java.io.File
 /** Shared media URL resolution used by the media execution adapter. */
 internal object MediaCacheResolver {
     suspend fun resolve(book: Book, chapter: BookChapter): ExoPlayerHelper.MediaRequest {
-        // Audio resolution also extracts the chapter lyric. It must never reuse the
-        // generic media resolver because that path persists the source response in the
-        // ordinary text-body cache.
+        // Audio resolution also extracts the chapter lyric. Each media domain keeps its
+        // resolver artifact out of the ordinary text-body cache.
         if (book.isAudio) {
             return SourceAudioResolver.resolve(book, book.getBookSource(), chapter).request
         }
@@ -36,56 +34,41 @@ internal object MediaCacheResolver {
         }
         chapter.resourceUrl
             ?.takeIf { it.isNotBlank() }
-            ?.takeIf(::isDownloadableMediaContent)
+            ?.takeIf { isDownloadableMediaContent(book, it) }
             ?.let { return ExoPlayerHelper.MediaRequest(it) }
         val source = book.getBookSource()
             ?: error(appCtx.getString(R.string.book_source_not_found))
-        val candidates = linkedSetOf<String>()
-        BookHelp.getContent(book, chapter)
-            ?.trim()
-            ?.takeIf { it.isNotBlank() }
-            ?.let { normalizeMediaContent(book, it) }
-            ?.let(candidates::add)
-        WebBook.getContentAwait(source, book, chapter, needSave = true)
+        val content = WebBook.getContentAwait(source, book, chapter, needSave = false)
             .trim()
-            .takeIf { it.isNotBlank() }
-            ?.let { normalizeMediaContent(book, it) }
-            ?.let(candidates::add)
-        var lastError: Throwable? = null
-        for (content in candidates) {
-            try {
-                if (content.isJsonArray()) return ExoPlayerHelper.MediaRequest(content)
-                return AnalyzeUrl(
-                    content,
-                    source = source,
-                    ruleData = book,
-                    chapter = chapter,
-                    coroutineContext = currentCoroutineContext(),
-                ).getMediaRequest()
-            } catch (error: Exception) {
-                lastError = error
-            }
+        require(content.isNotBlank()) {
+            "Video source returned an empty media address: chapter=${chapter.index}"
         }
-        throw IllegalStateException(
-            lastError?.localizedMessage ?: appCtx.getString(R.string.cache_manage_audio_url_empty)
-        )
+        val normalized = normalizeMediaContent(book, content)
+        if (normalized.isJsonArray()) return ExoPlayerHelper.MediaRequest(normalized)
+        return AnalyzeUrl(
+            normalized,
+            source = source,
+            ruleData = book,
+            chapter = chapter,
+            coroutineContext = currentCoroutineContext(),
+        ).getMediaRequest()
     }
 
     private fun normalizeMediaContent(book: Book, content: String): String {
         if (!book.isVideo) return content
-        if (content.startsWith("#EXTM3U")) return writeVideoTempManifest(content, "m3u8")
+        if (content.startsWith("#EXTM3U")) return writeVideoManifest(book, content, "m3u8")
         if (!content.startsWith("<")) return content
-        return writeVideoTempManifest(content, "mpd")
+        return writeVideoManifest(book, content, "mpd")
     }
 
-    private fun writeVideoTempManifest(content: String, suffix: String): String {
-        val dir = File(appCtx.externalCache, "video_temp_cache").apply { mkdirs() }
+    private fun writeVideoManifest(book: Book, content: String, suffix: String): String {
+        val dir = File(BookHelp.getCacheDir(book), VIDEO_MANIFEST_DIR_NAME).apply { mkdirs() }
         val file = File(dir, "${MD5Utils.md5Encode(content)}.$suffix")
         if (!file.isFile || file.readText() != content) file.writeText(content)
         return Uri.fromFile(file).toString()
     }
 
-    private fun isDownloadableMediaContent(content: String): Boolean {
+    private fun isDownloadableMediaContent(book: Book, content: String): Boolean {
         val urls = if (content.isJsonArray()) {
             GSON.fromJsonArray<String>(content).getOrNull().orEmpty()
         } else {
@@ -95,12 +78,25 @@ internal object MediaCacheResolver {
             val scheme = Uri.parse(it).scheme
             scheme.equals("http", true) ||
                 scheme.equals("https", true) ||
-                (scheme.equals("file", true) && isVideoManifestUrl(it))
+                (scheme.equals("file", true) && isPersistentVideoManifest(book, it))
         }
+    }
+
+    private fun isPersistentVideoManifest(book: Book, url: String): Boolean {
+        if (!isVideoManifestUrl(url)) return false
+        val path = Uri.parse(url).path ?: return false
+        val manifestDir = File(BookHelp.getCacheDir(book), VIDEO_MANIFEST_DIR_NAME)
+        val file = File(path)
+        return file.isFile && file.length() > 0L && runCatching {
+            val dirPath = manifestDir.canonicalPath.trimEnd(File.separatorChar) + File.separator
+            file.canonicalPath.startsWith(dirPath)
+        }.getOrDefault(false)
     }
 
     private fun isVideoManifestUrl(url: String): Boolean {
         val lower = url.substringBefore('?').lowercase()
         return lower.endsWith(".m3u8") || lower.endsWith(".mpd") || lower.endsWith(".ism")
     }
+
+    private const val VIDEO_MANIFEST_DIR_NAME = "video_media_manifests"
 }

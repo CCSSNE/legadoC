@@ -106,7 +106,7 @@ object AudioTextFusion {
             textBookUrl = textBook.bookUrl,
             hasTextContent = { BookHelp.hasContent(textBook, it) },
             getTextContent = { BookHelp.getContent(textBook, it) },
-            hasAudioContent = { BookHelp.hasContent(audioBook, it) },
+            hasAudioContent = { AudioOfflineState.isComplete(audioBook, it) },
             getLyric = { it.getVariable("lyric") },
             getCurrentOverlay = { it.getVariable(OVERLAY_KEY) },
         )
