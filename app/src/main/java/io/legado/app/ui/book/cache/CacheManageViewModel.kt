@@ -30,11 +30,7 @@ import io.legado.app.help.book.isType
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.book.removeType
 import io.legado.app.help.cache.CacheCoordinator
-import io.legado.app.help.cache.CacheKind
-import io.legado.app.help.cache.CachePhase
-import io.legado.app.help.cache.CacheRequest
 import io.legado.app.help.cache.CacheRequestSource
-import io.legado.app.help.cache.CacheUnitKey
 import io.legado.app.help.review.ReviewSnapshotStore
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.AnalyzeUrl.Companion.getMediaRequest
@@ -373,15 +369,10 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
                 .toList()
         }
         if (targets.isEmpty()) return 0
-        CacheCoordinator.submit(
-            CacheRequest(
-                source = CacheRequestSource.CACHE_MANAGE,
-                kind = if (book.isVideo) CacheKind.VIDEO else CacheKind.AUDIO,
-                phase = CachePhase.MEDIA,
-                bookUrl = book.bookUrl,
-                bookName = book.name,
-                units = targets.map { CacheUnitKey(book.bookUrl, it.index) },
-            )
+        CacheCoordinator.submitMediaDownload(
+            book = book,
+            chapterIndexes = targets.map { it.index },
+            source = CacheRequestSource.CACHE_MANAGE,
         )
         return targets.size
     }

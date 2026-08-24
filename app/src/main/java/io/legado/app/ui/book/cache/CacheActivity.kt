@@ -241,22 +241,22 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.menu_download_after -> {
-                if (!hasCoordinatorTextTask()) sureCacheBook {
+                if (!hasCoordinatorDownloadTask()) sureCacheBook {
                     adapter.getItems().forEach { book ->
-                        submitBodyCache(book, book.durChapterIndex, book.lastChapterIndex)
+                        submitBookCache(book, book.durChapterIndex, book.lastChapterIndex)
                     }
                 } else {
-                    cancelCoordinatorTextTasks()
+                    cancelCoordinatorDownloadTasks()
                 }
             }
 
             R.id.menu_download_all -> {
-                if (!hasCoordinatorTextTask()) sureCacheBook {
+                if (!hasCoordinatorDownloadTask()) sureCacheBook {
                     adapter.getItems().forEach { book ->
-                        submitBodyCache(book, 0, book.lastChapterIndex)
+                        submitBookCache(book, 0, book.lastChapterIndex)
                     }
                 } else {
-                    cancelCoordinatorTextTasks()
+                    cancelCoordinatorDownloadTasks()
                 }
             }
 
@@ -270,9 +270,9 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
         return super.onCompatOptionsItemSelected(item)
     }
 
-    private fun submitBodyCache(book: Book, start: Int, end: Int) {
+    private fun submitBookCache(book: Book, start: Int, end: Int) {
         if (end < start) return
-        CacheCoordinator.submitTextDownload(
+        CacheCoordinator.submitBookDownload(
             book = book,
             chapterIndexes = start..end,
             source = CacheRequestSource.CACHE_ACTIVITY,
@@ -371,11 +371,13 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
         }
     }
 
-    private fun hasCoordinatorTextTask(): Boolean {
+    private fun hasCoordinatorDownloadTask(): Boolean {
         return CacheCoordinator.snapshot.value.sessions.any { session ->
             session.tasks.any {
-                it.kind == CacheKind.TEXT &&
-                    (it.phase == CachePhase.BODY || it.phase == CachePhase.REVIEW) &&
+                ((it.kind == CacheKind.TEXT &&
+                    (it.phase == CachePhase.BODY || it.phase == CachePhase.REVIEW)) ||
+                    ((it.kind == CacheKind.AUDIO || it.kind == CacheKind.VIDEO) &&
+                        it.phase == CachePhase.MEDIA)) &&
                     it.status in setOf(
                         CacheLifecycle.QUEUED,
                         CacheLifecycle.RUNNING,
@@ -388,19 +390,21 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
         }
     }
 
-    private fun cancelCoordinatorTextTasks() {
+    private fun cancelCoordinatorDownloadTasks() {
         CacheCoordinator.snapshot.value.sessions
             .flatMap { it.tasks }
             .filter {
-                it.kind == CacheKind.TEXT &&
-                    (it.phase == CachePhase.BODY || it.phase == CachePhase.REVIEW) &&
+                ((it.kind == CacheKind.TEXT &&
+                    (it.phase == CachePhase.BODY || it.phase == CachePhase.REVIEW)) ||
+                    ((it.kind == CacheKind.AUDIO || it.kind == CacheKind.VIDEO) &&
+                        it.phase == CachePhase.MEDIA)) &&
                     !CacheLifecycleRules.isTerminal(it.status)
             }
             .forEach { CacheCoordinator.cancel(CacheSubmission(it.sessionId, it.taskId)) }
     }
 
     private fun updateCoordinatorDownloadMenu() {
-        val active = hasCoordinatorTextTask()
+        val active = hasCoordinatorDownloadTask()
         menu?.findItem(R.id.menu_download)?.let { item ->
             item.setIconCompat(if (active) R.drawable.ic_stop_black_24dp else R.drawable.ic_play_24dp)
             item.setTitle(if (active) R.string.stop else R.string.download_start)
@@ -891,7 +895,7 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
                             ?.coerceIn(1, total) ?: 1
                         val end = alertBinding.editEnd.text?.toString()?.toIntOrNull()
                             ?.coerceIn(start, total) ?: total
-                        submitBodyCache(book, start - 1, end - 1)
+                        submitBookCache(book, start - 1, end - 1)
                     },
                     onDenied = {
                         toastOnUi(R.string.notification_permission_required_for_download)
