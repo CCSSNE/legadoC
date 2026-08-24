@@ -18,6 +18,16 @@ data class BookCollectionWithItems(
     val books: List<Book>,
     @Relation(
         parentColumn = "collectionId",
+        entityColumn = "shortcutId",
+        associateBy = Junction(
+            value = BookCollectionItem::class,
+            parentColumn = "collectionId",
+            entityColumn = "shortcutId"
+        )
+    )
+    val shortcuts: List<BookShortcut>,
+    @Relation(
+        parentColumn = "collectionId",
         entityColumn = "collectionId",
         associateBy = Junction(
             value = BookCollectionChild::class,

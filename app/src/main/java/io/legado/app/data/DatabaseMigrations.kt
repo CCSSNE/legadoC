@@ -27,7 +27,31 @@ object DatabaseMigrations {
             migration_102_103, migration_103_104,
             migration_104_105,
             migration_105_106,
+            migration_106_107,
         )
+    }
+
+    private val migration_106_107 = object : Migration(106, 107) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("""CREATE TABLE `book_collection_items_new` (
+                `collectionId` INTEGER NOT NULL, `entryType` INTEGER NOT NULL DEFAULT 0,
+                `entryId` TEXT NOT NULL, `bookUrl` TEXT, `shortcutId` INTEGER,
+                `order` INTEGER NOT NULL DEFAULT 0, `addedTime` INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY(`collectionId`, `entryType`, `entryId`),
+                FOREIGN KEY(`collectionId`) REFERENCES `book_collections`(`collectionId`) ON DELETE CASCADE,
+                FOREIGN KEY(`bookUrl`) REFERENCES `books`(`bookUrl`) ON DELETE CASCADE,
+                FOREIGN KEY(`shortcutId`) REFERENCES `book_shortcuts`(`shortcutId`) ON DELETE CASCADE
+            )""".trimIndent())
+            db.execSQL("""INSERT INTO `book_collection_items_new`
+                (`collectionId`, `entryType`, `entryId`, `bookUrl`, `shortcutId`, `order`, `addedTime`)
+                SELECT `collectionId`, 0, `bookUrl`, `bookUrl`, NULL, `order`, `addedTime`
+                FROM `book_collection_items`""".trimIndent())
+            db.execSQL("DROP TABLE `book_collection_items`")
+            db.execSQL("ALTER TABLE `book_collection_items_new` RENAME TO `book_collection_items`")
+            db.execSQL("CREATE INDEX `index_book_collection_items_collectionId` ON `book_collection_items` (`collectionId`)")
+            db.execSQL("CREATE INDEX `index_book_collection_items_bookUrl` ON `book_collection_items` (`bookUrl`)")
+            db.execSQL("CREATE INDEX `index_book_collection_items_shortcutId` ON `book_collection_items` (`shortcutId`)")
+        }
     }
 
     private val migration_105_106 = object : Migration(105, 106) {
