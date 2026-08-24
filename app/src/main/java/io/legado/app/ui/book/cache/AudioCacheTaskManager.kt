@@ -20,6 +20,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
+import java.util.concurrent.FutureTask
 import java.util.concurrent.ThreadFactory
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.max
@@ -36,9 +37,9 @@ internal object AudioCacheTaskManager {
     )
     private val cancelFlags = ConcurrentHashMap<String, AtomicBoolean>()
     private val futures = ConcurrentHashMap<String, Future<*>>()
+    private val workerThreads = ConcurrentHashMap<String, Thread>()
     private val requests = ConcurrentHashMap<String, AudioCacheTaskRequest>()
-    private val pausingBookUrls = ConcurrentHashMap.newKeySet<String>()
-    private val pendingResumeBookUrls = ConcurrentHashMap.newKeySet<String>()
+    private val stopRequests = ConcurrentHashMap<String, StopRequest>()
     private val preparingResumeBookUrls = ConcurrentHashMap.newKeySet<String>()
     private val _states = MutableStateFlow<Map<String, AudioCacheTaskState>>(emptyMap())
     internal fun snapshot(bookUrl: String): AudioCacheTaskState? = _states.value[bookUrl]
@@ -100,7 +101,6 @@ internal object AudioCacheTaskManager {
             request.onFinished?.invoke()
             return true
         }
-        if (futures.containsKey(book.bookUrl)) return false
         val cancelFlag = AtomicBoolean(false)
         cancelFlags[book.bookUrl] = cancelFlag
         updateState(
@@ -114,7 +114,8 @@ internal object AudioCacheTaskManager {
                 message = appCtx.getString(R.string.data_loading)
             )
         )
-        val future = executor.submit {
+        val future = FutureTask<Unit> {
+            workerThreads[book.bookUrl] = Thread.currentThread()
             var finalStatus: CacheTaskStatus? = null
             var completed = completedOffset
             var activeChapter: BookChapter? = null
@@ -318,7 +319,7 @@ internal object AudioCacheTaskManager {
             } catch (e: CancellationException) {
                 activeTrace?.cancelled()
                 activeTrace = null
-                finalStatus = if (pausingBookUrls.contains(book.bookUrl)) {
+                finalStatus = if (stopRequests[book.bookUrl]?.mode == StopMode.PAUSE) {
                     CacheTaskStatus.PAUSED
                 } else {
                     CacheTaskStatus.CANCELLED
@@ -343,7 +344,9 @@ internal object AudioCacheTaskManager {
                 activeChapter?.let { chapter ->
                     request.onChapterFinished?.invoke(chapter, false, e.localizedMessage)
                 }
-                finalStatus = if (cancelFlag.get() && pausingBookUrls.contains(book.bookUrl)) {
+                finalStatus = if (
+                    cancelFlag.get() && stopRequests[book.bookUrl]?.mode == StopMode.PAUSE
+                ) {
                     CacheTaskStatus.PAUSED
                 } else {
                     CacheTaskStatus.FAILED
@@ -362,62 +365,44 @@ internal object AudioCacheTaskManager {
                 }
             } finally {
                 activeTrace?.cancelled()
-                val shouldResume = finalStatus == CacheTaskStatus.PAUSED &&
-                    pendingResumeBookUrls.remove(book.bookUrl)
-                val remainingChapters = if (shouldResume) {
-                    request.chapters.filterNot { isChapterCached(book, it) }
-                } else {
-                    emptyList()
-                }
-                val resumeCompletedOffset = if (shouldResume) {
-                    (request.totalChapters - remainingChapters.size)
-                        .coerceAtLeast(completed)
-                        .coerceIn(0, request.totalChapters)
-                } else {
-                    completed
-                }
+                workerThreads.remove(book.bookUrl, Thread.currentThread())
                 cancelFlags.remove(book.bookUrl)
                 futures.remove(book.bookUrl)
-                pausingBookUrls.remove(book.bookUrl)
-                if (shouldResume) {
-                    startRequest(request, remainingChapters, resumeCompletedOffset)
-                } else {
-                    if (finalStatus != CacheTaskStatus.PAUSED) {
+                val stopRequest = stopRequests.remove(book.bookUrl)
+                if (stopRequest != null) {
+                    val stoppedStatus = when (stopRequest.mode) {
+                        StopMode.PAUSE -> CacheTaskStatus.PAUSED
+                        StopMode.CANCEL -> CacheTaskStatus.CANCELLED
+                    }
+                    updateStoppedState(book.bookUrl, stoppedStatus)
+                    if (stopRequest.mode == StopMode.CANCEL) {
                         requests.remove(book.bookUrl)
                     }
-                    if (finalStatus != CacheTaskStatus.PAUSED) {
+                    stopRequest.onStopped()
+                } else {
+                    requests.remove(book.bookUrl)
+                    if (finalStatus == CacheTaskStatus.COMPLETED ||
+                        finalStatus == CacheTaskStatus.FAILED
+                    ) {
                         request.onFinished?.invoke()
                     }
                 }
             }
         }
-        futures[book.bookUrl] = future
+        if (futures.putIfAbsent(book.bookUrl, future) != null) {
+            cancelFlags.remove(book.bookUrl, cancelFlag)
+            return false
+        }
+        executor.execute(future)
         return true
     }
 
-    internal fun cancel(bookUrl: String) {
-        requests.remove(bookUrl)
-        pausingBookUrls.remove(bookUrl)
-        pendingResumeBookUrls.remove(bookUrl)
-        preparingResumeBookUrls.remove(bookUrl)
-        cancelFlags[bookUrl]?.set(true)
-        futures[bookUrl]?.cancel(true)
+    internal fun cancel(bookUrl: String, onStopped: () -> Unit) {
+        requestStop(bookUrl, StopRequest(StopMode.CANCEL, onStopped))
     }
 
-    internal fun pause(bookUrl: String) {
-        val state = _states.value[bookUrl] ?: return
-        if (!state.active) return
-        pausingBookUrls.add(bookUrl)
-        cancelFlags[bookUrl]?.set(true)
-        futures[bookUrl]?.cancel(true)
-        updateState(bookUrl) {
-            it.copy(
-                status = CacheTaskStatus.PAUSED,
-                active = false,
-                speedBytesPerSecond = 0L,
-                message = appCtx.getString(R.string.cache_manage_task_paused)
-            )
-        }
+    internal fun pause(bookUrl: String, onStopped: () -> Unit) {
+        requestStop(bookUrl, StopRequest(StopMode.PAUSE, onStopped))
     }
 
     internal fun resume(
@@ -426,25 +411,27 @@ internal object AudioCacheTaskManager {
         onChapterProgress: ((BookChapter, Long, Long?) -> Unit)? = null,
         onChapterFinished: ((BookChapter, Boolean, String?) -> Unit)? = null,
         onFinished: (() -> Unit)? = null,
+        diagnostics: CacheOperationDiagnostics.Context? = null,
     ): Boolean {
         val state = _states.value[bookUrl] ?: return false
         if (state.status != CacheTaskStatus.PAUSED) return false
-        if (futures.containsKey(bookUrl)) {
-            pendingResumeBookUrls.add(bookUrl)
-            return true
+        check(!futures.containsKey(bookUrl)) {
+            "media worker resumed before pause completed: $bookUrl"
         }
         if (!preparingResumeBookUrls.add(bookUrl)) return true
         executor.execute {
             try {
+                if (stopRequests.containsKey(bookUrl)) return@execute
                 var request = requests[bookUrl] ?: return@execute
                 if (onChapterStarted != null || onChapterProgress != null ||
-                    onChapterFinished != null || onFinished != null
+                    onChapterFinished != null || onFinished != null || diagnostics != null
                 ) {
                     request = request.copy(
                         onChapterStarted = onChapterStarted ?: request.onChapterStarted,
                         onChapterProgress = onChapterProgress ?: request.onChapterProgress,
                         onChapterFinished = onChapterFinished ?: request.onChapterFinished,
                         onFinished = onFinished ?: request.onFinished,
+                        diagnostics = diagnostics ?: request.diagnostics,
                     )
                     requests[bookUrl] = request
                 }
@@ -460,9 +447,54 @@ internal object AudioCacheTaskManager {
                 startRequest(request, remainingChapters, completedOffset)
             } finally {
                 preparingResumeBookUrls.remove(bookUrl)
+                completeStopIfIdle(bookUrl)
             }
         }
         return true
+    }
+
+    private fun requestStop(bookUrl: String, stopRequest: StopRequest) {
+        stopRequests.compute(bookUrl) { _, current ->
+            when {
+                current == null -> stopRequest
+                current.mode == StopMode.PAUSE && stopRequest.mode == StopMode.CANCEL -> stopRequest
+                else -> current
+            }
+        }
+        cancelFlags[bookUrl]?.set(true)
+        workerThreads[bookUrl]?.interrupt()
+        completeStopIfIdle(bookUrl)
+    }
+
+    private fun completeStopIfIdle(bookUrl: String) {
+        if (futures.containsKey(bookUrl) || preparingResumeBookUrls.contains(bookUrl)) return
+        val completedStop = stopRequests.remove(bookUrl) ?: return
+        val status = when (completedStop.mode) {
+            StopMode.PAUSE -> CacheTaskStatus.PAUSED
+            StopMode.CANCEL -> CacheTaskStatus.CANCELLED
+        }
+        updateStoppedState(bookUrl, status)
+        if (completedStop.mode == StopMode.CANCEL) {
+            requests.remove(bookUrl)
+        }
+        completedStop.onStopped()
+    }
+
+    private fun updateStoppedState(bookUrl: String, status: CacheTaskStatus) {
+        updateState(bookUrl) {
+            it.copy(
+                status = status,
+                active = false,
+                speedBytesPerSecond = 0L,
+                message = appCtx.getString(
+                    if (status == CacheTaskStatus.PAUSED) {
+                        R.string.cache_manage_task_paused
+                    } else {
+                        R.string.cache_manage_task_cancelled
+                    }
+                )
+            )
+        }
     }
 
     private fun buildProgressMessage(
@@ -541,6 +573,16 @@ private data class AudioCacheTaskRequest(
     val onFinished: (() -> Unit)?,
     val diagnostics: CacheOperationDiagnostics.Context?,
     val totalChapters: Int
+)
+
+private enum class StopMode {
+    PAUSE,
+    CANCEL,
+}
+
+private data class StopRequest(
+    val mode: StopMode,
+    val onStopped: () -> Unit,
 )
 
 private const val PROGRESS_STATE_INTERVAL_MS = 750L

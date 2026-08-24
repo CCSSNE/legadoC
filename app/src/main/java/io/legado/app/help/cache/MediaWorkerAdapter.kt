@@ -80,6 +80,13 @@ internal class MediaWorkerAdapter(
                     chapterProgress,
                     chapterFinished,
                     finished,
+                    CacheOperationDiagnostics.Context(
+                        domain = CacheOperationDiagnostics.Domain.MEDIA,
+                        sessionId = lease.sessionId,
+                        taskId = lease.taskId,
+                        generation = lease.generation,
+                        unitCount = validKeys.size,
+                    ),
                 )
             ) {
                 CacheMediaWorkerRegistry.fail(lease, "paused media task could not resume")
@@ -113,17 +120,19 @@ internal class MediaWorkerAdapter(
 
     fun pause(submission: CacheSubmission) {
         val task = CacheCoordinator.currentTask(submission) ?: return
-        AudioCacheTaskManager.pause(task.bookUrl)
-        CacheMediaWorkerRegistry.remove(submission.sessionId, submission.taskId)
-        CacheCoordinator.workerPort.confirmPaused(submission)
+        AudioCacheTaskManager.pause(task.bookUrl) {
+            CacheMediaWorkerRegistry.remove(submission.sessionId, submission.taskId)
+            CacheCoordinator.workerPort.confirmPaused(submission)
+        }
     }
 
     fun cancel(submission: CacheSubmission) {
         val task = CacheCoordinator.currentTask(submission) ?: return
-        CacheMediaWorkerRegistry.remove(submission.sessionId, submission.taskId)
-        AudioCacheTaskManager.cancel(task.bookUrl)
-        if (workerPort.confirmCancelled(submission)) {
-            CacheCoordinator.notifyTaskFinished(submission, CacheResult.CANCELLED)
+        AudioCacheTaskManager.cancel(task.bookUrl) {
+            CacheMediaWorkerRegistry.remove(submission.sessionId, submission.taskId)
+            if (workerPort.confirmCancelled(submission)) {
+                CacheCoordinator.notifyTaskFinished(submission, CacheResult.CANCELLED)
+            }
         }
     }
 }
