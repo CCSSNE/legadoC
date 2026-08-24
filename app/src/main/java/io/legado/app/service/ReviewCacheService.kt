@@ -7,6 +7,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.NotificationId
 import io.legado.app.help.cache.CacheNotificationBridge
 import io.legado.app.help.cache.CacheReviewWorkerRegistry
+import io.legado.app.help.config.AppConfig
 import io.legado.app.help.review.ReviewSnapshotManager
 import io.legado.app.utils.startService
 import kotlinx.coroutines.Dispatchers
@@ -56,9 +57,10 @@ class ReviewCacheService : BaseService() {
     private fun startWork() {
         workJob?.cancel()
         workJob = lifecycleScope.launch(Dispatchers.IO) {
-            // 章节任务保持并行消费；ReviewSnapshotManager 会在按钮页面层做全局配额，
-            // 因而不会再把这里的 worker 数与单章按钮数相乘为重内存并发。
-            repeat(4) {
+            // 与 ReviewSnapshotManager 的全局页面流水线配额使用同一份设置。否则单章只有
+            // 一个评论按钮时，固定 4 个章节消费者会把配置的 16 条 Capture 错限成 4 条。
+            // heavy 内存阶段仍由 ReviewSnapshotCapture 的独立 permit 串行化。
+            repeat(AppConfig.reviewCacheConcurrency.coerceIn(1, 32)) {
                 launch {
                     while (isActive) {
                         var task = ReviewSnapshotManager.tryTakeTask()

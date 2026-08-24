@@ -58,8 +58,6 @@ object ReviewSnapshotCapture {
 
     /** 页面加载与评论展开共享的执行预算；不包含重内存阶段的排队或执行。 */
     private const val PAGE_EXECUTION_TIMEOUT_MS = 60_000L
-    /** 等待重内存 permit 的队列预算；到期直接失败，不占用后续 heavy work 预算。 */
-    private const val HEAVY_STAGE_WAIT_TIMEOUT_MS = 60_000L
     /** 已取得 permit 后，资源内联、outerHTML 与解码共享的执行预算。 */
     private const val HEAVY_STAGE_WORK_TIMEOUT_MS = 60_000L
     /** 穷尽循环轮数上限 */
@@ -82,26 +80,10 @@ object ReviewSnapshotCapture {
 
     private class ResourceBudgetExceededException(message: String) : IllegalStateException(message)
 
-    private enum class CaptureStage(
-        val diagnosticsStage: String,
-        val executionTimeoutMs: Long?,
-        val timeoutLabel: String,
-    ) {
-        PAGE_EXECUTION(
-            diagnosticsStage = "PAGE_EXECUTION",
-            executionTimeoutMs = PAGE_EXECUTION_TIMEOUT_MS,
-            timeoutLabel = "评论页加载/展开",
-        ),
-        HEAVY_STAGE_WAIT(
-            diagnosticsStage = "HEAVY_STAGE_WAIT",
-            executionTimeoutMs = null,
-            timeoutLabel = "评论快照重内存队列等待",
-        ),
-        HEAVY_STAGE_WORK(
-            diagnosticsStage = "HEAVY_STAGE_WORK",
-            executionTimeoutMs = HEAVY_STAGE_WORK_TIMEOUT_MS,
-            timeoutLabel = "评论快照重内存处理",
-        ),
+    private enum class CaptureStage(val diagnosticsStage: String) {
+        PAGE_EXECUTION("PAGE_EXECUTION"),
+        HEAVY_STAGE_WAIT("HEAVY_STAGE_WAIT"),
+        HEAVY_STAGE_WORK("HEAVY_STAGE_WORK"),
     }
 
     /**
@@ -332,7 +314,11 @@ object ReviewSnapshotCapture {
         private var stageTimeout: Runnable? = null
 
         init {
-            startTimedStage(CaptureStage.PAGE_EXECUTION)
+            startTimedStage(
+                CaptureStage.PAGE_EXECUTION,
+                PAGE_EXECUTION_TIMEOUT_MS,
+                "评论页加载/展开",
+            )
         }
 
         val client = object : WebViewClient() {
@@ -441,19 +427,18 @@ object ReviewSnapshotCapture {
         }
 
         /**
-         * 只有页面执行与 permit 后的重内存处理拥有执行超时；排队由 tryAcquire 自己限时。
-         * 这样队列中的时间永远不会消耗 heavy work 的执行预算。
+         * 只有页面执行与 permit 后的重内存处理拥有执行超时。permit 排队没有失败时限，
+         * 只记录自己的等待耗时；这样队列中的时间永远不会消耗 heavy work 的执行预算。
          */
-        private fun startTimedStage(stage: CaptureStage) {
+        private fun startTimedStage(stage: CaptureStage, timeoutMs: Long, timeoutLabel: String) {
             completeActiveStage()
             activeStage = stage
             diagnostics?.stageStart(stage.diagnosticsStage, startAlways = true)
-            val timeoutMs = stage.executionTimeoutMs ?: return
             val timeout = Runnable {
                 if (!destroyed && activeStage == stage) {
                     fail(
                         NoStackTraceException(
-                            "${stage.timeoutLabel}执行超时 ${timeoutMs / 1000}s",
+                            "${timeoutLabel}执行超时 ${timeoutMs / 1000}s",
                         )
                     )
                 }
@@ -548,16 +533,8 @@ object ReviewSnapshotCapture {
             // 只限流会创建完整 Java 大对象的阶段；此时之前的页面加载与展开可以继续并行。
             Thread {
                 try {
-                    if (!heavyStagePermits.tryAcquire(HEAVY_STAGE_WAIT_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
-                        mHandler.post {
-                            fail(
-                                NoStackTraceException(
-                                    "评论快照重内存队列等待超时 " +
-                                        "${HEAVY_STAGE_WAIT_TIMEOUT_MS / 1000}s",
-                                )
-                            )
-                        }
-                    } else if (destroyed) {
+                    heavyStagePermits.acquire()
+                    if (destroyed) {
                         heavyStagePermits.release()
                     } else {
                         heavyStagePermitHeld.set(true)
@@ -566,7 +543,11 @@ object ReviewSnapshotCapture {
                                 releaseHeavyStagePermit()
                             } else {
                                 diagnostics?.mark("HEAVY_STAGE_ACQUIRED")
-                                startTimedStage(CaptureStage.HEAVY_STAGE_WORK)
+                                startTimedStage(
+                                    CaptureStage.HEAVY_STAGE_WORK,
+                                    HEAVY_STAGE_WORK_TIMEOUT_MS,
+                                    "评论快照重内存处理",
+                                )
                                 collectAndInlineResources()
                             }
                         }
