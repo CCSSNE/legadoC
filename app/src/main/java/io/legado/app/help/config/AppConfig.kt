@@ -1782,6 +1782,9 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefInt(PreferKey.readAloudDoubleTapTimeout, value.coerceIn(120, 600))
         }
 
+    val readAloudPageStartAtParagraph
+        get() = appCtx.getPrefBoolean(PreferKey.readAloudPageStartAtParagraph, true)
+
     var readAloudScrollFollowTimeout: Int
         get() = appCtx.getPrefInt(PreferKey.readAloudScrollFollowTimeout, 3000).coerceIn(0, 10000)
         set(value) {

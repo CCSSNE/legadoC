@@ -1079,7 +1079,13 @@ abstract class BaseReadAloudService : BaseService(),
             nowSpeak.coerceIn(0, contentList.lastIndex)
         }
         if (!readAloudByPage && startPos == 0 && !toLast && nowSpeak in chapter.paragraphs.indices) {
-            pos = page.chapterPosition - chapter.paragraphs[nowSpeak].chapterPosition
+            val paragraphStart = chapter.paragraphs[nowSpeak].chapterPosition
+            if (AppConfig.readAloudPageStartAtParagraph) {
+                readAloudNumber = paragraphStart
+                this@BaseReadAloudService.pageIndex = chapter.getPageIndexByCharIndex(paragraphStart)
+            } else {
+                pos = page.chapterPosition - paragraphStart
+            }
         }
         if (toLast) {
             toLast = false

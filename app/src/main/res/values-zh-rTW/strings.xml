@@ -1341,4 +1341,6 @@
     <string name="disable_all_toast">關閉所有底部彈窗</string>
     <string name="disable_all_toast_summary">不顯示應用程式透過 Toast 發出的所有底部彈窗，包括書源彈窗</string>
     <string name="reverse_toc_display">&#x53CD;&#x5411;&#x986F;&#x793A;</string>
+    <string name="read_aloud_page_start_at_paragraph">分頁閱讀以段落為界</string>
+    <string name="read_aloud_page_start_at_paragraph_summary">從本頁聽時，若頁首位於段落中間，則從該段落開頭開始朗讀。</string>
 </resources>
