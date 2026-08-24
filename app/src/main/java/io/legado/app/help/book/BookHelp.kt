@@ -29,9 +29,11 @@ import io.legado.app.utils.createFileIfNotExist
 import io.legado.app.utils.exists
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.getFile
+import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.onEachParallel
 import io.legado.app.utils.postEvent
+import io.legado.app.utils.putPrefBoolean
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
@@ -61,6 +63,7 @@ object BookHelp {
     private const val cacheFolderName = "book_cache"
     private const val cacheImageFolderName = "images"
     private const val cacheEpubFolderName = "epub"
+    private const val audioBodyCacheMigrationKey = "audioBodyCachePurgedV1"
     private val downloadImages = ConcurrentHashMap<String, Mutex>()
 
     val cachePath = FileUtils.getPath(downloadDir, cacheFolderName)
@@ -114,9 +117,14 @@ object BookHelp {
      */
     suspend fun clearInvalidCache() {
         withContext(IO) {
+            val books = appDb.bookDao.all
+            if (!appCtx.getPrefBoolean(audioBodyCacheMigrationKey, false)) {
+                books.filter { it.isAudio }.forEach(::clearAudioBodyCache)
+                appCtx.putPrefBoolean(audioBodyCacheMigrationKey, true)
+            }
             val bookFolderNames = hashSetOf<String>()
             val originNames = hashSetOf<String>()
-            appDb.bookDao.all.forEach {
+            books.forEach {
                 clearComicCache(it)
                 bookFolderNames.add(it.getFolderName())
                 if (it.isEpub) originNames.add(it.originName)
@@ -140,6 +148,14 @@ object BookHelp {
             FileUtils.delete("$filesDir/shareBookSource.json")
             FileUtils.delete("$filesDir/shareRssSource.json")
             FileUtils.delete("$filesDir/books.json")
+        }
+    }
+
+    /** One-time migration: audio subtitles are stored in BookChapter.variable, never book_cache. */
+    private fun clearAudioBodyCache(book: Book) {
+        require(book.isAudio) { "audio body-cache migration received ${book.bookUrl}" }
+        appDb.bookChapterDao.getChapterList(book.bookUrl).forEach { chapter ->
+            delContent(book, chapter)
         }
     }
 
