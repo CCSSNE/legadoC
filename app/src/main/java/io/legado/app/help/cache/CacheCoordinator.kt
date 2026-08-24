@@ -20,6 +20,7 @@ import io.legado.app.help.review.ReviewSnapshotManager
 import io.legado.app.help.review.ReviewSnapshotResourceStore
 import io.legado.app.help.review.ReviewSnapshotStore
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 
 data class CacheSubmission(
     val sessionId: String,
@@ -159,6 +160,8 @@ object CacheCoordinator : CacheUiPort {
     /** 防止同一本书在短时间内重复排队 GC。 */
     private val resourceGcScheduled = ConcurrentHashMap.newKeySet<String>()
     private val terminalEffectsInProgress = ConcurrentHashMap.newKeySet<String>()
+    private val terminalEffectsRetryAttempts = ConcurrentHashMap<String, Int>()
+    private val terminalEffectsRetryScheduled = ConcurrentHashMap.newKeySet<String>()
 
     init {
         replayPendingTerminalEffects()
@@ -482,6 +485,7 @@ object CacheCoordinator : CacheUiPort {
             check(store.completeTerminalEffects(submission.sessionId, submission.taskId)) {
                 "terminal effects were not acknowledged: ${submission.sessionId}/${submission.taskId}"
             }
+            terminalEffectsRetryAttempts.remove(effectKey)
         } catch (error: Throwable) {
             AppLogCacheLogSink.record(
                 CacheLogEvent(
@@ -491,8 +495,40 @@ object CacheCoordinator : CacheUiPort {
                     detail = "${error::class.simpleName}: ${error.localizedMessage}",
                 )
             )
+            scheduleTerminalEffectsRetry(submission, effectKey)
         } finally {
             terminalEffectsInProgress.remove(effectKey)
+        }
+    }
+
+    /** Retry a failed terminal outbox effect without waiting for process restart or another task. */
+    private fun scheduleTerminalEffectsRetry(
+        submission: CacheSubmission,
+        effectKey: String,
+    ) {
+        if (!terminalEffectsRetryScheduled.add(effectKey)) return
+        val attempt = terminalEffectsRetryAttempts.merge(effectKey, 1, Int::plus) ?: 1
+        val delaySeconds = when (attempt) {
+            1 -> 1L
+            2 -> 2L
+            3 -> 5L
+            else -> 15L
+        }
+        resourceGcScope.launch {
+            try {
+                kotlinx.coroutines.delay(TimeUnit.SECONDS.toMillis(delaySeconds))
+                val pending = store.currentTask(submission.sessionId, submission.taskId)
+                    ?.let { CacheLifecycleRules.isTerminal(it.status) && it.terminalEffectsPending }
+                    ?: false
+                if (pending) {
+                    terminalEffectsRetryScheduled.remove(effectKey)
+                    processTerminalEffects(submission)
+                } else {
+                    terminalEffectsRetryAttempts.remove(effectKey)
+                }
+            } finally {
+                terminalEffectsRetryScheduled.remove(effectKey)
+            }
         }
     }
 
