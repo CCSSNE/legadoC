@@ -249,6 +249,6 @@ uiautomator2 / ADB
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- `3.26.082401c` / `10722`，2026-08-24（UTC），`own` 主线（基于 `6fc6662` 编译；版本号在先前交付 `10721` 之上单调递增，与 10721 同 UTC 小时故版本名同名，仅展示用）。用户明确要求正式编译另一会话的新源码提交（`7906737` refactor(cache): centralize runtime progress）；工作区另有该会话未提交的 `docs/重构下载架构.md` 改动（已稳定 11 分钟），沿用用户上轮决定由本会话代为提交（`6fc6662`）后编译。一次通过：BUILD SUCCESSFUL in 2m 48s，退出码 0，无源码错误。构建期间分支无新提交（HEAD 保持 `6fc6662`）。`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.082401c` / `10722`、中文名 `阅读 C`（zh locale）、架构 `arm64-v8a`、compileSdk/targetSdk 36；`apksigner` 完整执行退出码 0。教训重演：用 `Select-Object -First N` 截断管道读取 `apksigner.bat` 输出把 `$LASTEXITCODE` 污染为 -1，按完整执行后读取确认真实退出码 0——校验退出码必须让包装工具跑完再读，不得截断管道。产物文件名原为 `legado_app_3.26.082401_10722.apk`，内部元数据正确，仅改名补 `c` 为 `legado_app_3.26.082401c_10722.apk`。收尾 `gradlew --stop`，无残留 java 进程。基线记录提交正常推送；未安装到模拟器、未做正式回归。
+- `3.26.080202c` / `10723`，2026-08-24（UTC），`own` 主线（基于 `ee2d27c` 编译：refactor(review) split capture timeout budgets；版本号在先前交付 `10722` 之上单调递增）。用户明确要求正式编译另一会话的新源码提交；工作区干净、无并行构建，一次通过：BUILD SUCCESSFUL in 1m 53s，退出码 0。构建期间分支无新提交（HEAD 保持 `ee2d27c`）。`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.080202c` / `10723`、中文名 `阅读 C`（zh locale）、架构 `arm64-v8a`、compileSdk/targetSdk 36；`apksigner` 完整执行（不截断管道）退出码 0。产物文件名原为 `legado_app_3.26.080202_10723.apk`，内部元数据正确，仅改名补 `c` 为 `legado_app_3.26.080202c_10723.apk`。收尾 `gradlew --stop`，无残留 java 进程。基线记录提交正常推送；未安装到模拟器、未做正式回归。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
