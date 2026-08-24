@@ -339,16 +339,20 @@ class BookshelfManageActivity :
             if (books.any { it.isShortcut }) {
                 deleteBodyCheckBox = CheckBox(this@BookshelfManageActivity).apply {
                     setText(R.string.delete_book_body)
+                    setOnCheckedChangeListener { _, isChecked ->
+                        if (!isChecked) deleteOriginalCheckBox.isChecked = false
+                    }
                 }
                 view.addView(deleteBodyCheckBox)
                 deleteOriginalCheckBox.setOnCheckedChangeListener { _, isChecked ->
                     if (isChecked) deleteBodyCheckBox?.isChecked = true
                 }
-                if (deleteOriginalCheckBox.isChecked) {
-                    deleteBodyCheckBox.isChecked = true
-                }
             }
-            if (books.any { it.isLocal }) view.addView(deleteOriginalCheckBox)
+            if (books.any { it.isLocal }) {
+                deleteOriginalCheckBox.isChecked =
+                    !books.any { it.isShortcut } && LocalConfig.deleteBookOriginal
+                view.addView(deleteOriginalCheckBox)
+            }
             if (view.childCount > 0) customView { view }
             okButton {
                 if (books.any { it.isLocal }) {
@@ -421,6 +425,9 @@ class BookshelfManageActivity :
             if (book.isShortcut) {
                 deleteBodyCheckBox = CheckBox(this@BookshelfManageActivity).apply {
                     setText(R.string.delete_book_body)
+                    setOnCheckedChangeListener { _, isChecked ->
+                        if (!isChecked) deleteOriginalCheckBox?.isChecked = false
+                    }
                 }
                 view.addView(deleteBodyCheckBox)
             }
@@ -430,7 +437,7 @@ class BookshelfManageActivity :
                     setOnCheckedChangeListener { _, isChecked ->
                         if (isChecked) deleteBodyCheckBox?.isChecked = true
                     }
-                    isChecked = LocalConfig.deleteBookOriginal
+                    isChecked = !book.isShortcut && LocalConfig.deleteBookOriginal
                 }
                 view.addView(deleteOriginalCheckBox)
             }
