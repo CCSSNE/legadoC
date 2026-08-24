@@ -19,6 +19,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
+import java.util.zip.Deflater
 
 @SuppressLint("ObsoleteSdkInt")
 @Suppress("unused", "MemberVisibilityCanBePrivate")
@@ -102,12 +103,21 @@ object ZipUtils {
     fun zipFiles(
         srcFiles: Collection<File>?,
         zipFile: File?,
-        comment: String? = null
+        comment: String? = null,
+        compressionLevel: Int = Deflater.DEFAULT_COMPRESSION,
+        onProgress: ((processedBytes: Long, totalBytes: Long) -> Unit)? = null,
     ): Boolean {
         if (srcFiles == null || zipFile == null) return false
-        ZipOutputStream(FileOutputStream(zipFile)).use {
+        val totalBytes = srcFiles.sumOf(::sourceSize)
+        var processedBytes = 0L
+        ZipOutputStream(FileOutputStream(zipFile)).use { zos ->
+            zos.setLevel(compressionLevel)
             for (srcFile in srcFiles) {
-                if (!zipFile(srcFile, "", it, comment)) return false
+                if (!zipFile(srcFile, "", zos, comment) { byteCount ->
+                        processedBytes += byteCount
+                        onProgress?.invoke(processedBytes, totalBytes)
+                    }
+                ) return false
             }
             return true
         }
@@ -165,7 +175,7 @@ object ZipUtils {
     ): Boolean {
         if (srcFile == null || zipFile == null) return false
         ZipOutputStream(FileOutputStream(zipFile)).use { zos ->
-            return zipFile(srcFile, "", zos, comment)
+            return zipFile(srcFile, "", zos, comment, null)
         }
     }
 
@@ -174,7 +184,8 @@ object ZipUtils {
         srcFile: File,
         rootPath: String,
         zos: ZipOutputStream,
-        comment: String?
+        comment: String?,
+        onBytesWritten: ((Int) -> Unit)? = null,
     ): Boolean {
         var rootPath1 = rootPath
         if (!srcFile.exists()) return true
@@ -188,7 +199,7 @@ object ZipUtils {
                 zos.closeEntry()
             } else {
                 for (file in fileList) {
-                    if (!zipFile(file, rootPath1, zos, comment)) return false
+                    if (!zipFile(file, rootPath1, zos, comment, onBytesWritten)) return false
                 }
             }
         } else {
@@ -196,11 +207,23 @@ object ZipUtils {
                 val entry = ZipEntry(rootPath1)
                 entry.comment = comment
                 zos.putNextEntry(entry)
-                it.copyTo(zos)
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                while (true) {
+                    val count = it.read(buffer)
+                    if (count < 0) break
+                    zos.write(buffer, 0, count)
+                    onBytesWritten?.invoke(count)
+                }
                 zos.closeEntry()
             }
         }
         return true
+    }
+
+    private fun sourceSize(source: File): Long {
+        if (!source.exists()) return 0L
+        if (!source.isDirectory) return source.length().coerceAtLeast(0L)
+        return source.listFiles()?.sumOf(::sourceSize) ?: 0L
     }
 
     @Throws(SecurityException::class)
