@@ -10,6 +10,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import com.google.gson.stream.JsonReader
 import io.legado.app.constant.AppConst
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -29,14 +30,12 @@ import io.legado.app.help.webView.WebViewPool
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.utils.GSON
 import io.legado.app.utils.runOnUI
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeout
 import org.apache.commons.text.StringEscapeUtils
 import splitties.init.appCtx
 import java.io.ByteArrayInputStream
+import java.io.StringReader
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.resume
@@ -457,36 +456,32 @@ object ReviewSnapshotCapture {
             val (imgUrls, cssUrls) = urls
             val imgMap = linkedMapOf<String, String>()
             val cssMap = linkedMapOf<String, String>()
-            // 图片/CSS 并发抓取内联：同一批资源并行下载，单个失败（含连接不通）只跳过自身；
-            // 运行于普通 Thread（非协程），故用 runBlocking + async 并发
-            runBlocking(Dispatchers.IO) {
-                val totalBytes = java.util.concurrent.atomic.AtomicLong(0L)
-                imgUrls.take(MAX_INLINE_RESOURCES).map { rawUrl ->
-                    async {
-                        if (totalBytes.get() > MAX_TOTAL_INLINE_BYTES) return@async null
-                        val entry = runCatching {
-                            fetchBytes(rawUrl).takeIf { it.size <= 8L * 1024 * 1024 }?.let { bytes ->
-                                val mime = guessMime(rawUrl, bytes)
-                                rawUrl to ("data:$mime;base64," +
-                                    android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP))
-                            }
-                        }.getOrNull()
-                        if (entry != null) totalBytes.addAndGet(entry.second.length.toLong())
-                        entry
+            // 内联资源的最终体积不可预知。此前一次把最多 200 个请求同时 async，单个
+            // fetchBytes() 都会整块分配 byte[]，使“单个快照”在入 DOM 前就产生多份大对象。
+            // 现在沿用原有资源选择语义，但按队列逐项抓取，任一时刻只保留当前资源和已确认
+            // 需要写入快照的资源；不再把网络并发数乘到内存峰值上。
+            var totalBytes = 0L
+            imgUrls.take(MAX_INLINE_RESOURCES).forEach { rawUrl ->
+                if (totalBytes > MAX_TOTAL_INLINE_BYTES) return@forEach
+                val entry = runCatching {
+                    fetchBytes(rawUrl).takeIf { it.size <= 8L * 1024 * 1024 }?.let { bytes ->
+                        val mime = guessMime(rawUrl, bytes)
+                        rawUrl to ("data:$mime;base64," +
+                            android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP))
                     }
-                }.map { it.await() }.filterNotNull().forEach { (rawUrl, data) ->
-                    imgMap[rawUrl] = data
+                }.getOrNull()
+                if (entry != null) {
+                    totalBytes += entry.second.length
+                    imgMap[entry.first] = entry.second
                 }
-                cssUrls.take(MAX_INLINE_RESOURCES).map { rawUrl ->
-                    async {
-                        if (totalBytes.get() > MAX_TOTAL_INLINE_BYTES) return@async null
-                        val text = runCatching {
-                            fetchBytes(rawUrl).toString(Charsets.UTF_8).takeIf { it.isNotBlank() }
-                        }.getOrNull()
-                        if (text != null) totalBytes.addAndGet(text.toByteArray(Charsets.UTF_8).size.toLong())
-                        text?.let { rawUrl to it }
-                    }
-                }.map { it.await() }.filterNotNull().forEach { (rawUrl, text) ->
+            }
+            cssUrls.take(MAX_INLINE_RESOURCES).forEach { rawUrl ->
+                if (totalBytes > MAX_TOTAL_INLINE_BYTES) return@forEach
+                val text = runCatching {
+                    fetchBytes(rawUrl).toString(Charsets.UTF_8).takeIf { it.isNotBlank() }
+                }.getOrNull()
+                if (text != null) {
+                    totalBytes += text.toByteArray(Charsets.UTF_8).size
                     cssMap[rawUrl] = text
                 }
             }
@@ -533,23 +528,32 @@ object ReviewSnapshotCapture {
 
         private fun serialize() {
             if (destroyed) return
-            webView.evaluateJavascript("document.documentElement.outerHTML") { raw ->
-                val html = raw?.let {
-                    runCatching { StringEscapeUtils.unescapeJson(it).trim('"') }.getOrNull()
-                }.orEmpty()
-                if (html.isBlank()) {
-                    fail(NoStackTraceException("评论页快照序列化为空 $url"))
-                } else {
-                    finish(stripScripts(html))
-                }
+            // 在 WebView DOM 内去掉脚本后再取 outerHTML，避免 Java Regex 对整份页面连续
+            // 复制。JSON 解码也移出主线程，不能在 evaluateJavascript 回调中阻塞 UI。
+            webView.evaluateJavascript(SERIALIZE_SNAPSHOT_JS) { raw ->
+                Thread {
+                    val html = decodeJavascriptString(raw)
+                    mHandler.post {
+                        if (destroyed) return@post
+                        if (html.isNullOrBlank()) {
+                            fail(NoStackTraceException("评论页快照序列化为空 $url"))
+                        } else {
+                            finish(html)
+                        }
+                    }
+                }.start()
             }
         }
 
-        private fun stripScripts(html: String): String {
-            // 快照离线渲染：去掉脚本，保留结构与内联样式/图片
-            return html
-                .replace(Regex("(?is)<script[^>]*>.*?</script>"), "")
-                .replace(Regex("(?is)<script[^>]*/>"), "")
+        private fun decodeJavascriptString(raw: String?): String? {
+            if (raw == null || raw == "null") return null
+            // evaluateJavascript 的回调是一个 JSON string。JsonReader 直接解码这一层，
+            // 避免 unescapeJson(...).trim(...) 产生两份完整 HTML 的中间字符串。
+            return runCatching {
+                JsonReader(StringReader(raw)).use { reader ->
+                    reader.nextString()
+                }
+            }.getOrNull()
         }
 
         private fun buildApplyJs(inline: InlineResources): String {
@@ -596,5 +600,14 @@ object ReviewSnapshotCapture {
             "document.querySelectorAll('img[src]').forEach(function(el){img.push(el.src);});" +
             "document.querySelectorAll('link[rel=\"stylesheet\"][href]').forEach(function(el){css.push(el.href);});" +
             "return JSON.stringify({img:img,css:css});" +
+            "})()"
+
+    /** 在 DOM 内移除脚本后再序列化，离线快照仍保留结构、样式与图片。 */
+    private const val SERIALIZE_SNAPSHOT_JS =
+        "(function(){" +
+            "var scripts=document.querySelectorAll('script');" +
+            "for(var i=scripts.length-1;i>=0;i--){var e=scripts[i];" +
+            "if(e.parentNode)e.parentNode.removeChild(e);}" +
+            "return document.documentElement.outerHTML;" +
             "})()"
 }

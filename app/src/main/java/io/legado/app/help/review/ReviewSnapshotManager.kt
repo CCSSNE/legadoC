@@ -10,16 +10,12 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.BookImgClick
 import io.legado.app.help.cache.CacheWorkerLease
-import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.StrResponse
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.ui.login.SourceLoginJsExtensions
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
-import io.legado.app.utils.mapAsyncIndexed
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.asFlow
-import kotlinx.coroutines.flow.toList
 import splitties.init.appCtx
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -58,11 +54,7 @@ object ReviewSnapshotManager {
      */
     fun cachedReviewChapterCount(book: Book): Int {
         return cachedReviewChaptersMap.computeIfAbsent(book.bookUrl) {
-            ReviewSnapshotStore.listAll(book)
-                .asSequence()
-                .map { it.chapterUrl }
-                .filter { it.isNotBlank() }
-                .toCollection(mutableSetOf())
+            ReviewSnapshotStore.chapterUrls(book).toMutableSet()
         }.size
     }
 
@@ -350,17 +342,13 @@ object ReviewSnapshotManager {
         // force=true（用户明确刷新）时，任何一个需要刷新的按钮失败都保留待刷新标记，
         // 不能“一个成功就算整章成功”
         var hasFailure = false
-        // 按钮级并发：本章提取到的全部评论按钮都进入统一队列，不人为截断数量。
-        // 空章不进入 mapAsyncIndexed；这里保持正数以满足并发 API 的契约。
-        val buttonConcurrency = AppConfig.reviewCacheConcurrency
-            .coerceIn(1, buttons.size.coerceAtLeast(1))
-        val outcomes = buttons
-            .asFlow()
-            .mapAsyncIndexed(buttonConcurrency) { index, button ->
-                processButton(book, bookSource, chapter, index, button, force)
-            }
-            .toList()
-            .sortedBy { it.index }
+        // 一份快照会同时持有 WebView DOM、内联资源和序列化后的完整 HTML，大小不可预知。
+        // 评论缓存统一由单通道调度：不丢弃任何按钮，只按顺序处理，避免多个完整页面争抢
+        // 受限 Java heap。服务端也只有一个消费者，保证跨章节同样遵守这个不变量。
+        val outcomes = ArrayList<ButtonOutcome>(buttons.size)
+        buttons.forEachIndexed { index, button ->
+            outcomes += processButton(book, bookSource, chapter, index, button, force)
+        }
         outcomes.forEach { o ->
             sb.append(o.log)
             if (o.success) completedButtons++

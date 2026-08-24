@@ -5,7 +5,7 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookHelp
 import io.legado.app.utils.GSON
 import io.legado.app.utils.MD5Utils
-import io.legado.app.utils.fromJsonObject
+import com.google.gson.stream.JsonReader
 import java.io.File
 
 /**
@@ -63,6 +63,13 @@ object ReviewSnapshotStore {
         return "$FILE_PREFIX${MD5Utils.md5Encode16("${chapterIndex}|${buttonSrc.trim()}")}$FILE_SUFFIX"
     }
 
+    private fun reviewFiles(book: Book): Array<File> {
+        return reviewsDir(book).listFiles()
+            ?.filter { it.name.startsWith(FILE_PREFIX) && it.name.endsWith(FILE_SUFFIX) }
+            ?.toTypedArray()
+            ?: emptyArray()
+    }
+
     fun put(book: Book, snapshot: ReviewSnapshot) {
         if (snapshot.html.isBlank()) return
         val dir = reviewsDir(book)
@@ -72,7 +79,11 @@ object ReviewSnapshotStore {
         } else {
             legacyFileName(snapshot.chapterIndex, snapshot.buttonSrc)
         }
-        File(dir, name).writeText(GSON.toJson(snapshot), Charsets.UTF_8)
+        // 快照 HTML 可能很大。Gson 直接写入 Writer，避免先构造整份 JSON String 和 UTF-8
+        // ByteArray；它们会在原 HTML 仍存活时额外复制完整快照，放大 Java heap 峰值。
+        File(dir, name).bufferedWriter(Charsets.UTF_8).use { writer ->
+            GSON.toJson(snapshot, writer)
+        }
         // 主键变化后清理旧 index 键文件，避免重复占用
         val legacy = File(dir, legacyFileName(snapshot.chapterIndex, snapshot.buttonSrc))
         if (legacy.exists() && legacy.name != name) legacy.delete()
@@ -92,12 +103,19 @@ object ReviewSnapshotStore {
     private fun readSnapshot(file: File): ReviewSnapshot? {
         if (!file.isFile) return null
         return runCatching {
-            GSON.fromJsonObject<ReviewSnapshot>(file.readText()).getOrNull()
+            file.bufferedReader(Charsets.UTF_8).use { reader ->
+                GSON.fromJson(reader, ReviewSnapshot::class.java)
+            }
         }.getOrNull()?.takeIf { it.html.isNotBlank() }
     }
 
     fun has(book: Book, chapter: BookChapter, buttonSrc: String): Boolean {
-        return get(book, chapter, buttonSrc) != null
+        // 文件名已经是章节 URL + 按钮 src 的确定性主键；不能为了判断“是否存在”而把
+        // 整份内联 HTML 读入内存再解析一次。写入失败会向调用方抛出，正常落盘的文件
+        // 即是可复用快照；真正打开时仍由 [get] 完整解析并直接暴露损坏文件。
+        val dir = reviewsDir(book)
+        return File(dir, fileName(chapter.url, buttonSrc)).isFile ||
+            File(dir, legacyFileName(chapter.index, buttonSrc)).isFile
     }
 
     fun delete(book: Book, chapter: BookChapter, buttonSrc: String) {
@@ -110,13 +128,8 @@ object ReviewSnapshotStore {
      * 主键是整体 md5，无法按文件名前缀过滤，因此逐条解析后按 chapterUrl/index 匹配。
      */
     fun deleteChapter(book: Book, chapter: BookChapter) {
-        val dir = reviewsDir(book)
-        val files = dir.listFiles() ?: return
-        files.forEach { file ->
-            if (!file.name.startsWith(FILE_PREFIX) || !file.name.endsWith(FILE_SUFFIX)) return@forEach
-            runCatching {
-                GSON.fromJsonObject<ReviewSnapshot>(file.readText()).getOrNull()
-            }.getOrNull()?.let { snapshot ->
+        reviewFiles(book).forEach { file ->
+            readMetadata(file)?.let { snapshot ->
                 val matches = when {
                     snapshot.chapterUrl.isNotBlank() ->
                         snapshot.chapterUrl.trim() == chapter.url.trim()
@@ -127,13 +140,57 @@ object ReviewSnapshotStore {
         }
     }
 
-    /** 统计该书全部快照（导出用） */
-    fun listAll(book: Book): List<ReviewSnapshot> {
-        val dir = reviewsDir(book)
-        val files = dir.listFiles() ?: return emptyList()
-        return files.asSequence()
-            .filter { it.name.startsWith(FILE_PREFIX) && it.name.endsWith(FILE_SUFFIX) }
-            .mapNotNull { readSnapshot(it) }
-            .toList()
+    /**
+     * 只读取统计所需的章节字段。JsonReader.skipValue 会流式越过超大的 html 字段，
+     * 缓存页统计不会把整书所有快照同时留在 heap 中。
+     */
+    fun chapterUrls(book: Book): Set<String> {
+        return reviewFiles(book)
+            .asSequence()
+            .mapNotNull(::readMetadata)
+            .map { it.chapterUrl }
+            .filter { it.isNotBlank() }
+            .toSet()
+    }
+
+    /** 按原文件字节流导出，避免“读取所有快照 -> 重新序列化所有快照”的全量内存占用。 */
+    fun copyAllTo(book: Book, targetDir: File) {
+        check(targetDir.isDirectory || targetDir.mkdirs()) {
+            "无法创建评论快照导出目录: ${targetDir.absolutePath}"
+        }
+        reviewFiles(book).forEach { source ->
+            File(targetDir, source.name).outputStream().buffered().use { output ->
+                source.inputStream().buffered().use { input ->
+                    input.copyTo(output)
+                }
+            }
+        }
+    }
+
+    private data class SnapshotMetadata(
+        val chapterUrl: String,
+        val chapterIndex: Int,
+    )
+
+    private fun readMetadata(file: File): SnapshotMetadata? {
+        return runCatching {
+            file.bufferedReader(Charsets.UTF_8).use { input ->
+                JsonReader(input).use { reader ->
+                    var chapterUrl = ""
+                    var chapterIndex = 0
+                    reader.beginObject()
+                    while (reader.hasNext()) {
+                        when (reader.nextName()) {
+                            "chapterUrl" -> chapterUrl = reader.nextString()
+                            "chapterIndex" -> chapterIndex = reader.nextInt()
+                            // html 可能数十 MB；必须流式跳过，不能 nextString()。
+                            else -> reader.skipValue()
+                        }
+                    }
+                    reader.endObject()
+                    SnapshotMetadata(chapterUrl, chapterIndex)
+                }
+            }
+        }.getOrNull()
     }
 }
