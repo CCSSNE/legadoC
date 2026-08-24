@@ -62,10 +62,40 @@ object ReviewSnapshotResourceStore {
         return key.takeIf(keyPattern::matches)
     }
 
+    /**
+     * Creates the empty index before a new review capture starts. An older review
+     * payload without this index is an unsupported format, not an empty library.
+     */
+    fun prepareForCapture(book: Book) = synchronized(lock) {
+        val dir = ReviewSnapshotStore.reviewsDir(book)
+        check(dir.exists() || dir.mkdirs()) {
+            "无法创建评论资源目录: ${dir.absolutePath}"
+        }
+        val database = databaseFile(dir)
+        if (database.isFile) {
+            readDatabase(dir)
+            return@synchronized
+        }
+        check(!ReviewSnapshotStore.hasPersistedReviewData(book)) {
+            "不支持没有 $DATABASE_FILE_NAME 的旧评论缓存: ${dir.absolutePath}"
+        }
+        writeDatabase(dir, ReviewSnapshotResourceDatabase())
+    }
+
+    /** Returns the validated index for an existing current-format review cache. */
+    fun requireDatabase(book: Book): ReviewSnapshotResourceDatabase = synchronized(lock) {
+        val dir = ReviewSnapshotStore.reviewsDir(book)
+        val database = databaseFile(dir)
+        check(database.isFile) {
+            "评论缓存缺少 $DATABASE_FILE_NAME，旧的非资源库格式不受支持: ${dir.absolutePath}"
+        }
+        return@synchronized readDatabase(dir)
+    }
+
     /** Returns every valid URL entry. Broken indexes are exposed instead of ignored. */
     fun entries(book: Book): Map<String, ReviewSnapshotResourceEntry> = synchronized(lock) {
         val dir = ReviewSnapshotStore.reviewsDir(book)
-        val database = readDatabase(dir)
+        val database = requireDatabase(book)
         database.resources.associateBy { entry ->
             validateEntry(dir, entry)
             entry.url
@@ -89,8 +119,8 @@ object ReviewSnapshotResourceStore {
         require(url.isNotBlank()) { "评论资源 URL 为空" }
         require(mimeType.isNotBlank()) { "评论资源 MIME 为空: $url" }
         check(source.isFile) { "评论资源暂存文件不存在: ${source.absolutePath}" }
+        prepareForCapture(book)
         val dir = ReviewSnapshotStore.reviewsDir(book)
-        check(dir.exists() || dir.mkdirs()) { "无法创建评论资源目录: ${dir.absolutePath}" }
 
         val key = sha256(source)
         val target = blobFile(dir, key)
@@ -108,7 +138,7 @@ object ReviewSnapshotResourceStore {
             mimeType = mimeType,
             byteCount = source.length(),
         )
-        val old = readDatabase(dir)
+        val old = requireDatabase(book)
         val updated = old.resources
             .filterNot { it.url == url }
             .plus(entry)
@@ -120,7 +150,7 @@ object ReviewSnapshotResourceStore {
     fun open(book: Book, key: String): ReviewSnapshotResourceHandle? = synchronized(lock) {
         if (!keyPattern.matches(key)) return null
         val dir = ReviewSnapshotStore.reviewsDir(book)
-        val database = readDatabase(dir)
+        val database = requireDatabase(book)
         val file = blobFile(dir, key)
         if (!file.isFile) return null
         val entry = database.resources.firstOrNull { it.key == key }
@@ -131,10 +161,10 @@ object ReviewSnapshotResourceStore {
     }
 
     fun copyAllTo(book: Book, targetDir: File) = synchronized(lock) {
+        if (!ReviewSnapshotStore.hasPersistedReviewData(book)) return@synchronized
         val sourceDir = ReviewSnapshotStore.reviewsDir(book)
         val database = databaseFile(sourceDir)
-        if (!database.isFile) return@synchronized
-        val index = readDatabase(sourceDir)
+        val index = requireDatabase(book)
         index.resources.forEach { validateEntry(sourceDir, it) }
         copyFile(database, File(targetDir, DATABASE_FILE_NAME))
         resourceFiles(sourceDir).forEach { source ->
@@ -144,7 +174,15 @@ object ReviewSnapshotResourceStore {
 
     /** Restores the index and every referenced blob from a TXT-ZIP extraction. */
     fun importFrom(book: Book, extractedFiles: List<File>) = synchronized(lock) {
-        val indexFile = extractedFiles.firstOrNull { it.name == DATABASE_FILE_NAME } ?: return@synchronized
+        val snapshotFiles = extractedFiles.filter(ReviewSnapshotStore::isSnapshotFile)
+        val statusFiles = extractedFiles.filter(ReviewSnapshotStore::isChapterStatusFile)
+        val containsReviewData = snapshotFiles.isNotEmpty() || statusFiles.isNotEmpty()
+        if (!containsReviewData) return@synchronized
+        check(snapshotFiles.isEmpty() || statusFiles.isNotEmpty()) {
+            "导入评论缓存缺少章节状态文件，旧格式不受支持"
+        }
+        val indexFile = extractedFiles.firstOrNull { it.name == DATABASE_FILE_NAME }
+            ?: error("导入评论缓存缺少 $DATABASE_FILE_NAME，旧的非资源库格式不受支持")
         val imported = readDatabaseFile(indexFile)
         val sourceByName = extractedFiles.associateBy { it.name }
         val targetDir = ReviewSnapshotStore.reviewsDir(book)

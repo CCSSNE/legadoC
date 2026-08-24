@@ -418,6 +418,11 @@ object ReviewSnapshotManager {
         sb.append('\n')
         val buttons = extraction.buttons
         val snapshotButtons = buttons.filter { it.hasAction }
+        if (snapshotButtons.isNotEmpty()) {
+            // A capture with no image resources still belongs to the one resource-library
+            // format, so establish its empty index before any snapshot/status can persist.
+            ReviewSnapshotResourceStore.prepareForCapture(book)
+        }
         val existingSnapshots = if (force) {
             0
         } else {

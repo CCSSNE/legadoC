@@ -2091,7 +2091,6 @@
     <string name="cache_manage_review_snapshots">评论快照</string>
     <string name="cache_manage_review_chapter">第%1$d章</string>
     <string name="cache_manage_review_progress">%1$d/%2$d</string>
-    <string name="cache_manage_review_cached_unknown">已缓存 %1$d</string>
     <string name="cache_manage_review_success">成功</string>
     <string name="cache_manage_review_failed">失败%1$d</string>
     <string name="cache_manage_review_retry">重试</string>

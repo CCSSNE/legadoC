@@ -36,7 +36,6 @@ import io.legado.app.help.cache.CacheRequest
 import io.legado.app.help.cache.CacheRequestSource
 import io.legado.app.help.cache.CacheUnitKey
 import io.legado.app.help.config.AppConfig
-import io.legado.app.help.review.ReviewSnapshotManager
 import io.legado.app.help.review.ReviewSnapshotStore
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.AnalyzeUrl.Companion.getMediaRequest
@@ -289,22 +288,18 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
                 .mapNotNull { chapter ->
                     val cachedSnapshots = counts.forChapter(chapter)
                     val status = statusesByUrl[chapter.url.trim()]
-                    if (status == null && cachedSnapshots == 0) {
+                    if (status == null) {
+                        check(cachedSnapshots == 0) {
+                            "评论快照缺少章节状态文件: chapter=${chapter.index} ${chapter.url}"
+                        }
                         return@mapNotNull null
                     }
-                    // Status sidecars are added with this version. For legacy
-                    // exports, derive the expected button count from this one
-                    // affected chapter instead of guessing that every existing
-                    // snapshot means the chapter was completely cached.
-                    val totalSnapshots = status?.totalSnapshots ?: BookHelp.getContent(book, chapter)
-                        ?.let(ReviewSnapshotManager::extractReviewButtons)
-                        ?.count { it.hasAction }
                     ReviewSnapshotChapterItem(
                         chapter = chapter,
-                        processedSnapshots = status?.totalSnapshots ?: cachedSnapshots,
+                        processedSnapshots = status.totalSnapshots,
                         successfulSnapshots = cachedSnapshots,
-                        totalSnapshots = totalSnapshots,
-                        failedSnapshots = status?.failedSnapshots ?: 0
+                        totalSnapshots = status.totalSnapshots,
+                        failedSnapshots = status.failedSnapshots
                     )
                 }
                 .toList()
@@ -1335,8 +1330,7 @@ data class ReviewSnapshotChapterItem(
     val processedSnapshots: Int,
     /** Successfully persisted snapshot files, retained separately from progress. */
     val successfulSnapshots: Int,
-    /** null only for a legacy cache whose original button count is no longer available. */
-    val totalSnapshots: Int?,
+    val totalSnapshots: Int,
     val failedSnapshots: Int,
 )
 
