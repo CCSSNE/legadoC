@@ -149,10 +149,12 @@ internal object CacheNotificationBridge {
     ): Presentation {
         val completed = progress?.current?.toInt() ?: 0
         val total = progress?.total?.toInt() ?: 0
+        val failed = progress?.failed?.toInt() ?: 0
         val chapters = reviewChapterProgress(session)
         return Presentation(
             title = "缓存评论",
-            text = "快照：$completed/$total  ${chapterText(chapters.completed, chapters.total)}",
+            text = "快照：$completed/$total  失败：$failed  " +
+                chapterText(chapters.completed, chapters.total),
             progress = chapterProgress(total, completed),
         )
     }

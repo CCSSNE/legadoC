@@ -80,7 +80,11 @@ object ReviewSnapshotManager {
         val key: String,
         val force: Boolean,
         internal val executionLease: CacheWorkerLease,
-        internal val reportProgress: (completedSnapshots: Int, totalSnapshots: Int) -> Unit,
+        internal val reportProgress: (
+            completedSnapshots: Int,
+            totalSnapshots: Int,
+            failedSnapshots: Int,
+        ) -> Unit,
     )
 
     /**
@@ -106,7 +110,11 @@ object ReviewSnapshotManager {
     private data class PendingReview(
         val force: Boolean,
         val executionLease: CacheWorkerLease,
-        val reportProgress: (completedSnapshots: Int, totalSnapshots: Int) -> Unit,
+        val reportProgress: (
+            completedSnapshots: Int,
+            totalSnapshots: Int,
+            failedSnapshots: Int,
+        ) -> Unit,
     )
 
     /** 评论按钮模型：click / 旧源 js 二选一 */
@@ -167,7 +175,11 @@ object ReviewSnapshotManager {
         chapter: BookChapter,
         force: Boolean,
         executionLease: CacheWorkerLease,
-        reportProgress: (completedSnapshots: Int, totalSnapshots: Int) -> Unit,
+        reportProgress: (
+            completedSnapshots: Int,
+            totalSnapshots: Int,
+            failedSnapshots: Int,
+        ) -> Unit,
     ) {
         cancelledTasks.remove(taskKey(executionLease))
         synchronized(queueLock) {
@@ -316,7 +328,11 @@ object ReviewSnapshotManager {
         force: Boolean,
         outcomeKey: String,
         diagnostics: CacheOperationDiagnostics.Context,
-        reportProgress: (completedSnapshots: Int, totalSnapshots: Int) -> Unit,
+        reportProgress: (
+            completedSnapshots: Int,
+            totalSnapshots: Int,
+            failedSnapshots: Int,
+        ) -> Unit,
     ) {
         taskOutcomes[outcomeKey] = false
         // 一章一次评论缓存任务 = 日志一条（多行详情），进入 AppLog 日志页可展开查看
@@ -339,7 +355,11 @@ object ReviewSnapshotManager {
         sb: StringBuilder,
         outcomeKey: String,
         diagnostics: CacheOperationDiagnostics.Context,
-        reportProgress: (completedSnapshots: Int, totalSnapshots: Int) -> Unit,
+        reportProgress: (
+            completedSnapshots: Int,
+            totalSnapshots: Int,
+            failedSnapshots: Int,
+        ) -> Unit,
     ) {
         val bookUrl = key.substringBefore('|')
         val chapterIndex = key.substringAfter('|').toIntOrNull()
@@ -407,7 +427,18 @@ object ReviewSnapshotManager {
             force || !ReviewSnapshotStore.has(book, chapter, button.src)
         }
         val completedSnapshots = AtomicInteger(existingSnapshots)
-        reportProgress(existingSnapshots, snapshotButtons.size)
+        val failedSnapshots = AtomicInteger()
+        val progressLock = Any()
+        fun reportChapterProgress() {
+            synchronized(progressLock) {
+                reportProgress(
+                    completedSnapshots.get(),
+                    snapshotButtons.size,
+                    failedSnapshots.get(),
+                )
+            }
+        }
+        reportChapterProgress()
         var completedButtons = 0
         var failedButtons = 0
         // force=true（用户明确刷新）时，任何一个需要刷新的按钮失败都保留待刷新标记，
@@ -418,7 +449,7 @@ object ReviewSnapshotManager {
         val outcomes = buttons
             .asFlow()
             .mapAsyncIndexed(buttonConcurrency) { index, button ->
-                processButton(
+                val outcome = processButton(
                     book,
                     bookSource,
                     chapter,
@@ -427,14 +458,29 @@ object ReviewSnapshotManager {
                     force,
                     diagnostics,
                     onSnapshotSaved = {
-                        reportProgress(
+                        synchronized(progressLock) {
                             completedSnapshots.updateAndGet { value ->
                                 (value + 1).coerceAtMost(snapshotButtons.size)
-                            },
-                            snapshotButtons.size,
-                        )
+                            }
+                            reportProgress(
+                                completedSnapshots.get(),
+                                snapshotButtons.size,
+                                failedSnapshots.get(),
+                            )
+                        }
                     },
                 )
+                if (outcome.failed) {
+                    synchronized(progressLock) {
+                        failedSnapshots.incrementAndGet()
+                        reportProgress(
+                            completedSnapshots.get(),
+                            snapshotButtons.size,
+                            failedSnapshots.get(),
+                        )
+                    }
+                }
+                outcome
             }
             .toList()
             .sortedBy { it.index }

@@ -325,9 +325,11 @@ internal class CacheTaskStore(
         mode: CacheProgressMode,
         current: Long,
         total: Long? = null,
+        failed: Long = 0L,
     ): Boolean {
         require(current >= 0L) { "cache progress current must not be negative" }
         require(total == null || total >= 0L) { "cache progress total must not be negative" }
+        require(failed >= 0L) { "cache progress failed must not be negative" }
         require(total == null || current <= total) {
             "cache progress current exceeds total: current=$current total=$total"
         }
@@ -352,6 +354,7 @@ internal class CacheTaskStore(
                 mode = mode,
                 current = current,
                 total = total,
+                failed = failed,
                 updatedAt = System.currentTimeMillis(),
             )
             if (displaySessionId == lease.sessionId &&
