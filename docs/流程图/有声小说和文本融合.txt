@@ -1,0 +1,72 @@
+                         统一朗读会话
+                   （TTS 和音频共用的会话）
+                              │
+                              ↓
+                    currentChapterIndex
+                    （现在统一是哪一章）
+                              │
+                              ↓
+                         BookChapter
+                    （书源目录里的这一章）
+                              │
+             ┌────────────────┴────────────────┐
+             │                                 │
+             │                                 │
+             ↓                                 ↓
+       【这一章的文字】                   【这一章的音频】
+             │                                 │
+             │                                 │
+      普通书：正文 content                音频 content
+      音频书：subContent                  （音频地址规则结果）
+             ↓                                 ↓
+           lyric                        SourceAudioResolver
+   （音频书把副正文存在这里）          （解析“这一章”的音频地址）
+             │                                 ↓
+       ┌─────┴─────┐                         音频 URL
+       │           │                           ↓
+       │           │                      SourceAudio
+       ↓           ↓                       （真正播放）
+  TextChapter  AudioTextMapping                 ↓
+ （页面文字）   （文字和时间表）             positionMs
+       │           │                      （播到多少毫秒）
+       │           │                           │
+       │           └───────────────────────时间 ↔ 文字位置
+       ├───────────────┐                       │
+       │               │                       │
+       ↓               ↓                       │
+TextChapterLayout  System TTS / HTTP TTS       │
+（排版文字、HTML、评论按钮*） （把文字念出来）   │
+       │               │                       │
+       ↓               ↓                       │
+     阅读页          段落进度                  │
+ （看到的正文）    （念到第几段）               │
+       ↑                                       │
+       │               └──────────┐            │
+       │                          │            │
+       │                          └─────↔──────┘
+       │                            │
+       │                            │
+       │                            │
+       └────────────────────────────┘
+        （滚动、高亮、指哪儿读哪儿）
+
+
+TextChapterLayout
+HTML / usehtml
+      ↓
+统一解析
+      ↓
+TextColumn / ImageColumn(REVIEW)
+      ↓
+结构化 ParagraphInline
+      ↓
+┌─────────────────┬──────────────────┐
+│ 正常阅读页       │ 沉浸听书页        │
+│ Canvas/Image     │ TextView/Span     │
+└─────────────────┴──────────────────┘
+              ↓
+       统一 SourceInlineAction
+              ↓
+        执行原 click JS
+              ↓
+          评论小页
