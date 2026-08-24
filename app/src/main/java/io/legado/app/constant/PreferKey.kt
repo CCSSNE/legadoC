@@ -283,6 +283,7 @@ object PreferKey {
     const val pageTouchSlop = "pageTouchSlop"
     const val pageTouchClick = "pageTouchClick"
     const val readAloudDoubleTapTimeout = "readAloudDoubleTapTimeout"
+    const val readAloudPageStartAtParagraph = "readAloudPageStartAtParagraph"
     const val readAloudScrollFollowTimeout = "readAloudScrollFollowTimeout"
     const val readAloudProgressPollInterval = "readAloudProgressPollInterval"
     const val pageAnimationSpeed = "pageAnimationSpeed"
