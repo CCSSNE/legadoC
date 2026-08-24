@@ -191,6 +191,18 @@ object ReviewSnapshotStore {
         return snapshot
     }
 
+    /** Validate an extracted snapshot against the already-imported resource database. */
+    internal fun validateImportedSnapshot(book: Book, file: File): ReviewSnapshot {
+        require(isSnapshotFile(file)) { "not a review snapshot file: ${file.absolutePath}" }
+        val snapshot = readSnapshot(file)
+            ?: error("review snapshot file is empty: ${file.absolutePath}")
+        require(snapshot.bookUrl.isNotBlank()) { "review snapshot bookUrl is blank: ${file.absolutePath}" }
+        require(snapshot.chapterUrl.isNotBlank()) { "review snapshot chapterUrl is blank: ${file.absolutePath}" }
+        require(snapshot.buttonSrc.isNotBlank()) { "review snapshot buttonSrc is blank: ${file.absolutePath}" }
+        ReviewSnapshotResourceStore.validateSnapshot(book, snapshot)
+        return snapshot
+    }
+
     private fun readCompleteSnapshot(book: Book, file: File): ReviewSnapshot {
         val snapshot = readSnapshot(file)
             ?: error("review snapshot file is empty: ${file.absolutePath}")
