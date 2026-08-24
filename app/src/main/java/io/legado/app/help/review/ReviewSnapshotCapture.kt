@@ -18,6 +18,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.WebCacheManager
 import io.legado.app.help.cache.CacheOperationDiagnostics
+import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.CookieManager as AppCookieManager
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.help.webView.WebJsExtensions
@@ -36,6 +37,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import org.apache.commons.text.StringEscapeUtils
 import splitties.init.appCtx
 import java.io.ByteArrayInputStream
+import java.io.File
 import java.io.InterruptedIOException
 import java.io.Reader
 import java.util.concurrent.Executors
