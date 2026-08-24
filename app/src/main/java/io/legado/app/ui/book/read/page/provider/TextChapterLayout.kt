@@ -1934,9 +1934,7 @@ class TextChapterLayout(
             if (!matcher.find()) return@forEach
             val options = GSON.fromJsonObject<Map<String, String>>(src.substring(matcher.end()))
                 .getOrNull() ?: return@forEach
-            if (!options["style"].equals("TEXT", ignoreCase = true) ||
-                !ReviewBubble.hasZeroCount(src)
-            ) return@forEach
+            if (options["style"] != "TEXT" || !ReviewBubble.hasZeroCount(src)) return@forEach
             val start = spanned.getSpanStart(imageSpan)
             val end = spanned.getSpanEnd(imageSpan)
             if (start < 0 || end != start + 1) {

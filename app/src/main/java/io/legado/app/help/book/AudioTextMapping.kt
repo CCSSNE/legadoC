@@ -157,11 +157,15 @@ data class AudioTextMapping(
 
         private fun normalizeParagraph(text: String): String {
             // 字幕侧可能保留行内评论/图片的原始 `<img>` 标记，排版侧把同一
-            // 入口渲染成占位符（ChapterProvider.reviewChar/srcReplaceChar）；
+            // 入口渲染成占位符（含零评论泡的 hiddenReviewChar）；
             // 两侧都剔除后再比对，避免融合行内评论泡造成假性不一致，
             // 真实文字差异仍会被拒绝。
             val clean = htmlTagRegex.replace(text, "")
-                .filterNot { it == ChapterProvider.reviewChar || it == ChapterProvider.srcReplaceChar }
+                .filterNot {
+                    it == ChapterProvider.reviewChar ||
+                        it == ChapterProvider.srcReplaceChar ||
+                        it == ChapterProvider.hiddenReviewChar
+                }
             return clean.trim { it.isWhitespace() || it == '\u00A0' }
         }
 
