@@ -74,6 +74,7 @@ import io.legado.app.utils.mapAsyncIndexed
 import io.legado.app.utils.normalizeFileName
 import io.legado.app.utils.openInputStream
 import io.legado.app.utils.openOutputStream
+import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.servicePendingIntent
 import io.legado.app.utils.toastOnUi
@@ -618,11 +619,22 @@ class ExportBookService : BaseService() {
         txtName: String,
     ): List<File> {
         val coverFile = book.getDisplayCover()?.takeIf { it.isNotBlank() }?.let { coverPath ->
-            val source = ImageLoader.loadFile(
+            val coverRequest = ImageLoader.loadFile(
                 this,
                 coverPath,
                 sourceOrigin = book.origin,
-            ).submit().get()
+            ).onlyRetrieveFromCache(coverPath.isAbsUrl())
+            val source = kotlin.runCatching {
+                coverRequest.submit().get()
+            }.getOrElse { error ->
+                if (coverPath.isAbsUrl()) {
+                    throw NoStackTraceException(
+                        "TXT-ZIP export failed: HTTP cover is not available in the local image cache; " +
+                            "export will not request the network"
+                    )
+                }
+                throw error
+            }
             require(source.isFile && source.length() > 0L) {
                 "TXT-ZIP export failed: cover is missing or empty for ${book.name}"
             }
