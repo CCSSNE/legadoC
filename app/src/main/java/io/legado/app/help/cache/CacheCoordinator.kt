@@ -125,7 +125,7 @@ object CacheCoordinator : CacheUiPort {
     private val workerDispatcher: CacheWorkerDispatcher =
         CacheWorkerDispatcherImpl(workerPort)
     private val reviewTaskLock = Any()
-    private val automaticTextSubmitLock = Any()
+    private val automaticSubmitLock = Any()
     private val resourceGcScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     /** 防止同一本书在短时间内重复排队 GC。 */
     private val resourceGcScheduled = ConcurrentHashMap.newKeySet<String>()
@@ -160,7 +160,7 @@ object CacheCoordinator : CacheUiPort {
         reviewEnabled: Boolean = AppConfig.syncCacheReview,
     ): CacheSubmission {
         return if (book.isAudio || book.isVideo) {
-            submitMediaDownload(book, chapterIndexes, source)
+            submitMediaDownload(book, chapterIndexes, source, reviewEnabled)
         } else {
             submitTextDownload(book, chapterIndexes, source, reviewEnabled)
         }
@@ -196,6 +196,7 @@ object CacheCoordinator : CacheUiPort {
         book: Book,
         chapterIndexes: Iterable<Int>,
         source: CacheRequestSource,
+        reviewEnabled: Boolean = AppConfig.syncCacheReview,
     ): CacheSubmission {
         require(book.isAudio || book.isVideo) { "media download requires an audio or video book" }
         val indexes = chapterIndexes.distinct().sorted()
@@ -208,6 +209,7 @@ object CacheCoordinator : CacheUiPort {
                 bookUrl = book.bookUrl,
                 bookName = book.name,
                 units = indexes.map { CacheUnitKey(book.bookUrl, it) },
+                reviewEnabled = book.isAudio && !book.isLocal && reviewEnabled,
             )
         )
     }
@@ -227,32 +229,31 @@ object CacheCoordinator : CacheUiPort {
     }
 
     /**
-     * Automatic refresh never creates a competing text session for the same book.
-     * The caller waits and retries while an explicit or earlier automatic session owns it.
+     * Automatic review download never creates a competing same-domain session for the book.
+     * Text waits for BODY; audio waits for MEDIA, which resolves raw lyric before REVIEW starts.
      */
-    fun submitAutomaticTextDownload(
+    fun submitAutomaticBookDownload(
         book: Book,
         chapterIndexes: Iterable<Int>,
         source: CacheRequestSource,
-    ): CacheSubmission? = synchronized(automaticTextSubmitLock) {
-        require(!book.isAudio && !book.isVideo) {
-            "automatic text download is invalid for media book: ${book.bookUrl}"
+    ): CacheSubmission? = synchronized(automaticSubmitLock) {
+        require(!book.isVideo) { "automatic review download is invalid for video book" }
+        val kind = if (book.isAudio) CacheKind.AUDIO else CacheKind.TEXT
+        if (hasActiveDownload(book.bookUrl, kind)) return@synchronized null
+        val reviewEnabled = AppConfig.syncCacheReview && AppConfig.autoDownloadReview
+        if (book.isAudio) {
+            submitMediaDownload(book, chapterIndexes, source, reviewEnabled)
+        } else {
+            submitTextDownload(book, chapterIndexes, source, reviewEnabled)
         }
-        if (hasActiveTextDownload(book.bookUrl)) return@synchronized null
-        submitTextDownload(
-            book = book,
-            chapterIndexes = chapterIndexes,
-            source = source,
-            reviewEnabled = AppConfig.syncCacheReview && AppConfig.autoDownloadReview,
-        )
     }
 
-    private fun hasActiveTextDownload(bookUrl: String): Boolean {
+    private fun hasActiveDownload(bookUrl: String, kind: CacheKind): Boolean {
         return snapshot.value.sessions.asSequence()
             .flatMap { it.tasks.asSequence() }
             .any { task ->
                 task.bookUrl == bookUrl &&
-                    task.kind == CacheKind.TEXT &&
+                    task.kind == kind &&
                     !CacheLifecycleRules.isTerminal(task.status)
             }
     }
@@ -294,7 +295,8 @@ object CacheCoordinator : CacheUiPort {
 
     /** Retries only the durable failed-button identities as one Coordinator task. */
     fun retryReviewSnapshots(book: Book, chapters: List<BookChapter>): Int {
-        if (!AppConfig.syncCacheReview || book.isLocal) return 0
+        if (!AppConfig.syncCacheReview || book.isLocal || book.isVideo) return 0
+        val reviewKind = if (book.isAudio) CacheKind.AUDIO else CacheKind.TEXT
         val requested = chapters
             .asSequence()
             .filterNot { it.isVolume }
@@ -317,7 +319,7 @@ object CacheCoordinator : CacheUiPort {
             val activeIndexes = snapshot.value.sessions.asSequence()
                 .flatMap { it.tasks.asSequence() }
                 .filter {
-                    it.kind == CacheKind.TEXT &&
+                    it.kind == reviewKind &&
                         it.phase == CachePhase.REVIEW &&
                         it.bookUrl == book.bookUrl &&
                         !CacheLifecycleRules.isTerminal(it.status)
@@ -331,7 +333,7 @@ object CacheCoordinator : CacheUiPort {
                 submit(
                     CacheRequest(
                         source = CacheRequestSource.READER,
-                        kind = CacheKind.TEXT,
+                        kind = reviewKind,
                         phase = CachePhase.REVIEW,
                         bookUrl = book.bookUrl,
                         bookName = book.name,
@@ -353,31 +355,39 @@ object CacheCoordinator : CacheUiPort {
         return submissions.count(command)
     }
 
-    /** Only the text coordinator may append the REVIEW task to an existing session. */
+    /** Append REVIEW only after the same domain's primary artifact has reached a terminal state. */
     internal fun appendReviewTask(
         sessionId: String,
-        bodyTaskId: String,
+        prerequisiteTaskId: String,
     ): CacheSubmission? {
-        val body = store.currentTask(sessionId, bodyTaskId)
-            ?: error("unknown BODY task: session=$sessionId task=$bodyTaskId")
-        require(body.kind == CacheKind.TEXT && body.phase == CachePhase.BODY) {
-            "review task must follow a text BODY task"
+        val prerequisite = store.currentTask(sessionId, prerequisiteTaskId)
+            ?: error("unknown review prerequisite: session=$sessionId task=$prerequisiteTaskId")
+        require(prerequisite.kind.reviewPrerequisitePhase() == prerequisite.phase) {
+            "review task cannot follow ${prerequisite.kind}/${prerequisite.phase}"
         }
-        require(body.reviewEnabled) { "BODY task did not request review caching" }
+        require(prerequisite.reviewEnabled) {
+            "${prerequisite.phase} task did not request review caching"
+        }
         require(
-            body.status == CacheLifecycle.COMPLETED || body.status == CacheLifecycle.FAILED
-        ) { "review task cannot be appended before BODY task completion" }
-        store.findTask(sessionId, CacheKind.TEXT, CachePhase.REVIEW, body.bookUrl)?.let {
+            prerequisite.status == CacheLifecycle.COMPLETED ||
+                prerequisite.status == CacheLifecycle.FAILED
+        ) { "review task cannot be appended before prerequisite completion" }
+        store.findTask(
+            sessionId,
+            prerequisite.kind,
+            CachePhase.REVIEW,
+            prerequisite.bookUrl,
+        )?.let {
             return CacheSubmission(sessionId, it.taskId)
         }
-        val eligible = store.reviewEligibleUnits(sessionId, bodyTaskId)
+        val eligible = store.reviewEligibleUnits(sessionId, prerequisiteTaskId)
         if (eligible.isEmpty()) return null
         val request = CacheRequest(
-            source = body.source,
-            kind = CacheKind.TEXT,
+            source = prerequisite.source,
+            kind = prerequisite.kind,
             phase = CachePhase.REVIEW,
-            bookUrl = body.bookUrl,
-            bookName = body.bookName,
+            bookUrl = prerequisite.bookUrl,
+            bookName = prerequisite.bookName,
             units = eligible,
             reviewEnabled = true,
         )
@@ -410,8 +420,7 @@ object CacheCoordinator : CacheUiPort {
     ) {
         val task = currentTask(submission)
         if (task != null &&
-            task.kind == CacheKind.TEXT &&
-            task.phase == CachePhase.BODY &&
+            task.kind.reviewPrerequisitePhase() == task.phase &&
             task.reviewEnabled &&
             task.status in setOf(CacheLifecycle.COMPLETED, CacheLifecycle.FAILED)
         ) {
@@ -441,7 +450,6 @@ object CacheCoordinator : CacheUiPort {
      */
     private fun maybeScheduleReviewResourceGc(task: CacheTaskState?) {
         if (task == null ||
-            task.kind != CacheKind.TEXT ||
             task.phase != CachePhase.REVIEW ||
             !CacheLifecycleRules.isTerminal(task.status)
         ) {
@@ -496,8 +504,7 @@ object CacheCoordinator : CacheUiPort {
         return snapshot.value.sessions.asSequence()
             .flatMap { it.tasks.asSequence() }
             .any {
-                it.kind == CacheKind.TEXT &&
-                    it.phase == CachePhase.REVIEW &&
+                it.phase == CachePhase.REVIEW &&
                     it.bookUrl == bookUrl &&
                     !CacheLifecycleRules.isTerminal(it.status)
             }
@@ -505,9 +512,11 @@ object CacheCoordinator : CacheUiPort {
 
     private fun validateUiRequest(request: CacheRequest) {
         if (request.phase == CachePhase.REVIEW) {
-            require(request.kind == CacheKind.TEXT) { "only text requests can use REVIEW phase" }
+            require(request.kind.reviewPrerequisitePhase() != null) {
+                "${request.kind} requests cannot use REVIEW phase"
+            }
             require(request.source == CacheRequestSource.READER) {
-                "REVIEW tasks must be appended by the text coordinator or submitted by READER"
+                "REVIEW tasks must be appended by the coordinator or submitted by READER"
             }
         } else {
             require(request.kind != CacheKind.TEXT || request.phase == CachePhase.BODY) {
@@ -540,17 +549,16 @@ object CacheCoordinator : CacheUiPort {
                 "review retry target units are duplicated"
             }
         }
-        when (request.kind) {
-            CacheKind.TEXT -> require(
-                request.phase == CachePhase.BODY || request.phase == CachePhase.REVIEW
-            ) { "text request must use BODY or REVIEW phase" }
-            CacheKind.AUDIO,
-            CacheKind.VIDEO -> require(request.phase == CachePhase.MEDIA) {
-                "media request must use MEDIA phase"
-            }
+        require(request.kind.supports(request.phase)) {
+            "unsupported cache artifact ${request.kind}/${request.phase}"
         }
-        if (request.kind != CacheKind.TEXT) {
-            require(!request.reviewEnabled) { "only text requests can enable review caching" }
+        if (request.reviewEnabled) {
+            require(
+                request.phase == CachePhase.REVIEW ||
+                    request.kind.reviewPrerequisitePhase() == request.phase
+            ) {
+                "${request.kind}/${request.phase} cannot enable review caching"
+            }
         }
     }
 

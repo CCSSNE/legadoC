@@ -9,6 +9,8 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.BookImgClick
+import io.legado.app.help.book.isAudio
+import io.legado.app.help.book.isVideo
 import io.legado.app.help.cache.CacheOperationDiagnostics
 import io.legado.app.help.cache.CacheWorkerLease
 import io.legado.app.help.config.AppConfig
@@ -414,12 +416,12 @@ object ReviewSnapshotManager {
             sb.append("开关“缓存评论”已关闭，跳过")
             return
         }
-        val content = BookHelp.getContent(book, chapter)
+        val content = reviewContent(book, chapter)
         if (content == null) {
-            sb.append("1. 读取正文：失败（未找到缓存正文，可能正文未下载或已删除）")
+            sb.append("1. 读取评论载体：失败（文本正文或音频原始字幕不存在）")
             return
         }
-        sb.append("1. 读取正文：成功\n")
+        sb.append("1. 读取评论载体：成功\n")
         val extraction = extractReviewButtonsWithStats(content)
         sb.append("2. 找到 style=TEXT 评论按钮：").append(extraction.buttons.size).append(" 个")
         when {
@@ -843,6 +845,19 @@ object ReviewSnapshotManager {
      */
     fun extractReviewButtons(content: String): List<ReviewButton> {
         return extractReviewButtonsWithStats(content).buttons
+    }
+
+    /**
+     * 评论入口只读取其领域拥有的原始产物：文本读取 BODY，音频读取原始 lyric。
+     * 不使用 effectiveLyric，避免把文字书 overlay 再以音频书身份重复抓取。
+     */
+    private fun reviewContent(book: Book, chapter: BookChapter): String? {
+        require(!book.isVideo) { "video books do not own REVIEW artifacts" }
+        return if (book.isAudio) {
+            chapter.getVariable("lyric").takeIf { it.isNotBlank() }
+        } else {
+            BookHelp.getContent(book, chapter)?.takeIf { it.isNotBlank() }
+        }
     }
 
     data class ButtonExtraction(
