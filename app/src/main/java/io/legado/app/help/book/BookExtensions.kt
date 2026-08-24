@@ -83,15 +83,27 @@ val Book.isUpError: Boolean
 val Book.isArchive: Boolean
     get() = isType(BookType.archive)
 
+/** Archive imports persist `name::uri`; legacy imports only persist the name. */
+private fun Book.archiveSource(): Pair<String, String?> {
+    val source = origin.substringAfter("::")
+    val separator = source.indexOf("::")
+    if (separator > 0) {
+        val savedUri = source.substring(separator + 2)
+        if (savedUri.isUri()) {
+            return source.substring(0, separator) to savedUri
+        }
+    }
+    return source.substringAfterLast("/") to null
+}
+
 val Book.isNotShelf: Boolean
     get() = isType(BookType.notShelf)
 
 val Book.archiveName: String
     get() {
         if (!isArchive) throw NoStackTraceException("Book is not deCompressed from archive")
-        // local_book::archive.rar
-        // webDav::https://...../archive.rar
-        return origin.substringAfter("::").substringAfterLast("/")
+        // legacy: loc_book::archive.zip; current: loc_book::archive.zip::content://...
+        return archiveSource().first
     }
 
 fun Book.contains(word: String?): Boolean {
@@ -174,8 +186,17 @@ fun Book.getLocalUri(): Uri {
 
 
 fun Book.getArchiveUri(): Uri? {
+    if (!isArchive) return null
+    val (archiveName, savedUri) = archiveSource()
+    if (savedUri != null) {
+        return runCatching {
+            FileDoc.fromUri(savedUri.toUri(), false)
+                .takeIf { it.exists() }
+                ?.uri
+        }.getOrNull()
+    }
     val defaultBookDir = AppConfig.defaultBookTreeUri
-    return if (isArchive && !defaultBookDir.isNullOrBlank()) {
+    return if (!defaultBookDir.isNullOrBlank()) {
         FileDoc.fromUri(defaultBookDir.toUri(), true)
             .find(archiveName)?.uri
     } else {

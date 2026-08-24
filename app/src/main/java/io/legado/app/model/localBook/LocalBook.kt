@@ -50,6 +50,8 @@ import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
+import io.legado.app.utils.delete
+import io.legado.app.utils.exists
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.externalFiles
@@ -522,7 +524,10 @@ object LocalBook {
             saveBookFile(FileInputStream(it), saveFileName ?: it.name).let { uri ->
                 importFile(uri).apply {
                     //附加压缩包名称 以便解压文件被删后再解压
-                    origin = "${BookType.localTag}::${archiveFileDoc.name}"
+                    // Keep both a stable display name and the original URI. The URI is
+                    // required for delete-original-file to target the archive, not its
+                    // extracted TXT child.
+                    origin = "${BookType.localTag}::${archiveFileDoc.name}::${archiveFileDoc.uri}"
                     addType(BookType.archive)
                     save()
                 }
@@ -982,15 +987,21 @@ object LocalBook {
     }
 
     fun deleteBook(book: Book, deleteOriginal: Boolean) {
-        kotlin.runCatching {
-            clearBookShelfCache(book)
-            if (deleteOriginal) {
-                if (book.bookUrl.isContentScheme()) {
-                    val uri = book.bookUrl.toUri()
-                    DocumentFile.fromSingleUri(appCtx, uri)?.delete()
-                } else {
-                    FileUtils.delete(book.bookUrl)
+        clearBookShelfCache(book)
+        if (deleteOriginal) {
+            if (book.isArchive) {
+                val archiveFile = book.getArchiveUri()?.let { FileDoc.fromUri(it, false) }
+                    ?: error("删除原文件失败：找不到压缩包 ${book.archiveName}")
+                archiveFile.delete()
+                check(!archiveFile.exists()) {
+                    "删除原文件失败：压缩包仍存在 ${book.archiveName}"
                 }
+            }
+            if (book.bookUrl.isContentScheme()) {
+                val uri = book.bookUrl.toUri()
+                DocumentFile.fromSingleUri(appCtx, uri)?.delete()
+            } else {
+                FileUtils.delete(book.bookUrl)
             }
         }
     }
