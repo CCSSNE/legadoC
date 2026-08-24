@@ -17,7 +17,7 @@ import java.io.File
  * url 才是稳定标识；chapterIndex 只作为兼容/展示字段。
  */
 data class ReviewSnapshot(
-    val version: Int = 1,
+    val version: Int = 2,
     val bookUrl: String = "",
     /** 章节稳定标识：主键一部分 */
     val chapterUrl: String = "",
@@ -30,6 +30,12 @@ data class ReviewSnapshot(
     val url: String = "",
     val title: String = "",
     val html: String = "",
+    /**
+     * 本快照 HTML 引用的全部资源库 key（review-resource://<key> 对应的 key）。
+     * 抓取生成快照时顺手写入；GC 只读本字段判定存活资源，不再扫描巨大 HTML。
+     * null = 旧格式快照（写入时没有该字段），引用未知，GC 必须放弃本次回收。
+     */
+    val resourceKeys: List<String>? = null,
     val savedAt: Long = 0L
 )
 

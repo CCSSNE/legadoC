@@ -204,7 +204,7 @@ object ReviewSnapshotCapture {
                         "${initialHtml.length} 字符，已按失败处理）"
                 )
             }
-            val (html, expandRounds, expandClickCount) = snapshotPage(
+            val page = snapshotPage(
                 url,
                 bookSource,
                 book,
@@ -221,13 +221,14 @@ object ReviewSnapshotCapture {
                     buttonSrc = buttonSrc,
                     url = url,
                     title = "",
-                    html = html,
+                    html = page.html,
+                    resourceKeys = page.resourceKeys,
                     savedAt = System.currentTimeMillis()
                 ),
-                expandRounds = expandRounds,
-                expandClickCount = expandClickCount
+                expandRounds = page.expandRounds,
+                expandClickCount = page.expandClickCount
             ).also {
-                trace?.done(CacheOperationDiagnostics.Metrics(outputChars = html.length))
+                trace?.done(CacheOperationDiagnostics.Metrics(outputChars = page.html.length))
             }
         } catch (error: Throwable) {
             trace?.fail(error)
@@ -235,11 +236,18 @@ object ReviewSnapshotCapture {
         }
     }
 
+    /** 一次页面快照的结果：最终 HTML 与诊断数据，以及快照引用的资源库 key。 */
+    private data class SnapshotPageResult(
+        val html: String,
+        val expandRounds: Int,
+        val expandClickCount: Int,
+        val resourceKeys: List<String>,
+    )
+
     /**
      * 无头加载页面并穷尽展开后返回最终 HTML 与展开诊断数据。
      *
-     * WebView 生命周期唯一化：成功/失败/分阶段超时/cancel 四条路径都只释放一次，
-     * 通过 [java.util.concurrent.atomic.AtomicReference] + [AtomicBoolean] 保证。
+     * @return [SnapshotPageResult]：html、展开轮数、点击次数、本快照引用的资源 key 列表
      */
     private suspend fun snapshotPage(
         url: String,
@@ -248,7 +256,7 @@ object ReviewSnapshotCapture {
         initialHtml: String? = null,
         preloadJs: String? = null,
         diagnostics: CacheOperationDiagnostics.Operation? = null,
-    ): Triple<String, Int, Int> {
+    ): SnapshotPageResult {
         val analyzeUrl = AnalyzeUrl(url, source = bookSource)
         val headerMap = analyzeUrl.headerMap
         return suspendCancellableCoroutine { block ->
@@ -291,12 +299,12 @@ object ReviewSnapshotCapture {
                         null
                     }
                     val session = SnapshotSession(webView, url, book, jsBridge, diagnostics) {
-                        result, error, rounds, clicks, discardWebView ->
+                        result, error, rounds, clicks, discardWebView, resourceKeys ->
                         sessionRef.set(null)
                         releaseOnce(discardWebView)
                         if (block.isActive) {
                             if (error != null) block.resumeWithException(error)
-                            else block.resume(Triple(result ?: "", rounds, clicks))
+                            else block.resume(SnapshotPageResult(result ?: "", rounds, clicks, resourceKeys))
                         }
                     }
                     sessionRef.set(session)
@@ -355,14 +363,19 @@ object ReviewSnapshotCapture {
         private val book: Book,
         private val jsBridge: PageJsBridge?,
         private val diagnostics: CacheOperationDiagnostics.Operation?,
-        private val done: (String?, Throwable?, Int, Int, Boolean) -> Unit
+        private val done: (String?, Throwable?, Int, Int, Boolean, List<String>) -> Unit
     ) {
 
         private data class TerminalResult(
             val html: String?,
             val error: Throwable?,
             val discardWebView: Boolean,
+            val resourceKeys: List<String> = emptyList(),
         )
+
+        /** 内联资源完成后记录的 key 列表；终态回调时随 [TerminalResult] 带出。 */
+        @Volatile
+        private var capturedResourceKeys: List<String> = emptyList()
 
         private data class CleanupHandles(
             val worker: Thread?,
@@ -583,7 +596,12 @@ object ReviewSnapshotCapture {
 
         private fun finish(html: String?) {
             val cleanup = acceptTerminal(
-                TerminalResult(html = html, error = null, discardWebView = false)
+                TerminalResult(
+                    html = html,
+                    error = null,
+                    discardWebView = false,
+                    resourceKeys = capturedResourceKeys,
+                )
             ) ?: return
             completeActiveStage(CacheOperationDiagnostics.Metrics(outputChars = html?.length))
             cancelOutstandingWork(cleanup)
@@ -658,6 +676,7 @@ object ReviewSnapshotCapture {
                     expandRounds,
                     totalExpandClicks,
                     terminal.discardWebView,
+                    terminal.resourceKeys,
                 )
                 releaseHeavyStagePermit()
             }
@@ -937,6 +956,12 @@ object ReviewSnapshotCapture {
             val cacheCommentImages: Boolean = false,
         ) {
             val resourceCount: Int get() = imgMap.size + cssMap.size
+
+            /** 本快照 HTML 引用的全部资源库 key（imgMap 的 value 即 review-resource://<key>）。 */
+            val resourceKeys: List<String>
+                get() = imgMap.values.mapNotNull { value ->
+                    ReviewSnapshotResourceStore.keyFromReference(value)
+                }.distinct()
         }
 
         private fun parseResourceUrls(json: String?): ResourceUrls {
@@ -1316,6 +1341,8 @@ object ReviewSnapshotCapture {
 
         private fun applyInline(inline: InlineResources) {
             if (destroyed) return
+            // 内联完成后立即记录本快照引用的资源 key；终态回调据此携带 resourceKeys。
+            capturedResourceKeys = inline.resourceKeys
             if (inline.imgMap.isEmpty() && inline.cssMap.isEmpty()) {
                 serialize()
                 return
