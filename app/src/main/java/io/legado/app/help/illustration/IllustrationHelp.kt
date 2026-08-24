@@ -436,8 +436,10 @@ object IllustrationHelp {
     )
 
     /** 生成导出 JSON（images 为相对路径 images/{uuid}.{ext}） */
-    fun buildExportJson(book: Book, txtFileName: String): String? {
-        val records = appDb.bookIllustrationDao.getByBook(book.bookUrl)
+    fun buildExportJson(
+        txtFileName: String,
+        records: List<BookIllustration>,
+    ): String? {
         if (records.isEmpty()) return null
         val items = records.map { record ->
             IllustrationJsonItem(
