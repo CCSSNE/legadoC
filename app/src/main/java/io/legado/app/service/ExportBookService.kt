@@ -49,6 +49,7 @@ import io.legado.app.ui.book.cache.CacheActivity
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.ExportImageSanitizer
+import io.legado.app.utils.ConvertUtils
 import io.legado.app.utils.HtmlFormatter
 import io.legado.app.utils.GSON
 import io.legado.app.utils.MD5Utils
@@ -74,6 +75,9 @@ import io.legado.app.utils.writeFile
 import io.legado.app.utils.externalCache
 import java.io.File
 import java.io.FileOutputStream
+import java.io.OutputStream
+import java.util.zip.Deflater
+import kotlin.coroutines.CoroutineContext
 import kotlin.math.ceil
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
@@ -471,6 +475,12 @@ class ExportBookService : BaseService() {
         val tmpImagesDir = File(tmpRoot, IllustrationHelp.EXPORT_IMAGES_DIR)
         FileUtils.createFolderIfNotExist(tmpImagesDir.absolutePath)
         val tmpJson = File(tmpRoot, IllustrationHelp.EXPORT_JSON_NAME)
+        val audioChapters = if (book.isAudio) {
+            updateAudioExportStatus(book, "正在检查音频离线内容")
+            requireCompleteAudioExportChapters(book)
+        } else {
+            null
+        }
         val tmpBookmarks = if (config.exportBookmarks) {
             File(tmpRoot, IllustrationHelp.EXPORT_BOOKMARKS_NAME).also { f ->
                 val bookmarks = appDb.bookmarkDao.all.filter {
@@ -507,7 +517,7 @@ class ExportBookService : BaseService() {
         }
         try {
             val tmpAudioManifest = if (book.isAudio) {
-                exportAudioBookMedia(book, tmpRoot, txtName)
+                exportAudioBookMedia(book, tmpRoot, txtName, requireNotNull(audioChapters))
             } else {
                 null
             }
@@ -523,6 +533,9 @@ class ExportBookService : BaseService() {
             } else {
                 val charset = Charset.forName(config.charset)
                 tmpTxt.bufferedWriter(charset).use { bw ->
+                    if (book.isAudio) {
+                        updateAudioExportStatus(book, "正在生成字幕文本")
+                    }
                     getAllContents(book, config, reportProgress = !book.isAudio) { text, _ ->
                         bw.write(text)
                     }
@@ -557,14 +570,25 @@ class ExportBookService : BaseService() {
             tmpReviewsDir?.takeIf { dir ->
                 dir.exists() && (dir.listFiles()?.isNotEmpty() == true)
             }?.let { zipEntries.add(it) }
-            ZipUtils.zipFiles(
-                zipEntries,
-                tmpZip,
-                null
-            )
+            if (book.isAudio) {
+                zipAudioBookArchive(book, zipEntries, tmpZip)
+            } else {
+                require(ZipUtils.zipFiles(zipEntries, tmpZip, null)) {
+                    "TXT-ZIP export failed: unable to create archive"
+                }
+            }
             val zipDoc = fileDoc.createFileIfNotExistWithMime(zipName, "application/zip")
             zipDoc.openOutputStream(truncate = true).getOrThrow().use { out ->
-                tmpZip.inputStream().use { it.copyTo(out) }
+                if (book.isAudio) {
+                    copyAudioArchiveToDestination(
+                        book,
+                        tmpZip,
+                        out,
+                        currentCoroutineContext(),
+                    )
+                } else {
+                    tmpZip.inputStream().use { it.copyTo(out) }
+                }
             }
             if (config.toWebDav) {
                 AppWebDav.exportWebDav(zipDoc.uri, zipName)
@@ -579,18 +603,11 @@ class ExportBookService : BaseService() {
         book: Book,
         tmpRoot: File,
         txtName: String,
+        chapters: List<BookChapter>,
     ): File {
-        val chapters = appDb.bookChapterDao.getChapterList(book.bookUrl)
-            .filterNot { it.isVolume }
-        require(chapters.isNotEmpty()) { "Audio TXT-ZIP export failed: chapter list is empty" }
         val audioDir = File(tmpRoot, AudioBookArchive.MEDIA_DIR_NAME).apply { mkdirs() }
         val manifestChapters = chapters.mapIndexed { index, chapter ->
             currentCoroutineContext().ensureActive()
-            val offlineState = AudioOfflineState.inspect(book, chapter)
-            require(offlineState.isComplete) {
-                "Audio TXT-ZIP export failed: ${offlineState.incompleteReason()} " +
-                    "chapter=${chapter.index + 1} ${chapter.title}"
-            }
             val resourceUrl = requireNotNull(chapter.resourceUrl) {
                 "Audio TXT-ZIP export failed: media address is missing " +
                     "chapter=${chapter.index + 1} ${chapter.title}"
@@ -606,7 +623,7 @@ class ExportBookService : BaseService() {
                 "Audio TXT-ZIP export failed: no audio for chapter ${chapter.index + 1} ${chapter.title}"
             }
             exportProgress[book.bookUrl] = index + 1
-            postEvent(EventBus.EXPORT_BOOK, book.bookUrl)
+            updateAudioExportStatus(book, "正在整理音频 ${index + 1}/${chapters.size}")
             AudioBookArchiveChapter(
                 index = chapter.index,
                 title = chapter.title,
@@ -632,6 +649,93 @@ class ExportBookService : BaseService() {
                 Charsets.UTF_8,
             )
         }
+    }
+
+    /**
+     * Export is a local artifact operation: it must reject an incomplete audio book before
+     * creating any archive output, never resolve a source or request missing media.
+     */
+    private fun requireCompleteAudioExportChapters(book: Book): List<BookChapter> {
+        val chapters = appDb.bookChapterDao.getChapterList(book.bookUrl)
+            .filterNot { it.isVolume }
+        require(chapters.isNotEmpty()) { "Audio TXT-ZIP export failed: chapter list is empty" }
+        chapters.forEach { chapter ->
+            val offlineState = AudioOfflineState.inspect(book, chapter)
+            require(offlineState.isComplete) {
+                "Audio TXT-ZIP export failed: ${offlineState.incompleteReason()} " +
+                    "chapter=${chapter.index + 1} ${chapter.title}"
+            }
+        }
+        return chapters
+    }
+
+    private suspend fun zipAudioBookArchive(
+        book: Book,
+        entries: Collection<File>,
+        target: File,
+    ) {
+        val exportContext = currentCoroutineContext()
+        var lastUpdateAt = 0L
+        updateAudioExportStatus(book, "正在打包音频")
+        require(
+            ZipUtils.zipFiles(
+                srcFiles = entries,
+                zipFile = target,
+                compressionLevel = Deflater.NO_COMPRESSION,
+            ) { processedBytes, totalBytes ->
+                exportContext.ensureActive()
+                val now = System.currentTimeMillis()
+                if (now - lastUpdateAt >= 350L || processedBytes == totalBytes) {
+                    lastUpdateAt = now
+                    updateAudioExportStatus(
+                        book,
+                        "正在打包音频 ${ConvertUtils.formatFileSize(processedBytes)}/" +
+                            ConvertUtils.formatFileSize(totalBytes),
+                    )
+                }
+            }
+        ) {
+            "Audio TXT-ZIP export failed: unable to create archive"
+        }
+    }
+
+    private fun copyAudioArchiveToDestination(
+        book: Book,
+        source: File,
+        output: OutputStream,
+        exportContext: CoroutineContext,
+    ) {
+        val totalBytes = source.length().coerceAtLeast(0L)
+        var copiedBytes = 0L
+        var lastUpdateAt = 0L
+        updateAudioExportStatus(book, "正在保存音频压缩包")
+        source.inputStream().buffered().use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                exportContext.ensureActive()
+                val count = input.read(buffer)
+                if (count < 0) break
+                output.write(buffer, 0, count)
+                copiedBytes += count
+                val now = System.currentTimeMillis()
+                if (now - lastUpdateAt >= 350L || copiedBytes == totalBytes) {
+                    lastUpdateAt = now
+                    updateAudioExportStatus(
+                        book,
+                        "正在保存音频压缩包 ${ConvertUtils.formatFileSize(copiedBytes)}/" +
+                            ConvertUtils.formatFileSize(totalBytes),
+                    )
+                }
+            }
+        }
+        require(copiedBytes == totalBytes) {
+            "Audio TXT-ZIP export failed: archive changed while writing destination"
+        }
+    }
+
+    private fun updateAudioExportStatus(book: Book, status: String) {
+        exportMsg[book.bookUrl] = status
+        postEvent(EventBus.EXPORT_BOOK, book.bookUrl)
     }
 
     /**
