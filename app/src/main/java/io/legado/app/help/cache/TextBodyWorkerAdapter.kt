@@ -19,11 +19,7 @@ internal class TextBodyWorkerAdapter(
         require(task.kind == CacheKind.TEXT && task.phase == CachePhase.BODY) {
             "text body adapter received ${task.kind}/${task.phase}"
         }
-        val runnableUnits = task.units.filter { unit ->
-            unit.status == CacheUnitStatus.PENDING ||
-                unit.status == CacheUnitStatus.RUNNING ||
-                unit.status == CacheUnitStatus.REVIEW_ELIGIBLE
-        }
+        val runnableUnits = task.runnableUnits()
         if (runnableUnits.isEmpty()) {
             workerPort.finish(lease, CacheResult.SUCCEEDED)
             return

@@ -23,11 +23,7 @@ internal class ReviewWorkerAdapter(
         }
         // REVIEW worker 真正启动即推进资源 GC 的版本号：任何一次启动都会让
         // 正在扫描的 GC 因 epoch 变化而放弃，杜绝“快速开始又快速结束”的 ABA 误删。
-        val runnableUnits = task.units.filter { unit ->
-            unit.status == CacheUnitStatus.PENDING ||
-                unit.status == CacheUnitStatus.RUNNING ||
-                unit.status == CacheUnitStatus.REVIEW_ELIGIBLE
-        }
+        val runnableUnits = task.runnableUnits()
         if (runnableUnits.isEmpty()) {
             workerPort.finish(lease, CacheResult.SUCCEEDED)
             return

@@ -17,11 +17,7 @@ internal class MediaWorkerAdapter(
 
     fun start(task: CacheTaskState, lease: CacheWorkerLease) {
         require(task.phase == CachePhase.MEDIA) { "media adapter received ${task.phase}" }
-        val runnableUnits = task.units.filter { unit ->
-            unit.status == CacheUnitStatus.PENDING ||
-                unit.status == CacheUnitStatus.RUNNING ||
-                unit.status == CacheUnitStatus.REVIEW_ELIGIBLE
-        }
+        val runnableUnits = task.runnableUnits()
         if (runnableUnits.isEmpty()) {
             workerPort.finish(lease, CacheResult.SUCCEEDED)
             return
