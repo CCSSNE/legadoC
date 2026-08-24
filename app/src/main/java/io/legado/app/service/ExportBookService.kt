@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
+import android.system.Os
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
@@ -20,6 +21,8 @@ import io.legado.app.constant.NotificationId
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.BookIllustration
+import io.legado.app.data.entities.Bookmark
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
@@ -456,7 +459,6 @@ class ExportBookService : BaseService() {
         book: Book,
         config: ExportConfig
     ) {
-        val illustrations = appDb.bookIllustrationDao.getByBook(book.bookUrl)
         val literalTxtName = book.getLiteralExportFileName("txt", config.bookExportFileName)
         val txtName = if (book.isAudio) {
             AudioBookArchive.audioFileName(literalTxtName)
@@ -464,7 +466,6 @@ class ExportBookService : BaseService() {
             literalTxtName
         }
         val zipName = txtName.removeSuffix(".txt") + ".zip"
-        fileDoc.find(zipName)?.delete()
         val tmpRoot = FileUtils.createFolderIfNotExist(
             appCtx.externalCache,
             "ExportTxtZip"
@@ -475,16 +476,20 @@ class ExportBookService : BaseService() {
         val tmpImagesDir = File(tmpRoot, IllustrationHelp.EXPORT_IMAGES_DIR)
         FileUtils.createFolderIfNotExist(tmpImagesDir.absolutePath)
         val tmpJson = File(tmpRoot, IllustrationHelp.EXPORT_JSON_NAME)
-        val audioChapters = if (book.isAudio) {
+        val audioSelection = if (book.isAudio) {
             updateAudioExportStatus(book, "正在筛选已完成的音频与字幕")
-            availableAudioExportChapters(book)
+            AudioExportSelection(availableAudioExportChapters(book))
         } else {
             null
         }
+        val audioChapters = audioSelection?.chapters
+        val illustrations = appDb.bookIllustrationDao.getByBook(book.bookUrl).let { records ->
+            audioSelection?.remapIllustrations(records) ?: records
+        }
         val tmpBookmarks = if (config.exportBookmarks) {
             File(tmpRoot, IllustrationHelp.EXPORT_BOOKMARKS_NAME).also { f ->
-                val bookmarks = appDb.bookmarkDao.all.filter {
-                    it.bookName == book.name && it.bookAuthor == book.author
+                val bookmarks = appDb.bookmarkDao.getByBook(book.name, book.author).let { records ->
+                    audioSelection?.remapBookmarks(records) ?: records
                 }
                 if (bookmarks.isNotEmpty()) {
                     f.writeText(GSON.toJson(bookmarks), Charsets.UTF_8)
@@ -557,17 +562,19 @@ class ExportBookService : BaseService() {
             illustrations.forEach { illustration ->
                 illustration.imageSrcsFromJson().forEach { src ->
                     val srcFile = IllustrationHelp.getImageFile(book, src)
-                    if (srcFile.exists()) {
-                        kotlin.runCatching {
-                            val imageName = src.substringAfter(IllustrationHelp.SRC_PREFIX)
-                            File(tmpImagesDir, imageName).writeBytes(srcFile.readBytes())
-                        }.onFailure { e ->
-                            AppLog.put("导出配图失败: ${book.name} ${illustration.chapterName}", e)
-                        }
+                    require(srcFile.isFile && srcFile.length() > 0L) {
+                        "TXT-ZIP export failed: illustration is missing " +
+                            "chapter=${illustration.chapterIndex + 1} ${illustration.chapterName} src=$src"
+                    }
+                    val imageName = src.substringAfter(IllustrationHelp.SRC_PREFIX)
+                    val targetFile = File(tmpImagesDir, imageName)
+                    srcFile.copyTo(targetFile, overwrite = true)
+                    require(targetFile.length() == srcFile.length()) {
+                        "TXT-ZIP export failed: illustration copy is incomplete src=$src"
                     }
                 }
             }
-            val jsonText = IllustrationHelp.buildExportJson(book, txtName)
+            val jsonText = IllustrationHelp.buildExportJson(txtName, illustrations)
             if (jsonText != null) {
                 tmpJson.writeText(jsonText, Charsets.UTF_8)
             }
@@ -590,19 +597,7 @@ class ExportBookService : BaseService() {
                     "TXT-ZIP export failed: unable to create archive"
                 }
             }
-            val zipDoc = fileDoc.createFileIfNotExistWithMime(zipName, "application/zip")
-            zipDoc.openOutputStream(truncate = true).getOrThrow().use { out ->
-                if (book.isAudio) {
-                    copyAudioArchiveToDestination(
-                        book,
-                        tmpZip,
-                        out,
-                        currentCoroutineContext(),
-                    )
-                } else {
-                    tmpZip.inputStream().use { it.copyTo(out) }
-                }
-            }
+            val zipDoc = saveCompletedTxtZip(fileDoc, zipName, tmpZip, book)
             if (config.toWebDav) {
                 AppWebDav.exportWebDav(zipDoc.uri, zipName)
             }
@@ -683,6 +678,62 @@ class ExportBookService : BaseService() {
         return completed
     }
 
+    /**
+     * One immutable chapter selection drives every chapter-owned audio archive artifact.
+     * Sidecars use dense archive-local indices because imported Manifest chapters are rebuilt in
+     * selection order rather than retaining sparse source-book indices.
+     */
+    private class AudioExportSelection(
+        val chapters: List<BookChapter>,
+    ) {
+        private data class SelectedChapter(
+            val archiveIndex: Int,
+            val chapter: BookChapter,
+        )
+
+        private val bySourceIndex = chapters.mapIndexed { archiveIndex, chapter ->
+            chapter.index to SelectedChapter(archiveIndex, chapter)
+        }.toMap()
+        private val bySourceUrl = chapters.mapIndexed { archiveIndex, chapter ->
+            chapter.url to SelectedChapter(archiveIndex, chapter)
+        }.toMap()
+
+        init {
+            require(chapters.isNotEmpty()) { "Audio TXT-ZIP export selection is empty" }
+            require(bySourceIndex.size == chapters.size) {
+                "Audio TXT-ZIP export selection contains duplicate chapter indices"
+            }
+            require(chapters.none { it.url.isBlank() } && bySourceUrl.size == chapters.size) {
+                "Audio TXT-ZIP export selection contains invalid chapter identities"
+            }
+        }
+
+        fun remapIllustrations(records: List<BookIllustration>): List<BookIllustration> {
+            return records.mapNotNull { record ->
+                val selected = if (record.chapterUrl.isBlank()) {
+                    bySourceIndex[record.chapterIndex]
+                } else {
+                    bySourceUrl[record.chapterUrl]
+                } ?: return@mapNotNull null
+                record.copy(
+                    chapterIndex = selected.archiveIndex,
+                    chapterUrl = selected.chapter.url,
+                    chapterName = selected.chapter.title,
+                )
+            }
+        }
+
+        fun remapBookmarks(records: List<Bookmark>): List<Bookmark> {
+            return records.mapNotNull { record ->
+                val selected = bySourceIndex[record.chapterIndex] ?: return@mapNotNull null
+                record.copy(
+                    chapterIndex = selected.archiveIndex,
+                    chapterName = selected.chapter.title,
+                )
+            }
+        }
+    }
+
     private suspend fun zipAudioBookArchive(
         book: Book,
         entries: Collection<File>,
@@ -744,6 +795,108 @@ class ExportBookService : BaseService() {
         }
         require(copiedBytes == totalBytes) {
             "Audio TXT-ZIP export failed: archive changed while writing destination"
+        }
+    }
+
+    /**
+     * Writes beside the current archive and promotes only a fully persisted staging ZIP.
+     * Direct-file destinations use the platform rename operation, which replaces atomically on
+     * Android's Linux filesystems. SAF destinations keep the old document under a temporary backup
+     * name until the staged document has been promoted successfully.
+     */
+    private suspend fun saveCompletedTxtZip(
+        parent: FileDoc,
+        zipName: String,
+        source: File,
+        book: Book,
+    ): FileDoc {
+        require(source.isFile && source.length() > 0L) {
+            "TXT-ZIP export failed: generated archive is empty"
+        }
+        val transactionId = "${System.currentTimeMillis()}_${System.nanoTime()}"
+        val stagingName = ".$zipName.$transactionId.tmp.zip"
+        val backupName = ".$zipName.$transactionId.old.zip"
+        require(parent.find(stagingName) == null && parent.find(backupName) == null) {
+            "TXT-ZIP export failed: destination transaction names already exist"
+        }
+
+        val oldArchive = parent.find(zipName)
+        val staging = parent.createFileIfNotExistWithMime(stagingName, "application/zip")
+        var oldRenamed = false
+        var promoted = false
+        val backupDocument = oldArchive?.asDocumentFile()
+        try {
+            staging.openOutputStream(truncate = true).getOrThrow().use { out ->
+                if (book.isAudio) {
+                    copyAudioArchiveToDestination(
+                        book,
+                        source,
+                        out,
+                        currentCoroutineContext(),
+                    )
+                } else {
+                    source.inputStream().use { it.copyTo(out) }
+                }
+            }
+            val persistedStaging = FileDoc.fromUri(staging.uri, false)
+            require(persistedStaging.size == source.length()) {
+                "TXT-ZIP export failed: staged archive size mismatch " +
+                    "expected=${source.length()} actual=${persistedStaging.size}"
+            }
+
+            if (!parent.isContentScheme) {
+                val stagingFile = requireNotNull(persistedStaging.asFile()) {
+                    "TXT-ZIP export failed: staging file path is unavailable"
+                }
+                val parentFile = requireNotNull(parent.asFile()) {
+                    "TXT-ZIP export failed: destination directory path is unavailable"
+                }
+                val targetFile = File(parentFile, zipName)
+                Os.rename(stagingFile.absolutePath, targetFile.absolutePath)
+                promoted = true
+                return FileDoc.fromFile(targetFile)
+            }
+
+            val stagingDocument = requireNotNull(staging.asDocumentFile()) {
+                "TXT-ZIP export failed: staging document is unavailable"
+            }
+            if (backupDocument != null) {
+                require(backupDocument!!.renameTo(backupName)) {
+                    "TXT-ZIP export failed: unable to preserve existing $zipName"
+                }
+                oldRenamed = true
+            }
+            require(stagingDocument.renameTo(zipName)) {
+                "TXT-ZIP export failed: unable to promote staged archive"
+            }
+            promoted = true
+            val committed = FileDoc.fromDocumentFile(stagingDocument)
+            backupDocument?.let { backup ->
+                require(backup.delete() && !backup.exists()) {
+                    "TXT-ZIP export failed: unable to remove replaced archive backup"
+                }
+            }
+            return committed
+        } catch (cause: Throwable) {
+            if (!promoted && oldRenamed) {
+                runCatching {
+                    val backup = requireNotNull(backupDocument)
+                    require(backup.renameTo(zipName)) {
+                        "TXT-ZIP export rollback failed: unable to restore existing $zipName"
+                    }
+                }.onFailure(cause::addSuppressed)
+            }
+            if (!promoted) {
+                runCatching {
+                    if (staging.exists()) {
+                        staging.delete()
+                        require(!staging.exists()) {
+                            "TXT-ZIP export rollback failed: unable to remove staging archive"
+                        }
+                    }
+                }.onFailure(cause::addSuppressed)
+            }
+            throw cause
         }
     }
 
