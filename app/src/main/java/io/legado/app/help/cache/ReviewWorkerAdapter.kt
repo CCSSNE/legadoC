@@ -2,6 +2,7 @@ package io.legado.app.help.cache
 
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.help.review.ReviewResourceEpoch
 import io.legado.app.help.review.ReviewSnapshotManager
 import io.legado.app.data.appDb
 import io.legado.app.service.ReviewCacheService
@@ -31,6 +32,9 @@ internal class ReviewWorkerAdapter(
         require(task.kind == CacheKind.TEXT && task.phase == CachePhase.REVIEW) {
             "review adapter received ${task.kind}/${task.phase}"
         }
+        // REVIEW worker 真正启动即推进资源 GC 的版本号：任何一次启动都会让
+        // 正在扫描的 GC 因 epoch 变化而放弃，杜绝“快速开始又快速结束”的 ABA 误删。
+        ReviewResourceEpoch.markReviewStarted()
         val book = appDb.bookDao.getBook(task.bookUrl)
             ?: run {
                 CacheReviewWorkerRegistry.fail(
