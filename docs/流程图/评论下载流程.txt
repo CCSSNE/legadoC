@@ -63,8 +63,9 @@ ReviewSnapshotManager
                 ├─ 所有资源下载完成
                 │
                 ├─ 逐个读取临时文件
-                ├─ 逐个 Base64 / CSS 转换
-                ├─ DOM apply
+                ├─ 逐个压缩后写入 rr_<sha256>.bin，并更新 resources.json
+                ├─ CSS 转换
+                ├─ DOM apply（图片替换为 review-resource://<sha256>）
                 ├─ outerHTML
                 └─ decode
                 │
