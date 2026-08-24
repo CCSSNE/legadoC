@@ -60,6 +60,7 @@ internal object CacheOperationDiagnostics {
         context: Context,
         operation: String,
         metrics: Metrics = Metrics(),
+        startAlways: Boolean = false,
     ): Operation {
         val key = "${context.domain}/$operation"
         val active = activeOperations.getOrPut(key) { AtomicInteger() }.incrementAndGet()
@@ -70,7 +71,9 @@ internal object CacheOperationDiagnostics {
             activeKey = key,
             activeAtStart = active,
             sampled = sequence <= SAMPLE_FIRST || sequence % SAMPLE_EVERY == 0L,
-        ).also { it.mark("${operation}_START", metrics) }
+        ).also {
+            it.emitStart(metrics, active, startAlways)
+        }
     }
 
     class Operation internal constructor(
@@ -82,12 +85,50 @@ internal object CacheOperationDiagnostics {
     ) {
         private val startedAtNanos = System.nanoTime()
         private val finished = AtomicBoolean(false)
+        private val stagesStartedAtNanos = ConcurrentHashMap<String, Long>()
 
-        fun mark(event: String, metrics: Metrics = Metrics()) {
+        internal fun emitStart(metrics: Metrics, active: Int, force: Boolean) {
+            emit(
+                "${operation}_START",
+                metrics,
+                active,
+                elapsedMs = 0L,
+                applySlowThreshold = false,
+                force = force,
+            )
+        }
+
+        /** A point-in-time observation; elapsed time before it belongs to earlier stages. */
+        fun mark(event: String, metrics: Metrics = Metrics(), force: Boolean = false) {
             emit(
                 event,
                 metrics,
                 CacheOperationDiagnostics.activeOperations[activeKey]?.get() ?: activeAtStart,
+                elapsedMs = 0L,
+                applySlowThreshold = false,
+                force = force,
+            )
+        }
+
+        /** Starts a named sub-stage whose completion has an independent elapsed time. */
+        fun stageStart(stage: String, metrics: Metrics = Metrics(), startAlways: Boolean = false) {
+            stagesStartedAtNanos[stage] = System.nanoTime()
+            mark("${stage}_START", metrics, force = startAlways)
+        }
+
+        fun stageDone(stage: String, metrics: Metrics = Metrics()) {
+            emitStage("${stage}_DONE", stage, metrics)
+        }
+
+        fun stageFail(stage: String, error: Throwable, metrics: Metrics = Metrics()) {
+            emit(
+                "${stage}_FAILED",
+                metrics,
+                CacheOperationDiagnostics.activeOperations[activeKey]?.get() ?: activeAtStart,
+                elapsedMs = stageElapsedMs(stage),
+                applySlowThreshold = true,
+                error = error,
+                force = true,
             )
         }
 
@@ -96,12 +137,25 @@ internal object CacheOperationDiagnostics {
             event: String = "${operation}_DONE",
         ) {
             if (!finished.compareAndSet(false, true)) return
-            emit(event, metrics, release())
+            emit(
+                event,
+                metrics,
+                release(),
+                elapsedMs = operationElapsedMs(),
+                applySlowThreshold = true,
+            )
         }
 
         fun cancelled(metrics: Metrics = Metrics()) {
             if (!finished.compareAndSet(false, true)) return
-            emit("${operation}_CANCELLED", metrics, release(), force = true)
+            emit(
+                "${operation}_CANCELLED",
+                metrics,
+                release(),
+                elapsedMs = operationElapsedMs(),
+                applySlowThreshold = true,
+                force = true,
+            )
         }
 
         /** A non-fatal stage failure: the enclosing operation is still allowed to continue. */
@@ -110,6 +164,8 @@ internal object CacheOperationDiagnostics {
                 event,
                 metrics,
                 CacheOperationDiagnostics.activeOperations[activeKey]?.get() ?: activeAtStart,
+                elapsedMs = operationElapsedMs(),
+                applySlowThreshold = false,
                 error = error,
                 force = true,
             )
@@ -117,8 +173,34 @@ internal object CacheOperationDiagnostics {
 
         fun fail(error: Throwable, metrics: Metrics = Metrics()) {
             if (!finished.compareAndSet(false, true)) return
-            emit("${operation}_FAILED", metrics, release(), error = error, force = true)
+            emit(
+                "${operation}_FAILED",
+                metrics,
+                release(),
+                elapsedMs = operationElapsedMs(),
+                applySlowThreshold = true,
+                error = error,
+                force = true,
+            )
         }
+
+        private fun emitStage(event: String, stage: String, metrics: Metrics) {
+            emit(
+                event,
+                metrics,
+                CacheOperationDiagnostics.activeOperations[activeKey]?.get() ?: activeAtStart,
+                elapsedMs = stageElapsedMs(stage),
+                applySlowThreshold = true,
+            )
+        }
+
+        private fun stageElapsedMs(stage: String): Long {
+            val startedAt = stagesStartedAtNanos.remove(stage) ?: return 0L
+            return (System.nanoTime() - startedAt) / 1_000_000L
+        }
+
+        private fun operationElapsedMs(): Long =
+            (System.nanoTime() - startedAtNanos) / 1_000_000L
 
         private fun release(): Int = CacheOperationDiagnostics.activeOperations[activeKey]
             ?.decrementAndGet()
@@ -129,12 +211,15 @@ internal object CacheOperationDiagnostics {
             event: String,
             metrics: Metrics,
             active: Int,
+            elapsedMs: Long,
+            applySlowThreshold: Boolean,
             error: Throwable? = null,
             force: Boolean = false,
         ) {
-            val elapsedMs = (System.nanoTime() - startedAtNanos) / 1_000_000L
+            val operationElapsedMs = operationElapsedMs()
             val heap = CacheOperationDiagnostics.heap()
-            val warn = error != null || elapsedMs >= CacheOperationDiagnostics.SLOW_OPERATION_MS ||
+            val warn = error != null ||
+                (applySlowThreshold && elapsedMs >= CacheOperationDiagnostics.SLOW_OPERATION_MS) ||
                 CacheOperationDiagnostics.isLarge(metrics) ||
                 heap.percent >= CacheOperationDiagnostics.HIGH_HEAP_PERCENT
             if (!force && !sampled && !warn) return
@@ -158,6 +243,7 @@ internal object CacheOperationDiagnostics {
                 metrics.outputBytes?.let { append(" outputBytes=").append(it) }
                 metrics.persisted?.let { append(" persisted=").append(it) }
                 append(" elapsedMs=").append(elapsedMs)
+                append(" operationElapsedMs=").append(operationElapsedMs)
                 append(" active=").append(active)
                 append(" heapUsedBytes=").append(heap.usedBytes)
                 append(" heapMaxBytes=").append(heap.maxBytes)

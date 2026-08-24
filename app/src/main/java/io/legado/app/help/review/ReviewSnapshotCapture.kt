@@ -137,6 +137,7 @@ object ReviewSnapshotCapture {
                 it.forChapter(chapter.index),
                 "CAPTURE",
                 CacheOperationDiagnostics.Metrics(inputChars = initialHtml?.length),
+                startAlways = true,
             )
         }
         return try {
@@ -453,7 +454,7 @@ object ReviewSnapshotCapture {
         /** 收集图片与样式表并内联，然后取最终 HTML */
         private fun inlineResources() {
             if (destroyed) return
-            diagnostics?.mark("HEAVY_STAGE_WAIT")
+            diagnostics?.stageStart("HEAVY_STAGE_WAIT", startAlways = true)
             // 只限流会创建完整 Java 大对象的阶段；此时之前的页面加载与展开可以继续并行。
             Thread {
                 try {
@@ -462,6 +463,7 @@ object ReviewSnapshotCapture {
                         heavyStagePermits.release()
                     } else {
                         heavyStagePermitHeld.set(true)
+                        diagnostics?.stageDone("HEAVY_STAGE_WAIT")
                         diagnostics?.mark("HEAVY_STAGE_ACQUIRED")
                         mHandler.post {
                             if (destroyed) {
@@ -473,6 +475,7 @@ object ReviewSnapshotCapture {
                     }
                 } catch (e: InterruptedException) {
                     Thread.currentThread().interrupt()
+                    diagnostics?.stageFail("HEAVY_STAGE_WAIT", e)
                     mHandler.post { fail(e) }
                 }
             }.start()
@@ -614,13 +617,12 @@ object ReviewSnapshotCapture {
             if (destroyed) return
             // 在 WebView DOM 内去掉脚本后再取 outerHTML，避免 Java Regex 对整份页面连续
             // 复制。JSON 解码也移出主线程，不能在 evaluateJavascript 回调中阻塞 UI。
-            diagnostics?.mark("DOM_SANITIZE_START")
+            diagnostics?.stageStart("SANITIZE")
             webView.evaluateJavascript(SERIALIZE_SNAPSHOT_JS) { raw ->
                 diagnostics?.mark(
                     "WEBVIEW_HTML_READY",
                     CacheOperationDiagnostics.Metrics(inputChars = raw?.length),
                 )
-                diagnostics?.mark("SANITIZE_START")
                 Thread {
                     runCatching { decodeJavascriptString(raw) }
                         .onSuccess { html ->
@@ -629,15 +631,18 @@ object ReviewSnapshotCapture {
                                 if (html.isNullOrBlank()) {
                                     fail(NoStackTraceException("评论页快照序列化为空 $url"))
                                 } else {
-                                    diagnostics?.mark(
-                                        "SANITIZE_DONE",
+                                    diagnostics?.stageDone(
+                                        "SANITIZE",
                                         CacheOperationDiagnostics.Metrics(outputChars = html.length),
                                     )
                                     finish(html)
                                 }
                             }
                         }
-                        .onFailure { error -> mHandler.post { fail(error) } }
+                        .onFailure { error ->
+                            diagnostics?.stageFail("SANITIZE", error)
+                            mHandler.post { fail(error) }
+                        }
                 }.start()
             }
         }
