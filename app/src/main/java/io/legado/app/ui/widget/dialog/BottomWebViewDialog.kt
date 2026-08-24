@@ -43,6 +43,7 @@ import io.legado.app.data.entities.BaseSource
 import io.legado.app.databinding.DialogWebViewBinding
 import io.legado.app.help.WebCacheManager
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.review.ReviewSnapshotManager
 import io.legado.app.help.webView.PooledWebView
 import io.legado.app.help.webView.WebJsExtensions
 import io.legado.app.help.webView.WebJsExtensions.Companion.JS_INJECTION
@@ -90,6 +91,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import java.io.ByteArrayInputStream
 import java.lang.ref.WeakReference
 import java.net.URLDecoder
@@ -608,7 +610,13 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
                 var fetchedHtml = htmlArgument
                 if (fetchedHtml == null) {
                     fetchedHtml = runCatching {
-                        analyzeUrl.getStrResponseAwait().body
+                        if (fallbackHtml.isNullOrBlank()) {
+                            analyzeUrl.getStrResponseAwait().body
+                        } else {
+                            withTimeout(ReviewSnapshotManager.NETWORK_FALLBACK_LOAD_TIMEOUT_MS) {
+                                analyzeUrl.getStrResponseAwait().body
+                            }
+                        }
                     }.getOrElse { e ->
                         fallbackHtml?.takeIf { it.isNotBlank() }?.also {
                             // 已用快照兜底：进入离线模式，不再允许任何网络请求
@@ -766,7 +774,10 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         if (fallbackHtml == null) return
         fallbackTimeoutRunnable?.let { mHandler.removeCallbacks(it) }
         fallbackTimeoutRunnable = Runnable { applyFallbackSnapshot() }
-        mHandler.postDelayed(fallbackTimeoutRunnable!!, FALLBACK_TIMEOUT_MS)
+        mHandler.postDelayed(
+            fallbackTimeoutRunnable!!,
+            ReviewSnapshotManager.NETWORK_FALLBACK_LOAD_TIMEOUT_MS
+        )
     }
 
     private fun cancelFallbackTimeout() {
@@ -794,7 +805,6 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
     }
 
     private companion object {
-        const val FALLBACK_TIMEOUT_MS = 60_000L
         const val ARG_HTML_FILE = "htmlFile"
         const val ARG_FALLBACK_HTML_FILE = "fallbackHtmlFile"
         const val ARG_LEGACY_HTML = "html"

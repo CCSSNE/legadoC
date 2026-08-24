@@ -27,6 +27,7 @@ import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppConst.imagePathKey
 import io.legado.app.databinding.ActivityWebViewBinding
 import io.legado.app.help.http.CookieStore
+import io.legado.app.help.review.ReviewSnapshotManager
 import io.legado.app.help.source.SourceVerificationHelp
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
@@ -72,8 +73,6 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
     companion object {
         // 是否输出日志
         var sessionShowWebLog = false
-        /** 评论“网络优先”兜底：主框架加载超过该时长未完成即切换本地快照 */
-        private const val FALLBACK_TIMEOUT_MS = 60_000L
     }
 
     private lateinit var pooledWebView: PooledWebView
@@ -109,7 +108,10 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
         if (fallbackHtml == null) return
         fallbackTimeoutRunnable?.let { mHandler.removeCallbacks(it) }
         fallbackTimeoutRunnable = Runnable { applyFallbackSnapshot() }
-        mHandler.postDelayed(fallbackTimeoutRunnable!!, FALLBACK_TIMEOUT_MS)
+        mHandler.postDelayed(
+            fallbackTimeoutRunnable!!,
+            ReviewSnapshotManager.NETWORK_FALLBACK_LOAD_TIMEOUT_MS
+        )
     }
 
     private fun cancelFallbackTimeout() {
