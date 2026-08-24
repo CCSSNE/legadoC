@@ -36,7 +36,9 @@ import org.apache.commons.text.StringEscapeUtils
 import splitties.init.appCtx
 import java.io.ByteArrayInputStream
 import java.io.StringReader
+import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -66,6 +68,11 @@ object ReviewSnapshotCapture {
     private const val MAX_TOTAL_INLINE_BYTES = 30L * 1024 * 1024
     /** 单个内联资源抓取超时：内联失败只丢该资源，不拖整章 */
     private const val RESOURCE_FETCH_TIMEOUT_MS = 8_000L
+    /**
+     * 内联资源构建、outerHTML 回传和 JSON 解码会短时保留完整页面及其副本；这是本进程
+     * 唯一的重内存区段。页面加载/展开仍可并行，只有进入该区段才排队。
+     */
+    private val heavyStagePermits = Semaphore(1, true)
 
     /**
      * 抓取结果（供诊断日志）：快照 + 展开检测轮数 + 实际点击“展开/加载更多”次数。
@@ -261,6 +268,7 @@ object ReviewSnapshotCapture {
         private var lastNodes = -1
 
         private var jsInjectedForPage = false
+        private val heavyStagePermitHeld = AtomicBoolean(false)
 
         val client = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, finishedUrl: String?) {
@@ -346,17 +354,20 @@ object ReviewSnapshotCapture {
 
         fun destroy() {
             destroyed = true
+            releaseHeavyStagePermit()
         }
 
         private fun finish(html: String?) {
             if (destroyed) return
             destroyed = true
+            releaseHeavyStagePermit()
             done(html, null, expandRounds, totalExpandClicks)
         }
 
         private fun fail(error: Throwable) {
             if (destroyed) return
             destroyed = true
+            releaseHeavyStagePermit()
             done(null, error, expandRounds, totalExpandClicks)
         }
 
@@ -417,6 +428,31 @@ object ReviewSnapshotCapture {
         /** 收集图片与样式表并内联，然后取最终 HTML */
         private fun inlineResources() {
             if (destroyed) return
+            // 只限流会创建完整 Java 大对象的阶段；此时之前的页面加载与展开可以继续并行。
+            Thread {
+                try {
+                    heavyStagePermits.acquire()
+                    if (destroyed) {
+                        heavyStagePermits.release()
+                    } else {
+                        heavyStagePermitHeld.set(true)
+                        mHandler.post {
+                            if (destroyed) {
+                                releaseHeavyStagePermit()
+                            } else {
+                                collectAndInlineResources()
+                            }
+                        }
+                    }
+                } catch (e: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    mHandler.post { fail(e) }
+                }
+            }.start()
+        }
+
+        private fun collectAndInlineResources() {
+            if (destroyed) return
             webView.evaluateJavascript(COLLECT_RESOURCES_JS) { json ->
                 mHandler.post {
                     if (destroyed) return@post
@@ -431,6 +467,12 @@ object ReviewSnapshotCapture {
                         }
                     }.start()
                 }
+            }
+        }
+
+        private fun releaseHeavyStagePermit() {
+            if (heavyStagePermitHeld.compareAndSet(true, false)) {
+                heavyStagePermits.release()
             }
         }
 
