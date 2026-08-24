@@ -35,10 +35,19 @@ class BookGroupSelectDialog() : BaseBottomSheetDialogFragment(R.layout.dialog_bo
         }
     }
 
+    constructor(bookUrls: ArrayList<String>, shortcutIds: LongArray) : this() {
+        arguments = Bundle().apply {
+            putStringArrayList("bookUrls", bookUrls)
+            putLongArray("shortcutIds", shortcutIds)
+        }
+    }
+
     private val binding by viewBinding(DialogBookGroupSelectBinding::bind)
     private val adapter by lazy { GroupAdapter() }
     private val bookUrls: List<String>
         get() = arguments?.getStringArrayList("bookUrls").orEmpty()
+    private val shortcutIds: LongArray
+        get() = arguments?.getLongArray("shortcutIds") ?: longArrayOf()
 
     override fun onStart() {
         super.onStart()
@@ -108,6 +117,11 @@ class BookGroupSelectDialog() : BaseBottomSheetDialogFragment(R.layout.dialog_bo
         if (updatedBooks.isNotEmpty()) {
             appDb.bookDao.update(*updatedBooks.toTypedArray())
         }
+        shortcutIds.mapNotNull { shortcutId ->
+            appDb.bookShortcutDao.get(shortcutId)?.let {
+                it.copy(group = it.group or groupId)
+            }
+        }.forEach(appDb.bookShortcutDao::update)
         withContext(Dispatchers.Main) {
             postEvent(EventBus.BOOKSHELF_REFRESH, "")
             toastOnUi(R.string.book_group_added)

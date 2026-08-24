@@ -26,7 +26,33 @@ object DatabaseMigrations {
             migration_98_99, migration_99_100, migration_100_101, migration_101_102,
             migration_102_103, migration_103_104,
             migration_104_105,
+            migration_105_106,
         )
+    }
+
+    private val migration_105_106 = object : Migration(105, 106) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `book_shortcuts` (
+                    `shortcutId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `bookUrl` TEXT NOT NULL,
+                    `group` INTEGER NOT NULL DEFAULT 0,
+                    `order` INTEGER NOT NULL DEFAULT 0,
+                    `createdTime` INTEGER NOT NULL DEFAULT 0,
+                    FOREIGN KEY(`bookUrl`) REFERENCES `books`(`bookUrl`) ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_book_shortcuts_bookUrl` " +
+                    "ON `book_shortcuts` (`bookUrl`)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_book_shortcuts_group` " +
+                    "ON `book_shortcuts` (`group`)"
+            )
+        }
     }
 
     private val migration_104_105 = object : Migration(104, 105) {

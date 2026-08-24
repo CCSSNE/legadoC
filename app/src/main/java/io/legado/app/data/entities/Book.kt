@@ -130,18 +130,22 @@ data class Book(
     var readConfig: ReadConfig? = null,
     //同步时间
     @ColumnInfo(defaultValue = "0")
-    var syncTime: Long = 0L
+    var syncTime: Long = 0L,
+    @Ignore
+    @Transient
+    @IgnoredOnParcel
+    var shortcutId: Long = 0L
 ) : Parcelable, BaseBook {
 
     override fun equals(other: Any?): Boolean {
         if (other is Book) {
-            return other.bookUrl == bookUrl
+            return other.bookUrl == bookUrl && other.shortcutId == shortcutId
         }
         return false
     }
 
     override fun hashCode(): Int {
-        return bookUrl.hashCode()
+        return 31 * bookUrl.hashCode() + shortcutId.hashCode()
     }
 
     @delegate:Transient
