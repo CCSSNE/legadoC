@@ -157,6 +157,7 @@ object CacheCoordinator : CacheUiPort {
     private val reviewTaskLock = Any()
     private val automaticSubmitLock = Any()
     private val resourceGcScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val terminalEffectsScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     /** 防止同一本书在短时间内重复排队 GC。 */
     private val resourceGcScheduled = ConcurrentHashMap.newKeySet<String>()
     private val terminalEffectsInProgress = ConcurrentHashMap.newKeySet<String>()
@@ -507,24 +508,26 @@ object CacheCoordinator : CacheUiPort {
         effectKey: String,
     ) {
         if (!terminalEffectsRetryScheduled.add(effectKey)) return
-        val attempt = terminalEffectsRetryAttempts.merge(effectKey, 1, Int::plus) ?: 1
-        val delaySeconds = when (attempt) {
-            1 -> 1L
-            2 -> 2L
-            3 -> 5L
-            else -> 15L
-        }
-        resourceGcScope.launch {
+        terminalEffectsScope.launch {
             try {
-                kotlinx.coroutines.delay(TimeUnit.SECONDS.toMillis(delaySeconds))
-                val pending = store.currentTask(submission.sessionId, submission.taskId)
-                    ?.let { CacheLifecycleRules.isTerminal(it.status) && it.terminalEffectsPending }
-                    ?: false
-                if (pending) {
-                    terminalEffectsRetryScheduled.remove(effectKey)
+                while (true) {
+                    val attempt = terminalEffectsRetryAttempts
+                        .merge(effectKey, 1, Int::plus) ?: 1
+                    val delaySeconds = when (attempt) {
+                        1 -> 1L
+                        2 -> 2L
+                        3 -> 5L
+                        else -> 15L
+                    }
+                    kotlinx.coroutines.delay(TimeUnit.SECONDS.toMillis(delaySeconds))
                     processTerminalEffects(submission)
-                } else {
-                    terminalEffectsRetryAttempts.remove(effectKey)
+                    val pending = store.currentTask(submission.sessionId, submission.taskId)
+                        ?.let { CacheLifecycleRules.isTerminal(it.status) && it.terminalEffectsPending }
+                        ?: false
+                    if (!pending) {
+                        terminalEffectsRetryAttempts.remove(effectKey)
+                        return@launch
+                    }
                 }
             } finally {
                 terminalEffectsRetryScheduled.remove(effectKey)
