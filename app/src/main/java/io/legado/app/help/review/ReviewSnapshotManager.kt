@@ -10,6 +10,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.BookImgClick
 import io.legado.app.help.cache.CacheOperationDiagnostics
+import io.legado.app.help.cache.CacheNotificationBridge
 import io.legado.app.help.cache.CacheWorkerLease
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.StrResponse
@@ -86,6 +87,20 @@ object ReviewSnapshotManager {
      * 用于通知/缓存页显示的“评论 x/y”，只统计真实存在至少一个有效快照的章。
      */
     private val cachedReviewChaptersMap = ConcurrentHashMap<String, MutableSet<String>>()
+
+    /**
+     * Ephemeral per-chapter progress for the foreground notification. Unit state remains the
+     * Coordinator's source of truth; a unit represents a chapter and cannot express its several
+     * independent review snapshots.
+     */
+    internal data class NotificationProgress(
+        val chapterIndex: Int,
+        val completedSnapshots: Int,
+        val totalSnapshots: Int,
+        val updatedAt: Long = System.currentTimeMillis(),
+    )
+
+    private val notificationProgressByChapter = ConcurrentHashMap<String, NotificationProgress>()
 
     /**
      * 该书有评论快照的章数（内存计数，缺失时惰性扫描文件补齐）。
@@ -239,10 +254,11 @@ object ReviewSnapshotManager {
             if (cancelledTasks.contains(taskKey(lease))) {
                 false
             } else {
-                processTask(task.key, task.force, outcomeKey, diagnostics)
+                processTask(task.key, task.force, outcomeKey, diagnostics, lease)
                 taskOutcomes.remove(outcomeKey) == true
             }
         } finally {
+            clearNotificationProgress(lease, task.key.substringAfter('|').toIntOrNull())
             cancelledTasks.remove(taskKey(lease))
         }
     }
@@ -250,6 +266,50 @@ object ReviewSnapshotManager {
     private fun keyOf(book: Book, chapter: BookChapter) = "${book.bookUrl}|${chapter.index}"
 
     private fun taskKey(lease: CacheWorkerLease): String = "${lease.sessionId}/${lease.taskId}"
+
+    private fun notificationProgressKey(lease: CacheWorkerLease, chapterIndex: Int): String =
+        "${lease.sessionId}/${lease.taskId}/${lease.generation}/$chapterIndex"
+
+    internal fun notificationProgress(lease: CacheWorkerLease): NotificationProgress? {
+        val prefix = "${lease.sessionId}/${lease.taskId}/${lease.generation}/"
+        return notificationProgressByChapter.entries.asSequence()
+            .filter { it.key.startsWith(prefix) }
+            .map { it.value }
+            .maxByOrNull { it.updatedAt }
+    }
+
+    private fun startNotificationProgress(
+        lease: CacheWorkerLease,
+        chapterIndex: Int,
+        totalSnapshots: Int,
+        completedSnapshots: Int,
+    ) {
+        notificationProgressByChapter[notificationProgressKey(lease, chapterIndex)] = NotificationProgress(
+            chapterIndex = chapterIndex,
+            completedSnapshots = completedSnapshots.coerceIn(0, totalSnapshots),
+            totalSnapshots = totalSnapshots,
+        )
+        CacheNotificationBridge.renderCurrent()
+    }
+
+    private fun completeNotificationSnapshot(lease: CacheWorkerLease, chapterIndex: Int) {
+        val key = notificationProgressKey(lease, chapterIndex)
+        notificationProgressByChapter.computeIfPresent(key) { _, current ->
+            current.copy(
+                completedSnapshots = (current.completedSnapshots + 1)
+                    .coerceAtMost(current.totalSnapshots),
+                updatedAt = System.currentTimeMillis(),
+            )
+        }
+        CacheNotificationBridge.renderCurrent()
+    }
+
+    private fun clearNotificationProgress(lease: CacheWorkerLease, chapterIndex: Int?) {
+        if (chapterIndex == null) return
+        if (notificationProgressByChapter.remove(notificationProgressKey(lease, chapterIndex)) != null) {
+            CacheNotificationBridge.renderCurrent()
+        }
+    }
 
     /** 用户明确刷新某章：登记“评论待刷新”并落盘，状态保持到该章评论真正处理成功后清除 */
     fun markUserRefresh(bookUrl: String, chapterIndex: Int) {
@@ -306,12 +366,13 @@ object ReviewSnapshotManager {
         force: Boolean,
         outcomeKey: String,
         diagnostics: CacheOperationDiagnostics.Context,
+        lease: CacheWorkerLease,
     ) {
         taskOutcomes[outcomeKey] = false
         // 一章一次评论缓存任务 = 日志一条（多行详情），进入 AppLog 日志页可展开查看
         val sb = StringBuilder()
         val unexpected = runCatching {
-            processTaskWithLog(key, force, sb, outcomeKey, diagnostics)
+            processTaskWithLog(key, force, sb, outcomeKey, diagnostics, lease)
         }.exceptionOrNull()
         if (unexpected != null) {
             sb.append("\n异常：").append(unexpected.stackTraceToString())
@@ -328,6 +389,7 @@ object ReviewSnapshotManager {
         sb: StringBuilder,
         outcomeKey: String,
         diagnostics: CacheOperationDiagnostics.Context,
+        lease: CacheWorkerLease,
     ) {
         val bookUrl = key.substringBefore('|')
         val chapterIndex = key.substringAfter('|').toIntOrNull()
@@ -385,8 +447,22 @@ object ReviewSnapshotManager {
         }
         sb.append('\n')
         val buttons = extraction.buttons
-        val needProcess = buttons.filter {
-            it.hasAction && (force || !ReviewSnapshotStore.has(book, chapter, it.src))
+        val snapshotButtons = buttons.filter { it.hasAction }
+        val existingSnapshots = if (force) {
+            0
+        } else {
+            snapshotButtons.count { ReviewSnapshotStore.has(book, chapter, it.src) }
+        }
+        val needProcess = snapshotButtons.filter { button ->
+            force || !ReviewSnapshotStore.has(book, chapter, button.src)
+        }
+        if (snapshotButtons.isNotEmpty()) {
+            startNotificationProgress(
+                lease,
+                chapter.index,
+                totalSnapshots = snapshotButtons.size,
+                completedSnapshots = existingSnapshots,
+            )
         }
         var completedButtons = 0
         var failedButtons = 0
@@ -400,7 +476,16 @@ object ReviewSnapshotManager {
         val outcomes = buttons
             .asFlow()
             .mapAsyncIndexed(buttonConcurrency) { index, button ->
-                processButton(book, bookSource, chapter, index, button, force, diagnostics)
+                processButton(
+                    book,
+                    bookSource,
+                    chapter,
+                    index,
+                    button,
+                    force,
+                    diagnostics,
+                    onSnapshotSaved = { completeNotificationSnapshot(lease, chapter.index) },
+                )
             }
             .toList()
             .sortedBy { it.index }
@@ -454,8 +539,18 @@ object ReviewSnapshotManager {
         button: ReviewButton,
         force: Boolean,
         diagnostics: CacheOperationDiagnostics.Context,
+        onSnapshotSaved: () -> Unit,
     ): ButtonOutcome = withPipelinePermit {
-        processButtonInPipeline(book, bookSource, chapter, buttonIndex, button, force, diagnostics)
+        processButtonInPipeline(
+            book,
+            bookSource,
+            chapter,
+            buttonIndex,
+            button,
+            force,
+            diagnostics,
+            onSnapshotSaved,
+        )
     }
 
     private suspend fun processButtonInPipeline(
@@ -466,6 +561,7 @@ object ReviewSnapshotManager {
         button: ReviewButton,
         force: Boolean,
         diagnostics: CacheOperationDiagnostics.Context,
+        onSnapshotSaved: () -> Unit,
     ): ButtonOutcome {
         if (!button.hasAction) return ButtonOutcome(buttonIndex, "")
         val sb = StringBuilder()
@@ -539,6 +635,7 @@ object ReviewSnapshotManager {
             ReviewSnapshotStore.put(book, capture.snapshot, diagnostics.forChapter(chapter.index))
         }
         if (putResult.isSuccess) {
+            onSnapshotSaved()
             sb.append("7. SnapshotStore.put：成功\n")
             return ButtonOutcome(buttonIndex, sb.toString(), success = true)
         }
