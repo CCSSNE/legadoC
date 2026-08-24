@@ -53,12 +53,9 @@ data class ReviewChapterSnapshotStatus(
 
 data class ReviewSnapshotCounts(
     private val byChapterUrl: Map<String, Int>,
-    private val byChapterIndex: Map<Int, Int>,
 ) {
     fun forChapter(chapter: BookChapter): Int {
-        return byChapterUrl[chapter.url.trim()]
-            ?: byChapterIndex[chapter.index]
-            ?: 0
+        return byChapterUrl[chapter.url.trim()] ?: 0
     }
 }
 
@@ -85,22 +82,17 @@ object ReviewSnapshotStore {
         return "$FILE_PREFIX${MD5Utils.md5Encode16("${chapterUrl.trim()}|${buttonSrc.trim()}")}$FILE_SUFFIX"
     }
 
-    /** 旧版（v1）文件名：以章节 index 为主键，仅兼容读取/导出旧快照 */
-    fun legacyFileNameForExport(chapterIndex: Int, buttonSrc: String): String {
-        return legacyFileName(chapterIndex, buttonSrc)
-    }
-
-    private fun legacyFileName(chapterIndex: Int, buttonSrc: String): String {
-        return "$FILE_PREFIX${MD5Utils.md5Encode16("${chapterIndex}|${buttonSrc.trim()}")}$FILE_SUFFIX"
-    }
-
     private fun statusFileName(chapterUrl: String): String {
         return "$STATUS_FILE_PREFIX${MD5Utils.md5Encode16(chapterUrl.trim())}$FILE_SUFFIX"
     }
 
+    fun isSnapshotFile(file: File): Boolean {
+        return file.name.startsWith(FILE_PREFIX) && file.name.endsWith(FILE_SUFFIX)
+    }
+
     private fun reviewFiles(book: Book): Array<File> {
         return reviewsDir(book).listFiles()
-            ?.filter { it.name.startsWith(FILE_PREFIX) && it.name.endsWith(FILE_SUFFIX) }
+            ?.filter(::isSnapshotFile)
             ?.toTypedArray()
             ?: emptyArray()
     }
@@ -110,6 +102,16 @@ object ReviewSnapshotStore {
             ?.filter { it.name.startsWith(STATUS_FILE_PREFIX) && it.name.endsWith(FILE_SUFFIX) }
             ?.toTypedArray()
             ?: emptyArray()
+    }
+
+    internal fun hasPersistedReviewData(book: Book): Boolean {
+        return reviewFiles(book).isNotEmpty() || statusFiles(book).isNotEmpty()
+    }
+
+    private fun requireCurrentFormatIfReviewData(book: Book) {
+        if (hasPersistedReviewData(book)) {
+            ReviewSnapshotResourceStore.requireDatabase(book)
+        }
     }
 
     internal fun put(
@@ -131,20 +133,15 @@ object ReviewSnapshotStore {
         val dir = reviewsDir(book)
         try {
             if (!dir.exists()) dir.mkdirs()
-            val name = if (snapshot.chapterUrl.isNotBlank()) {
-                fileName(snapshot.chapterUrl, snapshot.buttonSrc)
-            } else {
-                legacyFileName(snapshot.chapterIndex, snapshot.buttonSrc)
-            }
+            require(snapshot.chapterUrl.isNotBlank()) { "review snapshot requires chapterUrl" }
+            ReviewSnapshotResourceStore.requireDatabase(book)
+            val name = fileName(snapshot.chapterUrl, snapshot.buttonSrc)
             val target = File(dir, name)
             // 快照 HTML 可能很大。Gson 直接写入 Writer，避免先构造整份 JSON String 和 UTF-8
             // ByteArray；它们会在原 HTML 仍存活时额外复制完整快照，放大 Java heap 峰值。
             target.bufferedWriter(Charsets.UTF_8).use { writer ->
                 GSON.toJson(snapshot, writer)
             }
-            // 主键变化后清理旧 index 键文件，避免重复占用
-            val legacy = File(dir, legacyFileName(snapshot.chapterIndex, snapshot.buttonSrc))
-            if (legacy.exists() && legacy.name != name) legacy.delete()
             trace.done(CacheOperationDiagnostics.Metrics(outputBytes = target.length()))
         } catch (error: Throwable) {
             trace.fail(error)
@@ -153,13 +150,10 @@ object ReviewSnapshotStore {
     }
 
     fun get(book: Book, chapter: BookChapter, buttonSrc: String): ReviewSnapshot? {
+        requireCurrentFormatIfReviewData(book)
         val dir = reviewsDir(book)
         val file = File(dir, fileName(chapter.url, buttonSrc))
-        if (!file.isFile) {
-            // 兼容旧版 index 键快照
-            val legacy = File(dir, legacyFileName(chapter.index, buttonSrc))
-            return readSnapshot(legacy)
-        }
+        if (!file.isFile) return null
         return readSnapshot(file)
     }
 
@@ -176,28 +170,25 @@ object ReviewSnapshotStore {
         // 文件名已经是章节 URL + 按钮 src 的确定性主键；不能为了判断“是否存在”而把
         // 整份内联 HTML 读入内存再解析一次。写入失败会向调用方抛出，正常落盘的文件
         // 即是可复用快照；真正打开时仍由 [get] 完整解析并直接暴露损坏文件。
+        requireCurrentFormatIfReviewData(book)
         val dir = reviewsDir(book)
-        return File(dir, fileName(chapter.url, buttonSrc)).isFile ||
-            File(dir, legacyFileName(chapter.index, buttonSrc)).isFile
+        val file = File(dir, fileName(chapter.url, buttonSrc))
+        if (!file.isFile) return false
+        return true
     }
 
     fun delete(book: Book, chapter: BookChapter, buttonSrc: String) {
         File(reviewsDir(book), fileName(chapter.url, buttonSrc)).delete()
-        File(reviewsDir(book), legacyFileName(chapter.index, buttonSrc)).delete()
     }
 
     /**
      * 删除该章节（含章内全部评论按钮）的快照。
-     * 主键是整体 md5，无法按文件名前缀过滤，因此逐条解析后按 chapterUrl/index 匹配。
+     * 主键是整体 md5，无法按文件名前缀过滤，因此逐条解析后按 chapterUrl 匹配。
      */
     fun deleteChapter(book: Book, chapter: BookChapter) {
         reviewFiles(book).forEach { file ->
             readMetadata(file)?.let { snapshot ->
-                val matches = when {
-                    snapshot.chapterUrl.isNotBlank() ->
-                        snapshot.chapterUrl.trim() == chapter.url.trim()
-                    else -> snapshot.chapterIndex == chapter.index
-                }
+                val matches = snapshot.chapterUrl.trim() == chapter.url.trim()
                 if (matches) file.delete()
             }
         }
@@ -209,34 +200,35 @@ object ReviewSnapshotStore {
      * 缓存页统计不会把整书所有快照同时留在 heap 中。
      */
     fun chapterUrls(book: Book): Set<String> {
+        requireCurrentFormatIfReviewData(book)
         return reviewFiles(book)
             .asSequence()
             .mapNotNull(::readMetadata)
-            .map { it.chapterUrl }
-            .filter { it.isNotBlank() }
+            .map { snapshot ->
+                snapshot.chapterUrl.trim().also { chapterUrl ->
+                    require(chapterUrl.isNotBlank()) { "评论快照缺少 chapterUrl" }
+                }
+            }
             .toSet()
     }
 
     /** Counts persisted snapshots without reading their potentially huge HTML fields. */
     fun snapshotCounts(book: Book): ReviewSnapshotCounts {
+        requireCurrentFormatIfReviewData(book)
         val byChapterUrl = hashMapOf<String, Int>()
-        val byChapterIndex = hashMapOf<Int, Int>()
         reviewFiles(book).forEach { file ->
             readMetadata(file)?.let { snapshot ->
-                if (snapshot.chapterUrl.isNotBlank()) {
-                    val key = snapshot.chapterUrl.trim()
-                    byChapterUrl[key] = (byChapterUrl[key] ?: 0) + 1
-                } else {
-                    byChapterIndex[snapshot.chapterIndex] =
-                        (byChapterIndex[snapshot.chapterIndex] ?: 0) + 1
-                }
+                val key = snapshot.chapterUrl.trim()
+                require(key.isNotBlank()) { "评论快照缺少 chapterUrl: ${file.absolutePath}" }
+                byChapterUrl[key] = (byChapterUrl[key] ?: 0) + 1
             }
         }
-        return ReviewSnapshotCounts(byChapterUrl, byChapterIndex)
+        return ReviewSnapshotCounts(byChapterUrl)
     }
 
     /** Latest completed capture result for every chapter that has been attempted. */
     fun chapterStatuses(book: Book): List<ReviewChapterSnapshotStatus> {
+        requireCurrentFormatIfReviewData(book)
         return statusFiles(book).mapNotNull(::readChapterStatus)
     }
 
@@ -257,6 +249,7 @@ object ReviewSnapshotStore {
     fun putChapterStatus(book: Book, status: ReviewChapterSnapshotStatus) {
         require(status.chapterUrl.isNotBlank()) { "review status requires chapterUrl" }
         require(status.totalSnapshots > 0) { "review status requires totalSnapshots" }
+        ReviewSnapshotResourceStore.requireDatabase(book)
         val dir = reviewsDir(book)
         if (!dir.exists()) check(dir.mkdirs()) { "cannot create review status directory: ${dir.absolutePath}" }
         File(dir, statusFileName(status.chapterUrl)).bufferedWriter(Charsets.UTF_8).use { writer ->
@@ -266,17 +259,23 @@ object ReviewSnapshotStore {
 
     /** 按原文件字节流导出，避免“读取所有快照 -> 重新序列化所有快照”的全量内存占用。 */
     fun copyAllTo(book: Book, targetDir: File) {
+        val snapshots = reviewFiles(book).asList()
+        val statuses = statusFiles(book).asList()
+        if (snapshots.isEmpty() && statuses.isEmpty()) return
+        check(snapshots.isEmpty() || statuses.isNotEmpty()) {
+            "评论缓存缺少章节状态文件，旧格式不支持导出: ${reviewsDir(book).absolutePath}"
+        }
         check(targetDir.isDirectory || targetDir.mkdirs()) {
             "无法创建评论快照导出目录: ${targetDir.absolutePath}"
         }
-        (reviewFiles(book).asList() + statusFiles(book).asList()).forEach { source ->
+        ReviewSnapshotResourceStore.copyAllTo(book, targetDir)
+        (snapshots + statuses).forEach { source ->
             File(targetDir, source.name).outputStream().buffered().use { output ->
                 source.inputStream().buffered().use { input ->
                     input.copyTo(output)
                 }
             }
         }
-        ReviewSnapshotResourceStore.copyAllTo(book, targetDir)
     }
 
     private data class SnapshotMetadata(
