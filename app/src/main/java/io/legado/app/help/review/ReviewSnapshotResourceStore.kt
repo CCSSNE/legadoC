@@ -264,6 +264,12 @@ object ReviewSnapshotResourceStore {
             ?: error("导入评论缓存缺少 $DATABASE_FILE_NAME，旧的非资源库格式不受支持")
         val imported = readDatabaseFile(indexFile)
         val sourceByName = extractedFiles.associateBy { it.name }
+        val indexedKeys = imported.resources.mapTo(hashSetOf()) { it.key }
+        val referencedKeys = snapshotFiles
+            .flatMapTo(linkedSetOf(), ::resourceKeysIn)
+        require(indexedKeys.containsAll(referencedKeys)) {
+            "review archive snapshots reference resources missing from resources.json"
+        }
         val targetDir = ReviewSnapshotStore.reviewsDir(book)
         check(targetDir.exists() || targetDir.mkdirs()) {
             "无法创建导入评论资源目录: ${targetDir.absolutePath}"
@@ -275,6 +281,9 @@ object ReviewSnapshotResourceStore {
             check(source.isFile && source.length() == entry.byteCount) {
                 "导入评论资源长度异常: ${source.absolutePath}"
             }
+            check(sha256(source) == entry.key) {
+                "review archive resource SHA-256 mismatch: ${source.absolutePath}"
+            }
             val target = blobFile(targetDir, entry.key)
             if (target.exists()) {
                 check(target.isFile && target.length() == entry.byteCount) {
@@ -284,7 +293,17 @@ object ReviewSnapshotResourceStore {
                 copyAtomically(source, target)
             }
         }
+        imported.resources.forEach { entry ->
+            val target = blobFile(targetDir, entry.key)
+            check(target.isFile && sha256(target) == entry.key) {
+                "review archive target resource SHA-256 mismatch: ${target.absolutePath}"
+            }
+        }
         extractedFiles.filter(::isResourceBlob).forEach { source ->
+            val key = blobKeyOf(source) ?: error("invalid review resource blob: ${source.name}")
+            check(sha256(source) == key) {
+                "review archive resource blob SHA-256 mismatch: ${source.absolutePath}"
+            }
             val target = File(targetDir, source.name)
             if (target.exists()) {
                 check(target.isFile && target.length() == source.length()) {
@@ -292,6 +311,12 @@ object ReviewSnapshotResourceStore {
                 }
             } else {
                 copyAtomically(source, target)
+            }
+        }
+        extractedFiles.filter(::isResourceBlob).forEach { source ->
+            val target = File(targetDir, source.name)
+            check(target.isFile && sha256(target) == blobKeyOf(source)) {
+                "review archive target blob SHA-256 mismatch: ${target.absolutePath}"
             }
         }
         val existing = readDatabase(targetDir)
