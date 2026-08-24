@@ -652,6 +652,7 @@ internal class CacheTaskStore(
             sessionId = lease.sessionId,
             taskId = lease.taskId,
             generation = lease.generation,
+            unitKey = displayUnitKey(task),
             mode = mode,
             current = if (mode == CacheProgressMode.CHAPTERS) {
                 task.units.count { it.status == CacheUnitStatus.SUCCEEDED }.toLong()
@@ -674,6 +675,7 @@ internal class CacheTaskStore(
             sessionId = lease.sessionId,
             taskId = lease.taskId,
             generation = lease.generation,
+            unitKey = displayUnitKey(task),
             mode = CacheProgressMode.CHAPTERS,
             current = task.units.count { it.status == CacheUnitStatus.SUCCEEDED }.toLong(),
             total = task.units.size.toLong(),
@@ -682,6 +684,10 @@ internal class CacheTaskStore(
         if (displaySessionId == lease.sessionId && displayProgressKey == null) {
             displayProgressKey = progressKey(lease, null)
         }
+    }
+
+    private fun displayUnitKey(task: CacheTaskState): CacheUnitKey? {
+        return task.units.firstOrNull { !isTerminalUnitStatus(it.status) }?.key
     }
 
     private fun removeTaskProgressLocked(sessionId: String, taskId: String) {
