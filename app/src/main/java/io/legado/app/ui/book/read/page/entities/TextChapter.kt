@@ -187,7 +187,7 @@ data class TextChapter(
         val stringBuilder = StringBuilder()
         if (pages.isNotEmpty()) {
             for (index in pageIndex..min(pageEndIndex, pages.lastIndex)) {
-                stringBuilder.append(pages[index].text.replace(Regex("[袮꧁]"), " "))
+                stringBuilder.append(pages[index].text.replace(Regex("[袮꧁\\u2060]"), " "))
                 if (pageSplit && !stringBuilder.endsWith("\n")) {
                     stringBuilder.append("\n")
                 }

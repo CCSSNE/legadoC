@@ -51,6 +51,11 @@ sealed interface ParagraphSegment {
                 var index = 0
                 while (index < lineText.length) {
                     val char = lineText[index]
+                    if (char == ChapterProvider.hiddenReviewChar) {
+                        // 零评论入口只保留在阅读页段评元数据中，不进入听书正文。
+                        index++
+                        continue
+                    }
                     if (char == ChapterProvider.reviewChar ||
                         char == ChapterProvider.srcReplaceChar ||
                         char == OBJECT_REPLACEMENT_CHAR
