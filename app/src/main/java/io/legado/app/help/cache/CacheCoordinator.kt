@@ -148,7 +148,7 @@ object CacheCoordinator : CacheUiPort {
     /** Shared BODY submission used by both explicit Download actions and automatic refresh. */
     fun submitTextDownload(
         book: Book,
-        chapterIndexes: Collection<Int>,
+        chapterIndexes: Iterable<Int>,
         source: CacheRequestSource,
         reviewEnabled: Boolean = AppConfig.syncCacheReview,
     ): CacheSubmission {
@@ -187,7 +187,7 @@ object CacheCoordinator : CacheUiPort {
      */
     fun submitAutomaticTextDownload(
         book: Book,
-        chapterIndexes: Collection<Int>,
+        chapterIndexes: Iterable<Int>,
         source: CacheRequestSource,
     ): CacheSubmission? = synchronized(automaticTextSubmitLock) {
         if (hasActiveTextDownload(book.bookUrl)) return@synchronized null
