@@ -1,12 +1,19 @@
 package io.legado.app.help.cache
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.review.ReviewSnapshotManager
+import io.legado.app.help.review.ReviewSnapshotResourceStore
 import io.legado.app.help.review.ReviewSnapshotStore
+import java.util.concurrent.ConcurrentHashMap
 
 data class CacheSubmission(
     val sessionId: String,
@@ -115,6 +122,9 @@ object CacheCoordinator : CacheUiPort {
     private val workerDispatcher: CacheWorkerDispatcher =
         CacheWorkerDispatcherImpl(workerPort)
     private val readerReviewLock = Any()
+    private val resourceGcScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    /** 防止同一本书在短时间内重复排队 GC。 */
+    private val resourceGcScheduled = ConcurrentHashMap.newKeySet<String>()
 
     init {
         workerDispatcher.recover(snapshot.value)
@@ -340,6 +350,7 @@ object CacheCoordinator : CacheUiPort {
             appendReviewTask(task.sessionId, task.taskId)
         }
         val finalTask = currentTask(submission)
+        maybeScheduleReviewResourceGc(finalTask)
         CacheNotificationBridge.finished(
             snapshot = snapshot.value,
             progress = progress.value,
@@ -347,6 +358,62 @@ object CacheCoordinator : CacheUiPort {
             result = finalTask?.result ?: result,
             error = error,
         )
+    }
+
+    /**
+     * 本轮“正文 → 评论”收尾钩子：
+     * 只有当整本书最后一个 REVIEW task 进入终态、且同书已无其它在跑/排队的
+     * REVIEW task 时，才在后台做一次评论资源 GC。BODY 结束后还会追加 REVIEW，
+     * 因此 BODY 终态不会触发（[finalTask] 已切换为新追加的 REVIEW task）。
+     * 每本书同一时刻至多排一次，避免终态通知风暴重复 GC。
+     */
+    private fun maybeScheduleReviewResourceGc(task: CacheTaskState?) {
+        if (task == null ||
+            task.kind != CacheKind.TEXT ||
+            task.phase != CachePhase.REVIEW ||
+            !CacheLifecycleRules.isTerminal(task.status)
+        ) {
+            return
+        }
+        val bookUrl = task.bookUrl
+        if (hasActiveReviewTask(bookUrl)) return
+        if (!resourceGcScheduled.add(bookUrl)) return
+        resourceGcScope.launch {
+            try {
+                // 队列可能与真实执行之间隔了用户新发起的 REVIEW；到点再确认一次。
+                if (hasActiveReviewTask(bookUrl)) return@launch
+                val book = appDb.bookDao.getBook(bookUrl) ?: return@launch
+                val result = ReviewSnapshotResourceStore.gc(book) {
+                    !hasActiveReviewTask(bookUrl)
+                }
+                AppLogCacheLogSink.record(
+                    CacheLogEvent(
+                        type = CacheLogEventType.REVIEW_RESOURCE_GC,
+                        detail = "book=$bookUrl " +
+                            "aborted=${result.aborted} " +
+                            "snapshots=${result.scannedSnapshots} " +
+                            "blobs=${result.scannedBlobs} " +
+                            "referenced=${result.referencedKeys} " +
+                            "removedBlobs=${result.removedBlobs} " +
+                            "removedEntries=${result.removedEntries} " +
+                            "removedBytes=${result.removedBytes}",
+                    )
+                )
+            } finally {
+                resourceGcScheduled.remove(bookUrl)
+            }
+        }
+    }
+
+    private fun hasActiveReviewTask(bookUrl: String): Boolean {
+        return snapshot.value.sessions.asSequence()
+            .flatMap { it.tasks.asSequence() }
+            .any {
+                it.kind == CacheKind.TEXT &&
+                    it.phase == CachePhase.REVIEW &&
+                    it.bookUrl == bookUrl &&
+                    !CacheLifecycleRules.isTerminal(it.status)
+            }
     }
 
     private fun validateUiRequest(request: CacheRequest) {
