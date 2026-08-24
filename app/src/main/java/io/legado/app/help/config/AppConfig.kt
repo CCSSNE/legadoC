@@ -1597,6 +1597,12 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         get() = appCtx.getPrefBoolean(PreferKey.audioPlayShowChapterTitle, false)
         set(value) = appCtx.putPrefBoolean(PreferKey.audioPlayShowChapterTitle, value)
 
+    // 听书播放页评论气泡是否反色绘制：段评按钮图常为固定灰色系（#666666）描边与文字，
+    // 在深色沉浸背景上几乎同色、视觉消失；反色后保持高对比，默认开启
+    var audioPlayReviewInvertColors: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.audioPlayReviewInvertColors, true)
+        set(value) = appCtx.putPrefBoolean(PreferKey.audioPlayReviewInvertColors, value)
+
     // 听书播放页文字字号（px），默认 50，与历史正文行号一致
     var audioPlayTextSize: Int
         get() = appCtx.getPrefInt(
