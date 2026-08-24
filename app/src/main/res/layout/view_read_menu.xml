@@ -485,6 +485,42 @@
                     </LinearLayout>
 
                     <LinearLayout
+                        android:id="@+id/ll_download"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:background="?android:attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:contentDescription="@string/offline_cache"
+                        android:focusable="true"
+                        android:gravity="center_horizontal"
+                        android:minHeight="72dp"
+                        android:orientation="vertical"
+                        android:paddingTop="10dp"
+                        android:paddingBottom="10dp">
+
+                        <androidx.appcompat.widget.AppCompatImageView
+                            android:id="@+id/iv_download"
+                            android:layout_width="20dp"
+                            android:layout_height="20dp"
+                            android:contentDescription="@string/offline_cache"
+                            android:src="@drawable/ic_download_line"
+                            app:tint="@color/primaryText" />
+
+                        <TextView
+                            android:id="@+id/tv_download"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:ellipsize="middle"
+                            android:includeFontPadding="false"
+                            android:singleLine="true"
+                            android:text="@string/offline_cache"
+                            android:textColor="@color/primaryText"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+
+                    <LinearLayout
                         android:id="@+id/ll_read_aloud"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
