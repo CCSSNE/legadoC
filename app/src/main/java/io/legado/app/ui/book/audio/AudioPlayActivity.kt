@@ -270,7 +270,10 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     }
 
     private fun updateEngineUi() = binding.run {
-        ivCache?.visible(ReadBook.book?.isLocal == false)
+        ivCache?.apply {
+            visible()
+            isEnabled = ReadBook.book?.isLocal == false
+        }
         bindListeningText()
         invalidateOptionsMenu()
     }
