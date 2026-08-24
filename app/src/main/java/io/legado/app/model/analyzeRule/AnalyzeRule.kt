@@ -110,12 +110,18 @@ class AnalyzeRule(
      * 仅评论打开链路设置，默认为空不改变任何默认行为。
      */
     var fallbackBrowserHtml: String? = null
+    var fallbackReviewResourceBook: Book? = null
 
     override fun startBrowser(url: String, title: String, html: String?) {
         rhinoContext.ensureActive()
         if (onBrowserOpenRequested(url, title, html)) return
         io.legado.app.help.source.SourceVerificationHelp.startBrowser(
-            getSource(), url, title, html = html, fallbackHtml = fallbackBrowserHtml
+            getSource(),
+            url,
+            title,
+            html = html,
+            fallbackHtml = fallbackBrowserHtml,
+            fallbackReviewResourceBook = fallbackReviewResourceBook,
         )
     }
 
@@ -129,7 +135,8 @@ class AnalyzeRule(
         onBrowserAwaitRequested(url, title, html)?.let { return it }
         val pair = io.legado.app.help.source.SourceVerificationHelp.getVerificationResult(
             getSource(), url, title, true, refetchAfterSuccess, html,
-            fallbackHtml = fallbackBrowserHtml
+            fallbackHtml = fallbackBrowserHtml,
+            fallbackReviewResourceBook = fallbackReviewResourceBook,
         )
         val (url2, body) = pair
         return StrResponse(url2.ifEmpty { url }, body)

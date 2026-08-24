@@ -40,9 +40,11 @@ import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BaseSource
+import io.legado.app.data.entities.Book
 import io.legado.app.databinding.DialogWebViewBinding
 import io.legado.app.help.WebCacheManager
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.review.ReviewSnapshotResourceStore
 import io.legado.app.help.review.ReviewSnapshotManager
 import io.legado.app.help.webView.PooledWebView
 import io.legado.app.help.webView.WebJsExtensions
@@ -123,6 +125,9 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
      */
     private var offlineMode = false
 
+    /** Set only for review snapshots that may contain review-resource:// references. */
+    private var reviewResourceBook: Book? = null
+
     private val mHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
     constructor(
@@ -134,13 +139,15 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         config: String? = null,
         networkRefresher: (suspend () -> Pair<String, String>?)? = null,
         fallbackHtml: String? = null,
-        offlineOnly: Boolean = false
+        offlineOnly: Boolean = false,
+        reviewResourceBook: Book? = null,
     ) : this() {
         this.networkRefresher = networkRefresher
         this.fallbackHtml = fallbackHtml
         htmlFileReference = html?.let(WebViewHtmlStore::write)
         fallbackHtmlFileReference = fallbackHtml?.let(WebViewHtmlStore::write)
         this.offlineMode = offlineOnly
+        this.reviewResourceBook = reviewResourceBook
         arguments = Bundle().apply {
             putString("sourceKey", sourceKey)
             putInt("bookType", bookType)
@@ -151,6 +158,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
             putString(ARG_FALLBACK_HTML_FILE, fallbackHtmlFileReference)
             putString("preloadJs", preloadJs)
             putString("config", config)
+            putParcelable(ARG_REVIEW_RESOURCE_BOOK, reviewResourceBook)
         }
     }
 
@@ -197,6 +205,12 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
             htmlFileReference = WebViewHtmlStore.write(legacyHtml)
             arguments?.putString(ARG_HTML_FILE, htmlFileReference)
             arguments?.remove(ARG_LEGACY_HTML)
+        }
+        reviewResourceBook = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            arguments?.getParcelable(ARG_REVIEW_RESOURCE_BOOK, Book::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            arguments?.getParcelable(ARG_REVIEW_RESOURCE_BOOK)
         }
     }
 
@@ -808,6 +822,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         const val ARG_HTML_FILE = "htmlFile"
         const val ARG_FALLBACK_HTML_FILE = "fallbackHtmlFile"
         const val ARG_LEGACY_HTML = "html"
+        const val ARG_REVIEW_RESOURCE_BOOK = "reviewResourceBook"
     }
 
     private fun saveImage(webPic: String) {
@@ -1110,8 +1125,17 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
             view: WebView, request: WebResourceRequest
         ): WebResourceResponse? {
             val url = request.url.toString()
+            ReviewSnapshotResourceStore.keyFromReference(url)?.let { key ->
+                val book = checkNotNull(reviewResourceBook) {
+                    "评论快照资源引用缺少书籍上下文: $url"
+                }
+                val resource = checkNotNull(ReviewSnapshotResourceStore.open(book, key)) {
+                    "评论快照资源不存在: $url"
+                }
+                return WebResourceResponse(resource.mimeType, null, resource.inputStream)
+            }
             // 仅使用快照/快照兜底（离线模式）：http/https 请求一律拦掉，
-            // 快照只允许 data:// 等内联资源离线渲染，残余外部资源不联网
+            // 快照只允许 data:// 或 review-resource:// 本地资源离线渲染，残余外部资源不联网
             if (offlineMode &&
                 (request.url.scheme == "http" || request.url.scheme == "https")
             ) {

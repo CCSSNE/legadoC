@@ -1523,9 +1523,14 @@
     <string name="sync_cache_review">Cache comments</string>
     <string name="sync_cache_review_summary">After body caching, fetch real comment-page snapshots in the background; comment failures never affect body content</string>
     <string name="cache_review_avatars">Cache comment avatars</string>
-    <string name="cache_review_avatars_summary">Inline commenter avatars in offline comment snapshots</string>
+    <string name="cache_review_avatars_summary">Save commenter avatars for offline comment snapshots</string>
     <string name="cache_review_images">Cache comment images</string>
-    <string name="cache_review_images_summary">Inline non-avatar images in offline comment snapshots</string>
+    <string name="cache_review_images_summary">Save non-avatar images for offline comment snapshots</string>
+    <string name="cache_review_resource_database">Use review resource database</string>
+    <string name="cache_review_resource_database_summary">Deduplicate avatars and comment images; snapshots keep resource references</string>
+    <string name="cache_review_avatar_compression">Compress comment avatars</string>
+    <string name="cache_review_image_compression">Compress comment images</string>
+    <string name="cache_review_compression_size_summary">Maximum output size: %1$d KB</string>
     <string name="comment_cache_concurrency">Comment resource download concurrency</string>
     <string name="comment_cache_concurrency_summary">Maximum concurrent resource downloads while caching one comment-page snapshot, default 8</string>
     <string name="export_reviews">Export comments</string>

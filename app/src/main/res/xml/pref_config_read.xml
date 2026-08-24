@@ -385,6 +385,29 @@
         android:summary="@string/cache_review_images_summary"
         android:title="@string/cache_review_images" />
 
+    <io.legado.app.lib.prefs.SwitchPreference
+        android:defaultValue="true"
+        android:dependency="syncCacheReview"
+        android:key="cacheReviewResourceDatabase"
+        android:summary="@string/cache_review_resource_database_summary"
+        android:title="@string/cache_review_resource_database" />
+
+    <io.legado.app.lib.prefs.Preference
+        android:defaultValue="2"
+        android:dependency="cacheReviewAvatars"
+        android:key="reviewAvatarCompressionMaxKb"
+        android:summary="@string/cache_review_compression_size_summary"
+        android:title="@string/cache_review_avatar_compression"
+        app:iconSpaceReserved="false" />
+
+    <io.legado.app.lib.prefs.Preference
+        android:defaultValue="50"
+        android:dependency="cacheReviewImages"
+        android:key="reviewImageCompressionMaxKb"
+        android:summary="@string/cache_review_compression_size_summary"
+        android:title="@string/cache_review_image_compression"
+        app:iconSpaceReserved="false" />
+
     <io.legado.app.lib.prefs.Preference
         android:key="reviewCacheConcurrency"
         android:summary="@string/comment_cache_concurrency_summary"
