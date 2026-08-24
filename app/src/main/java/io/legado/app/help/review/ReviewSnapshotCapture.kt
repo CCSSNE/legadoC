@@ -17,6 +17,7 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.WebCacheManager
+import io.legado.app.help.cache.CacheOperationDiagnostics
 import io.legado.app.help.http.CookieManager as AppCookieManager
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.help.webView.WebJsExtensions
@@ -128,30 +129,51 @@ object ReviewSnapshotCapture {
         buttonSrc: String,
         url: String,
         initialHtml: String? = null,
-        preloadJs: String? = null
+        preloadJs: String? = null,
+        diagnostics: CacheOperationDiagnostics.Context? = null,
     ): CaptureOutcome {
-        if (initialHtml != null && !isValidCommentHtml(initialHtml)) {
-            throw NoStackTraceException(
-                "showBrowser 带回的 HTML 非有效评论页（疑似 ajax 错误/异常文本，" +
-                    "${initialHtml.length} 字符，已按失败处理）"
+        val trace = diagnostics?.let {
+            CacheOperationDiagnostics.begin(
+                it.forChapter(chapter.index),
+                "CAPTURE",
+                CacheOperationDiagnostics.Metrics(inputChars = initialHtml?.length),
             )
         }
-        val (html, expandRounds, expandClickCount) = snapshotPage(url, bookSource, initialHtml, preloadJs)
-        return CaptureOutcome(
-            snapshot = ReviewSnapshot(
-                bookUrl = book.bookUrl,
-                chapterUrl = chapter.url,
-                chapterIndex = chapter.index,
-                chapterTitle = chapter.title,
-                buttonSrc = buttonSrc,
-                url = url,
-                title = "",
-                html = html,
-                savedAt = System.currentTimeMillis()
-            ),
-            expandRounds = expandRounds,
-            expandClickCount = expandClickCount
-        )
+        return try {
+            if (initialHtml != null && !isValidCommentHtml(initialHtml)) {
+                throw NoStackTraceException(
+                    "showBrowser 带回的 HTML 非有效评论页（疑似 ajax 错误/异常文本，" +
+                        "${initialHtml.length} 字符，已按失败处理）"
+                )
+            }
+            val (html, expandRounds, expandClickCount) = snapshotPage(
+                url,
+                bookSource,
+                initialHtml,
+                preloadJs,
+                trace,
+            )
+            CaptureOutcome(
+                snapshot = ReviewSnapshot(
+                    bookUrl = book.bookUrl,
+                    chapterUrl = chapter.url,
+                    chapterIndex = chapter.index,
+                    chapterTitle = chapter.title,
+                    buttonSrc = buttonSrc,
+                    url = url,
+                    title = "",
+                    html = html,
+                    savedAt = System.currentTimeMillis()
+                ),
+                expandRounds = expandRounds,
+                expandClickCount = expandClickCount
+            ).also {
+                trace?.done(CacheOperationDiagnostics.Metrics(outputChars = html.length))
+            }
+        } catch (error: Throwable) {
+            trace?.fail(error)
+            throw error
+        }
     }
 
     /**
@@ -164,7 +186,8 @@ object ReviewSnapshotCapture {
         url: String,
         bookSource: BookSource,
         initialHtml: String? = null,
-        preloadJs: String? = null
+        preloadJs: String? = null,
+        diagnostics: CacheOperationDiagnostics.Operation? = null,
     ): Triple<String, Int, Int> =
         withTimeout(PAGE_TIMEOUT_MS) {
             val analyzeUrl = AnalyzeUrl(url, source = bookSource)
@@ -196,7 +219,8 @@ object ReviewSnapshotCapture {
                         } else {
                             null
                         }
-                        val session = SnapshotSession(webView, url, jsBridge) { result, error, rounds, clicks ->
+                        val session = SnapshotSession(webView, url, jsBridge, diagnostics) {
+                            result, error, rounds, clicks ->
                             releaseOnce()
                             if (block.isActive) {
                                 if (error != null) block.resumeWithException(error)
@@ -256,6 +280,7 @@ object ReviewSnapshotCapture {
         private val webView: WebView,
         private val url: String,
         private val jsBridge: PageJsBridge?,
+        private val diagnostics: CacheOperationDiagnostics.Operation?,
         private val done: (String?, Throwable?, Int, Int) -> Unit
     ) {
 
@@ -428,6 +453,7 @@ object ReviewSnapshotCapture {
         /** 收集图片与样式表并内联，然后取最终 HTML */
         private fun inlineResources() {
             if (destroyed) return
+            diagnostics?.mark("HEAVY_STAGE_WAIT")
             // 只限流会创建完整 Java 大对象的阶段；此时之前的页面加载与展开可以继续并行。
             Thread {
                 try {
@@ -436,6 +462,7 @@ object ReviewSnapshotCapture {
                         heavyStagePermits.release()
                     } else {
                         heavyStagePermitHeld.set(true)
+                        diagnostics?.mark("HEAVY_STAGE_ACQUIRED")
                         mHandler.post {
                             if (destroyed) {
                                 releaseHeavyStagePermit()
@@ -457,12 +484,24 @@ object ReviewSnapshotCapture {
                 mHandler.post {
                     if (destroyed) return@post
                     val urls = parseResourceUrls(json)
+                    diagnostics?.mark(
+                        "RESOURCE_LIST_READY",
+                        CacheOperationDiagnostics.Metrics(resourceCount = urls.first.size + urls.second.size),
+                    )
                     Thread {
                         runCatching {
                             val inline = downloadResources(urls)
+                            diagnostics?.mark(
+                                "RESOURCE_INLINE_READY",
+                                CacheOperationDiagnostics.Metrics(
+                                    resourceCount = inline.resourceCount,
+                                    outputBytes = inline.inlineBytes,
+                                ),
+                            )
                             mHandler.post { applyInline(inline) }
                         }.onFailure {
                             // 资源下载失败不影响快照本体
+                            diagnostics?.warn("RESOURCE_INLINE_FAILED", it)
                             mHandler.post { serialize() }
                         }
                     }.start()
@@ -478,7 +517,11 @@ object ReviewSnapshotCapture {
 
         private data class InlineResources(
             val imgMap: Map<String, String> = emptyMap(),
-            val cssMap: Map<String, String> = emptyMap()
+            val cssMap: Map<String, String> = emptyMap(),
+            val inlineBytes: Long = 0L,
+        ) {
+            val resourceCount: Int get() = imgMap.size + cssMap.size
+        }
         )
 
         private fun parseResourceUrls(json: String?): Pair<List<String>, List<String>> {
@@ -527,7 +570,7 @@ object ReviewSnapshotCapture {
                     cssMap[rawUrl] = text
                 }
             }
-            return InlineResources(imgMap, cssMap)
+            return InlineResources(imgMap, cssMap, totalBytes)
         }
 
         /** 同步抓取资源字节（在后台线程调用），单请求 8s 超时避免连不通的地址长期卡死 */
@@ -572,17 +615,30 @@ object ReviewSnapshotCapture {
             if (destroyed) return
             // 在 WebView DOM 内去掉脚本后再取 outerHTML，避免 Java Regex 对整份页面连续
             // 复制。JSON 解码也移出主线程，不能在 evaluateJavascript 回调中阻塞 UI。
+            diagnostics?.mark("DOM_SANITIZE_START")
             webView.evaluateJavascript(SERIALIZE_SNAPSHOT_JS) { raw ->
+                diagnostics?.mark(
+                    "WEBVIEW_HTML_READY",
+                    CacheOperationDiagnostics.Metrics(inputChars = raw?.length),
+                )
+                diagnostics?.mark("SANITIZE_START")
                 Thread {
-                    val html = decodeJavascriptString(raw)
-                    mHandler.post {
-                        if (destroyed) return@post
-                        if (html.isNullOrBlank()) {
-                            fail(NoStackTraceException("评论页快照序列化为空 $url"))
-                        } else {
-                            finish(html)
+                    runCatching { decodeJavascriptString(raw) }
+                        .onSuccess { html ->
+                            mHandler.post {
+                                if (destroyed) return@post
+                                if (html.isNullOrBlank()) {
+                                    fail(NoStackTraceException("评论页快照序列化为空 $url"))
+                                } else {
+                                    diagnostics?.mark(
+                                        "SANITIZE_DONE",
+                                        CacheOperationDiagnostics.Metrics(outputChars = html.length),
+                                    )
+                                    finish(html)
+                                }
+                            }
                         }
-                    }
+                        .onFailure { error -> mHandler.post { fail(error) } }
                 }.start()
             }
         }
@@ -591,11 +647,7 @@ object ReviewSnapshotCapture {
             if (raw == null || raw == "null") return null
             // evaluateJavascript 的回调是一个 JSON string。JsonReader 直接解码这一层，
             // 避免 unescapeJson(...).trim(...) 产生两份完整 HTML 的中间字符串。
-            return runCatching {
-                JsonReader(StringReader(raw)).use { reader ->
-                    reader.nextString()
-                }
-            }.getOrNull()
+            return JsonReader(StringReader(raw)).use { reader -> reader.nextString() }
         }
 
         private fun buildApplyJs(inline: InlineResources): String {

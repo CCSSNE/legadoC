@@ -55,9 +55,22 @@ internal class CacheTaskStore(
             createdAt = now,
             updatedAt = now,
         )
-        synchronized(lock) {
-            sessions[session.sessionId] = session
-            publishLocked()
+        val trace = CacheOperationDiagnostics.begin(
+            CacheOperationDiagnostics.Context(
+                domain = CacheOperationDiagnostics.Domain.STORE,
+                sessionId = session.sessionId,
+            ),
+            "SESSION_CREATE",
+        )
+        try {
+            synchronized(lock) {
+                sessions[session.sessionId] = session
+                publishLocked()
+            }
+            trace.done(CacheOperationDiagnostics.Metrics(sessionCount = 1))
+        } catch (error: Throwable) {
+            trace.fail(error)
+            throw error
         }
         record(CacheLogEventType.SESSION_CREATED, session.sessionId, detail = title)
         return session
@@ -78,13 +91,29 @@ internal class CacheTaskStore(
             reviewEnabled = request.reviewEnabled,
             updatedAt = now,
         )
-        synchronized(lock) {
-            val session = requireSessionLocked(sessionId)
-            sessions[sessionId] = aggregateSession(session.copy(
-                tasks = session.tasks + task,
-                updatedAt = now,
-            ))
-            publishLocked()
+        val trace = CacheOperationDiagnostics.begin(
+            CacheOperationDiagnostics.Context(
+                domain = CacheOperationDiagnostics.Domain.STORE,
+                sessionId = sessionId,
+                taskId = task.taskId,
+                unitCount = task.units.size,
+            ),
+            "TASK_SUBMIT",
+            CacheOperationDiagnostics.Metrics(unitCount = task.units.size),
+        )
+        try {
+            synchronized(lock) {
+                val session = requireSessionLocked(sessionId)
+                sessions[sessionId] = aggregateSession(session.copy(
+                    tasks = session.tasks + task,
+                    updatedAt = now,
+                ))
+                publishLocked()
+            }
+            trace.done(CacheOperationDiagnostics.Metrics(unitCount = task.units.size))
+        } catch (error: Throwable) {
+            trace.fail(error, CacheOperationDiagnostics.Metrics(unitCount = task.units.size))
+            throw error
         }
         record(
             CacheLogEventType.TASK_QUEUED,
@@ -537,16 +566,38 @@ internal class CacheTaskStore(
     }
 
     private fun publishLocked(persist: Boolean = true) {
-        _snapshot.value = CacheSnapshot(sessions.values.toList())
-        onPublished(_snapshot.value)
-        val version = ++persistenceVersion
-        if (!persist) {
-            scheduleCheckpointLocked(version)
-            return
+        val published = CacheSnapshot(sessions.values.toList())
+        val trace = CacheOperationDiagnostics.begin(
+            CacheOperationDiagnostics.Context(domain = CacheOperationDiagnostics.Domain.STORE),
+            "SNAPSHOT_PUBLISH",
+            CacheOperationDiagnostics.Metrics(
+                sessionCount = published.sessions.size,
+                taskCount = published.sessions.sumOf { it.tasks.size },
+                persisted = persist,
+            ),
+        )
+        try {
+            _snapshot.value = published
+            onPublished(published)
+            val version = ++persistenceVersion
+            if (!persist) {
+                scheduleCheckpointLocked(version)
+            } else {
+                pendingCheckpoint?.cancel(false)
+                pendingCheckpoint = null
+                saveSnapshot(published)
+            }
+            trace.done(
+                CacheOperationDiagnostics.Metrics(
+                    sessionCount = published.sessions.size,
+                    taskCount = published.sessions.sumOf { it.tasks.size },
+                    persisted = persist,
+                )
+            )
+        } catch (error: Throwable) {
+            trace.fail(error, CacheOperationDiagnostics.Metrics(persisted = persist))
+            throw error
         }
-        pendingCheckpoint?.cancel(false)
-        pendingCheckpoint = null
-        saveSnapshot(_snapshot.value)
     }
 
     private fun scheduleCheckpointLocked(version: Long) {

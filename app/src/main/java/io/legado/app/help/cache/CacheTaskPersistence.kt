@@ -31,16 +31,38 @@ internal object AppFileCacheTaskPersistence : CacheTaskPersistence {
     private val file by lazy { File(appCtx.filesDir, "cache_tasks.json") }
     private val tempFile by lazy { File(appCtx.filesDir, "cache_tasks.json.tmp") }
 
-    override fun load(): Result<CacheSnapshot?> = runCatching {
-        if (!file.isFile) return@runCatching null
-        GSON.fromJson(file.readText(Charsets.UTF_8), CacheSnapshot::class.java)
+    override fun load(): Result<CacheSnapshot?> {
+        val trace = CacheOperationDiagnostics.begin(
+            CacheOperationDiagnostics.Context(domain = CacheOperationDiagnostics.Domain.STORE),
+            "SNAPSHOT_LOAD",
+            CacheOperationDiagnostics.Metrics(inputBytes = file.takeIf { it.isFile }?.length()),
+        )
+        return runCatching {
+            if (!file.isFile) return@runCatching null
+            GSON.fromJson(file.readText(Charsets.UTF_8), CacheSnapshot::class.java)
+        }.onSuccess { snapshot ->
+            trace.done(snapshot.metrics(file.length()))
+        }.onFailure { error ->
+            trace.fail(error)
+        }
     }
 
-    override fun save(snapshot: CacheSnapshot): Result<Unit> = runCatching {
-        file.parentFile?.mkdirs()
-        tempFile.writeText(GSON.toJson(snapshot), Charsets.UTF_8)
-        if (!tempFile.renameTo(file)) {
-            throw IllegalStateException("cannot atomically replace ${file.absolutePath}")
+    override fun save(snapshot: CacheSnapshot): Result<Unit> {
+        val trace = CacheOperationDiagnostics.begin(
+            CacheOperationDiagnostics.Context(domain = CacheOperationDiagnostics.Domain.STORE),
+            "SNAPSHOT_PERSIST",
+            snapshot.metrics(),
+        )
+        return runCatching {
+            file.parentFile?.mkdirs()
+            tempFile.writeText(GSON.toJson(snapshot), Charsets.UTF_8)
+            if (!tempFile.renameTo(file)) {
+                throw IllegalStateException("cannot atomically replace ${file.absolutePath}")
+            }
+        }.onSuccess {
+            trace.done(snapshot.metrics(file.length()))
+        }.onFailure { error ->
+            trace.fail(error, snapshot.metrics())
         }
     }
 
@@ -50,5 +72,16 @@ internal object AppFileCacheTaskPersistence : CacheTaskPersistence {
         if (!file.renameTo(backup) && !file.delete()) {
             throw IllegalStateException("cannot quarantine corrupt snapshot ${file.absolutePath}")
         }
+    }
+
+    private fun CacheSnapshot?.metrics(outputBytes: Long? = null): CacheOperationDiagnostics.Metrics {
+        val sessions = this?.sessions.orEmpty()
+        return CacheOperationDiagnostics.Metrics(
+            outputBytes = outputBytes,
+            sessionCount = sessions.size,
+            taskCount = sessions.sumOf { it.tasks.size },
+            unitCount = sessions.sumOf { session -> session.tasks.sumOf { it.units.size } },
+            persisted = outputBytes != null,
+        )
     }
 }
