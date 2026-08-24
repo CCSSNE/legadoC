@@ -53,10 +53,23 @@ internal class MediaWorkerAdapter(
                 error,
             )
         }
+        val chapterStarted: (BookChapter) -> Unit = { chapter ->
+            CacheMediaWorkerRegistry.onChapterStarted(lease, chapter.index)
+        }
+        val chapterProgress: (BookChapter, Long, Long?) -> Unit = { chapter, current, total ->
+            CacheMediaWorkerRegistry.onChapterProgress(lease, chapter.index, current, total)
+        }
         val finished = { CacheMediaWorkerRegistry.onFinished(lease) }
         val state = AudioCacheTaskManager.snapshot(task.bookUrl)
         if (state?.status == CacheTaskStatus.PAUSED) {
-            if (!AudioCacheTaskManager.resume(task.bookUrl, chapterFinished, finished)) {
+            if (!AudioCacheTaskManager.resume(
+                    task.bookUrl,
+                    chapterStarted,
+                    chapterProgress,
+                    chapterFinished,
+                    finished,
+                )
+            ) {
                 CacheMediaWorkerRegistry.fail(lease, "paused media task could not resume")
             }
             return
@@ -71,6 +84,8 @@ internal class MediaWorkerAdapter(
                     appDb.bookChapterDao.update(chapter)
                 }
             },
+            onChapterStarted = chapterStarted,
+            onChapterProgress = chapterProgress,
             onChapterFinished = chapterFinished,
             onFinished = finished,
             diagnostics = CacheOperationDiagnostics.Context(
@@ -163,6 +178,35 @@ private object CacheMediaWorkerRegistry {
             key,
             if (success) CacheUnitStatus.SUCCEEDED else CacheUnitStatus.FAILED,
             error,
+        )
+    }
+
+    fun onChapterStarted(lease: CacheWorkerLease, chapterIndex: Int) {
+        val binding = bindingFor(lease) ?: return
+        val key = binding.expected.firstOrNull { it.chapterIndex == chapterIndex } ?: return
+        requirePort().updateProgress(
+            binding.lease,
+            key,
+            CacheProgressMode.INDETERMINATE,
+            current = 0L,
+            total = null,
+        )
+    }
+
+    fun onChapterProgress(
+        lease: CacheWorkerLease,
+        chapterIndex: Int,
+        current: Long,
+        total: Long?,
+    ) {
+        val binding = bindingFor(lease) ?: return
+        val key = binding.expected.firstOrNull { it.chapterIndex == chapterIndex } ?: return
+        requirePort().updateProgress(
+            binding.lease,
+            key,
+            if (total == null) CacheProgressMode.INDETERMINATE else CacheProgressMode.BYTES,
+            current = current,
+            total = total,
         )
     }
 
