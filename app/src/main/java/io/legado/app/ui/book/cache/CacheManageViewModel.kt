@@ -982,10 +982,16 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
                 File(externalCache, "qr.png")
             )
             CacheStorageDeleteTarget.SO_DOWNLOAD -> listOf(File(internalCache, "so_download"))
-            CacheStorageDeleteTarget.TEMP_BOOK_CACHE -> File(BookHelp.cachePath)
-                .listFiles()
-                ?.filter { it.isDirectory && !CacheManifestHelper.hasManifest(it) }
-                .orEmpty()
+            CacheStorageDeleteTarget.TEMP_BOOK_CACHE -> {
+                // Legacy imported audio once lived below book_cache without a cache
+                // manifest. Move those book-owned files out before listing deletable
+                // "other book cache" folders.
+                BookHelp.migrateLegacyAudioArchives()
+                File(BookHelp.cachePath)
+                    .listFiles()
+                    ?.filter { it.isDirectory && !CacheManifestHelper.hasManifest(it) }
+                    .orEmpty()
+            }
             CacheStorageDeleteTarget.AUDIO -> {
                 ExoPlayerHelper.clearAudioCache()
                 emptyList()

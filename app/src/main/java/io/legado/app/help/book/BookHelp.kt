@@ -66,12 +66,24 @@ object BookHelp {
     val cachePath = FileUtils.getPath(downloadDir, cacheFolderName)
 
     fun clearCache() {
+        migrateLegacyAudioArchives()
         FileUtils.delete(
             FileUtils.getPath(downloadDir, cacheFolderName)
         )
     }
 
+    /** Protect pre-fix imported audio before any whole-cache deletion enumerates book_cache. */
+    fun migrateLegacyAudioArchives() {
+        appDb.bookDao.all.forEach(AudioBookArchive::migrateLegacyMedia)
+    }
+
     fun clearCache(book: Book) {
+        AudioBookArchive.migrateLegacyMedia(book)
+        deleteCache(book)
+    }
+
+    /** Cache-only removal used by book-entity deletion after persistent assets are owned separately. */
+    fun deleteCache(book: Book) {
         val filePath = FileUtils.getPath(downloadDir, cacheFolderName, book.getFolderName())
         FileUtils.delete(filePath)
     }
