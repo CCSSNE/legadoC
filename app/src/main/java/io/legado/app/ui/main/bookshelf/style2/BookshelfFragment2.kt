@@ -462,6 +462,9 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
             if (book.isShortcut) {
                 deleteBodyCheckBox = CheckBox(requireContext()).apply {
                     setText(R.string.delete_book_body)
+                    setOnCheckedChangeListener { _, isChecked ->
+                        if (!isChecked) deleteOriginalCheckBox?.isChecked = false
+                    }
                 }
                 checks.addView(deleteBodyCheckBox)
             }
@@ -471,7 +474,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
                     setOnCheckedChangeListener { _, isChecked ->
                         if (isChecked) deleteBodyCheckBox?.isChecked = true
                     }
-                    isChecked = LocalConfig.deleteBookOriginal
+                    isChecked = !book.isShortcut && LocalConfig.deleteBookOriginal
                 }
                 checks.addView(deleteOriginalCheckBox)
             }
