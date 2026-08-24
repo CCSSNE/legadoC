@@ -7,8 +7,6 @@ import io.legado.app.help.book.BookHelp
 import io.legado.app.help.cache.CacheOperationDiagnostics
 import io.legado.app.utils.GSON
 import io.legado.app.utils.MD5Utils
-import com.google.gson.stream.JsonReader
-import com.google.gson.stream.JsonToken
 import java.io.File
 import java.io.FileOutputStream
 
@@ -429,59 +427,13 @@ object ReviewSnapshotStore {
         }
     }
 
-    private data class SnapshotMetadata(
-        val bookUrl: String,
-        val chapterUrl: String,
-        val chapterIndex: Int,
-        val buttonSrc: String,
-        val resourceKeys: List<String>?,
-        val htmlPresent: Boolean,
-    )
-
-    private fun readMetadata(file: File): SnapshotMetadata? {
+    private fun readMetadata(file: File): ReviewSnapshotHotMetadata? {
         if (!file.isFile) return null
-        return file.bufferedReader(Charsets.UTF_8).use { input ->
-                JsonReader(input).use { reader ->
-                    var bookUrl = ""
-                    var chapterUrl = ""
-                    var chapterIndex = 0
-                    var buttonSrc = ""
-                    var resourceKeys: List<String>? = null
-                    var htmlPresent = false
-                    reader.beginObject()
-                    while (reader.hasNext()) {
-                        when (reader.nextName()) {
-                            "bookUrl" -> bookUrl = reader.nextString()
-                            "chapterUrl" -> chapterUrl = reader.nextString()
-                            "chapterIndex" -> chapterIndex = reader.nextInt()
-                            "buttonSrc" -> buttonSrc = reader.nextString()
-                            "resourceKeys" -> {
-                                if (reader.peek() == JsonToken.NULL) {
-                                    reader.nextNull()
-                                } else {
-                                    val keys = ArrayList<String>()
-                                    reader.beginArray()
-                                    while (reader.hasNext()) keys += reader.nextString()
-                                    reader.endArray()
-                                    resourceKeys = keys
-                                }
-                            }
-                            "html" -> {
-                                htmlPresent = reader.peek() != JsonToken.NULL
-                                reader.skipValue()
-                            }
-                            // html 可能数十 MB；必须流式跳过，不能 nextString()。
-                            else -> reader.skipValue()
-                        }
-                    }
-                    reader.endObject()
-                    SnapshotMetadata(bookUrl, chapterUrl, chapterIndex, buttonSrc, resourceKeys, htmlPresent)
-                }
-            }
+        return file.bufferedReader(Charsets.UTF_8).use(::readReviewSnapshotHotMetadata)
     }
 
     /** Read only metadata/resourceKeys; the HTML value is skipped by JsonReader. */
-    private fun readHotMetadata(book: Book, file: File): SnapshotMetadata {
+    private fun readHotMetadata(book: Book, file: File): ReviewSnapshotHotMetadata {
         val metadata = readMetadata(file)
             ?: error("review snapshot file is empty: ${file.absolutePath}")
         require(metadata.bookUrl == book.bookUrl) {
