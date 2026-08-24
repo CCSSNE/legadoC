@@ -280,7 +280,10 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
                         .filterNot { it.isShortcut }
                         .mapTo(hashSetOf()) { it.bookUrl }
                     collections.mapNotNull { item ->
-                        val visibleBooks = item.books.filter { it.bookUrl in visibleBookUrls }
+                        val visibleBooks = BookShortcutHelp.withShortcuts(
+                            item.books.filter { it.bookUrl in visibleBookUrls },
+                            item.shortcuts
+                        )
                         if (visibleBooks.isEmpty() && item.childCollections.isEmpty()) {
                             null
                         } else {
