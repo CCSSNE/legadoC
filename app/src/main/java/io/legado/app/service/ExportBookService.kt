@@ -510,7 +510,15 @@ class ExportBookService : BaseService() {
         // 评论页快照：按存储原样导出 reviews/*.json，导入时原样还原
         val tmpReviewsDir = if (config.exportReviews) {
             File(tmpRoot, ReviewSnapshotStore.REVIEWS_DIR_NAME).also { dir ->
-                ReviewSnapshotStore.copyAllTo(book, dir)
+                if (book.isAudio) {
+                    ReviewSnapshotStore.copyChaptersTo(
+                        book,
+                        dir,
+                        requireNotNull(audioChapters),
+                    )
+                } else {
+                    ReviewSnapshotStore.copyAllTo(book, dir)
+                }
             }
         } else {
             null
@@ -632,6 +640,7 @@ class ExportBookService : BaseService() {
             AudioBookArchiveChapter(
                 index = chapter.index,
                 title = chapter.title,
+                sourceChapterUrl = chapter.url,
                 mediaFiles = mediaFiles.map { file ->
                     "${AudioBookArchive.MEDIA_DIR_NAME}/${file.name}"
                 },
