@@ -246,7 +246,7 @@ internal object CacheNotificationBridge {
         return if (next >= 0) next + 1 else task.units.size
     }
 
-    private fun chapterText(current: Int, total: Int): String = "$current/$total章"
+    private fun chapterText(current: Int, total: Int): String = "$current/${total}章"
 
     private fun formatBytes(bytes: Long): String = ConvertUtils.formatFileSize(bytes.coerceAtLeast(0L))
 
