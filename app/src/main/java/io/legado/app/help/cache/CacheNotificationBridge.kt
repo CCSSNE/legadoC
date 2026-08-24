@@ -5,7 +5,10 @@ import androidx.core.app.NotificationCompat
 import io.legado.app.R
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.NotificationId
+import io.legado.app.help.review.ReviewSnapshotManager
+import io.legado.app.ui.book.cache.AudioCacheTaskManager
 import io.legado.app.ui.book.cache.CacheActivity
+import io.legado.app.utils.ConvertUtils
 import io.legado.app.utils.activityPendingIntent
 import io.legado.app.utils.broadcastPendingIntent
 import splitties.init.appCtx
@@ -26,6 +29,10 @@ internal object CacheNotificationBridge {
     }
 
     fun started(task: CacheTaskState) {
+        renderCurrent()
+    }
+
+    fun renderCurrent() {
         render(CacheCoordinator.snapshot.value)
     }
 
@@ -35,20 +42,22 @@ internal object CacheNotificationBridge {
             .filter { !CacheLifecycleRules.isTerminal(it.status) }
             .toList()
         if (active.isEmpty()) return
-        val done = active.sumOf { task ->
-            task.units.count { it.status == CacheUnitStatus.SUCCEEDED }
-        }
-        val total = active.sumOf { it.units.size }
-        val names = active.map { it.bookName }.distinct().take(2).joinToString(", ")
-        val task = active.first()
-        val allPaused = active.all { it.status == CacheLifecycle.PAUSED }
+        renderActive(active)
+    }
+
+    /** A notification has one progress bar, so it represents the most recently changed task. */
+    private fun renderActive(active: List<CacheTaskState>) {
+        val (task, presentation) = active.asSequence()
+            .map { it to presentation(it) }
+            .maxByOrNull { (_, current) -> current.updatedAt }
+            ?: return
         notify(
-            title = "Offline cache",
-            text = "All cache tasks: $names: $done/$total",
+            title = presentation.title,
+            text = presentation.text,
             ongoing = true,
             submission = CacheSubmission(task.sessionId, task.taskId),
-            paused = allPaused,
-            progress = Progress(total, done),
+            paused = active.all { it.status == CacheLifecycle.PAUSED },
+            progress = presentation.progress,
             allTasks = true,
         )
     }
@@ -72,21 +81,7 @@ internal object CacheNotificationBridge {
             .filter { !CacheLifecycleRules.isTerminal(it.status) }
             .toList()
         if (active.isNotEmpty()) {
-            val first = active.first()
-            val done = active.sumOf { current ->
-                current.units.count { it.status == CacheUnitStatus.SUCCEEDED }
-            }
-            val total = active.sumOf { it.units.size }
-            val allPaused = active.all { it.status == CacheLifecycle.PAUSED }
-            notify(
-                title = "Offline cache",
-                text = "$title: $text; all active ${done}/${total}",
-                ongoing = true,
-                submission = CacheSubmission(first.sessionId, first.taskId),
-                paused = allPaused,
-                progress = Progress(total, done),
-                allTasks = true,
-            )
+            renderActive(active)
             return
         }
         notify(
@@ -95,7 +90,62 @@ internal object CacheNotificationBridge {
             ongoing = false,
             submission = null,
             paused = false,
-            progress = task?.let(::progress),
+            progress = task?.let(::chapterProgress),
+        )
+    }
+
+    private fun presentation(task: CacheTaskState): Presentation = when {
+        task.kind == CacheKind.TEXT && task.phase == CachePhase.BODY -> bodyPresentation(task)
+        task.kind == CacheKind.TEXT && task.phase == CachePhase.REVIEW -> reviewPresentation(task)
+        task.phase == CachePhase.MEDIA &&
+            (task.kind == CacheKind.AUDIO || task.kind == CacheKind.VIDEO) ->
+            mediaPresentation(task)
+        else -> error("unsupported cache notification task: ${task.kind}/${task.phase}")
+    }
+
+    private fun bodyPresentation(task: CacheTaskState): Presentation {
+        val completed = completedChapters(task)
+        val total = task.units.size
+        return Presentation(
+            title = "缓存正文",
+            text = chapterText(completed, total),
+            progress = chapterProgress(total, completed),
+            updatedAt = task.updatedAt,
+        )
+    }
+
+    private fun mediaPresentation(task: CacheTaskState): Presentation {
+        val state = AudioCacheTaskManager.snapshot(task.bookUrl)
+        val totalChapters = state?.totalChapters?.takeIf { it > 0 } ?: task.units.size
+        val chapter = state?.currentChapterIndex?.takeIf { it > 0 }
+            ?: currentChapterOrdinal(task)
+        val downloadedBytes = state?.currentChapterBytes ?: 0L
+        val totalBytes = state?.currentChapterTotalBytes
+        return Presentation(
+            title = if (task.kind == CacheKind.VIDEO) "缓存视频" else "缓存音频",
+            text = "${formatBytes(downloadedBytes)} / ${totalBytes?.let(::formatBytes) ?: "?"} " +
+                chapterText(chapter, totalChapters),
+            progress = byteProgress(downloadedBytes, totalBytes),
+            updatedAt = state?.updatedAt ?: task.updatedAt,
+        )
+    }
+
+    private fun reviewPresentation(task: CacheTaskState): Presentation {
+        val progress = ReviewSnapshotManager.notificationProgress(
+            CacheWorkerLease(task.sessionId, task.taskId, task.generation),
+        )
+        val chapter = progress?.chapterIndex?.let { index ->
+            task.units.indexOfFirst { it.key.chapterIndex == index }
+                .takeIf { it >= 0 }
+                ?.plus(1)
+        } ?: currentChapterOrdinal(task)
+        val completed = progress?.completedSnapshots ?: 0
+        val total = progress?.totalSnapshots ?: 0
+        return Presentation(
+            title = "缓存评论",
+            text = "快照：$completed/$total  ${chapterText(chapter, task.units.size)}",
+            progress = chapterProgress(total, completed),
+            updatedAt = progress?.updatedAt ?: task.updatedAt,
         )
     }
 
@@ -165,14 +215,47 @@ internal object CacheNotificationBridge {
         notificationManager.notify(NotificationId.CacheCoordinator, notification)
     }
 
-    private fun progress(task: CacheTaskState): Progress {
-        val total = task.units.size
+    private fun chapterProgress(task: CacheTaskState): Progress =
+        chapterProgress(task.units.size, completedChapters(task))
+
+    private fun chapterProgress(total: Int, current: Int): Progress {
         return Progress(
             max = total,
-            current = task.units.count { it.status == CacheUnitStatus.SUCCEEDED },
+            current = current.coerceIn(0, total),
             indeterminate = total == 0,
         )
     }
+
+    private fun byteProgress(currentBytes: Long, totalBytes: Long?): Progress {
+        val total = totalBytes?.takeIf { it > 0L }
+            ?: return Progress(max = 0, current = 0, indeterminate = true)
+        val current = currentBytes.coerceIn(0L, total)
+        return Progress(
+            max = BYTE_PROGRESS_MAX,
+            current = (current.toDouble() / total * BYTE_PROGRESS_MAX).toInt()
+                .coerceIn(0, BYTE_PROGRESS_MAX),
+        )
+    }
+
+    private fun completedChapters(task: CacheTaskState): Int =
+        task.units.count { it.status == CacheUnitStatus.SUCCEEDED }
+
+    private fun currentChapterOrdinal(task: CacheTaskState): Int {
+        if (task.units.isEmpty()) return 0
+        val next = task.units.indexOfFirst { it.status != CacheUnitStatus.SUCCEEDED }
+        return if (next >= 0) next + 1 else task.units.size
+    }
+
+    private fun chapterText(current: Int, total: Int): String = "$current/$total章"
+
+    private fun formatBytes(bytes: Long): String = ConvertUtils.formatFileSize(bytes.coerceAtLeast(0L))
+
+    private data class Presentation(
+        val title: String,
+        val text: String,
+        val progress: Progress,
+        val updatedAt: Long,
+    )
 
     private data class Progress(
         val max: Int,
@@ -192,4 +275,6 @@ internal object CacheNotificationBridge {
             }
             putExtra(CacheCoordinatorActionReceiver.EXTRA_ALL_TASKS, allTasks)
         }
+
+    private const val BYTE_PROGRESS_MAX = 10_000
 }

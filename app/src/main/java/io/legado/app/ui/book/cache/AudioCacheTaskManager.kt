@@ -5,6 +5,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.help.book.isVideo
+import io.legado.app.help.cache.CacheNotificationBridge
 import io.legado.app.help.cache.CacheOperationDiagnostics
 import io.legado.app.utils.ConvertUtils
 import kotlinx.coroutines.CancellationException
@@ -418,27 +419,27 @@ internal object AudioCacheTaskManager {
     }
 
     private fun updateState(bookUrl: String, transform: (AudioCacheTaskState) -> AudioCacheTaskState) {
-        var updatedState: AudioCacheTaskState? = null
         _states.update { states ->
             val current = states[bookUrl] ?: return@update states
-            val updated = transform(current)
+            val updated = transform(current).copy(updatedAt = System.currentTimeMillis())
             // Resume replaces the state through startRequest; in-flight worker snapshots cannot do it.
             if (current.status == CacheTaskStatus.PAUSED && updated.active) {
                 return@update states
             }
-            updatedState = updated
             states.toMutableMap().apply {
                 put(bookUrl, updated)
             }
         }
+        CacheNotificationBridge.renderCurrent()
     }
 
     private fun updateState(bookUrl: String, state: AudioCacheTaskState) {
         _states.update { states ->
             states.toMutableMap().apply {
-                put(bookUrl, state)
+                put(bookUrl, state.copy(updatedAt = System.currentTimeMillis()))
             }
         }
+        CacheNotificationBridge.renderCurrent()
     }
 }
 
@@ -479,5 +480,6 @@ data class AudioCacheTaskState(
     val speedBytesPerSecond: Long = 0L,
     val status: CacheTaskStatus = CacheTaskStatus.PENDING,
     val message: String = "",
-    val active: Boolean = true
+    val active: Boolean = true,
+    val updatedAt: Long = 0L,
 )
