@@ -56,43 +56,47 @@ class ReviewCacheService : BaseService() {
     private fun startWork() {
         workJob?.cancel()
         workJob = lifecycleScope.launch(Dispatchers.IO) {
-            // 完整评论快照的内存成本取决于页面和内联资源，无法用固定“每章并发数”安全
-            // 估算。整个服务只保留一个活动快照任务，队列仍完整保留所有待处理章节。
-            while (isActive) {
-                var task = ReviewSnapshotManager.tryTakeTask()
-                if (task == null) {
-                    delay(1500)
-                    task = ReviewSnapshotManager.tryTakeTask()
-                    if (task == null) {
-                        if (activeCount.get() == 0) {
-                            stopSelf()
-                            break
+            // 章节任务保持并行消费；ReviewSnapshotManager 会在按钮页面层做全局配额，
+            // 因而不会再把这里的 worker 数与单章按钮数相乘为重内存并发。
+            repeat(4) {
+                launch {
+                    while (isActive) {
+                        var task = ReviewSnapshotManager.tryTakeTask()
+                        if (task == null) {
+                            delay(1500)
+                            task = ReviewSnapshotManager.tryTakeTask()
+                            if (task == null) {
+                                if (activeCount.get() == 0) {
+                                    stopSelf()
+                                    break
+                                }
+                                continue
+                            }
                         }
-                        continue
+                        activeCount.incrementAndGet()
+                        try {
+                            val success = runCatching { ReviewSnapshotManager.processTask(task) }
+                                .onFailure {
+                                    AppLog.put(
+                                        "评论快照任务处理失败 ${task.key}\n${it.localizedMessage}",
+                                        it,
+                                    )
+                                }
+                                .getOrDefault(false)
+                            val chapterIndex = task.key.substringAfter('|').toIntOrNull()
+                            if (chapterIndex != null) {
+                                task.executionLease?.let { lease ->
+                                    CacheReviewWorkerRegistry.onChapterFinished(
+                                        lease,
+                                        chapterIndex,
+                                        success,
+                                    )
+                                }
+                            }
+                        } finally {
+                            activeCount.decrementAndGet()
+                        }
                     }
-                }
-                activeCount.incrementAndGet()
-                try {
-                    val success = runCatching { ReviewSnapshotManager.processTask(task) }
-                        .onFailure {
-                            AppLog.put(
-                                "评论快照任务处理失败 ${task.key}\n${it.localizedMessage}",
-                                it,
-                            )
-                        }
-                        .getOrDefault(false)
-                    val chapterIndex = task.key.substringAfter('|').toIntOrNull()
-                    if (chapterIndex != null) {
-                        task.executionLease?.let { lease ->
-                            CacheReviewWorkerRegistry.onChapterFinished(
-                                lease,
-                                chapterIndex,
-                                success,
-                            )
-                        }
-                    }
-                } finally {
-                    activeCount.decrementAndGet()
                 }
             }
         }

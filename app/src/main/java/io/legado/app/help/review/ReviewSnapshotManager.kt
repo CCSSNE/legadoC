@@ -16,7 +16,11 @@ import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.ui.login.SourceLoginJsExtensions
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
+import io.legado.app.utils.mapAsyncIndexed
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.flow.toList
 import splitties.init.appCtx
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -36,6 +40,38 @@ import java.util.concurrent.atomic.AtomicReference
  *   重新抓取并覆盖旧快照，不依赖 has()。
  */
 object ReviewSnapshotManager {
+
+    /**
+     * 全局页面流水线配额。配置值不再按“每章”重复计算：无论同时有多少章节任务，
+     * 活动页面总数都不会超过当前设置。每次取位时重新读取配置，设置变更会在排队的
+     * 流水线进入下一轮时生效。
+     */
+    private val pipelineLock = Any()
+    private var activePipelines = 0
+
+    private suspend fun <T> withPipelinePermit(block: suspend () -> T): T {
+        while (true) {
+            val acquired = synchronized(pipelineLock) {
+                val limit = AppConfig.reviewCacheConcurrency.coerceIn(1, 32)
+                if (activePipelines < limit) {
+                    activePipelines++
+                    true
+                } else {
+                    false
+                }
+            }
+            if (acquired) {
+                return try {
+                    block()
+                } finally {
+                    synchronized(pipelineLock) {
+                        activePipelines--
+                    }
+                }
+            }
+            delay(100)
+        }
+    }
 
     /** 对外任务（key = bookUrl|chapterIndex；force 为消费时聚合值） */
     internal data class QueueTask(
@@ -343,13 +379,17 @@ object ReviewSnapshotManager {
         // force=true（用户明确刷新）时，任何一个需要刷新的按钮失败都保留待刷新标记，
         // 不能“一个成功就算整章成功”
         var hasFailure = false
-        // 一份快照会同时持有 WebView DOM、内联资源和序列化后的完整 HTML，大小不可预知。
-        // 评论缓存统一由单通道调度：不丢弃任何按钮，只按顺序处理，避免多个完整页面争抢
-        // 受限 Java heap。服务端也只有一个消费者，保证跨章节同样遵守这个不变量。
-        val outcomes = ArrayList<ButtonOutcome>(buttons.size)
-        buttons.forEachIndexed { index, button ->
-            outcomes += processButton(book, bookSource, chapter, index, button, force)
-        }
+        // 每章可以并行解析多个按钮；真正的全局并行度由 [withPipelinePermit] 统一控制，
+        // 不再出现“服务 worker 数 × 单章按钮数”的乘法放大。
+        val buttonConcurrency = AppConfig.reviewCacheConcurrency
+            .coerceIn(1, buttons.size.coerceAtLeast(1))
+        val outcomes = buttons
+            .asFlow()
+            .mapAsyncIndexed(buttonConcurrency) { index, button ->
+                processButton(book, bookSource, chapter, index, button, force)
+            }
+            .toList()
+            .sortedBy { it.index }
         outcomes.forEach { o ->
             sb.append(o.log)
             if (o.success) completedButtons++
@@ -393,6 +433,17 @@ object ReviewSnapshotManager {
      * 多个按钮可跨 [processButton] 并发执行（WebView 池按需扩容）。
      */
     private suspend fun processButton(
+        book: Book,
+        bookSource: BookSource,
+        chapter: BookChapter,
+        buttonIndex: Int,
+        button: ReviewButton,
+        force: Boolean
+    ): ButtonOutcome = withPipelinePermit {
+        processButtonInPipeline(book, bookSource, chapter, buttonIndex, button, force)
+    }
+
+    private suspend fun processButtonInPipeline(
         book: Book,
         bookSource: BookSource,
         chapter: BookChapter,
