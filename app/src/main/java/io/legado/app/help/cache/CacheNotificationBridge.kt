@@ -27,33 +27,39 @@ internal object CacheNotificationBridge {
     }
 
     fun render(snapshot: CacheSnapshot, progress: CacheProgressSnapshot) {
-        val active = snapshot.sessions.asSequence()
-            .flatMap { it.tasks.asSequence() }
-            .filter { !CacheLifecycleRules.isTerminal(it.status) }
-            .toList()
+        val active = snapshot.sessions.filter { session ->
+            session.tasks.any { !CacheLifecycleRules.isTerminal(it.status) }
+        }
         if (active.isEmpty()) return
         renderActive(active, progress)
     }
 
-    /** The Store owns a stable display target; ordinary progress ticks never select a new task. */
-    private fun renderActive(active: List<CacheTaskState>, progress: CacheProgressSnapshot) {
+    /** The Store selects one stable Session; task/unit progress is only a child of that Session. */
+    private fun renderActive(activeSessions: List<CacheSessionState>, progress: CacheProgressSnapshot) {
+        val session = progress.displaySessionId
+            ?.let { sessionId -> activeSessions.firstOrNull { it.sessionId == sessionId } }
+            ?: activeSessions.first()
+        val activeTasks = session.tasks.filter { !CacheLifecycleRules.isTerminal(it.status) }
         val display = progress.display?.takeIf { state ->
-            active.any { task ->
+            activeTasks.any { task ->
                 task.sessionId == state.sessionId &&
                     task.taskId == state.taskId &&
                     task.generation == state.generation
             }
         }
         val task = display?.let { state ->
-            active.first { it.sessionId == state.sessionId && it.taskId == state.taskId }
-        } ?: active.first()
-        val presentation = presentation(task, display)
+            activeTasks.first { it.taskId == state.taskId }
+        } ?: activeTasks.first()
+        val presentation = presentation(session, task, display)
         notify(
             title = presentation.title,
             text = presentation.text,
             ongoing = true,
             submission = CacheSubmission(task.sessionId, task.taskId),
-            paused = active.all { it.status == CacheLifecycle.PAUSED },
+            paused = activeSessions.asSequence()
+                .flatMap { it.tasks.asSequence() }
+                .filter { !CacheLifecycleRules.isTerminal(it.status) }
+                .all { it.status == CacheLifecycle.PAUSED },
             progress = presentation.progress,
             allTasks = true,
         )
@@ -79,10 +85,9 @@ internal object CacheNotificationBridge {
             CacheResult.FAILED -> "Cache failed${error?.let { ": $it" }.orEmpty()}"
             CacheResult.CANCELLED -> "Cache stopped"
         }
-        val active = snapshot.sessions.asSequence()
-            .flatMap { it.tasks.asSequence() }
-            .filter { !CacheLifecycleRules.isTerminal(it.status) }
-            .toList()
+        val active = snapshot.sessions.filter { activeSession ->
+            activeSession.tasks.any { !CacheLifecycleRules.isTerminal(it.status) }
+        }
         if (active.isNotEmpty()) {
             renderActive(active, progress)
             return
@@ -98,11 +103,13 @@ internal object CacheNotificationBridge {
     }
 
     private fun presentation(
+        session: CacheSessionState,
         task: CacheTaskState,
         progress: CacheProgressState?,
     ): Presentation = when {
         task.kind == CacheKind.TEXT && task.phase == CachePhase.BODY -> bodyPresentation(task, progress)
-        task.kind == CacheKind.TEXT && task.phase == CachePhase.REVIEW -> reviewPresentation(task, progress)
+        task.kind == CacheKind.TEXT && task.phase == CachePhase.REVIEW ->
+            reviewPresentation(session, progress)
         task.phase == CachePhase.MEDIA &&
             (task.kind == CacheKind.AUDIO || task.kind == CacheKind.VIDEO) ->
             mediaPresentation(task, progress)
@@ -137,14 +144,15 @@ internal object CacheNotificationBridge {
     }
 
     private fun reviewPresentation(
-        task: CacheTaskState,
+        session: CacheSessionState,
         progress: CacheProgressState?,
     ): Presentation {
         val completed = progress?.current?.toInt() ?: 0
         val total = progress?.total?.toInt() ?: 0
+        val chapters = reviewChapterProgress(session)
         return Presentation(
             title = "缓存评论",
-            text = "快照：$completed/$total  ${chapterText(completedChapters(task), task.units.size)}",
+            text = "快照：$completed/$total  ${chapterText(chapters.completed, chapters.total)}",
             progress = chapterProgress(total, completed),
         )
     }
@@ -240,6 +248,25 @@ internal object CacheNotificationBridge {
     private fun completedChapters(task: CacheTaskState): Int =
         task.units.count { it.status == CacheUnitStatus.SUCCEEDED }
 
+    /**
+     * REVIEW is appended to the Session's original BODY task and receives only BODY-successful
+     * units. Therefore a REVIEW-successful unit is complete across the Session, while the BODY
+     * task keeps the operation's original chapter total without creating per-tick collections.
+     */
+    private fun reviewChapterProgress(session: CacheSessionState): ChapterProgress {
+        val body = session.tasks.firstOrNull {
+            it.kind == CacheKind.TEXT && it.phase == CachePhase.BODY
+        }
+        val review = session.tasks.firstOrNull {
+            it.kind == CacheKind.TEXT && it.phase == CachePhase.REVIEW
+        }
+        val completedTask = review ?: body ?: error("review Session has no text task")
+        return ChapterProgress(
+            completed = completedChapters(completedTask),
+            total = body?.units?.size ?: completedTask.units.size,
+        )
+    }
+
     private fun chapterText(current: Int, total: Int): String = "$current/${total}章"
 
     private fun formatBytes(bytes: Long): String = ConvertUtils.formatFileSize(bytes.coerceAtLeast(0L))
@@ -248,6 +275,11 @@ internal object CacheNotificationBridge {
         val title: String,
         val text: String,
         val progress: Progress,
+    )
+
+    private data class ChapterProgress(
+        val completed: Int,
+        val total: Int,
     )
 
     private data class Progress(
