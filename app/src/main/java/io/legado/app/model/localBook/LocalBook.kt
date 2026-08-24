@@ -82,6 +82,9 @@ import kotlinx.coroutines.currentCoroutineContext
  * 书籍文件导入 目录正文解析
  * 支持在线文件(txt epub umd 压缩文件 本地文件
  */
+private class ReviewArchiveIntegrityException(cause: Throwable) :
+    IllegalStateException(cause.message, cause)
+
 object LocalBook {
 
     private const val LARGE_EPUB_FAST_IMPORT_BYTES = 100L * 1024L * 1024L
@@ -900,10 +903,14 @@ object LocalBook {
                 // Validate and restore the resource library before accepting any
                 // snapshot payload. A reviews/ archive without resources.json is
                 // the retired non-resource format and must not be partially imported.
-                io.legado.app.help.review.ReviewSnapshotResourceStore.importFrom(
-                    importedBook,
-                    files
-                )
+                try {
+                    io.legado.app.help.review.ReviewSnapshotResourceStore.importFrom(
+                        importedBook,
+                        files
+                    )
+                } catch (error: Throwable) {
+                    throw ReviewArchiveIntegrityException(error)
+                }
                 files.filter(io.legado.app.help.review.ReviewSnapshotStore::isSnapshotFile)
                     .forEach { snapshotFile ->
                         kotlin.runCatching {
@@ -995,6 +1002,7 @@ object LocalBook {
                 }
             }
         }.onFailure { e ->
+            if (e is ReviewArchiveIntegrityException) throw e.cause ?: e
             AppLog.put("还原配图数据失败\n${e.localizedMessage}", e)
         }
     }
