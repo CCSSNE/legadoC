@@ -22,7 +22,11 @@
   <tr>
     <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/13.png" width="100%" alt="界面截图 13" /></td>
     <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/14.png" width="100%" alt="界面截图 14" /></td>
-    <td align="center"></td>
+    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/15.png" width="100%" alt="界面截图 15" /></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/16.png" width="100%" alt="界面截图 16" /></td>
+    <td colspan="2" align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/17-18.png" width="100%" alt="界面截图 17-18" /></td>
   </tr>
 </table>
 
