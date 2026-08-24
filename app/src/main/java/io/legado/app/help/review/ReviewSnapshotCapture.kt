@@ -398,7 +398,7 @@ object ReviewSnapshotCapture {
 
         private data class ImageResource(
             val url: String,
-            val compressionMaxBytes: Long,
+            val compressionMaxBytes: Long?,
         )
 
         /** A shared URL can occur in both an avatar and a comment image. */
@@ -946,14 +946,16 @@ object ReviewSnapshotCapture {
             val cacheAvatars = AppConfig.cacheReviewAvatars
             val cacheCommentImages = AppConfig.cacheReviewImages
             val useResourceDatabase = AppConfig.cacheReviewResourceDatabase
+            val compressAvatars = cacheAvatars && AppConfig.compressReviewAvatars
+            val compressCommentImages = cacheCommentImages && AppConfig.compressReviewImages
             val avatarCompressionMaxBytes = AppConfig.reviewAvatarCompressionMaxBytes
             val imageCompressionMaxBytes = AppConfig.reviewImageCompressionMaxBytes
-            if (cacheAvatars) {
+            if (compressAvatars) {
                 require(avatarCompressionMaxBytes > 0L) {
                     "评论头像压缩上限必须大于 0"
                 }
             }
-            if (cacheCommentImages) {
+            if (compressCommentImages) {
                 require(imageCompressionMaxBytes > 0L) {
                     "评论图片压缩上限必须大于 0"
                 }
@@ -990,10 +992,12 @@ object ReviewSnapshotCapture {
                 }
                 .map { roles ->
                     val maximums = buildList {
-                        if (roles.hasAvatar && cacheAvatars) add(avatarCompressionMaxBytes)
-                        if (roles.hasCommentImage && cacheCommentImages) add(imageCompressionMaxBytes)
+                        if (roles.hasAvatar && compressAvatars) add(avatarCompressionMaxBytes)
+                        if (roles.hasCommentImage && compressCommentImages) {
+                            add(imageCompressionMaxBytes)
+                        }
                     }
-                    ImageResource(roles.url, maximums.min())
+                    ImageResource(roles.url, maximums.minOrNull())
                 }
                 .toList()
             val storedImages = if (useResourceDatabase) {
@@ -1004,7 +1008,10 @@ object ReviewSnapshotCapture {
             val reusableImages = linkedMapOf<String, ReviewSnapshotResourceEntry>()
             val imagesToDownload = selectedImages.filter { image ->
                 val stored = storedImages[image.url]
-                if (stored != null && stored.byteCount <= image.compressionMaxBytes) {
+                if (stored != null &&
+                    (image.compressionMaxBytes == null ||
+                        stored.byteCount <= image.compressionMaxBytes)
+                ) {
                     reusableImages[image.url] = stored
                     false
                 } else {
@@ -1247,19 +1254,18 @@ object ReviewSnapshotCapture {
         }
 
         private fun prepareImage(staged: StagedResource): PreparedImage {
-            val maxBytes = staged.target.compressionMaxBytes
-                ?: error("评论图片缺少压缩上限: ${staged.target.url}")
-            require(maxBytes > 0L) { "评论图片压缩上限必须大于 0" }
             check(staged.file.length() == staged.byteCount) {
                 "评论快照图片暂存文件长度异常: ${staged.target.url}"
             }
-            if (staged.byteCount <= maxBytes) {
+            val maxBytes = staged.target.compressionMaxBytes
+            if (maxBytes == null || staged.byteCount <= maxBytes) {
                 return PreparedImage(
                     file = staged.file,
                     byteCount = staged.byteCount,
                     mimeType = guessMime(staged.target.url, staged.file),
                 )
             }
+            require(maxBytes > 0L) { "评论图片压缩上限必须大于 0" }
             return compressImage(staged.file, maxBytes, staged.target.url)
         }
 

@@ -1075,6 +1075,20 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefBoolean(PreferKey.cacheReviewResourceDatabase, value)
         }
 
+    /** 超过阈值时压缩评论者头像。 */
+    var compressReviewAvatars: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.compressReviewAvatars, true)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.compressReviewAvatars, value)
+        }
+
+    /** 超过阈值时压缩评论内图片。 */
+    var compressReviewImages: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.compressReviewImages, true)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.compressReviewImages, value)
+        }
+
     /** 评论头像压缩后的最大大小，单位 KiB。 */
     var reviewAvatarCompressionMaxKb: Int
         get() = appCtx.getPrefInt(PreferKey.reviewAvatarCompressionMaxKb, 2)
