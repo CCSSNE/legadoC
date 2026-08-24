@@ -134,6 +134,8 @@ data class CacheProgressState(
     val mode: CacheProgressMode,
     val current: Long = 0L,
     val total: Long? = null,
+    /** Unit-local failures observed while this progress state is active. */
+    val failed: Long = 0L,
     val updatedAt: Long = 0L,
 )
 

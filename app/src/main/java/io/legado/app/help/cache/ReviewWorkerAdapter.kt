@@ -99,12 +99,13 @@ internal class ReviewWorkerAdapter(
                 force = task.source != CacheRequestSource.READER ||
                     ReviewSnapshotManager.isUserRefreshActive(book.bookUrl, chapter.index),
                 executionLease = lease,
-                reportProgress = { completedSnapshots, totalSnapshots ->
+                reportProgress = { completedSnapshots, totalSnapshots, failedSnapshots ->
                     CacheReviewWorkerRegistry.onSnapshotProgress(
                         lease,
                         chapter.index,
                         completedSnapshots,
                         totalSnapshots,
+                        failedSnapshots,
                     )
                 },
             )
@@ -231,10 +232,15 @@ internal object CacheReviewWorkerRegistry {
         chapterIndex: Int,
         completedSnapshots: Int,
         totalSnapshots: Int,
+        failedSnapshots: Int,
     ) {
         val binding = bindingFor(lease, "review progress chapter=$chapterIndex") ?: return
         val key = binding.expected.firstOrNull { it.chapterIndex == chapterIndex } ?: return
         require(totalSnapshots >= 0) { "review snapshot total must not be negative" }
+        require(failedSnapshots >= 0) { "review snapshot failed count must not be negative" }
+        require(failedSnapshots <= totalSnapshots) {
+            "review snapshot failed count exceeds total: $failedSnapshots/$totalSnapshots"
+        }
         require(completedSnapshots in 0..totalSnapshots) {
             "review snapshot progress is invalid: $completedSnapshots/$totalSnapshots"
         }
@@ -244,6 +250,7 @@ internal object CacheReviewWorkerRegistry {
             CacheProgressMode.SNAPSHOTS,
             current = completedSnapshots.toLong(),
             total = totalSnapshots.toLong(),
+            failed = failedSnapshots.toLong(),
         )
     }
 

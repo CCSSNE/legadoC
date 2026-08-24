@@ -41,6 +41,7 @@ internal interface CacheWorkerPort {
         mode: CacheProgressMode,
         current: Long,
         total: Long? = null,
+        failed: Long = 0L,
     ): Boolean
     fun finish(
         lease: CacheWorkerLease,
@@ -92,8 +93,9 @@ object CacheCoordinator : CacheUiPort {
             mode: CacheProgressMode,
             current: Long,
             total: Long?,
+            failed: Long,
         ): Boolean {
-            return store.updateProgress(lease, unitKey, mode, current, total)
+            return store.updateProgress(lease, unitKey, mode, current, total, failed)
         }
 
         override fun finish(
