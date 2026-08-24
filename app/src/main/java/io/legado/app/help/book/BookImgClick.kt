@@ -14,6 +14,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.http.BackstageWebView
 import io.legado.app.help.http.StrResponse
+import io.legado.app.help.review.ReviewSnapshot
 import io.legado.app.help.review.ReviewSnapshotCapture
 import io.legado.app.help.review.ReviewSnapshotManager
 import io.legado.app.help.review.ReviewSnapshotStore
@@ -54,6 +55,82 @@ object BookImgClick {
     private fun openMode(): String = AppConfig.reviewOpenMode
 
     /**
+     * 评论快照定位不依赖网络执行条件。书源缺失时仍可用 book/chapter 读取并打开
+     * 已落盘的快照；只有真正执行 click/js 时才要求 [source] 存在。
+     */
+    private data class ReviewContext(
+        val book: Book,
+        val chapter: BookChapter,
+        val source: BookSource?,
+    )
+
+    /** 已在网络执行前读出的快照，失败回退时禁止重新查询或重新解析上下文。 */
+    private data class CachedReviewSnapshot(
+        val book: Book,
+        val chapter: BookChapter,
+        val source: BookSource?,
+        val snapshot: ReviewSnapshot,
+    )
+
+    private fun currentChapter(hostChapter: BookChapter?): BookChapter? {
+        return hostChapter
+            ?: ReadBook.book?.let {
+                appDb.bookChapterDao.getChapter(it.bookUrl, ReadBook.durChapterIndex)
+            }
+    }
+
+    /**
+     * 解析评论所属文字书上下文。这里允许 source 为 null：本地快照的主键只需要
+     * book/chapter，不能因为网络执行条件不成立而错过离线快照。
+     */
+    private fun reviewContext(chapter: BookChapter, src: String): ReviewContext? {
+        val textContext = AudioTextFusion.findFusionTextContext(
+            chapter.getVariable(AudioTextFusion.OVERLAY_KEY),
+            src
+        ) ?: run {
+            val book = ReadBook.book ?: return null
+            return ReviewContext(book, chapter, ReadBook.bookSource)
+        }
+        val textBook = appDb.bookDao.getBook(textContext.first) ?: return null
+        val textChapter = appDb.bookChapterDao.getChapterByUrl(textContext.first, textContext.second)
+            ?: return null
+        return ReviewContext(
+            textBook,
+            textChapter,
+            appDb.bookSourceDao.getBookSource(textBook.origin)
+        )
+    }
+
+    private fun cachedSnapshot(context: ReviewContext, src: String): CachedReviewSnapshot? {
+        val snapshot = ReviewSnapshotStore.get(context.book, context.chapter, src.trim())
+            ?: return null
+        return CachedReviewSnapshot(context.book, context.chapter, context.source, snapshot)
+    }
+
+    private fun showSnapshot(
+        context: AppCompatActivity,
+        cached: CachedReviewSnapshot,
+        networkRefresher: (suspend () -> Pair<String, String>?)? = null,
+        offlineOnly: Boolean,
+    ): Boolean {
+        if (context.isFinishing || context.isDestroyed) return false
+        context.runOnUiThread {
+            if (context.isFinishing || context.isDestroyed) return@runOnUiThread
+            context.showDialogFragment(
+                BottomWebViewDialog(
+                    cached.source?.getKey().orEmpty(),
+                    BookType.text,
+                    cached.snapshot.url.ifBlank { "about:blank" },
+                    cached.snapshot.html,
+                    networkRefresher = networkRefresher,
+                    offlineOnly = offlineOnly
+                )
+            )
+        }
+        return true
+    }
+
+    /**
      * 打开评论快照。
      * @param refreshToNetwork 快照优先：后台刷新为最新网络评论页（成功后覆盖）
      * @param offlineOnly 仅使用快照：WebView 禁止一切 http/https 网络请求
@@ -66,27 +143,20 @@ object BookImgClick {
         refreshToNetwork: Boolean,
         offlineOnly: Boolean
     ): Boolean {
-        val chapter = hostChapter
-            ?: ReadBook.book?.let {
-                appDb.bookChapterDao.getChapter(it.bookUrl, ReadBook.durChapterIndex)
-            }
-            ?: return false
-        val execution = executionContext(chapter, src) ?: return false
-        val snapshotBook = execution.first
-        val snapshotSource = execution.second
-        val snapshotChapter = execution.third
-        val snapshot = ReviewSnapshotStore.get(snapshotBook, snapshotChapter, src.trim())
-            ?: return false
+        val chapter = currentChapter(hostChapter) ?: return false
+        // 先持有本地快照；网络刷新条件不得影响离线快照可用性。
+        val resolvedContext = reviewContext(chapter, src) ?: return false
+        val cached = cachedSnapshot(resolvedContext, src) ?: return false
         // 快照优先：后台解析真实评论页并加载在线内容，成功后覆盖当前快照
         var refresher: (suspend () -> Pair<String, String>?)? = null
         if (refreshToNetwork) {
-            val source = snapshotSource
+            val source = cached.source
             if (source != null) {
                 val button = reviewButtonOf(src)
                 if (button != null) {
                     refresher = refresh@{
                         val page = ReviewSnapshotManager.resolveReviewPageUrl(
-                            snapshotBook, source, snapshotChapter, button
+                            cached.book, source, cached.chapter, button
                         )
                         val onlineUrl = page.url ?: return@refresh null
                         // showBrowser 已带回渲染 HTML 且有效：直接用，不再重复请求
@@ -100,47 +170,7 @@ object BookImgClick {
                 }
             }
         }
-        context.runOnUiThread {
-            if (context.isFinishing || context.isDestroyed) return@runOnUiThread
-            context.showDialogFragment(
-                BottomWebViewDialog(
-                    snapshotSource?.getKey().orEmpty(),
-                    BookType.text,
-                    snapshot.url.ifBlank { "about:blank" },
-                    snapshot.html,
-                    networkRefresher = refresher,
-                    offlineOnly = offlineOnly
-                )
-            )
-        }
-        return true
-    }
-
-    /**
-     * 解析点击执行上下文：
-     * - 当前章节的融合 overlay 未命中该 src → 原生按钮，回退当前阅读
-     *   上下文（ReadBook）；
-     * - 命中融合来源 → 必须解析出文字书、章节、书源，任一不存在返回
-     *   null（直接失效，不回退到有声书上下文执行）。
-     */
-    private fun executionContext(
-        chapter: BookChapter,
-        src: String
-    ): Triple<Book, BookSource?, BookChapter>? {
-        val textContext = AudioTextFusion.findFusionTextContext(
-            chapter.getVariable(AudioTextFusion.OVERLAY_KEY),
-            src
-        ) ?: run {
-            // 未命中：原生按钮，走当前阅读上下文
-            val book = ReadBook.book ?: return null
-            return Triple(book, ReadBook.bookSource, chapter)
-        }
-        // 命中融合来源但书/章节/书源已不存在：直接失效，不回退
-        val textBook = appDb.bookDao.getBook(textContext.first) ?: return null
-        val textChapter = appDb.bookChapterDao.getChapterByUrl(textContext.first, textContext.second)
-            ?: return null
-        val textSource = appDb.bookSourceDao.getBookSource(textBook.origin) ?: return null
-        return Triple(textBook, textSource, textChapter)
+        return showSnapshot(context, cached, refresher, offlineOnly)
     }
 
     /**
@@ -192,10 +222,34 @@ object BookImgClick {
         src: String,
         hostChapter: BookChapter? = null,
     ): Boolean {
-        val (urlNoOption, options) = parseSrcOptions(src) ?: return false
+        val parsed = parseSrcOptions(src)
+        if (parsed == null) {
+            // 旧源选项 JSON 损坏时，网络链路没有可执行的 click/js。若已缓存，仍应
+            // 直接展示持有的离线评论；无快照则交回原图片链路暴露其原始失败。
+            return if (openMode() == AppConfig.ReviewOpenMode.NETWORK &&
+                paramPattern.matcher(src).find()
+            ) {
+                openSnapshotIfCached(
+                    context, src, hostChapter,
+                    refreshToNetwork = false, offlineOnly = true
+                )
+            } else {
+                false
+            }
+        }
+        val (urlNoOption, options) = parsed
         val click = options["click"]
         val js = options["js"]
-        if (click.isNullOrBlank() && js.isNullOrBlank()) return false
+        if (click.isNullOrBlank() && js.isNullOrBlank()) {
+            return if (openMode() == AppConfig.ReviewOpenMode.NETWORK) {
+                openSnapshotIfCached(
+                    context, src, hostChapter,
+                    refreshToNetwork = false, offlineOnly = true
+                )
+            } else {
+                false
+            }
+        }
         when (openMode()) {
             AppConfig.ReviewOpenMode.SNAPSHOT_ONLY -> {
                 if (!openSnapshotIfCached(
@@ -236,30 +290,71 @@ object BookImgClick {
         hostChapter: BookChapter?
     ) {
         Coroutine.async(scope, Dispatchers.IO) {
-            val chapter = hostChapter
-                ?: ReadBook.book?.let {
-                    appDb.bookChapterDao.getChapter(it.bookUrl, ReadBook.durChapterIndex)
-                }
-                ?: return@async
-            // null = 融合来源实体缺失，直接失效不执行
-            val (book, source, execChapter) = executionContext(chapter, src) ?: return@async
-            val execSource = source ?: return@async
-            // 网络优先：存在快照时仅作为失败兜底，不影响正常网络加载
-            val fallback = when (openMode()) {
-                AppConfig.ReviewOpenMode.NETWORK ->
-                    ReviewSnapshotStore.get(book, execChapter, src.trim())?.html
-                else -> null
-            }
-            when {
-                !click.isNullOrBlank() -> executeClick(book, execSource, execChapter, click, src) {
-                    if (fallback != null) {
-                        SnapshotFallbackJsExtensions(context, execSource, BookType.text, fallback)
-                    } else {
-                        SourceLoginJsExtensions(context, execSource, BookType.text)
+            val chapter = currentChapter(hostChapter)
+                ?: error("无法定位当前章节，无法执行评论网络打开")
+            // 快照必须在任何网络执行条件、click/js 解析之前读出并持有。
+            val resolvedContext = reviewContext(chapter, src)
+            val fallback = resolvedContext?.let { cachedSnapshot(it, src) }
+            try {
+                val execution = resolvedContext
+                    ?: error("无法解析评论所属书籍或章节，无法执行评论网络打开")
+                val execSource = execution.source
+                    ?: error("评论书源不存在，无法执行评论网络打开")
+                when {
+                    !click.isNullOrBlank() -> {
+                        val fallbackExtensions = fallback?.let {
+                            SnapshotFallbackJsExtensions(
+                                context, execSource, BookType.text, it.snapshot.html
+                            )
+                        }
+                        executeClick(
+                            execution.book, execSource, execution.chapter, click, src
+                        ) {
+                            fallbackExtensions
+                                ?: SourceLoginJsExtensions(context, execSource, BookType.text)
+                        }
+                        if (fallbackExtensions != null && !fallbackExtensions.browserRequested) {
+                            error("评论 click 未发起浏览器打开")
+                        }
+                    }
+                    else -> {
+                        val fallbackHtml = fallback?.snapshot?.html
+                        var browserRequested = false
+                        executeJs(
+                            execution.book, execSource, execution.chapter,
+                            js.orEmpty(), urlNoOption.orEmpty()
+                        ) {
+                            fallbackBrowserHtml = fallbackHtml
+                            if (fallbackHtml != null) {
+                                onBrowserOpenRequestedHook = { _, _, _ ->
+                                    browserRequested = true
+                                    false
+                                }
+                                onBrowserAwaitRequestedHook = { _, _, _ ->
+                                    browserRequested = true
+                                    null
+                                }
+                            }
+                        }
+                        if (fallbackHtml != null && !browserRequested) {
+                            error("评论 js 未发起浏览器打开")
+                        }
                     }
                 }
-                else -> executeJs(book, execSource, execChapter, js.orEmpty(), urlNoOption.orEmpty()) {
-                    fallbackBrowserHtml = fallback
+            } catch (error: Throwable) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                if (fallback != null && showSnapshot(
+                        context, fallback,
+                        networkRefresher = null,
+                        offlineOnly = true
+                    )
+                ) {
+                    AppLog.put(
+                        "评论网络打开失败，已回退本地快照\n${error.localizedMessage}",
+                        error
+                    )
+                } else {
+                    throw error
                 }
             }
         }.onError {
@@ -362,11 +457,15 @@ object BookImgClick {
         private val fallbackHtml: String
     ) : SourceLoginJsExtensions(context, source, bookType) {
 
+        var browserRequested = false
+            private set
+
         override fun startBrowser(url: String, title: String) {
             startBrowser(url, title, null)
         }
 
         override fun startBrowser(url: String, title: String, html: String?) {
+            browserRequested = true
             rhinoContext.ensureActive()
             SourceVerificationHelp.startBrowser(
                 getSource(), url, title, html = html, fallbackHtml = fallbackHtml
@@ -391,6 +490,7 @@ object BookImgClick {
             refetchAfterSuccess: Boolean,
             html: String?
         ): StrResponse {
+            browserRequested = true
             rhinoContext.ensureActive()
             val pair = SourceVerificationHelp.getVerificationResult(
                 getSource(), url, title, true, refetchAfterSuccess, html,
@@ -407,6 +507,7 @@ object BookImgClick {
             preloadJs: String?,
             config: String?
         ) {
+            browserRequested = true
             val activity = activityRef.get() ?: return
             val source = getSource() ?: return
             if (callbackRef.get()?.showBrowser(url, html, preloadJs, config) == true) {
