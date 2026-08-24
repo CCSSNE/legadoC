@@ -50,7 +50,7 @@ internal object CacheNotificationBridge {
         val task = display?.let { state ->
             activeTasks.first { it.taskId == state.taskId }
         } ?: activeTasks.first()
-        val presentation = presentation(session, task, display)
+        val presentation = presentation(task, display)
         notify(
             title = presentation.title,
             text = presentation.text,
@@ -103,13 +103,12 @@ internal object CacheNotificationBridge {
     }
 
     private fun presentation(
-        session: CacheSessionState,
         task: CacheTaskState,
         progress: CacheProgressState?,
     ): Presentation = when {
         task.kind == CacheKind.TEXT && task.phase == CachePhase.BODY -> bodyPresentation(task, progress)
         task.phase == CachePhase.REVIEW && task.kind.reviewPrerequisitePhase() != null ->
-            reviewPresentation(session, task, progress)
+            reviewPresentation(task, progress)
         task.phase == CachePhase.MEDIA &&
             (task.kind == CacheKind.AUDIO || task.kind == CacheKind.VIDEO) ->
             mediaPresentation(task, progress)
@@ -144,14 +143,13 @@ internal object CacheNotificationBridge {
     }
 
     private fun reviewPresentation(
-        session: CacheSessionState,
         task: CacheTaskState,
         progress: CacheProgressState?,
     ): Presentation {
         val completed = progress?.current?.toInt() ?: 0
         val total = progress?.total?.toInt() ?: 0
         val failed = progress?.failed?.toInt() ?: 0
-        val chapters = reviewChapterProgress(session, task)
+        val chapters = reviewChapterProgress(task)
         return Presentation(
             title = "缓存评论",
             text = "快照：$completed/$total  失败：$failed  " +
@@ -251,22 +249,11 @@ internal object CacheNotificationBridge {
     private fun completedChapters(task: CacheTaskState): Int =
         task.units.count { it.status == CacheUnitStatus.SUCCEEDED }
 
-    /**
-     * REVIEW is appended to the Session's same-kind primary task and receives only successful
-     * units. The primary task keeps the operation's original chapter total.
-     */
-    private fun reviewChapterProgress(
-        session: CacheSessionState,
-        review: CacheTaskState,
-    ): ChapterProgress {
-        val prerequisitePhase = review.kind.reviewPrerequisitePhase()
-            ?: error("review Session has unsupported kind ${review.kind}")
-        val prerequisite = session.tasks.firstOrNull {
-            it.kind == review.kind && it.phase == prerequisitePhase
-        }
+    /** REVIEW owns its eligible chapter set, so both numerator and denominator come from it. */
+    private fun reviewChapterProgress(review: CacheTaskState): ChapterProgress {
         return ChapterProgress(
             completed = completedChapters(review),
-            total = prerequisite?.units?.size ?: review.units.size,
+            total = review.units.size,
         )
     }
 
