@@ -141,8 +141,8 @@ object ReviewSnapshotResourceStore {
             .map { it.groupValues[1] }
             .toSet()
         require(htmlKeys == keys.toSet()) {
-            "review snapshot resource references do not match resourceKeys: "
-                + "${snapshot.chapterUrl}|${snapshot.buttonSrc}"
+            "review snapshot resource references do not match resourceKeys: " +
+                "${snapshot.chapterUrl}|${snapshot.buttonSrc}"
         }
     }
 
