@@ -157,6 +157,11 @@ internal class CacheTaskStore(
                 "invalid cache transition ${task.status} -> ${CacheLifecycle.FAILED}"
             }
             replaceTaskLocked(task.copy(
+                units = closeUnfinishedUnits(
+                    task.units,
+                    status = CacheUnitStatus.FAILED,
+                    error = error,
+                ),
                 status = CacheLifecycle.FAILED,
                 result = CacheResult.FAILED,
                 error = error,
@@ -257,6 +262,11 @@ internal class CacheTaskStore(
             val task = requireTaskLocked(sessionId, taskId)
             if (task.status != CacheLifecycle.CANCELLING) return false
             replaceTaskLocked(task.copy(
+                units = closeUnfinishedUnits(
+                    task.units,
+                    status = CacheUnitStatus.CANCELLED,
+                    error = "task cancelled",
+                ),
                 status = CacheLifecycle.CANCELLED,
                 result = CacheResult.CANCELLED,
                 terminalEffectsPending = true,
@@ -723,6 +733,21 @@ internal class CacheTaskStore(
         CacheUnitStatus.CANCELLED,
     )
 
+    private fun closeUnfinishedUnits(
+        units: List<CacheUnitState>,
+        status: CacheUnitStatus,
+        error: String,
+    ): List<CacheUnitState> {
+        val updatedAt = System.currentTimeMillis()
+        return units.map { unit ->
+            if (isTerminalUnitStatus(unit.status)) {
+                unit
+            } else {
+                unit.copy(status = status, error = error, updatedAt = updatedAt)
+            }
+        }
+    }
+
     private fun publishProgressLocked() {
         val published = progressSnapshotLocked()
         _progress.value = published
@@ -852,6 +877,11 @@ internal class CacheTaskStore(
                             updatedAt = System.currentTimeMillis(),
                         )
                         CacheLifecycle.CANCELLING -> task.copy(
+                            units = closeUnfinishedUnits(
+                                task.units,
+                                status = CacheUnitStatus.CANCELLED,
+                                error = "task cancelled during process recovery",
+                            ),
                             status = CacheLifecycle.CANCELLED,
                             result = CacheResult.CANCELLED,
                             generation = task.generation + 1,
