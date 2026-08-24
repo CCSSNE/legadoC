@@ -139,13 +139,13 @@ data class Book(
 
     override fun equals(other: Any?): Boolean {
         if (other is Book) {
-            return other.bookUrl == bookUrl && other.shortcutId == shortcutId
+            return other.bookUrl == bookUrl
         }
         return false
     }
 
     override fun hashCode(): Int {
-        return 31 * bookUrl.hashCode() + shortcutId.hashCode()
+        return bookUrl.hashCode()
     }
 
     @delegate:Transient
