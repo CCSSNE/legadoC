@@ -5,6 +5,7 @@ import androidx.core.app.NotificationCompat
 import io.legado.app.R
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.NotificationId
+import io.legado.app.data.appDb
 import io.legado.app.ui.book.cache.CacheActivity
 import io.legado.app.utils.ConvertUtils
 import io.legado.app.utils.activityPendingIntent
@@ -124,7 +125,7 @@ internal object CacheNotificationBridge {
         val total = (progress?.total ?: task.units.size.toLong()).toInt()
         return Presentation(
             title = "缓存正文",
-            text = chapterText(completed, total),
+            text = "${displayUnitText(task, progress)}  ${chapterText(completed, total)}",
             progress = chapterProgress(total, completed),
         )
     }
@@ -137,7 +138,8 @@ internal object CacheNotificationBridge {
         val totalBytes = progress?.total
         return Presentation(
             title = if (task.kind == CacheKind.VIDEO) "缓存视频" else "缓存音频",
-            text = "${formatBytes(downloadedBytes)} / ${totalBytes?.let(::formatBytes) ?: "?"} " +
+            text = "${displayUnitText(task, progress)}  " +
+                "${formatBytes(downloadedBytes)} / ${totalBytes?.let(::formatBytes) ?: "?"} " +
                 chapterText(completedChapters(task), task.units.size),
             progress = byteProgress(downloadedBytes, totalBytes),
         )
@@ -148,14 +150,16 @@ internal object CacheNotificationBridge {
         progress: CacheProgressState?,
     ): Presentation {
         val completed = progress?.current?.toInt() ?: 0
-        val total = progress?.total?.toInt() ?: 0
+        val total = progress?.total?.toInt()
         val failed = progress?.failed?.toInt() ?: 0
         val chapters = reviewChapterProgress(task)
+        val snapshotText = total?.let { "$completed/$it" } ?: "处理中"
         return Presentation(
             title = "缓存评论",
-            text = "快照：$completed/$total  失败：$failed  " +
+            text = "${displayUnitText(task, progress)}  快照：$snapshotText  失败：$failed  " +
                 chapterText(chapters.completed, chapters.total),
-            progress = chapterProgress(total, completed),
+            progress = total?.let { chapterProgress(it, completed) }
+                ?: Progress(max = 0, current = 0, indeterminate = true),
         )
     }
 
@@ -249,6 +253,20 @@ internal object CacheNotificationBridge {
 
     private fun completedChapters(task: CacheTaskState): Int =
         task.units.count { it.status == CacheUnitStatus.SUCCEEDED }
+
+    private fun displayUnitText(task: CacheTaskState, progress: CacheProgressState?): String {
+        val unit = progress?.unitKey
+            ?: task.units.firstOrNull {
+                it.status == CacheUnitStatus.PENDING ||
+                    it.status == CacheUnitStatus.RUNNING ||
+                    it.status == CacheUnitStatus.REVIEW_ELIGIBLE
+            }?.key
+            ?: return "当前章节：无"
+        val chapter = appDb.bookChapterDao.getChapter(task.bookUrl, unit.chapterIndex)
+        return chapter?.title?.takeIf { it.isNotBlank() }?.let { title ->
+            "第${unit.chapterIndex + 1}章 $title"
+        } ?: "第${unit.chapterIndex + 1}章"
+    }
 
     /** REVIEW owns its eligible chapter set, so both numerator and denominator come from it. */
     private fun reviewChapterProgress(review: CacheTaskState): ChapterProgress {
