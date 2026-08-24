@@ -52,6 +52,7 @@ internal object AppFileCacheTaskPersistence : CacheTaskPersistence {
             CacheOperationDiagnostics.Context(domain = CacheOperationDiagnostics.Domain.STORE),
             "SNAPSHOT_PERSIST",
             snapshot.metrics(),
+            startAlways = true,
         )
         return runCatching {
             file.parentFile?.mkdirs()

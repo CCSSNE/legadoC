@@ -85,6 +85,7 @@ object ReviewSnapshotStore {
                 ),
             "SNAPSHOT_WRITE",
             CacheOperationDiagnostics.Metrics(inputChars = snapshot.html.length),
+            startAlways = true,
         )
         val dir = reviewsDir(book)
         try {
