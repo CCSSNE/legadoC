@@ -12,6 +12,10 @@ import io.legado.app.base.BaseDialogFragment
 import io.legado.app.databinding.DialogReviewSnapshotStatusBinding
 import io.legado.app.data.entities.Book
 import io.legado.app.help.cache.CacheCoordinator
+import io.legado.app.help.cache.CacheKind
+import io.legado.app.help.cache.CacheLifecycle
+import io.legado.app.help.cache.CachePhase
+import io.legado.app.help.cache.CacheSnapshot
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.utils.gone
 import io.legado.app.utils.setLayout
@@ -21,6 +25,7 @@ import io.legado.app.utils.visible
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -33,6 +38,7 @@ class ReviewSnapshotStatusDialog :
     private val adapter by lazy { ReviewSnapshotStatusAdapter(requireContext(), this) }
     private val book: Book by lazy { requireArguments().getParcelable<Book>(ARG_BOOK)!! }
     private var loadJob: Job? = null
+    private var retryCompletionJob: Job? = null
     private var reviewItems: List<ReviewSnapshotChapterItem> = emptyList()
 
     override fun onStart() {
@@ -61,6 +67,7 @@ class ReviewSnapshotStatusDialog :
     private fun retryFailed(items: List<ReviewSnapshotChapterItem>) {
         if (items.isEmpty()) return
         lifecycleScope.launch {
+            val retryStartedAt = System.currentTimeMillis()
             val count = withContext(Dispatchers.IO) {
                 CacheCoordinator.retryReviewSnapshots(book, items.map { it.chapter })
             }
@@ -68,7 +75,21 @@ class ReviewSnapshotStatusDialog :
                 toastOnUi(R.string.cache_manage_review_retry_unavailable)
             } else {
                 toastOnUi(getString(R.string.cache_manage_review_retry_started, count))
+                observeRetryCompletion(
+                    retryStartedAt,
+                    items.map { it.chapter.index }.toSet(),
+                )
             }
+        }
+    }
+
+    private fun observeRetryCompletion(retryStartedAt: Long, chapterIndexes: Set<Int>) {
+        retryCompletionJob?.cancel()
+        retryCompletionJob = lifecycleScope.launch {
+            CacheCoordinator.snapshot.first { snapshot ->
+                snapshot.hasFinishedReviewRetry(book.bookUrl, chapterIndexes, retryStartedAt)
+            }
+            loadItems()
         }
     }
 
@@ -119,4 +140,28 @@ class ReviewSnapshotStatusDialog :
             }
         }
     }
+}
+
+private fun CacheSnapshot.hasFinishedReviewRetry(
+    bookUrl: String,
+    chapterIndexes: Set<Int>,
+    retryStartedAt: Long,
+): Boolean {
+    if (chapterIndexes.isEmpty()) return false
+    val terminalIndexes = sessions.asSequence()
+        .flatMap { it.tasks.asSequence() }
+        .filter { task ->
+            task.kind == CacheKind.TEXT &&
+                task.phase == CachePhase.REVIEW &&
+                task.bookUrl == bookUrl &&
+                task.updatedAt >= retryStartedAt &&
+                task.status in setOf(
+                    CacheLifecycle.COMPLETED,
+                    CacheLifecycle.FAILED,
+                    CacheLifecycle.CANCELLED,
+                )
+        }
+        .flatMap { task -> task.units.asSequence().map { it.key.chapterIndex } }
+        .toSet()
+    return chapterIndexes.all(terminalIndexes::contains)
 }
