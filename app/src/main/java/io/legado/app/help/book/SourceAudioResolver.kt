@@ -18,6 +18,12 @@ object SourceAudioResolver {
     ): ResolvedSourceAudio {
         require(book.isAudio) { "Source audio requires an audio book: ${book.bookUrl}" }
 
+        // Audio text belongs to the chapter lyric field. A previous media path saved the
+        // source response as ordinary book content, which made an audio download look like
+        // a separately downloaded text book. Enforce the ownership boundary before every
+        // audio resolution so both old pollution and future requests stay out of book_cache.
+        BookHelp.delContent(book, chapter)
+
         chapter.resourceUrl
             ?.takeIf { book.isLocal && ExoPlayerHelper.isLocalMediaContent(it) }
             ?.let { localUrl ->
@@ -28,7 +34,10 @@ object SourceAudioResolver {
             }
 
         chapter.resourceUrl
-            ?.takeIf { ExoPlayerHelper.isMediaCached(it, book) }
+            ?.takeIf {
+                ExoPlayerHelper.isMediaCached(it, book) &&
+                    AudioTextFusion.effectiveLyric(chapter).isNotBlank()
+            }
             ?.let { cachedUrl ->
                 return ResolvedSourceAudio(
                     request = ExoPlayerHelper.createMediaRequest(cachedUrl, emptyMap()),

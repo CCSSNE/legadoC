@@ -70,7 +70,7 @@ class CacheAdapter(context: Context, private val callBack: CallBack) :
         }
     }
 
-    /** 正文/评论双统计：正文 x/y · 评论 a/y */
+    /** 书籍类型对应的离线内容与评论双统计。 */
     private fun ItemDownloadBinding.upDownloadCount(item: Book) {
         val cacheSize = callBack.cacheChapters[item.bookUrl]?.size
         if (cacheSize == null) {
@@ -78,7 +78,11 @@ class CacheAdapter(context: Context, private val callBack: CallBack) :
         } else {
             val reviewSize = callBack.reviewChapters[item.bookUrl]?.size ?: 0
             tvDownload.text = context.getString(
-                R.string.download_count_review,
+                if (item.isAudio) {
+                    R.string.download_count_review_audio
+                } else {
+                    R.string.download_count_review
+                },
                 cacheSize,
                 item.totalChapterNum,
                 reviewSize,
