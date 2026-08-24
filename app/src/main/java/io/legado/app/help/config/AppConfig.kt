@@ -1056,7 +1056,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
     /** 阅读或书架刷新时，按正文预下载窗口自动执行正文→评论下载任务。 */
     var autoDownloadReview: Boolean
-        get() = appCtx.getPrefBoolean(PreferKey.autoDownloadReview, true)
+        get() = appCtx.getPrefBoolean(PreferKey.autoDownloadReview, false)
         set(value) {
             appCtx.putPrefBoolean(PreferKey.autoDownloadReview, value)
         }

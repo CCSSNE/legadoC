@@ -372,7 +372,7 @@
         android:title="@string/sync_cache_review" />
 
     <io.legado.app.lib.prefs.SwitchPreference
-        android:defaultValue="true"
+        android:defaultValue="false"
         android:dependency="syncCacheReview"
         android:key="autoDownloadReview"
         android:summary="@string/auto_download_review_summary"
