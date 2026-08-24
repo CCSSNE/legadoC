@@ -104,7 +104,6 @@ class ReadMenu @JvmOverloads constructor(
         binding.tvSourceAction.text =
             ReadBook.bookSource?.bookSourceName ?: context.getString(R.string.book_source)
         binding.tvSourceAction.isGone = ReadBook.isLocalBook
-        binding.llDownload.isGone = ReadBook.isLocalBook
         ReadBook.bookSource?.let {
             if (it.customButton) {
                 binding.tvCustomBtn.visibility = VISIBLE
@@ -733,13 +732,6 @@ class ReadMenu @JvmOverloads constructor(
             }
         }
 
-        //朗读
-        llDownload.setOnClickListener {
-            runMenuOut {
-                callBack.openDownloadDialog()
-            }
-        }
-
         llReadAloud.setOnClickListener {
             runMenuOut {
                 callBack.onClickReadAloud()
@@ -881,7 +873,6 @@ class ReadMenu @JvmOverloads constructor(
         fun autoPage()
         fun openReplaceRule()
         fun openChapterList()
-        fun openDownloadDialog()
         fun openSearchActivity(searchWord: String?)
         fun openSourceEditActivity()
         fun openBookInfoActivity()

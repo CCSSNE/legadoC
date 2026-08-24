@@ -2110,10 +2110,6 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
     }
 
-    override fun openDownloadDialog() {
-        showDownloadDialog()
-    }
-
     /**
      * 打开搜索界面
      */
