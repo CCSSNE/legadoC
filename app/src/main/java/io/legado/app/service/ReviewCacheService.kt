@@ -7,7 +7,6 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.NotificationId
 import io.legado.app.help.cache.CacheNotificationBridge
 import io.legado.app.help.cache.CacheReviewWorkerRegistry
-import io.legado.app.help.config.AppConfig
 import io.legado.app.help.review.ReviewSnapshotManager
 import io.legado.app.utils.startService
 import kotlinx.coroutines.Dispatchers
@@ -23,6 +22,8 @@ import java.util.concurrent.atomic.AtomicInteger
 class ReviewCacheService : BaseService() {
 
     companion object {
+        /** 评论章节按顺序消费；页面预热由下游的 Capture Pipeline 负责。 */
+        private const val CHAPTER_CONSUMER_COUNT = 1
         private val startRequested = AtomicBoolean(false)
 
         internal fun startSelf(): Boolean {
@@ -57,10 +58,7 @@ class ReviewCacheService : BaseService() {
     private fun startWork() {
         workJob?.cancel()
         workJob = lifecycleScope.launch(Dispatchers.IO) {
-            // 与 ReviewSnapshotManager 的全局页面流水线配额使用同一份设置。否则单章只有
-            // 一个评论按钮时，固定 4 个章节消费者会把配置的 16 条 Capture 错限成 4 条。
-            // heavy 内存阶段仍由 ReviewSnapshotCapture 的独立 permit 串行化。
-            repeat(AppConfig.reviewCacheConcurrency.coerceIn(1, 32)) {
+            repeat(CHAPTER_CONSUMER_COUNT) {
                 launch {
                     while (isActive) {
                         var task = ReviewSnapshotManager.tryTakeTask()

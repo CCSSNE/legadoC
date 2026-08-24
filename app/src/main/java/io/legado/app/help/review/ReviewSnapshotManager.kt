@@ -42,19 +42,17 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 object ReviewSnapshotManager {
 
-    /**
-     * 全局页面流水线配额。配置值不再按“每章”重复计算：无论同时有多少章节任务，
-     * 活动页面总数都不会超过当前设置。每次取位时重新读取配置，设置变更会在排队的
-     * 流水线进入下一轮时生效。
-     */
+    /** 预热当前 Capture 与下一条 Capture；不随用户资源下载设置改变。 */
+    private const val CAPTURE_PIPELINE_CONCURRENCY = 2
+
+    /** 全局页面流水线固定为两条；无论按钮数多少，活动 Capture 都不会超过该值。 */
     private val pipelineLock = Any()
     private var activePipelines = 0
 
     private suspend fun <T> withPipelinePermit(block: suspend () -> T): T {
         while (true) {
             val acquired = synchronized(pipelineLock) {
-                val limit = AppConfig.reviewCacheConcurrency.coerceIn(1, 32)
-                if (activePipelines < limit) {
+                if (activePipelines < CAPTURE_PIPELINE_CONCURRENCY) {
                     activePipelines++
                     true
                 } else {
@@ -412,10 +410,8 @@ object ReviewSnapshotManager {
         // force=true（用户明确刷新）时，任何一个需要刷新的按钮失败都保留待刷新标记，
         // 不能“一个成功就算整章成功”
         var hasFailure = false
-        // 每章可以并行解析多个按钮；真正的全局并行度由 [withPipelinePermit] 统一控制，
-        // 不再出现“服务 worker 数 × 单章按钮数”的乘法放大。
-        val buttonConcurrency = AppConfig.reviewCacheConcurrency
-            .coerceIn(1, buttons.size.coerceAtLeast(1))
+        // 单章只预热当前按钮与下一条；全局也由 [withPipelinePermit] 固定为两条 Capture。
+        val buttonConcurrency = CAPTURE_PIPELINE_CONCURRENCY.coerceAtMost(buttons.size.coerceAtLeast(1))
         val outcomes = buttons
             .asFlow()
             .mapAsyncIndexed(buttonConcurrency) { index, button ->

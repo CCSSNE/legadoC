@@ -43,6 +43,8 @@ import java.util.concurrent.Semaphore
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.ScheduledThreadPoolExecutor
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.Callable
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.resume
@@ -85,13 +87,15 @@ object ReviewSnapshotCapture {
     private const val MAX_INLINE_RESOURCES = 200
     private const val MAX_TOTAL_INLINE_BYTES = 30L * 1024 * 1024
     private const val MAX_INLINE_RESOURCE_BYTES = 8L * 1024 * 1024
-    /** 单个内联资源抓取超时：内联失败只丢该资源，不拖整章 */
+    /** 单个内联资源抓取超时；任何资源失败都显式失败，不能把残缺快照记为成功。 */
     private const val RESOURCE_FETCH_TIMEOUT_MS = 8_000L
+    private const val HEAVY_STAGE_CONCURRENCY = 1
+    private const val RESOURCE_COPY_BUFFER_BYTES = 32 * 1024
     /**
      * 内联资源构建、outerHTML 回传和 JSON 解码会短时保留完整页面及其副本；这是本进程
      * 唯一的重内存区段。页面加载/展开仍可并行，只有进入该区段才排队。
      */
-    private val heavyStagePermits = Semaphore(1, true)
+    private val heavyStagePermits = Semaphore(HEAVY_STAGE_CONCURRENCY, true)
 
     private class ResourceBudgetExceededException(message: String) : IllegalStateException(message)
 
@@ -354,8 +358,52 @@ object ReviewSnapshotCapture {
 
         private data class CleanupHandles(
             val worker: Thread?,
-            val call: okhttp3.Call?,
+            val calls: List<okhttp3.Call>,
         )
+
+        private enum class ResourceKind {
+            IMAGE,
+            CSS,
+        }
+
+        private data class ResourceTarget(
+            val index: Int,
+            val url: String,
+            val kind: ResourceKind,
+        )
+
+        private data class StagedResource(
+            val target: ResourceTarget,
+            val file: File,
+            val byteCount: Long,
+        )
+
+        /**
+         * 并发下载时只允许受控大小的临时文件总量。图片的最终 Base64 体积按上界预留，
+         * 因而网络线程数可以提高，不会重新把多份完整 byte[] 同时堆到 Java heap。
+         */
+        private class ResourceStagingBudget {
+            private var reservedBytes = 0L
+
+            @Synchronized
+            fun reserve(bytes: Long) {
+                if (bytes <= 0L) return
+                val next = reservedBytes + bytes
+                if (next > MAX_TOTAL_INLINE_BYTES) {
+                    throw ResourceBudgetExceededException(
+                        "评论快照内联资源 $next B 超过总预算 $MAX_TOTAL_INLINE_BYTES B",
+                    )
+                }
+                reservedBytes = next
+            }
+
+            @Synchronized
+            fun release(bytes: Long) {
+                if (bytes > 0L) {
+                    reservedBytes = (reservedBytes - bytes).coerceAtLeast(0L)
+                }
+            }
+        }
 
         @Volatile
         private var destroyed = false
@@ -373,7 +421,7 @@ object ReviewSnapshotCapture {
         private var terminalResult: TerminalResult? = null
         private var terminalFinalized = false
         private var activeHeavyWorker: Thread? = null
-        private var activeResourceCall: okhttp3.Call? = null
+        private val activeResourceCalls = linkedSetOf<okhttp3.Call>()
         @Volatile
         private var activeStage: CaptureStage? = null
         @Volatile
@@ -519,7 +567,7 @@ object ReviewSnapshotCapture {
                 )
                 destroyed = true
                 activeStage = null
-                CleanupHandles(activeHeavyWorker, activeResourceCall)
+                CleanupHandles(activeHeavyWorker, activeResourceCalls.toList())
             }
             clearStageTimeout()
             diagnostics?.stageFail(stage.diagnosticsStage, error)
@@ -531,14 +579,14 @@ object ReviewSnapshotCapture {
                 if (terminalResult != null) return@synchronized null
                 terminalResult = result
                 destroyed = true
-                CleanupHandles(activeHeavyWorker, activeResourceCall)
+                CleanupHandles(activeHeavyWorker, activeResourceCalls.toList())
             }
         }
 
         private fun cancelOutstandingWork(cleanup: CleanupHandles) {
             clearStageTimeout()
             queueWaitThread.get()?.interrupt()
-            cleanup.call?.cancel()
+            cleanup.calls.forEach { it.cancel() }
             cleanup.worker?.interrupt()
             tryFinalizeTerminal()
         }
@@ -725,10 +773,22 @@ object ReviewSnapshotCapture {
                         "RESOURCE_LIST_READY",
                         CacheOperationDiagnostics.Metrics(resourceCount = urls.first.size + urls.second.size),
                     )
+                    diagnostics?.stageStart(
+                        "RESOURCE_DOWNLOAD",
+                        CacheOperationDiagnostics.Metrics(resourceCount = urls.first.size + urls.second.size),
+                        startAlways = true,
+                    )
                     launchHeavyWorker(
                         name = "ReviewSnapshotResources",
                         work = { downloadResources(urls) },
                         onSuccess = { inline ->
+                            diagnostics?.stageDone(
+                                "RESOURCE_DOWNLOAD",
+                                CacheOperationDiagnostics.Metrics(
+                                    resourceCount = inline.resourceCount,
+                                    outputBytes = inline.inlineBytes,
+                                ),
+                            )
                             diagnostics?.mark(
                                 "RESOURCE_INLINE_READY",
                                 CacheOperationDiagnostics.Metrics(
@@ -739,6 +799,7 @@ object ReviewSnapshotCapture {
                             applyInline(inline)
                         },
                         onFailure = { error ->
+                            diagnostics?.stageFail("RESOURCE_DOWNLOAD", error)
                             diagnostics?.warn("RESOURCE_INLINE_FAILED", error)
                             fail(error)
                         },
@@ -800,15 +861,19 @@ object ReviewSnapshotCapture {
                     call.cancel()
                     throw InterruptedIOException("评论快照资源请求已取消")
                 }
-                check(activeResourceCall == null) { "评论快照资源请求重叠" }
-                activeResourceCall = call
+                activeResourceCalls += call
             }
         }
 
         private fun unregisterResourceCall(call: okhttp3.Call) {
             synchronized(lifecycleLock) {
-                if (activeResourceCall === call) activeResourceCall = null
+                activeResourceCalls -= call
             }
+        }
+
+        private fun cancelActiveResourceCalls() {
+            val calls = synchronized(lifecycleLock) { activeResourceCalls.toList() }
+            calls.forEach { it.cancel() }
         }
 
         private fun releaseHeavyStagePermit() {
@@ -846,69 +911,124 @@ object ReviewSnapshotCapture {
                     "评论快照资源数 $resourceCount 超过预算 $MAX_INLINE_RESOURCES",
                 )
             }
-            val imgMap = linkedMapOf<String, String>()
-            val cssMap = linkedMapOf<String, String>()
-            // 内联资源的最终体积不可预知。此前一次把全部请求同时 async，单个
-            // fetchBytes() 都会整块分配 byte[]，使“单个快照”在入 DOM 前就产生多份大对象。
-            // 现在按队列逐项抓取；预算不够时整份快照明确失败，绝不悄悄少存资源。
-            var totalBytes = 0L
-            for (rawUrl in imgUrls) {
-                ensureHeavyActive()
-                val bytes = try {
-                    fetchBytes(rawUrl)
-                } catch (_: Exception) {
-                    ensureHeavyActive()
-                    continue
-                }
-                ensureHeavyActive()
-                if (bytes.size > MAX_INLINE_RESOURCE_BYTES) {
-                    throw ResourceBudgetExceededException(
-                        "评论快照资源 ${bytes.size}B 超过单资源预算 $MAX_INLINE_RESOURCE_BYTES B: $rawUrl",
-                    )
-                }
-                val mime = guessMime(rawUrl, bytes)
-                val value = "data:$mime;base64," +
-                    android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-                val nextTotal = totalBytes + value.length
-                if (nextTotal > MAX_TOTAL_INLINE_BYTES) {
-                    throw ResourceBudgetExceededException(
-                        "评论快照内联资源 $nextTotal B 超过总预算 $MAX_TOTAL_INLINE_BYTES B",
-                    )
-                }
-                totalBytes = nextTotal
-                imgMap[rawUrl] = value
+            if (resourceCount == 0) return InlineResources()
+            val targets = ArrayList<ResourceTarget>(resourceCount)
+            imgUrls.forEach { targets += ResourceTarget(targets.size, it, ResourceKind.IMAGE) }
+            cssUrls.forEach { targets += ResourceTarget(targets.size, it, ResourceKind.CSS) }
+            val stagingDir = File(
+                appCtx.cacheDir,
+                "review_snapshot_${System.nanoTime()}_${Thread.currentThread().id}",
+            )
+            check(stagingDir.mkdirs() || stagingDir.isDirectory) {
+                "无法创建评论快照资源暂存目录"
             }
-            for (rawUrl in cssUrls) {
-                ensureHeavyActive()
-                val bytes = try {
-                    fetchBytes(rawUrl)
-                } catch (_: Exception) {
+            try {
+                val stagedResources = stageResources(targets, stagingDir)
+                val imgMap = linkedMapOf<String, String>()
+                val cssMap = linkedMapOf<String, String>()
+                var totalBytes = 0L
+                for (staged in stagedResources) {
                     ensureHeavyActive()
-                    continue
+                    val bytes = staged.file.readBytes()
+                    check(bytes.size.toLong() == staged.byteCount) {
+                        "评论快照资源暂存文件长度异常: ${staged.target.url}"
+                    }
+                    when (staged.target.kind) {
+                        ResourceKind.IMAGE -> {
+                            val mime = guessMime(staged.target.url, bytes)
+                            val value = "data:$mime;base64," +
+                                android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                            val nextTotal = totalBytes + value.length
+                            if (nextTotal > MAX_TOTAL_INLINE_BYTES) {
+                                throw ResourceBudgetExceededException(
+                                    "评论快照内联资源 $nextTotal B 超过总预算 $MAX_TOTAL_INLINE_BYTES B",
+                                )
+                            }
+                            totalBytes = nextTotal
+                            imgMap[staged.target.url] = value
+                        }
+
+                        ResourceKind.CSS -> {
+                            val text = bytes.toString(Charsets.UTF_8).takeIf { it.isNotBlank() }
+                                ?: continue
+                            val nextTotal = totalBytes + text.toByteArray(Charsets.UTF_8).size
+                            if (nextTotal > MAX_TOTAL_INLINE_BYTES) {
+                                throw ResourceBudgetExceededException(
+                                    "评论快照内联资源 $nextTotal B 超过总预算 $MAX_TOTAL_INLINE_BYTES B",
+                                )
+                            }
+                            totalBytes = nextTotal
+                            cssMap[staged.target.url] = text
+                        }
+                    }
                 }
-                ensureHeavyActive()
-                if (bytes.size > MAX_INLINE_RESOURCE_BYTES) {
-                    throw ResourceBudgetExceededException(
-                        "评论快照资源 ${bytes.size}B 超过单资源预算 $MAX_INLINE_RESOURCE_BYTES B: $rawUrl",
-                    )
-                }
-                val text = bytes.toString(Charsets.UTF_8).takeIf { it.isNotBlank() } ?: continue
-                val nextTotal = totalBytes + text.toByteArray(Charsets.UTF_8).size
-                if (nextTotal > MAX_TOTAL_INLINE_BYTES) {
-                    throw ResourceBudgetExceededException(
-                        "评论快照内联资源 $nextTotal B 超过总预算 $MAX_TOTAL_INLINE_BYTES B",
-                    )
-                }
-                totalBytes = nextTotal
-                cssMap[rawUrl] = text
+                return InlineResources(imgMap, cssMap, totalBytes)
+            } finally {
+                stagingDir.deleteRecursively()
             }
-            return InlineResources(imgMap, cssMap, totalBytes)
         }
 
-        /** 同步抓取资源字节（在后台线程调用），单请求 8s 超时避免连不通的地址长期卡死 */
-        private fun fetchBytes(resourceUrl: String): ByteArray {
+        /**
+         * 资源线程数只控制网络拉取。响应通过固定小缓冲区写入临时文件，随后才逐项转为
+         * Base64，因此提高下载并发不会重新引入多份完整响应 byte[] 同驻 Java heap。
+         */
+        private fun stageResources(
+            targets: List<ResourceTarget>,
+            stagingDir: File,
+        ): List<StagedResource> {
+            val threadCount = AppConfig.reviewResourceDownloadConcurrency.coerceIn(1, 32)
+            val executor = Executors.newFixedThreadPool(threadCount) { runnable ->
+                Thread(runnable, "ReviewSnapshotResource").apply { isDaemon = true }
+            }
+            val budget = ResourceStagingBudget()
+            val futures = targets.map { target ->
+                executor.submit(Callable { stageResource(target, stagingDir, budget) })
+            }
+            try {
+                return futures.map { future ->
+                    try {
+                        future.get()
+                    } catch (error: java.util.concurrent.ExecutionException) {
+                        throw (error.cause ?: error)
+                    } catch (error: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                        throw InterruptedIOException("评论快照资源下载已取消").also {
+                            it.initCause(error)
+                        }
+                    }
+                }
+            } catch (error: Throwable) {
+                futures.forEach { it.cancel(true) }
+                cancelActiveResourceCalls()
+                throw error
+            } finally {
+                shutdownResourceWorkers(executor)
+            }
+        }
+
+        private fun shutdownResourceWorkers(executor: ExecutorService) {
+            executor.shutdownNow()
+            var restoreInterrupt = Thread.interrupted()
+            while (!executor.isTerminated) {
+                try {
+                    executor.awaitTermination(100L, TimeUnit.MILLISECONDS)
+                } catch (_: InterruptedException) {
+                    restoreInterrupt = true
+                    cancelActiveResourceCalls()
+                }
+            }
+            if (restoreInterrupt) Thread.currentThread().interrupt()
+        }
+
+        /** 单个资源以流式方式暂存；单请求仍保持 8s 网络超时。 */
+        private fun stageResource(
+            target: ResourceTarget,
+            stagingDir: File,
+            budget: ResourceStagingBudget,
+        ): StagedResource {
+            val targetFile = File(stagingDir, target.index.toString())
             val request = okhttp3.Request.Builder()
-                .url(resourceUrl)
+                .url(target.url)
                 .header("Referer", url)
                 .build()
             val call = okHttpClient.newBuilder()
@@ -917,15 +1037,51 @@ object ReviewSnapshotCapture {
                 .build()
                 .newCall(request)
             registerResourceCall(call)
+            var reservedBytes = 0L
+            var completed = false
             try {
                 ensureHeavyActive()
                 call.execute().use { response ->
                     check(response.isSuccessful) { "HTTP ${response.code}" }
-                    return response.body.bytes()
+                    val body = response.body ?: error("评论快照资源响应为空: ${target.url}")
+                    body.byteStream().use { input ->
+                        targetFile.outputStream().buffered().use { output ->
+                            val buffer = ByteArray(RESOURCE_COPY_BUFFER_BYTES)
+                            var copiedBytes = 0L
+                            while (true) {
+                                ensureHeavyActive()
+                                val count = input.read(buffer)
+                                if (count < 0) break
+                                val nextBytes = copiedBytes + count
+                                if (nextBytes > MAX_INLINE_RESOURCE_BYTES) {
+                                    throw ResourceBudgetExceededException(
+                                        "评论快照资源 $nextBytes B 超过单资源预算 " +
+                                            "$MAX_INLINE_RESOURCE_BYTES B: ${target.url}",
+                                    )
+                                }
+                                val nextReserved = estimatedInlineBytes(target.kind, nextBytes)
+                                budget.reserve(nextReserved - reservedBytes)
+                                reservedBytes = nextReserved
+                                output.write(buffer, 0, count)
+                                copiedBytes = nextBytes
+                            }
+                            completed = true
+                            return StagedResource(target, targetFile, copiedBytes)
+                        }
+                    }
                 }
             } finally {
                 unregisterResourceCall(call)
+                if (!completed) {
+                    budget.release(reservedBytes)
+                    targetFile.delete()
+                }
             }
+        }
+
+        private fun estimatedInlineBytes(kind: ResourceKind, rawBytes: Long): Long = when (kind) {
+            ResourceKind.IMAGE -> ((rawBytes + 2L) / 3L) * 4L + 64L
+            ResourceKind.CSS -> rawBytes
         }
 
         private fun guessMime(rawUrl: String, bytes: ByteArray): String {
