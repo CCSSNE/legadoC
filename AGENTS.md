@@ -240,6 +240,8 @@ uiautomator2 / ADB
 
 ### Git
 
+- git 提交必须为中文说明。 如果遇到历史的提交是英文说明，也会顺手改为中文，并且强推到线上。
+
 - 提交前检查 `git status`、`git diff`、`git log`。只暂存本次需要的文件，不提交 APK、构建日志、trace 或临时文件。
 - 提交信息简洁且准确，遵循现有仓库风格。
 - 项目不使用远程 CI：`.github/workflows` 下全部工作流已于 2026-08-22 移除（unit-test 因 `gradlew` 缺少可执行位从未通过；publish-release-to-telegram 为上游继承、secrets 未配置的死配置），远程 Actions 无存量运行负担。单元测试与编译检查一律在本地执行；不得重新引入或恢复远程 CI 工作流。
