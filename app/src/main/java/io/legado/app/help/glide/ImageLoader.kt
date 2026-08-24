@@ -9,6 +9,7 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import com.bumptech.glide.Glide
 import com.bumptech.glide.RequestBuilder
+import com.bumptech.glide.request.RequestOptions
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.isDataUrl
@@ -99,10 +100,21 @@ object ImageLoader {
         }
     }
 
-    fun loadFile(context: Context, path: String?): RequestBuilder<File> {
+    fun loadFile(
+        context: Context,
+        path: String?,
+        loadOnlyWifi: Boolean = false,
+        sourceOrigin: String? = null,
+    ): RequestBuilder<File> {
         val normalizedPath = normalizeLocalPath(path)
+        var options = RequestOptions()
+            .set(OkHttpModelLoader.loadOnlyWifiOption, loadOnlyWifi)
+        if (sourceOrigin != null) {
+            options = options.set(OkHttpModelLoader.sourceOriginOption, sourceOrigin)
+        }
         return when {
             normalizedPath.isNullOrEmpty() -> Glide.with(context).asFile().load(normalizedPath)
+            normalizedPath.isDataUrl() -> Glide.with(context).asFile().load(normalizedPath)
             normalizedPath.isAbsUrl() -> Glide.with(context).asFile().load(normalizedPath)
             normalizedPath.isContentScheme() -> Glide.with(context).asFile().load(normalizedPath.toUri())
             else -> kotlin.runCatching {
@@ -110,7 +122,7 @@ object ImageLoader {
             }.getOrElse {
                 Glide.with(context).asFile().load(normalizedPath)
             }
-        }
+        }.apply(options)
     }
 
     fun load(context: Context, @DrawableRes resId: Int?): RequestBuilder<Drawable> {

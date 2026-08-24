@@ -31,6 +31,8 @@ import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.AudioBookArchive
 import io.legado.app.help.book.AudioBookArchiveChapter
 import io.legado.app.help.book.AudioBookArchiveManifest
+import io.legado.app.help.book.BookArchive
+import io.legado.app.help.book.BookArchiveManifest
 import io.legado.app.help.book.AudioOfflineState
 import io.legado.app.help.book.AudioTextFusion
 import io.legado.app.help.book.ContentProcessor
@@ -41,6 +43,7 @@ import io.legado.app.help.book.isLocalModified
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalTxt
 import io.legado.app.help.illustration.IllustrationHelp
+import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.review.ReviewSnapshotStore
 import io.legado.app.help.illustration.imageSrcsFromJson
 import io.legado.app.help.config.AppConfig
@@ -529,6 +532,7 @@ class ExportBookService : BaseService() {
             null
         }
         try {
+            val bookArchiveEntries = exportBookArchiveMetadata(book, tmpRoot, txtName)
             val tmpAudioManifest = if (book.isAudio) {
                 exportAudioBookMedia(book, tmpRoot, txtName, requireNotNull(audioChapters))
             } else {
@@ -580,6 +584,7 @@ class ExportBookService : BaseService() {
             }
             val tmpZip = File(tmpRoot, zipName)
             val zipEntries = arrayListOf<File>(tmpTxt, tmpImagesDir)
+            zipEntries.addAll(bookArchiveEntries)
             tmpJson.takeIf { it.exists() }?.let { zipEntries.add(it) }
             tmpBookmarks?.takeIf { it.exists() }?.let { zipEntries.add(it) }
             tmpReplaceRules?.takeIf { it.exists() }?.let { zipEntries.add(it) }
@@ -605,6 +610,41 @@ class ExportBookService : BaseService() {
         } finally {
             FileUtils.delete(tmpRoot)
         }
+    }
+
+    private fun exportBookArchiveMetadata(
+        book: Book,
+        tmpRoot: File,
+        txtName: String,
+    ): List<File> {
+        val coverFile = book.getDisplayCover()?.takeIf { it.isNotBlank() }?.let { coverPath ->
+            val source = ImageLoader.loadFile(
+                this,
+                coverPath,
+                sourceOrigin = book.origin,
+            ).submit().get()
+            require(source.isFile && source.length() > 0L) {
+                "TXT-ZIP export failed: cover is missing or empty for ${book.name}"
+            }
+            File(tmpRoot, BookArchive.COVER_FILE_NAME).also { target ->
+                source.copyTo(target, overwrite = true)
+                require(target.isFile && target.length() == source.length()) {
+                    "TXT-ZIP export failed: cover copy is incomplete for ${book.name}"
+                }
+            }
+        }
+        val manifestFile = File(tmpRoot, BookArchive.MANIFEST_FILE_NAME).also { file ->
+            file.writeText(
+                GSON.toJson(
+                    BookArchiveManifest(
+                        textFile = txtName,
+                        coverFile = coverFile?.name,
+                    )
+                ),
+                Charsets.UTF_8,
+            )
+        }
+        return listOfNotNull(manifestFile, coverFile)
     }
 
     private suspend fun exportAudioBookMedia(
