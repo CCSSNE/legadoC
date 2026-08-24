@@ -34,6 +34,7 @@ import io.legado.app.help.book.getArchiveUri
 import io.legado.app.help.book.getLocalUri
 import io.legado.app.help.book.getRemoteUrl
 import io.legado.app.help.book.isArchive
+import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isMobi
@@ -82,6 +83,17 @@ import kotlinx.coroutines.currentCoroutineContext
 object LocalBook {
 
     private const val LARGE_EPUB_FAST_IMPORT_BYTES = 100L * 1024L * 1024L
+
+    private data class AudioArchiveChapterIdentity(
+        val index: Int,
+        val title: String,
+    )
+
+    private data class AudioArchiveImportMapping(
+        val bookUrl: String,
+        val chaptersBySourceUrl: Map<String, BookChapter>?,
+        val legacyChapters: Map<AudioArchiveChapterIdentity, BookChapter>?,
+    )
 
     private val nameAuthorPatterns = arrayOf(
         Pattern.compile("(.*?)《([^《》]+)》.*?作者：(.*)"),
@@ -133,6 +145,13 @@ object LocalBook {
 
     @Throws(TocEmptyException::class)
     fun getChapterList(book: Book): ArrayList<BookChapter> {
+        if (book.isAudio && book.isArchive) {
+            val archivedChapters = appDb.bookChapterDao.getChapterList(book.bookUrl)
+            check(archivedChapters.isNotEmpty()) {
+                "Audio TXT-ZIP chapter manifest is missing: ${book.bookUrl}"
+            }
+            return ArrayList(archivedChapters)
+        }
         val chapters = when {
             book.isEpub -> {
                 EpubFile.getChapterList(book)
@@ -533,10 +552,10 @@ object LocalBook {
                 }
             }
         }
-        if (audioManifest != null) {
-            restoreAudioBookFromArchive(archiveFileDoc, books, audioManifest)
+        val audioChapterMapping = audioManifest?.let { manifest ->
+            restoreAudioBookFromArchive(archiveFileDoc, books, manifest)
         }
-        restoreIllustrationsFromArchive(archiveFileDoc, books)
+        restoreIllustrationsFromArchive(archiveFileDoc, books, audioChapterMapping)
         return books
     }
 
@@ -557,7 +576,7 @@ object LocalBook {
             ?: error("Audio TXT-ZIP import failed: manifest was not extracted")
         val manifest = GSON.fromJsonObject<AudioBookArchiveManifest>(manifestFile.readText())
             .getOrThrow()
-        require(manifest.version == AudioBookArchive.VERSION) {
+        require(manifest.version in AudioBookArchive.MIN_SUPPORTED_VERSION..AudioBookArchive.VERSION) {
             "Audio TXT-ZIP import failed: unsupported manifest version ${manifest.version}"
         }
         require(manifest.textFile.isNotBlank() && manifest.textFile.endsWith(".txt", true)) {
@@ -569,6 +588,25 @@ object LocalBook {
         require(manifest.chapters.isNotEmpty()) {
             "Audio TXT-ZIP import failed: chapter mapping is empty"
         }
+        require(manifest.chapters.map { it.index }.distinct().size == manifest.chapters.size) {
+            "Audio TXT-ZIP import failed: duplicate chapter index"
+        }
+        val sourceChapterUrls = manifest.chapters.mapNotNull { it.sourceChapterUrl }
+        if (manifest.version >= 2) {
+            require(sourceChapterUrls.size == manifest.chapters.size) {
+                "Audio TXT-ZIP import failed: incomplete source chapter identities"
+            }
+            require(sourceChapterUrls.none { it.isBlank() }) {
+                "Audio TXT-ZIP import failed: blank source chapter identity"
+            }
+            require(sourceChapterUrls.distinct().size == sourceChapterUrls.size) {
+                "Audio TXT-ZIP import failed: duplicate source chapter identity"
+            }
+        } else {
+            require(sourceChapterUrls.isEmpty()) {
+                "Audio TXT-ZIP import failed: version 1 contains version 2 chapter identities"
+            }
+        }
         return manifest
     }
 
@@ -576,7 +614,7 @@ object LocalBook {
         archiveFileDoc: FileDoc,
         importedBooks: List<Book>,
         manifest: AudioBookArchiveManifest,
-    ) {
+    ): AudioArchiveImportMapping {
         val book = importedBooks.singleOrNull { it.originName == manifest.textFile }
             ?: error("Audio TXT-ZIP import failed: text file ${manifest.textFile} was not imported")
         val mediaPaths = manifest.chapters.flatMap { chapter ->
@@ -619,21 +657,21 @@ object LocalBook {
             require(file.length() > 0L) { "Audio TXT-ZIP import failed: empty $path" }
         }
 
-        ensureChapterListForImport(book)
-        val localChapters = appDb.bookChapterDao.getChapterList(book.bookUrl)
-        val chapterAssignments = manifest.chapters.map { archivedChapter ->
-            val localChapter = matchLocalChapter(
-                localChapters,
-                archivedChapter.index,
-                archivedChapter.title,
-            ) ?: error(
-                "Audio TXT-ZIP import failed: cannot match chapter " +
-                    "${archivedChapter.index + 1} ${archivedChapter.title}"
+        val chapterAssignments = manifest.chapters.mapIndexed { order, archivedChapter ->
+            val localChapter = BookChapter(
+                url = AudioBookArchive.importedChapterUrl(book.bookUrl, order),
+                title = archivedChapter.title,
+                baseUrl = book.bookUrl,
+                bookUrl = book.bookUrl,
+                index = order,
+                variable = archivedChapter.variable,
+                start = archivedChapter.start,
+                end = archivedChapter.end,
             )
+            require(localChapter.getVariable("lyric").isNotBlank()) {
+                "Audio TXT-ZIP import failed: chapter ${archivedChapter.index + 1} has no lyric"
+            }
             archivedChapter to localChapter
-        }
-        require(chapterAssignments.map { it.second.index }.distinct().size == chapterAssignments.size) {
-            "Audio TXT-ZIP import failed: multiple audio chapters matched the same text chapter"
         }
 
         book.name = manifest.name
@@ -668,12 +706,32 @@ object LocalBook {
                 } else {
                     GSON.toJson(localMediaUrls)
                 }
-                localChapter.variable = archivedChapter.variable
-                localChapter.start = archivedChapter.start
-                localChapter.end = archivedChapter.end
             }
-            appDb.bookChapterDao.update(*chapterAssignments.map { it.second }.toTypedArray())
-            appDb.bookDao.update(book)
+            val localChapters = chapterAssignments.map { it.second }
+            book.totalChapterNum = localChapters.size
+            book.durChapterIndex = book.durChapterIndex.coerceIn(0, localChapters.lastIndex)
+            book.durChapterTitle = localChapters[book.durChapterIndex].title
+            book.latestChapterTitle = localChapters.last().title
+            appDb.runInTransaction {
+                appDb.bookChapterDao.delByBook(book.bookUrl)
+                appDb.bookChapterDao.insert(*localChapters.toTypedArray())
+                appDb.bookDao.update(book)
+            }
+            return AudioArchiveImportMapping(
+                bookUrl = book.bookUrl,
+                chaptersBySourceUrl = manifest.chapters.first().sourceChapterUrl?.let {
+                    chapterAssignments.associate { (archivedChapter, localChapter) ->
+                        requireNotNull(archivedChapter.sourceChapterUrl) to localChapter
+                    }
+                },
+                legacyChapters = manifest.chapters.first().sourceChapterUrl?.let { null }
+                    ?: chapterAssignments.associate { (archivedChapter, localChapter) ->
+                        AudioArchiveChapterIdentity(
+                            archivedChapter.index,
+                            archivedChapter.title,
+                        ) to localChapter
+                    },
+            )
         } finally {
             if (stagingDir.exists()) FileUtils.delete(stagingDir, deleteRootDir = true)
         }
@@ -684,7 +742,8 @@ object LocalBook {
      */
     private fun restoreIllustrationsFromArchive(
         archiveFileDoc: FileDoc,
-        importedBooks: List<Book>
+        importedBooks: List<Book>,
+        audioChapterMapping: AudioArchiveImportMapping? = null,
     ) {
         kotlin.runCatching {
             val files = ArchiveUtils.deCompress(
@@ -729,15 +788,19 @@ object LocalBook {
                 }
             }
             // 评论页快照：reviews/r_*.json 还原进该书缓存目录，之后点击评论按钮即可离线打开。
-            // 快照主键是导出时的在线 chapterUrl；导入后书变成本地书、章节 URL 已重解析，
-            // 必须按 sidecar 里的 chapterIndex / chapterTitle 把主键 remap 到本地章节，
-            // 否则点击时按本地 chapterUrl 查不到快照。
+            // 音频归档使用 Manifest 建立的确定性章节映射；普通 TXT 仍按解析后的本地目录
+            // 匹配。两者最终都把在线 chapterUrl remap 为本地章节 URL。
             // 注意放在 illustrations.json 存在性判断之前：无配图的书可能只有评论快照
-            val importedBook = importedBooks.firstOrNull()
+            val importedBook = audioChapterMapping?.let { mapping ->
+                importedBooks.singleOrNull { it.bookUrl == mapping.bookUrl }
+                    ?: error("Audio TXT-ZIP import failed: imported audio book is missing")
+            } ?: importedBooks.firstOrNull()
             if (importedBook != null) {
-                // 刚导入的普通 TXT 只创建了 Book，目录（BookChapter）尚未解析入库，
-                // 快照 remap 依赖本地章节列表：先按现有分章逻辑补齐目录
-                ensureChapterListForImport(importedBook)
+                // 刚导入的普通 TXT 只创建了 Book，目录（BookChapter）尚未解析入库；
+                // 音频归档章节已由 Manifest 直接写入，不再解析 TXT 猜测章节身份。
+                if (audioChapterMapping == null) {
+                    ensureChapterListForImport(importedBook)
+                }
                 val localChapters = appDb.bookChapterDao.getChapterList(importedBook.bookUrl)
                 // Validate and restore the resource library before accepting any
                 // snapshot payload. A reviews/ archive without resources.json is
@@ -753,7 +816,14 @@ object LocalBook {
                                 GSON.fromJsonObject<io.legado.app.help.review.ReviewSnapshot>(
                                     snapshotFile.readText()
                                 ).getOrNull() ?: return@runCatching
-                            matchLocalChapter(localChapters, snapshot)?.let { localChapter ->
+                            matchImportedChapter(
+                                importedBook,
+                                localChapters,
+                                snapshot.chapterUrl,
+                                snapshot.chapterIndex,
+                                snapshot.chapterTitle,
+                                audioChapterMapping,
+                            )?.let { localChapter ->
                                 val remapped = snapshot.copy(
                                     bookUrl = importedBook.bookUrl,
                                     chapterUrl = localChapter.url,
@@ -784,10 +854,13 @@ object LocalBook {
                             val status = io.legado.app.help.review.ReviewSnapshotStore
                                 .readChapterStatus(statusFile)
                                 ?: return@runCatching
-                            matchLocalChapter(
+                            matchImportedChapter(
+                                importedBook,
                                 localChapters,
+                                status.chapterUrl,
                                 status.chapterIndex,
-                                status.chapterTitle
+                                status.chapterTitle,
+                                audioChapterMapping,
                             )?.let { localChapter ->
                                 io.legado.app.help.review.ReviewSnapshotStore.putChapterStatus(
                                     importedBook,
@@ -831,6 +904,23 @@ object LocalBook {
         }
     }
 
+    private fun matchImportedChapter(
+        importedBook: Book,
+        localChapters: List<BookChapter>,
+        sourceChapterUrl: String,
+        chapterIndex: Int,
+        chapterTitle: String,
+        audioChapterMapping: AudioArchiveImportMapping?,
+    ): BookChapter? {
+        if (audioChapterMapping?.bookUrl == importedBook.bookUrl) {
+            return audioChapterMapping.chaptersBySourceUrl?.get(sourceChapterUrl)
+                ?: audioChapterMapping.legacyChapters?.get(
+                    AudioArchiveChapterIdentity(chapterIndex, chapterTitle)
+                )
+        }
+        return matchLocalChapter(localChapters, chapterIndex, chapterTitle)
+    }
+
     /**
      * 匹配评论快照对应的本地章节。
      *
@@ -843,11 +933,6 @@ object LocalBook {
      * 3. title 同名多个 → 结合原 index 取距离最近的本地章节，且距离必须唯一；
      * 4. 仍无法唯一确认 → 返回 null（跳过并记日志，宁可漏恢复也不乱绑定）。
      */
-    private fun matchLocalChapter(
-        localChapters: List<BookChapter>,
-        snapshot: io.legado.app.help.review.ReviewSnapshot
-    ): BookChapter? = matchLocalChapter(localChapters, snapshot.chapterIndex, snapshot.chapterTitle)
-
     private fun matchLocalChapter(
         localChapters: List<BookChapter>,
         chapterIndex: Int,

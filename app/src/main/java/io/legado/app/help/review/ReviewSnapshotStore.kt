@@ -300,16 +300,45 @@ object ReviewSnapshotStore {
 
     /** 按原文件字节流导出，避免“读取所有快照 -> 重新序列化所有快照”的全量内存占用。 */
     fun copyAllTo(book: Book, targetDir: File) {
-        val snapshots = reviewFiles(book).asList()
-        val statuses = statusFiles(book).asList()
+        copyTo(book, targetDir, selectedChapterUrls = null)
+    }
+
+    /**
+     * Exports review artifacts owned by [chapters] only. The snapshot/status files and their
+     * resource library are selected by the same stable chapterUrl set.
+     */
+    fun copyChaptersTo(book: Book, targetDir: File, chapters: Collection<BookChapter>) {
+        val chapterUrls = chapters.mapTo(linkedSetOf()) { chapter ->
+            chapter.url.trim().also {
+                require(it.isNotBlank()) { "评论导出章节缺少 chapterUrl" }
+            }
+        }
+        copyTo(book, targetDir, selectedChapterUrls = chapterUrls)
+    }
+
+    private fun copyTo(book: Book, targetDir: File, selectedChapterUrls: Set<String>?) {
+        val snapshots = reviewFiles(book).filter { file ->
+            selectedChapterUrls == null || requireNotNull(readMetadata(file)) {
+                "无法读取评论快照元数据: ${file.absolutePath}"
+            }.chapterUrl.trim() in selectedChapterUrls
+        }
+        val statuses = statusFiles(book).filter { file ->
+            selectedChapterUrls == null || requireNotNull(readChapterStatus(file)) {
+                "无法读取评论状态文件: ${file.absolutePath}"
+            }.chapterUrl.trim() in selectedChapterUrls
+        }
         if (snapshots.isEmpty() && statuses.isEmpty()) return
         check(snapshots.isEmpty() || statuses.isNotEmpty()) {
-            "评论缓存缺少章节状态文件，旧格式不支持导出: ${reviewsDir(book).absolutePath}"
+            "评论缓存缺少章节状态文件，无法完整导出: ${reviewsDir(book).absolutePath}"
         }
         check(targetDir.isDirectory || targetDir.mkdirs()) {
             "无法创建评论快照导出目录: ${targetDir.absolutePath}"
         }
-        ReviewSnapshotResourceStore.copyAllTo(book, targetDir)
+        if (selectedChapterUrls == null) {
+            ReviewSnapshotResourceStore.copyAllTo(book, targetDir)
+        } else {
+            ReviewSnapshotResourceStore.copyReferencedTo(book, targetDir, snapshots)
+        }
         (snapshots + statuses).forEach { source ->
             File(targetDir, source.name).outputStream().buffered().use { output ->
                 source.inputStream().buffered().use { input ->
