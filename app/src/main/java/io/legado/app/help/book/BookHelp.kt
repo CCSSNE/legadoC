@@ -194,21 +194,10 @@ object BookHelp {
         }
     }
 
-    suspend fun saveContent(
-        bookSource: BookSource,
-        book: Book,
-        bookChapter: BookChapter,
-        content: String
-    ) {
-        try {
-            saveText(book, bookChapter, content)
-            //saveImages(bookSource, book, bookChapter, content)
-            CacheManifestHelper.refresh(book)
-            postEvent(EventBus.SAVE_CONTENT, Pair(book, bookChapter))
-        } catch (e: Exception) {
-            e.printStackTrace()
-            AppLog.put("保存正文失败 ${book.name} ${bookChapter.title}", e)
-        }
+    fun saveContent(book: Book, bookChapter: BookChapter, content: String) {
+        saveText(book, bookChapter, content)
+        CacheManifestHelper.refresh(book)
+        postEvent(EventBus.SAVE_CONTENT, Pair(book, bookChapter))
     }
 
     fun saveText(
@@ -259,7 +248,7 @@ object BookHelp {
         src: String,
         chapter: BookChapter? = null
     ) {
-        if (isImageExist(book, src)) {
+        if (BodyOfflineState.isStoredImageComplete(book, src)) {
             return
         }
         val mutex = synchronized(this) {
@@ -267,31 +256,31 @@ object BookHelp {
         }
         mutex.lock()
         try {
-            if (isImageExist(book, src)) {
+            if (BodyOfflineState.isStoredImageComplete(book, src)) {
                 return
+            }
+            getImage(book, src).takeIf { it.exists() }?.let { invalidImage ->
+                require(invalidImage.delete()) {
+                    "cannot replace unreadable cached image: ${invalidImage.absolutePath}"
+                }
             }
             val analyzeUrl = AnalyzeUrl(
                 src, source = bookSource, coroutineContext = currentCoroutineContext()
             )
             val bytes = analyzeUrl.getByteArrayAwait()
             //某些图片被加密，需要进一步解密
-            runScriptWithContext {
+            val decoded = runScriptWithContext {
                 ImageUtils.decode(
                     src, bytes, isCover = false, bookSource, book
                 )
-            }?.let {
-                if (!checkImage(it)) {
-                    // 如果部分图片失效，每次进入正文都会花很长时间再次获取图片数据
-                    // 所以无论如何都要将数据写入到文件里
-                    // throw NoStackTraceException("数据异常")
-                    AppLog.put("${book.name} ${chapter?.title} 图片 $src 下载错误 数据异常")
-                }
-                writeImage(book, src, it)
-            }
+            } ?: error("image decoder returned no data: $src")
+            require(checkImage(decoded)) { "downloaded image is unreadable: $src" }
+            writeImage(book, src, decoded)
         } catch (e: Exception) {
             currentCoroutineContext().ensureActive()
             val msg = "${book.name} ${chapter?.title} 图片 $src 下载失败\n${e.localizedMessage}"
             AppLog.put(msg, e)
+            throw e
         } finally {
             downloadImages.remove(src)
             mutex.unlock()
@@ -398,36 +387,10 @@ object BookHelp {
         }
     }
 
-    /**
-     * 检测图片是否下载
-     */
-    fun hasImageContent(book: Book, bookChapter: BookChapter): Boolean {
-        if (!hasContent(book, bookChapter)) {
-            return false
-        }
-        var ret = true
-        val op = BitmapFactory.Options()
-        op.inJustDecodeBounds = true
-        getContent(book, bookChapter)?.let {
-            val matcher = AppPattern.imgPattern.matcher(it)
-            while (matcher.find()) {
-                val src = matcher.group(1)!!
-                val image = getImage(book, src)
-                if (!image.exists()) {
-                    ret = false
-                    continue
-                }
-                BitmapFactory.decodeFile(image.absolutePath, op)
-                if (op.outWidth < 1 && op.outHeight < 1) {
-                    if (SvgUtils.getSize(image.absolutePath) != null) {
-                        continue
-                    }
-                    ret = false
-                    image.delete()
-                }
-            }
-        }
-        return ret
+    /** Read-only BODY checker input. Unlike [getContent], this never migrates legacy files. */
+    internal fun readStoredContent(book: Book, chapter: BookChapter): String? {
+        val file = getContentFileCandidates(book, chapter).firstOrNull { it.isFile } ?: return null
+        return file.readText().takeIf { it.isNotEmpty() }
     }
 
     private fun checkImage(bytes: ByteArray): Boolean {

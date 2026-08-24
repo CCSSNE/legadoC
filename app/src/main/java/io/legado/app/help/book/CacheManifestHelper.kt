@@ -120,17 +120,12 @@ object CacheManifestHelper {
                 delete(book)
                 return@runCatching null
             }
-            val cacheNames = if (book.isAudio || book.isVideo) {
-                emptySet()
-            } else {
-                BookHelp.getCacheDir(book).list()?.toSet().orEmpty()
-            }
             write(book, chapters) { chapter ->
                 when {
                     book.isLocal -> false
                     book.isVideo -> ExoPlayerHelper.isVideoCached(chapter.resourceUrl, book)
                     book.isAudio -> AudioOfflineState.isComplete(book, chapter)
-                    else -> BookHelp.getChapterCacheFileNames(book, chapter).any(cacheNames::contains)
+                    else -> BodyOfflineState.isComplete(book, chapter)
                 }
             }
         }.onFailure {

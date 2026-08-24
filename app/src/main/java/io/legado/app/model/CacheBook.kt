@@ -11,6 +11,7 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.AudioTextFusion
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.BodyOfflineState
 import io.legado.app.help.book.CacheManifestHelper
 import io.legado.app.help.book.SourceAudioResolver
 import io.legado.app.help.book.isAudio
@@ -412,7 +413,8 @@ object CacheBook {
                     onFinally(executionLease)
                     return@synchronized null
                 }
-                if (BookHelp.hasImageContent(book, chapter)) {
+                val offlineState = BodyOfflineState.inspect(book, chapter)
+                if (offlineState.isComplete) {
                     // 正文与图片均已完整，本章 BODY 直接成功。
                     onSuccess(chapter, executionLease)
                     waitDownloadSet.remove(chapterIndex)
@@ -424,7 +426,7 @@ object CacheBook {
                 DownloadAttempt(
                     chapter = chapter,
                     executionLease = executionLease,
-                    repairImagesOnly = BookHelp.hasContent(book, chapter),
+                    repairImagesOnly = offlineState.contentAvailable,
                 )
             } ?: return
 
@@ -452,8 +454,10 @@ object CacheBook {
                 Coroutine.async(scope, context, executeContext = context) {
                     BookHelp.getContent(book, chapter)?.let { content ->
                         BookHelp.saveImages(bookSource, book, chapter, content, 1)
+                        val offlineState = BodyOfflineState.inspect(book, chapter)
+                        require(offlineState.isComplete) { offlineState.incompleteReason() }
                         content.length
-                    } ?: 0
+                    } ?: error("cached body disappeared before image repair: ${chapter.url}")
                 }.onSuccess { contentChars ->
                     imageTrace?.done(
                         CacheOperationDiagnostics.Metrics(outputChars = contentChars),
@@ -497,10 +501,13 @@ object CacheBook {
                 start = CoroutineStart.LAZY,
                 executeContext = context
             ).onSuccess { content ->
-                // WebBook only returns after its parser and BookHelp.saveContent() have completed.
+                // BODY success requires both the stored text and every referenced local image.
+                BookHelp.saveImages(bookSource, book, chapter, content, 1)
+                val offlineState = BodyOfflineState.inspect(book, chapter)
+                require(offlineState.isComplete) { offlineState.incompleteReason() }
                 bodyTrace?.done(
                     CacheOperationDiagnostics.Metrics(outputChars = content.length),
-                    "BODY_CONTENT_SAVED",
+                    "BODY_ARTIFACT_COMPLETE",
                 )
                 onSuccess(chapter, executionLease)
                 downloadFinish(chapter, content)

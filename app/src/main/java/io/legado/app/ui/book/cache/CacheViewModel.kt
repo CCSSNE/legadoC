@@ -6,7 +6,7 @@ import io.legado.app.base.BaseViewModel
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.help.book.AudioOfflineState
-import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.BodyOfflineState
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isVideo
@@ -47,11 +47,6 @@ class CacheViewModel(application: Application) : BaseViewModel(application) {
 
     private fun loadBookCacheFiles(book: Book) {
         val chapterCaches = hashSetOf<String>()
-        val cacheNames = if (book.isAudio || book.isVideo) {
-            emptySet()
-        } else {
-            BookHelp.getChapterFiles(book)
-        }
         appDb.bookChapterDao.getChapterList(book.bookUrl).also {
             book.totalChapterNum = it.size
         }.forEach { chapter ->
@@ -59,7 +54,7 @@ class CacheViewModel(application: Application) : BaseViewModel(application) {
                 chapter.isVolume -> true
                 book.isAudio -> AudioOfflineState.isComplete(book, chapter)
                 book.isVideo -> ExoPlayerHelper.isVideoCached(chapter.resourceUrl, book)
-                else -> BookHelp.getChapterCacheFileNames(book, chapter).any(cacheNames::contains)
+                else -> BodyOfflineState.isComplete(book, chapter)
             }
             if (cached) {
                 chapterCaches.add(chapter.url)
