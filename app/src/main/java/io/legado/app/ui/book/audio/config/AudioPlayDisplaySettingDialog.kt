@@ -41,6 +41,10 @@ class AudioPlayDisplaySettingDialog :
             swShowChapterTitle.setOnUserCheckedChangeListener { checked ->
                 AppConfig.audioPlayShowChapterTitle = checked
             }
+            swReviewInvertColors.isChecked = AppConfig.audioPlayReviewInvertColors
+            swReviewInvertColors.setOnUserCheckedChangeListener { checked ->
+                AppConfig.audioPlayReviewInvertColors = checked
+            }
             tvFontSetting.setOnClickListener {
                 showDialogFragment<AudioPlayFontSettingDialog>()
             }

@@ -1129,6 +1129,7 @@
     <string name="audio_play_display_top_title">顶部标题显示</string>
     <string name="audio_play_display_top_title_chapter_name">当前章节名</string>
     <string name="audio_play_display_bottom_chapter_title">显示下方章节名</string>
+    <string name="audio_play_display_review_invert_colors">评论气泡反色</string>
     <string name="audio_play_display_font_setting">字体设置</string>
     <string name="audio_play_font_size">字号</string>
     <string name="audio_play_font_size_value">%1$d px</string>
