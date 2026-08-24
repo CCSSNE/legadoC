@@ -9,6 +9,7 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.BookImgClick
+import io.legado.app.help.cache.CacheOperationDiagnostics
 import io.legado.app.help.cache.CacheWorkerLease
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.StrResponse
@@ -227,11 +228,18 @@ object ReviewSnapshotManager {
     internal suspend fun processTask(task: QueueTask): Boolean {
         val lease = task.executionLease
         val outcomeKey = "${task.key}|${lease.sessionId}/${lease.taskId}/${lease.generation}"
+        val diagnostics = CacheOperationDiagnostics.Context(
+            domain = CacheOperationDiagnostics.Domain.REVIEW,
+            sessionId = lease.sessionId,
+            taskId = lease.taskId,
+            generation = lease.generation,
+            chapterIndex = task.key.substringAfter('|').toIntOrNull(),
+        )
         return try {
             if (cancelledTasks.contains(taskKey(lease))) {
                 false
             } else {
-                processTask(task.key, task.force, outcomeKey)
+                processTask(task.key, task.force, outcomeKey, diagnostics)
                 taskOutcomes.remove(outcomeKey) == true
             }
         } finally {
@@ -293,12 +301,17 @@ object ReviewSnapshotManager {
         }
     }
 
-    private suspend fun processTask(key: String, force: Boolean, outcomeKey: String) {
+    private suspend fun processTask(
+        key: String,
+        force: Boolean,
+        outcomeKey: String,
+        diagnostics: CacheOperationDiagnostics.Context,
+    ) {
         taskOutcomes[outcomeKey] = false
         // 一章一次评论缓存任务 = 日志一条（多行详情），进入 AppLog 日志页可展开查看
         val sb = StringBuilder()
         val unexpected = runCatching {
-            processTaskWithLog(key, force, sb, outcomeKey)
+            processTaskWithLog(key, force, sb, outcomeKey, diagnostics)
         }.exceptionOrNull()
         if (unexpected != null) {
             sb.append("\n异常：").append(unexpected.stackTraceToString())
@@ -314,6 +327,7 @@ object ReviewSnapshotManager {
         force: Boolean,
         sb: StringBuilder,
         outcomeKey: String,
+        diagnostics: CacheOperationDiagnostics.Context,
     ) {
         val bookUrl = key.substringBefore('|')
         val chapterIndex = key.substringAfter('|').toIntOrNull()
@@ -386,7 +400,7 @@ object ReviewSnapshotManager {
         val outcomes = buttons
             .asFlow()
             .mapAsyncIndexed(buttonConcurrency) { index, button ->
-                processButton(book, bookSource, chapter, index, button, force)
+                processButton(book, bookSource, chapter, index, button, force, diagnostics)
             }
             .toList()
             .sortedBy { it.index }
@@ -438,9 +452,10 @@ object ReviewSnapshotManager {
         chapter: BookChapter,
         buttonIndex: Int,
         button: ReviewButton,
-        force: Boolean
+        force: Boolean,
+        diagnostics: CacheOperationDiagnostics.Context,
     ): ButtonOutcome = withPipelinePermit {
-        processButtonInPipeline(book, bookSource, chapter, buttonIndex, button, force)
+        processButtonInPipeline(book, bookSource, chapter, buttonIndex, button, force, diagnostics)
     }
 
     private suspend fun processButtonInPipeline(
@@ -449,7 +464,8 @@ object ReviewSnapshotManager {
         chapter: BookChapter,
         buttonIndex: Int,
         button: ReviewButton,
-        force: Boolean
+        force: Boolean,
+        diagnostics: CacheOperationDiagnostics.Context,
     ): ButtonOutcome {
         if (!button.hasAction) return ButtonOutcome(buttonIndex, "")
         val sb = StringBuilder()
@@ -491,7 +507,14 @@ object ReviewSnapshotManager {
         sb.append("   URL=").append(url).append('\n')
         val outcome = runCatching {
             ReviewSnapshotCapture.capture(
-                bookSource, book, chapter, button.src, url, page.html, page.preloadJs
+                bookSource,
+                book,
+                chapter,
+                button.src,
+                url,
+                page.html,
+                page.preloadJs,
+                diagnostics.forChapter(chapter.index),
             )
         }
         if (outcome.isFailure) {
@@ -512,7 +535,9 @@ object ReviewSnapshotManager {
             .append(" 次；实际点击“展开/加载更多”按钮：").append(capture.expandClickCount).append(" 次\n")
         sb.append("6. 最终 HTML：").append(capture.snapshot.html.length / 1024).append(" KB\n")
         // 诊断日志：put 失败必须留下原因
-        val putResult = runCatching { ReviewSnapshotStore.put(book, capture.snapshot) }
+        val putResult = runCatching {
+            ReviewSnapshotStore.put(book, capture.snapshot, diagnostics.forChapter(chapter.index))
+        }
         if (putResult.isSuccess) {
             sb.append("7. SnapshotStore.put：成功\n")
             return ButtonOutcome(buttonIndex, sb.toString(), success = true)

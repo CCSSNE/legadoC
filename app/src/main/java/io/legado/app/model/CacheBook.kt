@@ -12,6 +12,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.CacheManifestHelper
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.cache.CacheOperationDiagnostics
 import io.legado.app.help.cache.ReviewWorkerAdapter
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.cache.CacheWorkerLease
@@ -388,20 +389,39 @@ object CacheBook {
             waitDownloadSet.remove(chapterIndex)
             onDownloadSet.add(chapterIndex)
             if (BookHelp.hasContent(book, chapter)) {
+                val imageTrace = executionLease?.let { lease ->
+                    CacheOperationDiagnostics.begin(
+                        CacheOperationDiagnostics.Context(
+                            domain = CacheOperationDiagnostics.Domain.BODY,
+                            sessionId = lease.sessionId,
+                            taskId = lease.taskId,
+                            generation = lease.generation,
+                            chapterIndex = chapter.index,
+                        ),
+                        "BODY_IMAGE_REPAIR",
+                    )
+                }
                 // 正文已缓存但缺图片：先补完图片、成功状态结束，再入队补评论（force）
                 Coroutine.async(scope, context, executeContext = context) {
-                    BookHelp.getContent(book, chapter)?.let {
-                        BookHelp.saveImages(bookSource, book, chapter, it, 1)
-                    }
-                }.onSuccess {
+                    BookHelp.getContent(book, chapter)?.let { content ->
+                        BookHelp.saveImages(bookSource, book, chapter, content, 1)
+                        content.length
+                    } ?: 0
+                }.onSuccess { contentChars ->
+                    imageTrace?.done(
+                        CacheOperationDiagnostics.Metrics(outputChars = contentChars),
+                        "BODY_IMAGES_SAVED",
+                    )
                     onSuccess(chapter, executionLease)
                     reviewEnqueue(book, chapter, force = true, executionLease = executionLease)
                 }.onError {
+                    imageTrace?.fail(it)
                     onPreError(chapter, it)
                     //出现错误等待一秒后重新加入待下载列表
                     delay(1000)
                     onPostError(chapter, it, executionLease)
                 }.onCancel {
+                    imageTrace?.cancelled()
                     onCancel(chapterIndex)
                 }.onFinally {
                     onFinally(executionLease)
@@ -409,6 +429,18 @@ object CacheBook {
                     tasks.add(it)
                 }
                 return
+            }
+            val bodyTrace = executionLease?.let { lease ->
+                CacheOperationDiagnostics.begin(
+                    CacheOperationDiagnostics.Context(
+                        domain = CacheOperationDiagnostics.Domain.BODY,
+                        sessionId = lease.sessionId,
+                        taskId = lease.taskId,
+                        generation = lease.generation,
+                        chapterIndex = chapter.index,
+                    ),
+                    "BODY_FETCH",
+                )
             }
             WebBook.getContent(
                 scope,
@@ -419,9 +451,15 @@ object CacheBook {
                 start = CoroutineStart.LAZY,
                 executeContext = context
             ).onSuccess { content ->
+                // WebBook only returns after its parser and BookHelp.saveContent() have completed.
+                bodyTrace?.done(
+                    CacheOperationDiagnostics.Metrics(outputChars = content.length),
+                    "BODY_CONTENT_SAVED",
+                )
                 onSuccess(chapter, executionLease)
                 downloadFinish(chapter, content, executionLease = executionLease)
             }.onError {
+                bodyTrace?.fail(it)
                 onPreError(chapter, it)
                 //出现错误等待一秒后重新加入待下载列表
                 delay(1000)
@@ -433,6 +471,7 @@ object CacheBook {
                     executionLease = executionLease,
                 )
             }.onCancel {
+                bodyTrace?.cancelled()
                 onCancel(chapterIndex)
             }.onFinally {
                 onFinally(executionLease)
