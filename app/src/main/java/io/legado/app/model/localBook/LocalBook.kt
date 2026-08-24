@@ -25,6 +25,8 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.exception.TocEmptyException
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.AudioBookArchive
+import io.legado.app.help.book.AudioBookArchiveManifest
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.archiveName
@@ -38,6 +40,7 @@ import io.legado.app.help.book.isMobi
 import io.legado.app.help.book.isPdf
 import io.legado.app.help.book.isUmd
 import io.legado.app.help.book.removeLocalUriCache
+import io.legado.app.help.book.removeType
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.webdav.WebDav
@@ -510,6 +513,7 @@ object LocalBook {
         filter: ((String) -> Boolean)? = null
     ): List<Book> {
         val archiveFileDoc = FileDoc.fromUri(archiveFileUri, false)
+        val audioManifest = readAudioBookArchiveManifest(archiveFileDoc)
         val files = ArchiveUtils.deCompress(archiveFileDoc, filter = filter)
         if (files.isEmpty()) {
             throw NoStackTraceException(appCtx.getString(R.string.unsupport_archivefile_entry))
@@ -524,8 +528,150 @@ object LocalBook {
                 }
             }
         }
+        if (audioManifest != null) {
+            restoreAudioBookFromArchive(archiveFileDoc, books, audioManifest)
+        }
         restoreIllustrationsFromArchive(archiveFileDoc, books)
         return books
+    }
+
+    private fun readAudioBookArchiveManifest(
+        archiveFileDoc: FileDoc,
+    ): AudioBookArchiveManifest? {
+        val manifestEntries = ArchiveUtils.getArchiveFilesName(archiveFileDoc) { entryName ->
+            entryName.replace('\\', '/').removePrefix("./") == AudioBookArchive.MANIFEST_FILE_NAME
+        }
+        if (manifestEntries.isEmpty()) return null
+        require(manifestEntries.size == 1) {
+            "Audio TXT-ZIP import failed: expected one ${AudioBookArchive.MANIFEST_FILE_NAME}"
+        }
+        val manifestFiles = ArchiveUtils.deCompress(archiveFileDoc) { entryName ->
+            entryName.replace('\\', '/').removePrefix("./") == AudioBookArchive.MANIFEST_FILE_NAME
+        }
+        val manifestFile = manifestFiles.singleOrNull { it.name == AudioBookArchive.MANIFEST_FILE_NAME }
+            ?: error("Audio TXT-ZIP import failed: manifest was not extracted")
+        val manifest = GSON.fromJsonObject<AudioBookArchiveManifest>(manifestFile.readText())
+            .getOrThrow()
+        require(manifest.version == AudioBookArchive.VERSION) {
+            "Audio TXT-ZIP import failed: unsupported manifest version ${manifest.version}"
+        }
+        require(manifest.textFile.isNotBlank() && manifest.textFile.endsWith(".txt", true)) {
+            "Audio TXT-ZIP import failed: invalid text file ${manifest.textFile}"
+        }
+        require(manifest.name.isNotBlank()) {
+            "Audio TXT-ZIP import failed: book name is empty"
+        }
+        require(manifest.chapters.isNotEmpty()) {
+            "Audio TXT-ZIP import failed: chapter mapping is empty"
+        }
+        return manifest
+    }
+
+    private fun restoreAudioBookFromArchive(
+        archiveFileDoc: FileDoc,
+        importedBooks: List<Book>,
+        manifest: AudioBookArchiveManifest,
+    ) {
+        val book = importedBooks.singleOrNull { it.originName == manifest.textFile }
+            ?: error("Audio TXT-ZIP import failed: text file ${manifest.textFile} was not imported")
+        val mediaPaths = manifest.chapters.flatMap { chapter ->
+            require(chapter.title.isNotBlank()) {
+                "Audio TXT-ZIP import failed: chapter ${chapter.index + 1} has no title"
+            }
+            require(chapter.mediaFiles.isNotEmpty()) {
+                "Audio TXT-ZIP import failed: chapter ${chapter.index + 1} has no audio"
+            }
+            chapter.mediaFiles
+        }
+        require(mediaPaths.distinct().size == mediaPaths.size) {
+            "Audio TXT-ZIP import failed: duplicate audio file mapping"
+        }
+        mediaPaths.forEach { path ->
+            val normalized = path.replace('\\', '/').removePrefix("./")
+            require(
+                normalized == path &&
+                    normalized.startsWith("${AudioBookArchive.MEDIA_DIR_NAME}/") &&
+                    normalized.count { it == '/' } == 1 &&
+                    !normalized.contains("../") &&
+                    normalized.substringAfterLast('/').isNotBlank()
+            ) {
+                "Audio TXT-ZIP import failed: invalid audio path $path"
+            }
+        }
+        val expectedPaths = mediaPaths.toSet()
+        val extractedMedia = ArchiveUtils.deCompress(archiveFileDoc) { entryName ->
+            entryName.replace('\\', '/').removePrefix("./") in expectedPaths
+        }
+        val extractedByName = extractedMedia
+            .filter { it.isFile }
+            .associateBy { it.name }
+        require(extractedByName.size == expectedPaths.size) {
+            "Audio TXT-ZIP import failed: expected ${expectedPaths.size} audio files, found ${extractedByName.size}"
+        }
+        expectedPaths.forEach { path ->
+            val file = extractedByName[path.substringAfterLast('/')]
+                ?: error("Audio TXT-ZIP import failed: missing $path")
+            require(file.length() > 0L) { "Audio TXT-ZIP import failed: empty $path" }
+        }
+
+        ensureChapterListForImport(book)
+        val localChapters = appDb.bookChapterDao.getChapterList(book.bookUrl)
+        val chapterAssignments = manifest.chapters.map { archivedChapter ->
+            val localChapter = matchLocalChapter(
+                localChapters,
+                archivedChapter.index,
+                archivedChapter.title,
+            ) ?: error(
+                "Audio TXT-ZIP import failed: cannot match chapter " +
+                    "${archivedChapter.index + 1} ${archivedChapter.title}"
+            )
+            archivedChapter to localChapter
+        }
+        require(chapterAssignments.map { it.second.index }.distinct().size == chapterAssignments.size) {
+            "Audio TXT-ZIP import failed: multiple audio chapters matched the same text chapter"
+        }
+
+        book.name = manifest.name
+        book.author = manifest.author
+        book.intro = manifest.intro
+        book.removeType(BookType.text)
+        book.addType(BookType.audio, BookType.local, BookType.archive)
+        book.syncMediaType()
+        book.canUpdate = false
+        val targetDir = File(BookHelp.getCacheDir(book), "audio_archive")
+        val stagingDir = File(
+            targetDir.parentFile,
+            ".audio_archive_import_${System.currentTimeMillis()}"
+        )
+        FileUtils.delete(stagingDir)
+        stagingDir.mkdirs()
+        try {
+            expectedPaths.forEach { path ->
+                val source = requireNotNull(extractedByName[path.substringAfterLast('/')])
+                source.copyTo(File(stagingDir, source.name), overwrite = true)
+            }
+            FileUtils.delete(targetDir)
+            require(stagingDir.renameTo(targetDir)) {
+                "Audio TXT-ZIP import failed: cannot install extracted audio"
+            }
+            chapterAssignments.forEach { (archivedChapter, localChapter) ->
+                val localMediaUrls = archivedChapter.mediaFiles.map { path ->
+                    Uri.fromFile(File(targetDir, path.substringAfterLast('/'))).toString()
+                }
+                localChapter.resourceUrl = if (localMediaUrls.size == 1) {
+                    localMediaUrls.first()
+                } else {
+                    GSON.toJson(localMediaUrls)
+                }
+                localChapter.variable = archivedChapter.variable
+                localChapter.start = archivedChapter.start
+                localChapter.end = archivedChapter.end
+            }
+            appDb.bookChapterDao.update(*chapterAssignments.map { it.second }.toTypedArray())
+            appDb.bookDao.update(book)
+        } finally {
+            if (stagingDir.exists()) FileUtils.delete(stagingDir)
+        }
     }
 
     /**
