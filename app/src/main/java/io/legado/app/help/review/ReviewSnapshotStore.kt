@@ -8,6 +8,7 @@ import io.legado.app.help.cache.CacheOperationDiagnostics
 import io.legado.app.utils.GSON
 import io.legado.app.utils.MD5Utils
 import com.google.gson.stream.JsonReader
+import com.google.gson.stream.JsonToken
 import java.io.File
 import java.io.FileOutputStream
 
@@ -223,9 +224,17 @@ object ReviewSnapshotStore {
     }
 
     fun has(book: Book, chapter: BookChapter, buttonSrc: String): Boolean {
-        // Existence alone is insufficient: get() validates the JSON, resource index, blob
-        // length/hash, and the snapshot-to-chapter identity before reuse.
-        return get(book, chapter, buttonSrc) != null
+        requireCurrentFormatIfReviewData(book)
+        val file = File(reviewsDir(book), fileName(chapter.url, buttonSrc))
+        if (!file.isFile) return false
+        val metadata = readHotMetadata(book, file)
+        require(metadata.chapterUrl.trim() == chapter.url.trim()) {
+            "review snapshot chapterUrl mismatch: ${file.absolutePath}"
+        }
+        require(metadata.buttonSrc.trim() == buttonSrc.trim()) {
+            "review snapshot buttonSrc mismatch: ${file.absolutePath}"
+        }
+        return true
     }
 
     fun delete(book: Book, chapter: BookChapter, buttonSrc: String) {
@@ -254,9 +263,9 @@ object ReviewSnapshotStore {
         requireCurrentFormatIfReviewData(book)
         return reviewFiles(book)
             .asSequence()
-            .map { file -> readCompleteSnapshot(book, file) }
-            .map { snapshot ->
-                snapshot.chapterUrl.trim().also { chapterUrl ->
+            .map { file -> readHotMetadata(book, file) }
+            .map { metadata ->
+                metadata.chapterUrl.trim().also { chapterUrl ->
                     require(chapterUrl.isNotBlank()) { "评论快照缺少 chapterUrl" }
                 }
             }
@@ -268,8 +277,8 @@ object ReviewSnapshotStore {
         requireCurrentFormatIfReviewData(book)
         val byChapterUrl = hashMapOf<String, Int>()
         reviewFiles(book).forEach { file ->
-            readCompleteSnapshot(book, file).let { snapshot ->
-                val key = snapshot.chapterUrl.trim()
+            readHotMetadata(book, file).let { metadata ->
+                val key = metadata.chapterUrl.trim()
                 require(key.isNotBlank()) { "评论快照缺少 chapterUrl: ${file.absolutePath}" }
                 byChapterUrl[key] = (byChapterUrl[key] ?: 0) + 1
             }
@@ -421,28 +430,76 @@ object ReviewSnapshotStore {
     }
 
     private data class SnapshotMetadata(
+        val bookUrl: String,
         val chapterUrl: String,
         val chapterIndex: Int,
+        val buttonSrc: String,
+        val resourceKeys: List<String>?,
+        val htmlPresent: Boolean,
     )
 
     private fun readMetadata(file: File): SnapshotMetadata? {
         if (!file.isFile) return null
         return file.bufferedReader(Charsets.UTF_8).use { input ->
                 JsonReader(input).use { reader ->
+                    var bookUrl = ""
                     var chapterUrl = ""
                     var chapterIndex = 0
+                    var buttonSrc = ""
+                    var resourceKeys: List<String>? = null
+                    var htmlPresent = false
                     reader.beginObject()
                     while (reader.hasNext()) {
                         when (reader.nextName()) {
+                            "bookUrl" -> bookUrl = reader.nextString()
                             "chapterUrl" -> chapterUrl = reader.nextString()
                             "chapterIndex" -> chapterIndex = reader.nextInt()
+                            "buttonSrc" -> buttonSrc = reader.nextString()
+                            "resourceKeys" -> {
+                                if (reader.peek() == JsonToken.NULL) {
+                                    reader.nextNull()
+                                } else {
+                                    val keys = ArrayList<String>()
+                                    reader.beginArray()
+                                    while (reader.hasNext()) keys += reader.nextString()
+                                    reader.endArray()
+                                    resourceKeys = keys
+                                }
+                            }
+                            "html" -> {
+                                htmlPresent = reader.peek() != JsonToken.NULL
+                                reader.skipValue()
+                            }
                             // html 可能数十 MB；必须流式跳过，不能 nextString()。
                             else -> reader.skipValue()
                         }
                     }
                     reader.endObject()
-                    SnapshotMetadata(chapterUrl, chapterIndex)
+                    SnapshotMetadata(bookUrl, chapterUrl, chapterIndex, buttonSrc, resourceKeys, htmlPresent)
                 }
             }
+    }
+
+    /** Read only metadata/resourceKeys; the HTML value is skipped by JsonReader. */
+    private fun readHotMetadata(book: Book, file: File): SnapshotMetadata {
+        val metadata = readMetadata(file)
+            ?: error("review snapshot file is empty: ${file.absolutePath}")
+        require(metadata.bookUrl == book.bookUrl) {
+            "review snapshot bookUrl mismatch: ${file.absolutePath}"
+        }
+        require(metadata.chapterUrl.isNotBlank()) {
+            "review snapshot chapterUrl is blank: ${file.absolutePath}"
+        }
+        require(metadata.buttonSrc.isNotBlank()) {
+            "review snapshot buttonSrc is blank: ${file.absolutePath}"
+        }
+        require(metadata.htmlPresent) {
+            "review snapshot HTML is missing: ${file.absolutePath}"
+        }
+        val keys = requireNotNull(metadata.resourceKeys) {
+            "review snapshot is missing resourceKeys: ${file.absolutePath}"
+        }
+        ReviewSnapshotResourceStore.validateResourceKeys(book, keys)
+        return metadata
     }
 }

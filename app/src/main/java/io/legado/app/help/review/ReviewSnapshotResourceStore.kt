@@ -143,14 +143,7 @@ object ReviewSnapshotResourceStore {
         }
         val dir = ReviewSnapshotStore.reviewsDir(book)
         val database = requireDatabase(book)
-        val entriesByKey = database.resources.groupBy { it.key }
-        keys.forEach { key ->
-            val matches = entriesByKey[key].orEmpty()
-            require(matches.size == 1) {
-                "review snapshot resource is not indexed exactly once: $key"
-            }
-            validateEntry(dir, matches.single(), verifyHash = true)
-        }
+        validateResourceKeys(dir, database, keys, verifyHash = true)
         val htmlKeys = RESOURCE_REFERENCE_PATTERN.findAll(snapshot.html)
             .map { it.groupValues[1] }
             .toSet()
@@ -158,6 +151,23 @@ object ReviewSnapshotResourceStore {
             "review snapshot resource references do not match resourceKeys: "
                 + "${snapshot.chapterUrl}|${snapshot.buttonSrc}"
         }
+    }
+
+    /**
+     * Hot-path completeness check for callers that only need to decide whether to reuse a
+     * snapshot. It validates the small resourceKeys field and blob lengths, but deliberately
+     * does not load the HTML or recompute every blob hash.
+     */
+    internal fun validateResourceKeys(book: Book, keys: List<String>) = synchronized(lock) {
+        require(keys.distinct().size == keys.size) {
+            "review snapshot contains duplicate resource keys"
+        }
+        keys.forEach { key ->
+            require(keyPattern.matches(key)) { "review snapshot contains invalid resource key: $key" }
+        }
+        val dir = ReviewSnapshotStore.reviewsDir(book)
+        val database = requireDatabase(book)
+        validateResourceKeys(dir, database, keys, verifyHash = false)
     }
 
     /**
@@ -512,6 +522,30 @@ object ReviewSnapshotResourceStore {
                 check(sha256(file) == entry.key) {
                     "评论资源文件内容哈希异常: ${file.absolutePath}"
                 }
+            }
+        }
+    }
+
+    private fun validateResourceKeys(
+        dir: File,
+        database: ReviewSnapshotResourceDatabase,
+        keys: List<String>,
+        verifyHash: Boolean,
+    ) {
+        val entriesByKey = database.resources.groupBy { it.key }
+        keys.forEach { key ->
+            val matches = entriesByKey[key].orEmpty()
+            require(matches.isNotEmpty()) {
+                "review snapshot resource is not indexed: $key"
+            }
+            val byteCounts = matches.mapTo(hashSetOf()) { it.byteCount }
+            require(byteCounts.size == 1) {
+                "review snapshot resource entries disagree on byteCount: $key"
+            }
+            matches.forEachIndexed { index, entry ->
+                // All entries share one content-addressed blob; hash it once, then validate
+                // every URL entry against the same file and declared length.
+                validateEntry(dir, entry, verifyHash = verifyHash && index == 0)
             }
         }
     }
