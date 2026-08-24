@@ -106,6 +106,7 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
     private var pendingExportPathBinding: DialogExportBookConfigBinding? = null
     private var pendingEpubBackgroundBinding: DialogExportBookConfigBinding? = null
     private var activeExportStyleBinding: DialogExportBookConfigBinding? = null
+    private val refreshedMediaTasks = hashSetOf<String>()
 
     companion object {
         private const val EPUB_TITLE_COLOR = 101
@@ -353,6 +354,22 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
                     .map { it.bookUrl }
                     .distinct()
                     .forEach(::notifyItemChanged)
+                snapshot.sessions.forEach { session ->
+                    session.tasks
+                        .filter { task ->
+                            (task.kind == CacheKind.AUDIO || task.kind == CacheKind.VIDEO) &&
+                                task.phase == CachePhase.MEDIA &&
+                                CacheLifecycleRules.isTerminal(task.status)
+                        }
+                        .filter { task ->
+                            refreshedMediaTasks.add("${session.sessionId}:${task.taskId}")
+                        }
+                        .forEach { task ->
+                            adapter.getItems()
+                                .firstOrNull { it.bookUrl == task.bookUrl }
+                                ?.let(viewModel::refreshCacheFiles)
+                        }
+                }
             }
         }
         viewModel.upAdapterLiveData.observe(this) {

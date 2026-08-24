@@ -2,6 +2,7 @@ package io.legado.app.help.cache
 
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.help.book.CacheManifestHelper
 import io.legado.app.ui.book.cache.AudioCacheTaskManager
 import io.legado.app.ui.book.cache.CacheTaskStatus
 import java.util.concurrent.ConcurrentHashMap
@@ -59,7 +60,12 @@ internal class MediaWorkerAdapter(
         val chapterProgress: (BookChapter, Long, Long?) -> Unit = { chapter, current, total ->
             CacheMediaWorkerRegistry.onChapterProgress(lease, chapter.index, current, total)
         }
-        val finished = { CacheMediaWorkerRegistry.onFinished(lease) }
+        val finished = {
+            // Media completion owns its own manifest lifecycle; it must not depend on
+            // BookHelp.saveContent(), which is exclusively the text-body cache path.
+            CacheManifestHelper.refreshAsync(book)
+            CacheMediaWorkerRegistry.onFinished(lease)
+        }
         val state = AudioCacheTaskManager.snapshot(task.bookUrl)
         if (state?.status == CacheTaskStatus.PAUSED) {
             if (!AudioCacheTaskManager.resume(

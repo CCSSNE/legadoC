@@ -2,7 +2,6 @@ package io.legado.app.ui.book.cache
 
 import android.app.Application
 import android.os.Build
-import android.net.Uri
 import android.system.Os
 import androidx.annotation.StringRes
 import androidx.lifecycle.MutableLiveData
@@ -32,23 +31,17 @@ import io.legado.app.help.book.removeType
 import io.legado.app.help.cache.CacheCoordinator
 import io.legado.app.help.cache.CacheRequestSource
 import io.legado.app.help.review.ReviewSnapshotStore
-import io.legado.app.model.analyzeRule.AnalyzeUrl
-import io.legado.app.model.analyzeRule.AnalyzeUrl.Companion.getMediaRequest
-import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.externalCache
 import io.legado.app.utils.externalFiles
-import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.normalizeFileName
 import io.legado.app.utils.compress.ZipUtils
-import io.legado.app.utils.isJsonArray
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -1135,86 +1128,6 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
 
     private fun refreshManifest(book: Book) {
         CacheManifestHelper.refresh(book)
-    }
-
-    private suspend fun resolveMediaRequest(
-        book: Book,
-        chapter: BookChapter
-    ): ExoPlayerHelper.MediaRequest {
-        chapter.resourceUrl
-            ?.takeIf { it.isNotBlank() }
-            ?.takeIf(::isDownloadableMediaContent)
-            ?.let { return ExoPlayerHelper.MediaRequest(it) }
-        val source = book.getBookSource()
-            ?: throw IllegalStateException(context.getString(R.string.book_source_not_found))
-        val candidates = linkedSetOf<String>()
-        BookHelp.getContent(book, chapter)
-            ?.trim()
-            ?.takeIf { it.isNotBlank() }
-            ?.let { content -> normalizeMediaContent(book, content) }
-            ?.let(candidates::add)
-        WebBook.getContentAwait(source, book, chapter, needSave = true)
-            .trim()
-            .takeIf { it.isNotBlank() }
-            ?.let { content -> normalizeMediaContent(book, content) }
-            ?.let(candidates::add)
-        var lastError: Throwable? = null
-        for (content in candidates) {
-            try {
-                if (content.isJsonArray()) {
-                    return ExoPlayerHelper.MediaRequest(content)
-                }
-                return AnalyzeUrl(
-                    content,
-                    source = source,
-                    ruleData = book,
-                    chapter = chapter,
-                    coroutineContext = currentCoroutineContext()
-                ).getMediaRequest()
-            } catch (e: Exception) {
-                lastError = e
-            }
-        }
-        throw IllegalStateException(
-            lastError?.localizedMessage ?: context.getString(R.string.cache_manage_audio_url_empty)
-        )
-    }
-
-    private fun normalizeMediaContent(book: Book, content: String): String {
-        if (!book.isVideo) return content
-        if (content.startsWith("#EXTM3U")) {
-            return writeVideoTempManifest(content, "m3u8")
-        }
-        if (!content.startsWith("<")) return content
-        return writeVideoTempManifest(content, "mpd")
-    }
-
-    private fun writeVideoTempManifest(content: String, suffix: String): String {
-        val dir = File(appCtx.externalCache, "video_temp_cache").apply { mkdirs() }
-        val file = File(dir, "${MD5Utils.md5Encode(content)}.$suffix")
-        if (!file.isFile || file.readText() != content) {
-            file.writeText(content)
-        }
-        return Uri.fromFile(file).toString()
-    }
-
-    private fun isDownloadableMediaContent(content: String): Boolean {
-        val urls = if (content.isJsonArray()) {
-            GSON.fromJsonArray<String>(content).getOrNull().orEmpty()
-        } else {
-            listOf(content)
-        }
-        return urls.isNotEmpty() && urls.all {
-            val scheme = Uri.parse(it).scheme
-            scheme.equals("http", true) ||
-                scheme.equals("https", true) ||
-                (scheme.equals("file", true) && isVideoManifestUrl(it))
-        }
-    }
-
-    private fun isVideoManifestUrl(url: String): Boolean {
-        val lower = url.substringBefore('?').lowercase()
-        return lower.endsWith(".m3u8") || lower.endsWith(".mpd") || lower.endsWith(".ism")
     }
 
     private fun Book.cacheGroupKey(mode: CacheManageMode): String {

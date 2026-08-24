@@ -46,7 +46,6 @@ import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.model.ReadBook
 import io.legado.app.model.localBook.EpubFile
 import io.legado.app.model.localBook.LocalBook
-import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.book.cache.CacheActivity
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
@@ -586,14 +585,8 @@ class ExportBookService : BaseService() {
         val audioDir = File(tmpRoot, AudioBookArchive.MEDIA_DIR_NAME).apply { mkdirs() }
         val manifestChapters = chapters.map { chapter ->
             currentCoroutineContext().ensureActive()
-            if (AudioTextFusion.effectiveLyric(chapter).isBlank() && source != null) {
-                WebBook.getContentAwait(
-                    bookSource = source,
-                    book = book,
-                    bookChapter = chapter,
-                    needSave = true,
-                )
-            }
+            // SourceAudioResolver performs the one audio-source parse needed for both
+            // transcript and media, without ever writing a normal text-body cache.
             val resolved = SourceAudioResolver.resolve(book, source, chapter)
             val prefix = "chapter_${chapter.index.toString().padStart(6, '0')}"
             val mediaFiles = ExoPlayerHelper.exportAudioFiles(
