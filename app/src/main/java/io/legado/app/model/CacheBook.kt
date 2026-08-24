@@ -357,8 +357,10 @@ object CacheBook {
         @Synchronized
         private fun onFinally(executionLease: CacheWorkerLease? = null) {
             if (waitDownloadSet.isEmpty() && onDownloadSet.isEmpty()) {
-                kotlin.runCatching {
+                try {
                     CacheManifestHelper.refresh(book)
+                } catch (error: Throwable) {
+                    AppLog.put("正文缓存清单刷新失败 ${book.name}", error)
                 }
                 models.remove(book.bookUrl)
                 executionLease?.let {
