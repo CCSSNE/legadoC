@@ -476,8 +476,8 @@ class ExportBookService : BaseService() {
         FileUtils.createFolderIfNotExist(tmpImagesDir.absolutePath)
         val tmpJson = File(tmpRoot, IllustrationHelp.EXPORT_JSON_NAME)
         val audioChapters = if (book.isAudio) {
-            updateAudioExportStatus(book, "正在检查音频离线内容")
-            requireCompleteAudioExportChapters(book)
+            updateAudioExportStatus(book, "正在筛选已完成的音频与字幕")
+            availableAudioExportChapters(book)
         } else {
             null
         }
@@ -536,7 +536,12 @@ class ExportBookService : BaseService() {
                     if (book.isAudio) {
                         updateAudioExportStatus(book, "正在生成字幕文本")
                     }
-                    getAllContents(book, config, reportProgress = !book.isAudio) { text, _ ->
+                    getAllContents(
+                        book,
+                        config,
+                        reportProgress = !book.isAudio,
+                        chapters = audioChapters,
+                    ) { text, _ ->
                         bw.write(text)
                     }
                 }
@@ -652,21 +657,21 @@ class ExportBookService : BaseService() {
     }
 
     /**
-     * Export is a local artifact operation: it must reject an incomplete audio book before
-     * creating any archive output, never resolve a source or request missing media.
+     * An audio TXT-ZIP is the coherent set of already-complete chapter artifacts. Incomplete
+     * chapters are deliberately absent from both its media manifest and TXT, rather than causing
+     * source resolution or a background download during export.
      */
-    private fun requireCompleteAudioExportChapters(book: Book): List<BookChapter> {
+    private fun availableAudioExportChapters(book: Book): List<BookChapter> {
         val chapters = appDb.bookChapterDao.getChapterList(book.bookUrl)
             .filterNot { it.isVolume }
         require(chapters.isNotEmpty()) { "Audio TXT-ZIP export failed: chapter list is empty" }
-        chapters.forEach { chapter ->
-            val offlineState = AudioOfflineState.inspect(book, chapter)
-            require(offlineState.isComplete) {
-                "Audio TXT-ZIP export failed: ${offlineState.incompleteReason()} " +
-                    "chapter=${chapter.index + 1} ${chapter.title}"
-            }
+        val completed = chapters.filter { chapter ->
+            AudioOfflineState.inspect(book, chapter).isComplete
         }
-        return chapters
+        require(completed.isNotEmpty()) {
+            "Audio TXT-ZIP export failed: no chapter has both completed media and lyric"
+        }
+        return completed
     }
 
     private suspend fun zipAudioBookArchive(
@@ -879,6 +884,7 @@ class ExportBookService : BaseService() {
         book: Book,
         config: ExportConfig,
         reportProgress: Boolean = true,
+        chapters: List<BookChapter>? = null,
         append: (text: String, srcList: ArrayList<SrcData>?) -> Unit
     ) = coroutineScope {
         val useReplace = config.useReplace && book.getUseReplaceRule()
@@ -898,7 +904,7 @@ class ExportBookService : BaseService() {
             1
         }
         flow {
-            appDb.bookChapterDao.getChapterList(book.bookUrl).forEach { chapter ->
+            (chapters ?: appDb.bookChapterDao.getChapterList(book.bookUrl)).forEach { chapter ->
                 emit(chapter)
             }
         }.mapAsync(threads) { chapter ->
