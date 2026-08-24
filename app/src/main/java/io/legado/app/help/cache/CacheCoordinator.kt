@@ -173,6 +173,9 @@ object CacheCoordinator : CacheUiPort {
         source: CacheRequestSource,
         reviewEnabled: Boolean = AppConfig.syncCacheReview,
     ): CacheSubmission {
+        require(!book.isAudio && !book.isVideo) {
+            "text download is invalid for media book: ${book.bookUrl}"
+        }
         val indexes = chapterIndexes.distinct().sorted()
         require(indexes.isNotEmpty()) { "text download has no chapters" }
         return submit(
@@ -232,6 +235,9 @@ object CacheCoordinator : CacheUiPort {
         chapterIndexes: Iterable<Int>,
         source: CacheRequestSource,
     ): CacheSubmission? = synchronized(automaticTextSubmitLock) {
+        require(!book.isAudio && !book.isVideo) {
+            "automatic text download is invalid for media book: ${book.bookUrl}"
+        }
         if (hasActiveTextDownload(book.bookUrl)) return@synchronized null
         submitTextDownload(
             book = book,

@@ -239,7 +239,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
             preDownloadCount = AppConfig.preDownloadNum,
         )
         if (chapterIndexes.isEmpty()) return
-        CacheCoordinator.submitTextDownload(
+        CacheCoordinator.submitBookDownload(
             book = book,
             chapterIndexes = chapterIndexes,
             source = CacheRequestSource.AUTO_PRECACHE,

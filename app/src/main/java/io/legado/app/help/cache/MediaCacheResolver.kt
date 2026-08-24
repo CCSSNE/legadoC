@@ -5,7 +5,9 @@ import io.legado.app.R
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.SourceAudioResolver
 import io.legado.app.help.book.getBookSource
+import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.model.analyzeRule.AnalyzeUrl
@@ -23,6 +25,15 @@ import java.io.File
 /** Shared media URL resolution used by the media execution adapter. */
 internal object MediaCacheResolver {
     suspend fun resolve(book: Book, chapter: BookChapter): ExoPlayerHelper.MediaRequest {
+        // Audio resolution also extracts the chapter lyric. It must never reuse the
+        // generic media resolver because that path persists the source response in the
+        // ordinary text-body cache.
+        if (book.isAudio) {
+            return SourceAudioResolver.resolve(book, book.getBookSource(), chapter).request
+        }
+        require(book.isVideo) {
+            "generic media resolver received a non-media book: ${book.bookUrl}"
+        }
         chapter.resourceUrl
             ?.takeIf { it.isNotBlank() }
             ?.takeIf(::isDownloadableMediaContent)

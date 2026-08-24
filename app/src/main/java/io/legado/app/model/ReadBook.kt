@@ -25,6 +25,7 @@ import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isPdf
 import io.legado.app.help.book.isSameNameAuthor
+import io.legado.app.help.book.isVideo
 import io.legado.app.help.book.readSimulating
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.book.update
@@ -588,7 +589,7 @@ object ReadBook : CoroutineScope by MainScope() {
         }
         val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, index)
             ?: return@withContext null
-        val cached = BookHelp.getContent(book, chapter)
+        val cached = cachedReadContent(book, chapter)
         val rawContent = cached ?: downloadAwait(chapter)
         val contentProcessor = ContentProcessor.get(book.name, book.origin)
         val displayTitle = chapter.getDisplayTitle(
@@ -724,7 +725,7 @@ object ReadBook : CoroutineScope by MainScope() {
             val book = book!!
             val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, index) ?: return@async
             if (addLoading(index)) {
-                BookHelp.getContent(book, chapter)?.let {
+                cachedReadContent(book, chapter)?.let {
                     contentLoadFinish(
                         book,
                         chapter,
@@ -754,7 +755,7 @@ object ReadBook : CoroutineScope by MainScope() {
             try {
                 val book = book!!
                 val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, index)!!
-                val cached = BookHelp.getContent(book, chapter)
+                val cached = cachedReadContent(book, chapter)
                 val content = cached ?: downloadAwait(chapter)
                 contentLoadFinishAwait(book, chapter, content, upContent, resetPageOffset)
                 success?.invoke()
@@ -777,7 +778,7 @@ object ReadBook : CoroutineScope by MainScope() {
         }
         val book = book ?: return
         val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, index) ?: return
-        if (BookHelp.hasContent(book, chapter)) {
+        if (hasCachedReadContent(book, chapter)) {
             downloadedChapters.add(chapter.index)
         } else {
             delay(1000)
@@ -822,6 +823,19 @@ object ReadBook : CoroutineScope by MainScope() {
             val msg = if (book.isLocal) "无内容" else "没有书源"
             return "加载正文失败\n$msg"
         }
+    }
+
+    /** Audio transcripts are chapter metadata, never ordinary BookHelp body cache files. */
+    private fun cachedReadContent(book: Book, chapter: BookChapter): String? {
+        if (book.isAudio) {
+            BookHelp.delContent(book, chapter)
+            return AudioTextFusion.effectiveLyric(chapter).takeIf { it.isNotBlank() }
+        }
+        return BookHelp.getContent(book, chapter)
+    }
+
+    private fun hasCachedReadContent(book: Book, chapter: BookChapter): Boolean {
+        return cachedReadContent(book, chapter) != null
     }
 
     @Synchronized
@@ -1189,6 +1203,7 @@ object ReadBook : CoroutineScope by MainScope() {
 
     private fun scheduleAutomaticReviewDownload() {
         val currentBook = book ?: return
+        if (currentBook.isAudio || currentBook.isVideo) return
         val startIndex = durChapterIndex
         val chapterIndexes = CacheCoordinator.automaticChapterIndexes(
             startIndex = startIndex,

@@ -6,8 +6,11 @@ import io.legado.app.base.BaseViewModel
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.isVideo
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.utils.sendValue
 import kotlinx.coroutines.ensureActive
 import kotlin.collections.set
@@ -27,31 +30,46 @@ class CacheViewModel(application: Application) : BaseViewModel(application) {
         loadChapterCoroutine = execute {
             books.forEach { book ->
                 if (!book.isLocal && !cacheChapters.contains(book.bookUrl)) {
-                    val chapterCaches = hashSetOf<String>()
-                    val cacheNames = BookHelp.getChapterFiles(book)
-                    if (cacheNames.isNotEmpty()) {
-                        appDb.bookChapterDao.getChapterList(book.bookUrl).also {
-                            book.totalChapterNum = it.size
-                        }.forEach { chapter ->
-                            if (
-                                chapter.isVolume ||
-                                BookHelp.getChapterCacheFileNames(book, chapter)
-                                    .any(cacheNames::contains)
-                            ) {
-                                chapterCaches.add(chapter.url)
-                            }
-                        }
-                    }
-                    cacheChapters[book.bookUrl] = chapterCaches
-                    // 评论快照章数：统计该书快照文件（按章去重），后续由事件增量更新
-                    reviewChapters[book.bookUrl] = io.legado.app.help.review.ReviewSnapshotStore
-                        .chapterUrls(book)
-                        .toHashSet()
-                    upAdapterLiveData.sendValue(book.bookUrl)
+                    loadBookCacheFiles(book)
                 }
                 ensureActive()
             }
         }
+    }
+
+    fun refreshCacheFiles(book: Book) {
+        if (book.isLocal) return
+        execute {
+            loadBookCacheFiles(book)
+        }
+    }
+
+    private fun loadBookCacheFiles(book: Book) {
+        val chapterCaches = hashSetOf<String>()
+        val cacheNames = if (book.isAudio || book.isVideo) {
+            emptySet()
+        } else {
+            BookHelp.getChapterFiles(book)
+        }
+        appDb.bookChapterDao.getChapterList(book.bookUrl).also {
+            book.totalChapterNum = it.size
+        }.forEach { chapter ->
+            val cached = when {
+                chapter.isVolume -> true
+                book.isAudio -> ExoPlayerHelper.isMediaCached(chapter.resourceUrl, book)
+                book.isVideo -> ExoPlayerHelper.isVideoCached(chapter.resourceUrl, book)
+                else -> BookHelp.getChapterCacheFileNames(book, chapter).any(cacheNames::contains)
+            }
+            if (cached) {
+                chapterCaches.add(chapter.url)
+            }
+        }
+        cacheChapters[book.bookUrl] = chapterCaches
+        // 评论快照章数：统计该书快照文件（按章去重），后续由事件增量更新
+        reviewChapters[book.bookUrl] = io.legado.app.help.review.ReviewSnapshotStore
+            .chapterUrls(book)
+            .toHashSet()
+        upAdapterLiveData.sendValue(book.bookUrl)
     }
 
 }

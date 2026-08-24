@@ -9,9 +9,13 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
+import io.legado.app.help.book.AudioTextFusion
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.CacheManifestHelper
+import io.legado.app.help.book.SourceAudioResolver
+import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.isVideo
 import io.legado.app.help.cache.CacheOperationDiagnostics
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.cache.CacheWorkerLease
@@ -97,15 +101,15 @@ object CacheBook {
         coordinatorGeneration: Long? = null,
     ) {
         AppLog.put("开始离线缓存 ${book.name}，章节范围 ${start + 1}-${end + 1}")
-        if (book.isLocal) {
+        if (book.isLocal || book.isAudio || book.isVideo) {
             notifyCoordinatorStartFailure(
                 coordinatorSessionId,
                 coordinatorTaskId,
                 coordinatorGeneration,
-                "${book.name}: local book",
+                "${book.name}: text body worker does not support this book type",
             )
-            val error = IllegalArgumentException("local book cannot be cached from network")
-            AppLog.put("离线缓存拒绝：${book.name} 是本地书", error, true)
+            val error = IllegalArgumentException("text body worker rejected book: ${book.bookUrl}")
+            AppLog.put("Text body worker rejected ${book.name}: unsupported book type", error, true)
             return
         }
         NotificationPermission.ensure(
@@ -353,6 +357,9 @@ object CacheBook {
          */
         @Synchronized
         internal fun download(scope: CoroutineScope, context: CoroutineContext) {
+            require(!book.isAudio && !book.isVideo) {
+                "text body worker received a media book: ${book.bookUrl}"
+            }
             val executionLease = coordinatorLease
             val chapterIndex = waitDownloadSet.firstOrNull()
             if (chapterIndex == null) {
@@ -495,7 +502,11 @@ object CacheBook {
                 waitDownloadSet.remove(chapter.index)
             }
             try {
-                val content = WebBook.getContentAwait(bookSource, book, chapter)
+                val content = if (book.isAudio) {
+                    loadAudioTranscript(chapter)
+                } else {
+                    WebBook.getContentAwait(bookSource, book, chapter)
+                }
                 onSuccess(chapter)
                 ReadBook.downloadedChapters.add(chapter.index)
                 ReadBook.downloadFailChapters.remove(chapter.index)
@@ -525,15 +536,27 @@ object CacheBook {
             }
             onDownloadSet.add(chapter.index)
             waitDownloadSet.remove(chapter.index)
-            WebBook.getContent(
-                scope,
-                bookSource,
-                book,
-                chapter,
-                start = CoroutineStart.LAZY,
-                executeContext = IO,
-                semaphore = semaphore
-            ).onSuccess { content ->
+            val request = if (book.isAudio) {
+                Coroutine.async(
+                    scope = scope,
+                    start = CoroutineStart.LAZY,
+                    executeContext = IO,
+                    semaphore = semaphore,
+                ) {
+                    loadAudioTranscript(chapter)
+                }
+            } else {
+                WebBook.getContent(
+                    scope,
+                    bookSource,
+                    book,
+                    chapter,
+                    start = CoroutineStart.LAZY,
+                    executeContext = IO,
+                    semaphore = semaphore
+                )
+            }
+            request.onSuccess { content ->
                 onSuccess(chapter)
                 ReadBook.downloadedChapters.add(chapter.index)
                 ReadBook.downloadFailChapters.remove(chapter.index)
@@ -548,6 +571,11 @@ object CacheBook {
                 downloadFinish(chapter, "download canceled", resetPageOffset, canceled = true)
             }.onFinally {
             }.start()
+        }
+
+        private suspend fun loadAudioTranscript(chapter: BookChapter): String {
+            SourceAudioResolver.resolve(book, bookSource, chapter)
+            return AudioTextFusion.effectiveLyric(chapter)
         }
 
         /**
