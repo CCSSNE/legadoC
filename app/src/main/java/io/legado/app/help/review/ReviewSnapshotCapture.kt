@@ -32,7 +32,6 @@ import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.utils.GSON
 import io.legado.app.utils.runOnUI
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withTimeout
 import org.apache.commons.text.StringEscapeUtils
 import splitties.init.appCtx
 import java.io.ByteArrayInputStream
@@ -57,7 +56,12 @@ object ReviewSnapshotCapture {
 
     private val mHandler = Handler(Looper.getMainLooper())
 
-    private const val PAGE_TIMEOUT_MS = 60_000L
+    /** 页面加载与评论展开共享的执行预算；不包含重内存阶段的排队或执行。 */
+    private const val PAGE_EXECUTION_TIMEOUT_MS = 60_000L
+    /** 等待重内存 permit 的队列预算；到期直接失败，不占用后续 heavy work 预算。 */
+    private const val HEAVY_STAGE_WAIT_TIMEOUT_MS = 60_000L
+    /** 已取得 permit 后，资源内联、outerHTML 与解码共享的执行预算。 */
+    private const val HEAVY_STAGE_WORK_TIMEOUT_MS = 60_000L
     /** 穷尽循环轮数上限 */
     private const val MAX_EXPAND_ROUNDS = 40
     /** 每轮之间的等待 */
@@ -77,6 +81,28 @@ object ReviewSnapshotCapture {
     private val heavyStagePermits = Semaphore(1, true)
 
     private class ResourceBudgetExceededException(message: String) : IllegalStateException(message)
+
+    private enum class CaptureStage(
+        val diagnosticsStage: String,
+        val executionTimeoutMs: Long?,
+        val timeoutLabel: String,
+    ) {
+        PAGE_EXECUTION(
+            diagnosticsStage = "PAGE_EXECUTION",
+            executionTimeoutMs = PAGE_EXECUTION_TIMEOUT_MS,
+            timeoutLabel = "评论页加载/展开",
+        ),
+        HEAVY_STAGE_WAIT(
+            diagnosticsStage = "HEAVY_STAGE_WAIT",
+            executionTimeoutMs = null,
+            timeoutLabel = "评论快照重内存队列等待",
+        ),
+        HEAVY_STAGE_WORK(
+            diagnosticsStage = "HEAVY_STAGE_WORK",
+            executionTimeoutMs = HEAVY_STAGE_WORK_TIMEOUT_MS,
+            timeoutLabel = "评论快照重内存处理",
+        ),
+    }
 
     /**
      * 抓取结果（供诊断日志）：快照 + 展开检测轮数 + 实际点击“展开/加载更多”次数。
@@ -183,7 +209,7 @@ object ReviewSnapshotCapture {
     /**
      * 无头加载页面并穷尽展开后返回最终 HTML 与展开诊断数据。
      *
-     * WebView 生命周期唯一化：成功/失败/超时/cancel 四条路径都只释放一次，
+     * WebView 生命周期唯一化：成功/失败/分阶段超时/cancel 四条路径都只释放一次，
      * 通过 [java.util.concurrent.atomic.AtomicReference] + [AtomicBoolean] 保证。
      */
     private suspend fun snapshotPage(
@@ -192,71 +218,74 @@ object ReviewSnapshotCapture {
         initialHtml: String? = null,
         preloadJs: String? = null,
         diagnostics: CacheOperationDiagnostics.Operation? = null,
-    ): Triple<String, Int, Int> =
-        withTimeout(PAGE_TIMEOUT_MS) {
-            val analyzeUrl = AnalyzeUrl(url, source = bookSource)
-            val headerMap = analyzeUrl.headerMap
-            suspendCancellableCoroutine { block ->
-                val pooledRef = AtomicReference<io.legado.app.help.webView.PooledWebView?>()
-                val released = java.util.concurrent.atomic.AtomicBoolean(false)
-                // 唯一释放点：重复调用被 AtomicBoolean 挡住
-                fun releaseOnce() {
-                    val pooled = pooledRef.getAndSet(null) ?: return
-                    if (released.compareAndSet(false, true)) {
-                        runOnUI { WebViewPool.release(pooled) }
-                    }
+    ): Triple<String, Int, Int> {
+        val analyzeUrl = AnalyzeUrl(url, source = bookSource)
+        val headerMap = analyzeUrl.headerMap
+        return suspendCancellableCoroutine { block ->
+            val pooledRef = AtomicReference<io.legado.app.help.webView.PooledWebView?>()
+            val sessionRef = AtomicReference<SnapshotSession?>()
+            val released = java.util.concurrent.atomic.AtomicBoolean(false)
+            // 唯一释放点：重复调用被 AtomicBoolean 挡住
+            fun releaseOnce() {
+                val pooled = pooledRef.getAndSet(null) ?: return
+                if (released.compareAndSet(false, true)) {
+                    runOnUI { WebViewPool.release(pooled) }
                 }
-                runOnUI {
-                    try {
-                        val pooled = WebViewPool.acquire(appCtx)
-                        pooledRef.set(pooled)
-                        val webView = pooled.realWebView
-                        webView.onResume()
-                        webView.setBackgroundColor(android.graphics.Color.WHITE)
-                        webView.settings.apply {
-                            blockNetworkImage = false
-                            headerMap[AppConst.UA_NAME]?.let { userAgentString = it }
-                        }
-                        AppCookieManager.applyToWebView(url)
-                        val jsBridge = if (!initialHtml.isNullOrBlank()) {
-                            PageJsBridge(preloadJs)
-                        } else {
-                            null
-                        }
-                        val session = SnapshotSession(webView, url, jsBridge, diagnostics) {
-                            result, error, rounds, clicks ->
-                            releaseOnce()
-                            if (block.isActive) {
-                                if (error != null) block.resumeWithException(error)
-                                else block.resume(Triple(result ?: "", rounds, clicks))
-                            }
-                        }
-                        webView.webViewClient = session.client
-                        if (!initialHtml.isNullOrBlank()) {
-                            // 书源 showBrowser 已取回渲染 HTML：作为初始页面并注入 JS bridge 环境
-                            // （真实评论页可能依赖 window.java/run/ajaxAwait 等），
-                            // 仍走 onPageFinished → 展开/内联/序列化全流程
-                            webView.addJavascriptInterface(WebCacheManager, nameCache)
-                            webView.addJavascriptInterface(bookSource, nameSource)
-                            webView.addJavascriptInterface(WebJsExtensions(bookSource, null, webView), nameJava)
-                            webView.loadDataWithBaseURL(
-                                url, spliceJsUrl(initialHtml), "text/html", "utf-8", url
-                            )
-                        } else {
-                            webView.loadUrl(url, headerMap)
-                        }
-                        // 超时/cancel（withTimeout 抛 TimeoutCancellationException）路径
-                        block.invokeOnCancellation {
-                            runOnUI { session.destroy() }
-                            releaseOnce()
-                        }
-                    } catch (e: Throwable) {
-                        releaseOnce()
-                        if (block.isActive) block.resumeWithException(e)
+            }
+            block.invokeOnCancellation {
+                runOnUI { sessionRef.getAndSet(null)?.destroy() }
+                releaseOnce()
+            }
+            runOnUI {
+                if (!block.isActive) return@runOnUI
+                try {
+                    val pooled = WebViewPool.acquire(appCtx)
+                    pooledRef.set(pooled)
+                    val webView = pooled.realWebView
+                    webView.onResume()
+                    webView.setBackgroundColor(android.graphics.Color.WHITE)
+                    webView.settings.apply {
+                        blockNetworkImage = false
+                        headerMap[AppConst.UA_NAME]?.let { userAgentString = it }
                     }
+                    AppCookieManager.applyToWebView(url)
+                    val jsBridge = if (!initialHtml.isNullOrBlank()) {
+                        PageJsBridge(preloadJs)
+                    } else {
+                        null
+                    }
+                    val session = SnapshotSession(webView, url, jsBridge, diagnostics) {
+                        result, error, rounds, clicks ->
+                        sessionRef.set(null)
+                        releaseOnce()
+                        if (block.isActive) {
+                            if (error != null) block.resumeWithException(error)
+                            else block.resume(Triple(result ?: "", rounds, clicks))
+                        }
+                    }
+                    sessionRef.set(session)
+                    webView.webViewClient = session.client
+                    if (!initialHtml.isNullOrBlank()) {
+                        // 书源 showBrowser 已取回渲染 HTML：作为初始页面并注入 JS bridge 环境
+                        // （真实评论页可能依赖 window.java/run/ajaxAwait 等），
+                        // 仍走 onPageFinished → 展开/内联/序列化全流程
+                        webView.addJavascriptInterface(WebCacheManager, nameCache)
+                        webView.addJavascriptInterface(bookSource, nameSource)
+                        webView.addJavascriptInterface(WebJsExtensions(bookSource, null, webView), nameJava)
+                        webView.loadDataWithBaseURL(
+                            url, spliceJsUrl(initialHtml), "text/html", "utf-8", url
+                        )
+                    } else {
+                        webView.loadUrl(url, headerMap)
+                    }
+                } catch (e: Throwable) {
+                    sessionRef.getAndSet(null)?.destroy()
+                    releaseOnce()
+                    if (block.isActive) block.resumeWithException(e)
                 }
             }
         }
+    }
 
     /**
      * 初始 HTML 的 head 后插入 JS_URL（触发 shouldInterceptRequest 加载 preloadJs 桥）。
@@ -288,6 +317,7 @@ object ReviewSnapshotCapture {
         private val done: (String?, Throwable?, Int, Int) -> Unit
     ) {
 
+        @Volatile
         private var destroyed = false
         private var expandRounds = 0
         private var totalExpandClicks = 0
@@ -298,6 +328,12 @@ object ReviewSnapshotCapture {
 
         private var jsInjectedForPage = false
         private val heavyStagePermitHeld = AtomicBoolean(false)
+        private var activeStage: CaptureStage? = null
+        private var stageTimeout: Runnable? = null
+
+        init {
+            startTimedStage(CaptureStage.PAGE_EXECUTION)
+        }
 
         val client = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, finishedUrl: String?) {
@@ -383,11 +419,14 @@ object ReviewSnapshotCapture {
 
         fun destroy() {
             destroyed = true
+            clearStageTimeout()
+            activeStage = null
             releaseHeavyStagePermit()
         }
 
         private fun finish(html: String?) {
             if (destroyed) return
+            completeActiveStage(CacheOperationDiagnostics.Metrics(outputChars = html?.length))
             destroyed = true
             releaseHeavyStagePermit()
             done(html, null, expandRounds, totalExpandClicks)
@@ -395,9 +434,57 @@ object ReviewSnapshotCapture {
 
         private fun fail(error: Throwable) {
             if (destroyed) return
+            failActiveStage(error)
             destroyed = true
             releaseHeavyStagePermit()
             done(null, error, expandRounds, totalExpandClicks)
+        }
+
+        /**
+         * 只有页面执行与 permit 后的重内存处理拥有执行超时；排队由 tryAcquire 自己限时。
+         * 这样队列中的时间永远不会消耗 heavy work 的执行预算。
+         */
+        private fun startTimedStage(stage: CaptureStage) {
+            completeActiveStage()
+            activeStage = stage
+            diagnostics?.stageStart(stage.diagnosticsStage, startAlways = true)
+            val timeoutMs = stage.executionTimeoutMs ?: return
+            val timeout = Runnable {
+                if (!destroyed && activeStage == stage) {
+                    fail(
+                        NoStackTraceException(
+                            "${stage.timeoutLabel}执行超时 ${timeoutMs / 1000}s",
+                        )
+                    )
+                }
+            }
+            stageTimeout = timeout
+            mHandler.postDelayed(timeout, timeoutMs)
+        }
+
+        private fun startQueueWaitStage() {
+            completeActiveStage()
+            activeStage = CaptureStage.HEAVY_STAGE_WAIT
+            diagnostics?.stageStart(CaptureStage.HEAVY_STAGE_WAIT.diagnosticsStage, startAlways = true)
+        }
+
+        private fun completeActiveStage(metrics: CacheOperationDiagnostics.Metrics = CacheOperationDiagnostics.Metrics()) {
+            val stage = activeStage ?: return
+            clearStageTimeout()
+            activeStage = null
+            diagnostics?.stageDone(stage.diagnosticsStage, metrics)
+        }
+
+        private fun failActiveStage(error: Throwable) {
+            val stage = activeStage ?: return
+            clearStageTimeout()
+            activeStage = null
+            diagnostics?.stageFail(stage.diagnosticsStage, error)
+        }
+
+        private fun clearStageTimeout() {
+            stageTimeout?.let(mHandler::removeCallbacks)
+            stageTimeout = null
         }
 
         private data class PageStats(val clicked: Int, val textLen: Int, val height: Int, val nodes: Int)
@@ -457,28 +544,35 @@ object ReviewSnapshotCapture {
         /** 收集图片与样式表并内联，然后取最终 HTML */
         private fun inlineResources() {
             if (destroyed) return
-            diagnostics?.stageStart("HEAVY_STAGE_WAIT", startAlways = true)
+            startQueueWaitStage()
             // 只限流会创建完整 Java 大对象的阶段；此时之前的页面加载与展开可以继续并行。
             Thread {
                 try {
-                    heavyStagePermits.acquire()
-                    if (destroyed) {
+                    if (!heavyStagePermits.tryAcquire(HEAVY_STAGE_WAIT_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+                        mHandler.post {
+                            fail(
+                                NoStackTraceException(
+                                    "评论快照重内存队列等待超时 " +
+                                        "${HEAVY_STAGE_WAIT_TIMEOUT_MS / 1000}s",
+                                )
+                            )
+                        }
+                    } else if (destroyed) {
                         heavyStagePermits.release()
                     } else {
                         heavyStagePermitHeld.set(true)
-                        diagnostics?.stageDone("HEAVY_STAGE_WAIT")
-                        diagnostics?.mark("HEAVY_STAGE_ACQUIRED")
                         mHandler.post {
                             if (destroyed) {
                                 releaseHeavyStagePermit()
                             } else {
+                                diagnostics?.mark("HEAVY_STAGE_ACQUIRED")
+                                startTimedStage(CaptureStage.HEAVY_STAGE_WORK)
                                 collectAndInlineResources()
                             }
                         }
                     }
                 } catch (e: InterruptedException) {
                     Thread.currentThread().interrupt()
-                    diagnostics?.stageFail("HEAVY_STAGE_WAIT", e)
                     mHandler.post { fail(e) }
                 }
             }.start()
