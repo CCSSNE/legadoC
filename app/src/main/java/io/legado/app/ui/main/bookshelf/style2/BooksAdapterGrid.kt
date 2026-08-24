@@ -13,6 +13,7 @@ import io.legado.app.databinding.ItemBookshelfGridBinding
 import io.legado.app.databinding.ItemBookshelfGridGroup2Binding
 import io.legado.app.databinding.ItemBookshelfGridGroupBinding
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.isShortcut
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.ui.main.bookshelf.BookCollectionShelfItem
@@ -120,11 +121,13 @@ class BooksAdapterGrid(context: Context, callBack: CallBack) :
             }
             ivCover.load(item, false)
             root.bindBookMediaBadge(item.type)
+            ivShortcut.visible(item.isShortcut)
             upRefresh(this, item)
         }
 
         fun onBind(item: Book, position: Int, payloads: MutableList<Any>) = binding.run {
             ivCover.alpha = UiCorner.bookshelfCoverAlpha()
+            ivShortcut.visible(item.isShortcut)
             if (payloads.isEmpty()) {
                 onBind(item, position)
             } else {
@@ -179,11 +182,13 @@ class BooksAdapterGrid(context: Context, callBack: CallBack) :
             tvName.text = item.name
             ivCover.load(item, false)
             root.bindBookMediaBadge(item.type)
+            ivShortcut.visible(item.isShortcut)
             upRefresh(this, item)
         }
 
         fun onBind(item: Book, position: Int, payloads: MutableList<Any>) = binding.run {
             ivCover.alpha = UiCorner.bookshelfCoverAlpha()
+            ivShortcut.visible(item.isShortcut)
             if (payloads.isEmpty()) {
                 onBind(item, position)
             } else {

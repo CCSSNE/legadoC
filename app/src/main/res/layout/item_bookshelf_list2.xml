@@ -59,6 +59,21 @@
         app:tint="@color/white"
         tools:visibility="visible" />
 
+    <androidx.appcompat.widget.AppCompatImageView
+        android:id="@+id/iv_shortcut"
+        android:layout_width="18dp"
+        android:layout_height="18dp"
+        android:layout_marginStart="4dp"
+        android:layout_marginBottom="8dp"
+        android:background="@drawable/bg_bookshelf_shortcut_badge"
+        android:contentDescription="@null"
+        android:padding="4dp"
+        android:src="@drawable/ic_bookshelf_shortcut"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@+id/iv_cover"
+        app:layout_constraintStart_toStartOf="@+id/iv_cover"
+        tools:visibility="visible" />
+
     <FrameLayout
         android:id="@+id/selection_outer"
         android:layout_width="24dp"

@@ -11,6 +11,7 @@ import io.legado.app.databinding.ItemBookshelfCollectionGridBinding
 import io.legado.app.databinding.ItemBookshelfGrid2Binding
 import io.legado.app.databinding.ItemBookshelfGridBinding
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.isShortcut
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.ui.main.bookshelf.BookCollectionShelfItem
@@ -65,6 +66,7 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
             is ItemBookshelfGridBinding -> binding.run {
                 ivCover.alpha = UiCorner.bookshelfCoverAlpha()
                 renderSelectionMark(selectionOuter, selectionDot, item, callBack)
+                ivShortcut.visible(item.isShortcut)
                 if (payloads.isEmpty()) {
                     if (showBookname == 0) {
                         tvName.visible()
@@ -100,6 +102,7 @@ class BooksAdapterGrid(context: Context, private val callBack: CallBack) :
             is ItemBookshelfGrid2Binding -> binding.run {
                 ivCover.alpha = UiCorner.bookshelfCoverAlpha()
                 renderSelectionMark(selectionOuter, selectionDot, item, callBack)
+                ivShortcut.visible(item.isShortcut)
                 if (payloads.isEmpty()) {
                     tvName.text = item.name
                     ivCover.loadThumb(item, false)
