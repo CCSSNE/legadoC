@@ -9,6 +9,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
+import io.legado.app.databinding.DialogReviewSnapshotStatusBinding
 import io.legado.app.data.entities.Book
 import io.legado.app.help.cache.CacheCoordinator
 import io.legado.app.lib.theme.UiCorner
