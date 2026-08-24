@@ -23,9 +23,7 @@ internal class TextBodyWorkerAdapter(
             ?: error("book not found: ${task.bookUrl}")
         if (!registry.register(task, lease, task.units.map { it.key }.toSet())) {
             val detail = "another body task is active for this book"
-            if (workerPort.skip(lease, CacheTaskSkipReason.ALREADY_RUNNING, detail)) {
-                CacheCoordinator.notifyTaskFinished(lease, CacheResult.SKIPPED, detail)
-            }
+            workerPort.skip(lease, CacheTaskSkipReason.ALREADY_RUNNING, detail)
             return
         }
         task.units
@@ -59,9 +57,7 @@ internal class TextBodyWorkerAdapter(
             ?: return
         registry.remove(submission.sessionId, submission.taskId)
         CacheBook.stop(task.bookUrl)
-        if (workerPort.confirmCancelled(submission)) {
-            CacheCoordinator.notifyTaskFinished(submission, CacheResult.CANCELLED)
-        }
+        workerPort.confirmCancelled(submission)
     }
 
     private fun ranges(indexes: List<Int>): List<Pair<Int, Int>> {
@@ -152,9 +148,7 @@ internal object CacheBodyWorkerRegistry {
         if (task == null || task.status != CacheLifecycle.RUNNING || task.generation != lease.generation) {
             return
         }
-        if (requireWorkerPort().finish(lease, CacheResult.FAILED, error)) {
-            CacheCoordinator.notifyTaskFinished(lease, CacheResult.FAILED, error)
-        }
+        requireWorkerPort().finish(lease, CacheResult.FAILED, error)
         removeBinding(lease)
     }
 
@@ -209,18 +203,11 @@ internal object CacheBodyWorkerRegistry {
             val failed = synchronized(lock) {
                 binding.completed.values.any { it == CacheUnitStatus.FAILED }
             }
-            val finished = requireWorkerPort().finish(
+            requireWorkerPort().finish(
                 binding.lease,
                 if (failed) CacheResult.FAILED else CacheResult.SUCCEEDED,
                 if (failed) "one or more chapters failed" else null,
             )
-            if (finished) {
-                CacheCoordinator.notifyTaskFinished(
-                    binding.lease,
-                    if (failed) CacheResult.FAILED else CacheResult.SUCCEEDED,
-                    if (failed) "one or more chapters failed" else null,
-                )
-            }
             removeBinding(binding.lease)
         }
     }

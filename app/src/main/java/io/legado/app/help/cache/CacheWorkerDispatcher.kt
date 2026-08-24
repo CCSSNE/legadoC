@@ -22,9 +22,7 @@ internal class CacheWorkerDispatcherImpl(
         if (lease == null) {
             val error = "worker lease was not acquired"
             recordDispatchFailure(submission, "lease_not_acquired")
-            if (workerPort.failQueued(submission, error)) {
-                CacheCoordinator.notifyTaskFinished(submission, CacheResult.FAILED, error)
-            }
+            workerPort.failQueued(submission, error)
             return
         }
         dispatch(submission, lease)
@@ -74,9 +72,7 @@ internal class CacheWorkerDispatcherImpl(
             else -> {
                 val error = "no cancel adapter for kind=${task.kind} phase=${task.phase}"
                 recordDispatchFailure(submission, error)
-                if (workerPort.confirmCancelled(submission)) {
-                    CacheCoordinator.notifyTaskFinished(submission, CacheResult.CANCELLED, error)
-                }
+                workerPort.confirmCancelled(submission)
             }
         }
     }
@@ -104,9 +100,7 @@ internal class CacheWorkerDispatcherImpl(
         val task = CacheCoordinator.currentTask(submission)
         if (task == null) {
             recordDispatchFailure(submission, "task_missing")
-            if (workerPort.finish(lease, CacheResult.FAILED, "task missing while dispatching")) {
-                CacheCoordinator.notifyTaskFinished(lease, CacheResult.FAILED, "task missing while dispatching")
-            }
+            workerPort.finish(lease, CacheResult.FAILED, "task missing while dispatching")
             return
         }
         try {
@@ -123,9 +117,7 @@ internal class CacheWorkerDispatcherImpl(
                 else -> {
                     val message = "no worker adapter for kind=${task.kind} phase=${task.phase}"
                     recordDispatchFailure(submission, message)
-                    if (workerPort.finish(lease, CacheResult.FAILED, message)) {
-                        CacheCoordinator.notifyTaskFinished(lease, CacheResult.FAILED, message)
-                    }
+                    workerPort.finish(lease, CacheResult.FAILED, message)
                 }
             }
         } catch (error: Throwable) {
@@ -138,9 +130,7 @@ internal class CacheWorkerDispatcherImpl(
                     "$message cause=${error::class.simpleName}",
                 )
             )
-            if (workerPort.finish(lease, CacheResult.FAILED, message)) {
-                CacheCoordinator.notifyTaskFinished(lease, CacheResult.FAILED, message)
-            }
+            workerPort.finish(lease, CacheResult.FAILED, message)
         }
     }
 

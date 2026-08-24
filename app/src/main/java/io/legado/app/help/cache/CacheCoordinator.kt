@@ -87,7 +87,9 @@ object CacheCoordinator : CacheUiPort {
         }
 
         override fun failQueued(submission: CacheSubmission, error: String): Boolean {
-            return store.failQueuedTask(submission.sessionId, submission.taskId, error)
+            return acceptTerminalTransition(
+                store.failQueuedTask(submission.sessionId, submission.taskId, error),
+            )
         }
 
         override fun confirmPaused(submission: CacheSubmission): Boolean {
@@ -119,7 +121,9 @@ object CacheCoordinator : CacheUiPort {
             result: CacheResult,
             error: String?,
         ): Boolean {
-            return store.finishTask(lease, result, error)
+            return acceptTerminalTransition(
+                store.finishTask(lease, result, error),
+            )
         }
 
         override fun skip(
@@ -127,11 +131,15 @@ object CacheCoordinator : CacheUiPort {
             reason: CacheTaskSkipReason,
             detail: String,
         ): Boolean {
-            return store.skipTask(lease, reason, detail)
+            return acceptTerminalTransition(
+                store.skipTask(lease, reason, detail),
+            )
         }
 
         override fun confirmCancelled(submission: CacheSubmission): Boolean {
-            return store.confirmCancelled(submission.sessionId, submission.taskId)
+            return acceptTerminalTransition(
+                store.confirmCancelled(submission.sessionId, submission.taskId),
+            )
         }
     }
 
@@ -142,8 +150,10 @@ object CacheCoordinator : CacheUiPort {
     private val resourceGcScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     /** 防止同一本书在短时间内重复排队 GC。 */
     private val resourceGcScheduled = ConcurrentHashMap.newKeySet<String>()
+    private val terminalEffectsInProgress = ConcurrentHashMap.newKeySet<String>()
 
     init {
+        replayPendingTerminalEffects()
         workerDispatcher.recover(snapshot.value)
     }
 
@@ -421,37 +431,60 @@ object CacheCoordinator : CacheUiPort {
         return store.currentTask(submission.sessionId, submission.taskId)
     }
 
-    internal fun notifyTaskFinished(
-        lease: CacheWorkerLease,
-        result: CacheResult,
-        error: String? = null,
-    ) {
-        notifyTaskFinished(CacheSubmission(lease.sessionId, lease.taskId), result, error)
+    private fun acceptTerminalTransition(accepted: Boolean): Boolean {
+        if (accepted) replayPendingTerminalEffects()
+        return accepted
     }
 
-    internal fun notifyTaskFinished(
-        submission: CacheSubmission,
-        result: CacheResult,
-        error: String? = null,
-    ) {
-        val task = currentTask(submission)
-        if (task != null &&
-            task.kind.reviewPrerequisitePhase() == task.phase &&
-            task.reviewEnabled &&
-            task.result != CacheResult.SKIPPED &&
-            task.status in setOf(CacheLifecycle.COMPLETED, CacheLifecycle.FAILED)
-        ) {
-            appendReviewTask(task.sessionId, task.taskId)
+    private fun replayPendingTerminalEffects() {
+        store.pendingTerminalEffects().forEach { task ->
+            processTerminalEffects(CacheSubmission(task.sessionId, task.taskId))
         }
-        val finalTask = currentTask(submission)
-        maybeScheduleReviewResourceGc(finalTask)
-        CacheNotificationBridge.finished(
-            snapshot = snapshot.value,
-            progress = progress.value,
-            task = finalTask,
-            result = finalTask?.result ?: result,
-            error = error,
-        )
+    }
+
+    private fun processTerminalEffects(submission: CacheSubmission) {
+        val effectKey = "${submission.sessionId}/${submission.taskId}"
+        if (!terminalEffectsInProgress.add(effectKey)) return
+        val task = currentTask(submission)
+            ?.takeIf { CacheLifecycleRules.isTerminal(it.status) && it.terminalEffectsPending }
+            ?: run {
+                terminalEffectsInProgress.remove(effectKey)
+                return
+            }
+        try {
+            if (
+                task.kind.reviewPrerequisitePhase() == task.phase &&
+                task.reviewEnabled &&
+                task.result != CacheResult.SKIPPED &&
+                task.status in setOf(CacheLifecycle.COMPLETED, CacheLifecycle.FAILED)
+            ) {
+                appendReviewTask(task.sessionId, task.taskId)
+            }
+            val finalTask = currentTask(submission)
+                ?: error("terminal task disappeared: ${submission.sessionId}/${submission.taskId}")
+            maybeScheduleReviewResourceGc(finalTask)
+            CacheNotificationBridge.finished(
+                snapshot = snapshot.value,
+                progress = progress.value,
+                task = finalTask,
+                result = requireNotNull(finalTask.result) { "terminal task has no result" },
+                error = finalTask.error,
+            )
+            check(store.completeTerminalEffects(submission.sessionId, submission.taskId)) {
+                "terminal effects were not acknowledged: ${submission.sessionId}/${submission.taskId}"
+            }
+        } catch (error: Throwable) {
+            AppLogCacheLogSink.record(
+                CacheLogEvent(
+                    type = CacheLogEventType.TERMINAL_EFFECT_FAILED,
+                    sessionId = submission.sessionId,
+                    taskId = submission.taskId,
+                    detail = "${error::class.simpleName}: ${error.localizedMessage}",
+                )
+            )
+        } finally {
+            terminalEffectsInProgress.remove(effectKey)
+        }
     }
 
     /**
