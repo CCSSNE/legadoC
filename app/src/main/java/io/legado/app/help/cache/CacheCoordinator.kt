@@ -10,6 +10,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.review.ReviewResourceEpoch
 import io.legado.app.help.review.ReviewSnapshotManager
 import io.legado.app.help.review.ReviewSnapshotResourceStore
 import io.legado.app.help.review.ReviewSnapshotStore
@@ -366,6 +367,10 @@ object CacheCoordinator : CacheUiPort {
      * REVIEW task 时，才在后台做一次评论资源 GC。BODY 结束后还会追加 REVIEW，
      * 因此 BODY 终态不会触发（[finalTask] 已切换为新追加的 REVIEW task）。
      * 每本书同一时刻至多排一次，避免终态通知风暴重复 GC。
+     *
+     * 并发：扫描开始前快照 [ReviewResourceEpoch]；REVIEW worker 真正启动时会推进
+     * epoch，因此即使扫描期间有“快速开始又快速结束”的 REVIEW，删除阶段也会因
+     * epoch 已变化而放弃本次 GC，绝不基于过期引用集合误删新资源。
      */
     private fun maybeScheduleReviewResourceGc(task: CacheTaskState?) {
         if (task == null ||
@@ -380,10 +385,12 @@ object CacheCoordinator : CacheUiPort {
         if (!resourceGcScheduled.add(bookUrl)) return
         resourceGcScope.launch {
             try {
-                // 队列可能与真实执行之间隔了用户新发起的 REVIEW；到点再确认一次。
-                if (hasActiveReviewTask(bookUrl)) return@launch
                 val book = appDb.bookDao.getBook(bookUrl) ?: return@launch
-                val result = ReviewSnapshotResourceStore.gc(book) {
+                val epoch = ReviewResourceEpoch.current()
+                val result = ReviewSnapshotResourceStore.gc(
+                    book = book,
+                    expectedEpoch = epoch,
+                ) {
                     !hasActiveReviewTask(bookUrl)
                 }
                 AppLogCacheLogSink.record(
@@ -397,6 +404,15 @@ object CacheCoordinator : CacheUiPort {
                             "removedBlobs=${result.removedBlobs} " +
                             "removedEntries=${result.removedEntries} " +
                             "removedBytes=${result.removedBytes}",
+                    )
+                )
+            } catch (error: Throwable) {
+                // 任何一个快照缺 resourceKeys / 读取失败都会让 GC 放弃：
+                // 记录原因，不删任何文件，等待下一次 REVIEW 终态再触发。
+                AppLogCacheLogSink.record(
+                    CacheLogEvent(
+                        type = CacheLogEventType.REVIEW_RESOURCE_GC,
+                        detail = "book=$bookUrl gc-abort reason=${error.localizedMessage}",
                     )
                 )
             } finally {
