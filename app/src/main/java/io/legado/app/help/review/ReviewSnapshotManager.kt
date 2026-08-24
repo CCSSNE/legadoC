@@ -42,6 +42,9 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 object ReviewSnapshotManager {
 
+    /** 评论网络打开链路有本地快照时的网络加载上限。 */
+    const val NETWORK_FALLBACK_LOAD_TIMEOUT_MS = 5_000L
+
     /** 预热当前 Capture 与下一条 Capture；不随用户资源下载设置改变。 */
     private const val CAPTURE_PIPELINE_CONCURRENCY = 2
 
