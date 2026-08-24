@@ -13,6 +13,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ItemDownloadBinding
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.isVideo
 import io.legado.app.help.cache.CacheCoordinator
 import io.legado.app.help.cache.CacheKind
 import io.legado.app.help.cache.CacheLifecycleRules
@@ -90,7 +91,7 @@ class CacheAdapter(context: Context, private val callBack: CallBack) :
         binding.run {
             ivDownload.setOnClickListener {
                 getItem(holder.layoutPosition)?.let { book ->
-                    CacheCoordinator.snapshot.value.findTextTask(book.bookUrl)?.let {
+                    CacheCoordinator.snapshot.value.findDownloadTask(book)?.let {
                         CacheCoordinator.cancel(it)
                     } ?: callBack.showCacheRange(book)
                 }
@@ -106,7 +107,7 @@ class CacheAdapter(context: Context, private val callBack: CallBack) :
             iv.gone()
         } else {
             iv.visible()
-            if (CacheCoordinator.snapshot.value.findTextTask(book.bookUrl) != null) {
+            if (CacheCoordinator.snapshot.value.findDownloadTask(book) != null) {
                 iv.setImageResource(R.drawable.ic_stop_black_24dp)
             } else {
                 iv.setImageResource(R.drawable.ic_play_24dp)
@@ -144,15 +145,19 @@ class CacheAdapter(context: Context, private val callBack: CallBack) :
     }
 }
 
-private fun io.legado.app.help.cache.CacheSnapshot.findTextTask(
-    bookUrl: String,
+private fun io.legado.app.help.cache.CacheSnapshot.findDownloadTask(
+    book: Book,
 ): CacheSubmission? {
     val task = sessions.asSequence()
         .flatMap { it.tasks.asSequence() }
         .firstOrNull {
-            it.kind == CacheKind.TEXT &&
-                it.phase == CachePhase.BODY &&
-                it.bookUrl == bookUrl &&
+            it.bookUrl == book.bookUrl &&
+                (if (book.isAudio || book.isVideo) {
+                    (it.kind == CacheKind.AUDIO || it.kind == CacheKind.VIDEO) &&
+                        it.phase == CachePhase.MEDIA
+                } else {
+                    it.kind == CacheKind.TEXT && it.phase == CachePhase.BODY
+                }) &&
                 !CacheLifecycleRules.isTerminal(it.status)
         }
     return task?.let { CacheSubmission(it.sessionId, it.taskId) }
