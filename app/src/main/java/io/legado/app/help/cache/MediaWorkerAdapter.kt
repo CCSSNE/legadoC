@@ -18,17 +18,25 @@ internal class MediaWorkerAdapter(
 
     fun start(task: CacheTaskState, lease: CacheWorkerLease) {
         require(task.phase == CachePhase.MEDIA) { "media adapter received ${task.phase}" }
+        val runnableUnits = task.units.filter { unit ->
+            unit.status == CacheUnitStatus.PENDING ||
+                unit.status == CacheUnitStatus.RUNNING ||
+                unit.status == CacheUnitStatus.REVIEW_ELIGIBLE
+        }
+        if (runnableUnits.isEmpty()) {
+            workerPort.finish(lease, CacheResult.SUCCEEDED)
+            return
+        }
         val book = appDb.bookDao.getBook(task.bookUrl)
             ?: error("book not found: ${task.bookUrl}")
-        task.units
-            .filter { it.status == CacheUnitStatus.PENDING || it.status == CacheUnitStatus.REVIEW_ELIGIBLE }
+        runnableUnits
             .forEach { workerPort.updateUnit(lease, it.key, CacheUnitStatus.RUNNING) }
-        val chapters = task.units.mapNotNull { unit ->
+        val chapters = runnableUnits.mapNotNull { unit ->
             appDb.bookChapterDao.getChapter(task.bookUrl, unit.key.chapterIndex)
                 ?.let { unit.key to it }
         }
         val validKeys = chapters.mapTo(linkedSetOf()) { it.first }
-        task.units.asSequence()
+        runnableUnits.asSequence()
             .map { it.key }
             .filterNot(validKeys::contains)
             .forEach { key ->
@@ -76,6 +84,7 @@ internal class MediaWorkerAdapter(
         if (state?.status == CacheTaskStatus.PAUSED) {
             if (!AudioCacheTaskManager.resume(
                     task.bookUrl,
+                    validKeys.mapTo(hashSetOf()) { it.chapterIndex },
                     chapterStarted,
                     chapterProgress,
                     chapterFinished,

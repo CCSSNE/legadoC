@@ -23,12 +23,21 @@ internal class ReviewWorkerAdapter(
         }
         // REVIEW worker 真正启动即推进资源 GC 的版本号：任何一次启动都会让
         // 正在扫描的 GC 因 epoch 变化而放弃，杜绝“快速开始又快速结束”的 ABA 误删。
+        val runnableUnits = task.units.filter { unit ->
+            unit.status == CacheUnitStatus.PENDING ||
+                unit.status == CacheUnitStatus.RUNNING ||
+                unit.status == CacheUnitStatus.REVIEW_ELIGIBLE
+        }
+        if (runnableUnits.isEmpty()) {
+            workerPort.finish(lease, CacheResult.SUCCEEDED)
+            return
+        }
         ReviewResourceEpoch.markReviewStarted()
         val book = appDb.bookDao.getBook(task.bookUrl)
             ?: run {
                 CacheReviewWorkerRegistry.fail(
                     lease,
-                    task.units.map { it.key }.toSet(),
+                    runnableUnits.map { it.key }.toSet(),
                     "book not found: ${task.bookUrl}",
                 )
                 return
@@ -41,17 +50,16 @@ internal class ReviewWorkerAdapter(
         require(task.kind == bookKind) {
             "review task kind ${task.kind} does not match book kind $bookKind"
         }
-        task.units
-            .filter { it.status == CacheUnitStatus.PENDING || it.status == CacheUnitStatus.REVIEW_ELIGIBLE }
+        runnableUnits
             .forEach { unit ->
                 workerPort.updateUnit(lease, unit.key, CacheUnitStatus.RUNNING)
             }
-        val chapters = task.units.mapNotNull { unit ->
+        val chapters = runnableUnits.mapNotNull { unit ->
             appDb.bookChapterDao.getChapter(task.bookUrl, unit.key.chapterIndex)
                 ?.let { unit.key to it }
         }
         val validKeys = chapters.mapTo(linkedSetOf()) { it.first }
-        task.units.asSequence()
+        runnableUnits.asSequence()
             .map { it.key }
             .filterNot(validKeys::contains)
             .filter { key ->
@@ -71,12 +79,7 @@ internal class ReviewWorkerAdapter(
             }
         if (!CacheReviewWorkerRegistry.register(task, lease, validKeys)) {
             val error = "review chapter is already owned by another Coordinator task"
-            task.units
-                .filter { it.status in setOf(
-                    CacheUnitStatus.PENDING,
-                    CacheUnitStatus.REVIEW_ELIGIBLE,
-                    CacheUnitStatus.RUNNING,
-                ) }
+            runnableUnits
                 .forEach { unit ->
                     workerPort.updateUnit(lease, unit.key, CacheUnitStatus.FAILED, error)
                 }

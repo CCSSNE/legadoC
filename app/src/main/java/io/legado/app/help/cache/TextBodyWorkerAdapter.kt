@@ -19,19 +19,27 @@ internal class TextBodyWorkerAdapter(
         require(task.kind == CacheKind.TEXT && task.phase == CachePhase.BODY) {
             "text body adapter received ${task.kind}/${task.phase}"
         }
+        val runnableUnits = task.units.filter { unit ->
+            unit.status == CacheUnitStatus.PENDING ||
+                unit.status == CacheUnitStatus.RUNNING ||
+                unit.status == CacheUnitStatus.REVIEW_ELIGIBLE
+        }
+        if (runnableUnits.isEmpty()) {
+            workerPort.finish(lease, CacheResult.SUCCEEDED)
+            return
+        }
         val book = appDb.bookDao.getBook(task.bookUrl)
             ?: error("book not found: ${task.bookUrl}")
-        if (!registry.register(task, lease, task.units.map { it.key }.toSet())) {
+        if (!registry.register(task, lease, runnableUnits.map { it.key }.toSet())) {
             val detail = "another body task is active for this book"
             workerPort.skip(lease, CacheTaskSkipReason.ALREADY_RUNNING, detail)
             return
         }
-        task.units
-            .filter { it.status == CacheUnitStatus.PENDING || it.status == CacheUnitStatus.REVIEW_ELIGIBLE }
+        runnableUnits
             .forEach { unit ->
                 workerPort.updateUnit(lease, unit.key, CacheUnitStatus.RUNNING)
             }
-        ranges(task.units.map { it.key.chapterIndex }).forEach { (start, end) ->
+        ranges(runnableUnits.map { it.key.chapterIndex }).forEach { (start, end) ->
             CacheBook.start(
                 appCtx,
                 book,

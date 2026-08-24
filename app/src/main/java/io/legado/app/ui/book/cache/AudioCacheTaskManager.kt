@@ -407,6 +407,7 @@ internal object AudioCacheTaskManager {
 
     internal fun resume(
         bookUrl: String,
+        allowedChapterIndexes: Set<Int>? = null,
         onChapterStarted: ((BookChapter) -> Unit)? = null,
         onChapterProgress: ((BookChapter, Long, Long?) -> Unit)? = null,
         onChapterFinished: ((BookChapter, Boolean, String?) -> Unit)? = null,
@@ -439,8 +440,16 @@ internal object AudioCacheTaskManager {
                 if (latestState.status != CacheTaskStatus.PAUSED || futures.containsKey(bookUrl)) {
                     return@execute
                 }
-                val remainingChapters = request.chapters
-                    .filterNot { isChapterCached(request.book, it) }
+                val allowedChapters = request.chapters
+                    .filter { allowedChapterIndexes == null || it.index in allowedChapterIndexes }
+                val cachedChapters = allowedChapters.filter { isChapterCached(request.book, it) }
+                cachedChapters.forEach { chapter ->
+                    request.onChapterFinished?.invoke(chapter, true, null)
+                }
+                val cachedChapterIndexes = cachedChapters.mapTo(hashSetOf()) { it.index }
+                val remainingChapters = allowedChapters.filterNot { chapter ->
+                    chapter.index in cachedChapterIndexes
+                }
                 val completedOffset = (request.totalChapters - remainingChapters.size)
                     .coerceAtLeast(latestState.completedChapters)
                     .coerceIn(0, request.totalChapters)
