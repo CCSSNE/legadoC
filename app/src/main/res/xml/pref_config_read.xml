@@ -371,6 +371,20 @@
         android:summary="@string/sync_cache_review_summary"
         android:title="@string/sync_cache_review" />
 
+    <io.legado.app.lib.prefs.SwitchPreference
+        android:defaultValue="true"
+        android:dependency="syncCacheReview"
+        android:key="cacheReviewAvatars"
+        android:summary="@string/cache_review_avatars_summary"
+        android:title="@string/cache_review_avatars" />
+
+    <io.legado.app.lib.prefs.SwitchPreference
+        android:defaultValue="true"
+        android:dependency="syncCacheReview"
+        android:key="cacheReviewImages"
+        android:summary="@string/cache_review_images_summary"
+        android:title="@string/cache_review_images" />
+
     <io.legado.app.lib.prefs.Preference
         android:key="reviewCacheConcurrency"
         android:summary="@string/comment_cache_concurrency_summary"

@@ -368,6 +368,33 @@ object ReviewSnapshotCapture {
             CSS,
         }
 
+        private data class CollectedImage(
+            val url: String = "",
+            val kind: String = "",
+        )
+
+        private data class CollectedResources(
+            val img: List<CollectedImage> = emptyList(),
+            val css: List<String> = emptyList(),
+        )
+
+        /** The immutable resource policy selected for one complete snapshot capture. */
+        private data class ResourceUrls(
+            val images: List<String> = emptyList(),
+            val css: List<String> = emptyList(),
+            val cacheAvatars: Boolean = false,
+            val cacheCommentImages: Boolean = false,
+        ) {
+            val resourceCount: Int get() = images.size + css.size
+        }
+
+        /** A shared URL can occur in both an avatar and a comment image. */
+        private data class ImageRoles(
+            val url: String,
+            var hasAvatar: Boolean = false,
+            var hasCommentImage: Boolean = false,
+        )
+
         private data class ResourceTarget(
             val index: Int,
             val url: String,
@@ -773,11 +800,11 @@ object ReviewSnapshotCapture {
                     val urls = parseResourceUrls(json)
                     diagnostics?.mark(
                         "RESOURCE_LIST_READY",
-                        CacheOperationDiagnostics.Metrics(resourceCount = urls.first.size + urls.second.size),
+                        CacheOperationDiagnostics.Metrics(resourceCount = urls.resourceCount),
                     )
                     diagnostics?.stageStart(
                         "RESOURCE_DOWNLOAD",
-                        CacheOperationDiagnostics.Metrics(resourceCount = urls.first.size + urls.second.size),
+                        CacheOperationDiagnostics.Metrics(resourceCount = urls.resourceCount),
                         startAlways = true,
                     )
                     launchHeavyWorker(
@@ -888,35 +915,76 @@ object ReviewSnapshotCapture {
             val imgMap: Map<String, String> = emptyMap(),
             val cssMap: Map<String, String> = emptyMap(),
             val inlineBytes: Long = 0L,
+            val cacheAvatars: Boolean = false,
+            val cacheCommentImages: Boolean = false,
         ) {
             val resourceCount: Int get() = imgMap.size + cssMap.size
         }
 
-        private fun parseResourceUrls(json: String?): Pair<List<String>, List<String>> {
-            json ?: return emptyList<String>() to emptyList()
+        private fun parseResourceUrls(json: String?): ResourceUrls {
+            val cacheAvatars = AppConfig.cacheReviewAvatars
+            val cacheCommentImages = AppConfig.cacheReviewImages
+            json ?: return ResourceUrls(
+                cacheAvatars = cacheAvatars,
+                cacheCommentImages = cacheCommentImages,
+            )
             return runCatching {
                 val s = StringEscapeUtils.unescapeJson(json).trim('"')
-                if (s == "null") return emptyList<String>() to emptyList()
-                @Suppress("UNCHECKED_CAST")
-                val obj = GSON.fromJson(s, Map::class.java) as? Map<String, List<String>>
-                val img = obj?.get("img").orEmpty().filter { it.startsWith("http") }.distinct()
-                val css = obj?.get("css").orEmpty().filter { it.startsWith("http") }.distinct()
-                img to css
-            }.getOrNull() ?: (emptyList<String>() to emptyList())
+                if (s == "null") {
+                    return ResourceUrls(
+                        cacheAvatars = cacheAvatars,
+                        cacheCommentImages = cacheCommentImages,
+                    )
+                }
+                val collected = GSON.fromJson(s, CollectedResources::class.java)
+                val imageRoles = linkedMapOf<String, ImageRoles>()
+                collected.img.forEach { image ->
+                    val url = image.url.takeIf { it.startsWith("http") } ?: return@forEach
+                    val roles = imageRoles.getOrPut(url) { ImageRoles(url) }
+                    if (image.kind == "avatar") {
+                        roles.hasAvatar = true
+                    } else {
+                        roles.hasCommentImage = true
+                    }
+                }
+                ResourceUrls(
+                    images = imageRoles.values.asSequence()
+                        .filter { roles ->
+                            (roles.hasAvatar && cacheAvatars) ||
+                                (roles.hasCommentImage && cacheCommentImages)
+                        }
+                        .map(ImageRoles::url)
+                        .toList(),
+                    css = collected.css.filter { it.startsWith("http") }.distinct(),
+                    cacheAvatars = cacheAvatars,
+                    cacheCommentImages = cacheCommentImages,
+                )
+            }.getOrElse {
+                ResourceUrls(
+                    cacheAvatars = cacheAvatars,
+                    cacheCommentImages = cacheCommentImages,
+                )
+            }
         }
 
-        private fun downloadResources(urls: Pair<List<String>, List<String>>): InlineResources {
-            val (imgUrls, cssUrls) = urls
-            val resourceCount = imgUrls.size + cssUrls.size
+        private fun downloadResources(urls: ResourceUrls): InlineResources {
+            val resourceCount = urls.resourceCount
             if (resourceCount > MAX_INLINE_RESOURCES) {
                 throw ResourceBudgetExceededException(
                     "评论快照资源数 $resourceCount 超过预算 $MAX_INLINE_RESOURCES",
                 )
             }
-            if (resourceCount == 0) return InlineResources()
+            if (resourceCount == 0) {
+                return InlineResources(
+                    cacheAvatars = urls.cacheAvatars,
+                    cacheCommentImages = urls.cacheCommentImages,
+                )
+            }
             val targets = ArrayList<ResourceTarget>(resourceCount)
-            imgUrls.forEach { targets += ResourceTarget(targets.size, it, ResourceKind.IMAGE) }
-            cssUrls.forEach { targets += ResourceTarget(targets.size, it, ResourceKind.CSS) }
+            urls.images.forEach { imageUrl ->
+                targets += ResourceTarget(targets.size, imageUrl, ResourceKind.IMAGE)
+            }
+            urls.css.forEach { targets += ResourceTarget(targets.size, it, ResourceKind.CSS) }
             val stagingDir = File(
                 appCtx.cacheDir,
                 "review_snapshot_${System.nanoTime()}_${Thread.currentThread().id}",
@@ -964,7 +1032,13 @@ object ReviewSnapshotCapture {
                         }
                     }
                 }
-                return InlineResources(imgMap, cssMap, totalBytes)
+                return InlineResources(
+                    imgMap = imgMap,
+                    cssMap = cssMap,
+                    inlineBytes = totalBytes,
+                    cacheAvatars = urls.cacheAvatars,
+                    cacheCommentImages = urls.cacheCommentImages,
+                )
             } finally {
                 stagingDir.deleteRecursively()
             }
@@ -1167,7 +1241,11 @@ object ReviewSnapshotCapture {
             return "(function(){" +
                 "var m=$imgJson;" +
                 "var c=$cssJson;" +
+                "var cacheAvatars=${inline.cacheAvatars};" +
+                "var cacheCommentImages=${inline.cacheCommentImages};" +
+                IMAGE_CLASSIFIER_HELPER_JS +
                 "document.querySelectorAll('img[src]').forEach(function(el){" +
+                "if(!(isAvatarImage(el)?cacheAvatars:cacheCommentImages))return;" +
                 "var d=m[el.src];if(d)el.src=d;});" +
                 "document.querySelectorAll('link[rel=\"stylesheet\"]').forEach(function(el){" +
                 "var d=c[el.href];if(d){var s=document.createElement('style');" +
@@ -1199,10 +1277,21 @@ object ReviewSnapshotCapture {
             "return JSON.stringify({c:clicked,t:document.body?document.body.innerText.length:0,h:h,n:n});" +
             "})()"
 
-    private const val COLLECT_RESOURCES_JS =
+    /** Shared DOM classifier for collection and inlining so each image obeys the same switch. */
+    private const val IMAGE_CLASSIFIER_HELPER_JS =
+        "function isAvatarImage(el){" +
+            "for(var n=el;n&&n.nodeType===1;n=n.parentElement){" +
+            "var v=((n.className||'')+' '+(n.id||'')+' '+" +
+            "(n.getAttribute('alt')||'')+' '+(n.getAttribute('data-role')||'')).toLowerCase();" +
+            "if(/avatar|profile[-_]?image|head[-_]?img|头像/i.test(v))return true;" +
+            "}return false;}"
+
+    private val COLLECT_RESOURCES_JS =
         "(function(){" +
+            IMAGE_CLASSIFIER_HELPER_JS +
             "var img=[],css=[];" +
-            "document.querySelectorAll('img[src]').forEach(function(el){img.push(el.src);});" +
+            "document.querySelectorAll('img[src]').forEach(function(el){" +
+            "img.push({url:el.src,kind:isAvatarImage(el)?'avatar':'comment'});});" +
             "document.querySelectorAll('link[rel=\"stylesheet\"][href]').forEach(function(el){css.push(el.href);});" +
             "return JSON.stringify({img:img,css:css});" +
             "})()"
