@@ -24,6 +24,7 @@ enum class CacheLogEventType {
     PERSISTENCE_SAVE_FAILED,
     WORKER_DISPATCH_FAILED,
     REQUEST_ACCEPTED,
+    REVIEW_RESOURCE_GC,
 }
 
 data class CacheLogEvent(

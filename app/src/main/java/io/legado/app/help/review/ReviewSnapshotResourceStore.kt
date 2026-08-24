@@ -1,6 +1,7 @@
 package io.legado.app.help.review
 
 import android.util.AtomicFile
+import com.google.gson.stream.JsonReader
 import io.legado.app.data.entities.Book
 import io.legado.app.utils.GSON
 import java.io.File
@@ -34,6 +35,17 @@ data class ReviewSnapshotResourceHandle(
     val inputStream: InputStream,
 )
 
+/** Result of a garbage-collection pass over one book's review resource library. */
+data class ReviewResourceGcResult(
+    val aborted: Boolean = false,
+    val scannedSnapshots: Int = 0,
+    val scannedBlobs: Int = 0,
+    val referencedKeys: Int = 0,
+    val removedBlobs: Int = 0,
+    val removedEntries: Int = 0,
+    val removedBytes: Long = 0L,
+)
+
 object ReviewSnapshotResourceStore {
 
     const val DATABASE_FILE_NAME = "resources.json"
@@ -43,6 +55,7 @@ object ReviewSnapshotResourceStore {
     private const val BLOB_SUFFIX = ".bin"
     private const val COPY_BUFFER_BYTES = 32 * 1024
     private val keyPattern = Regex("[0-9a-f]{64}")
+    private val referencePattern = Regex("$RESOURCE_SCHEME://([0-9a-f]{64})")
 
     /**
      * Heavy capture is currently globally serialized, but import/export and WebView
@@ -223,6 +236,110 @@ object ReviewSnapshotResourceStore {
                 resources = existing.resources.filterNot { it.url in importedUrls } + imported.resources
             )
         )
+    }
+
+    /**
+     * 回收本轮全书 REVIEW 缓存结束后没有任何快照引用的孤儿资源。
+     *
+     * 语义：
+     * - 存活标准 = 至少一个快照 HTML 的 review-resource:// 引用；
+     * - 索引中无引用的条目（含同 key 多个来源 URL）、以及磁盘上无引用的
+     *   rr_<key>.bin 一并删除；
+     * - 先重写索引、后删 blob：中途失败只会留下“无索引的孤儿 blob”，
+     *   下次 GC 自愈，绝不会出现“索引在而文件缺失”的损坏态。
+     *
+     * 性能：引用扫描在锁外进行（只读快照，REVIEW 结束后无并发写入）；
+     * 持锁窗口只有“读索引 + 重写索引 + 删 blob”，不影响其他书的 put/open。
+     * 必须在确认本书没有正在运行的 REVIEW task 之后由调用方触发
+     * （例如 CacheCoordinator 的终态钩子）。
+     *
+     * 安全：[canProceed] 在持锁删除前再次求值。若扫描期间又有新的 REVIEW
+     * task 入队并开始 put 资源（扫描结果因此过期），返回 false 则本次 GC
+     * 中止、不删任何文件；稍后该新任务的终态会再次触发 GC。
+     */
+    fun gc(book: Book, canProceed: () -> Boolean = { true }): ReviewResourceGcResult {
+        val dir = ReviewSnapshotStore.reviewsDir(book)
+        if (!ReviewSnapshotStore.hasPersistedReviewData(book)) {
+            return ReviewResourceGcResult()
+        }
+        val referenced = collectReferencedKeys(dir)
+        return synchronized(lock) {
+            val database = requireDatabase(book)
+            if (database.resources.isEmpty() && resourceFiles(dir).isEmpty()) {
+                return@synchronized ReviewResourceGcResult()
+            }
+            if (!canProceed()) {
+                return@synchronized ReviewResourceGcResult(aborted = true)
+            }
+            // 存活标准统一为“至少一个快照引用”，与索引是否存在无关：
+            // 索引条目只服务于复用与 MIME 推断，快照引用才是真实使用权。
+            val removedEntries = database.resources
+                .filter { it.key !in referenced }
+            val removedKeys = removedEntries.mapTo(hashSetOf()) { it.key }
+            val retained = database.resources.filterNot { it.key in removedKeys }
+            val blobFiles = resourceFiles(dir)
+            // 先重写索引：孤儿条目消失后，blob 删除失败只会留下“无索引的孤儿 blob”，
+            // 下次 GC 自愈，绝不会出现“索引在而文件缺失”的损坏态。
+            if (removedEntries.isNotEmpty()) {
+                writeDatabase(dir, ReviewSnapshotResourceDatabase(resources = retained))
+            }
+            var removedBlobs = 0
+            var removedBytes = 0L
+            blobFiles.forEach { file ->
+                val key = blobKeyOf(file) ?: return@forEach
+                if (key !in referenced) {
+                    removedBytes += file.length()
+                    if (file.delete()) removedBlobs++
+                }
+            }
+            ReviewResourceGcResult(
+                scannedSnapshots = dir.listFiles()?.count(ReviewSnapshotStore::isSnapshotFile) ?: 0,
+                scannedBlobs = blobFiles.size,
+                referencedKeys = referenced.size,
+                removedBlobs = removedBlobs,
+                removedEntries = removedEntries.size,
+                removedBytes = removedBytes,
+            )
+        }
+    }
+
+    private fun blobKeyOf(file: File): String? {
+        if (!isResourceBlob(file)) return null
+        return file.name.removePrefix(BLOB_PREFIX).removeSuffix(BLOB_SUFFIX)
+    }
+
+    private fun collectReferencedKeys(dir: File): Set<String> {
+        val referenced = hashSetOf<String>()
+        dir.listFiles()
+            ?.filter(ReviewSnapshotStore::isSnapshotFile)
+            .orEmpty()
+            .forEach { file ->
+                referenced.addAll(referencedKeysIn(file))
+            }
+        return referenced
+    }
+
+    private fun referencedKeysIn(file: File): Set<String> {
+        if (!file.isFile) return emptySet()
+        return runCatching {
+            file.bufferedReader(Charsets.UTF_8).use { reader ->
+                val keys = hashSetOf<String>()
+                JsonReader(reader).use { json ->
+                    json.beginObject()
+                    while (json.hasNext()) {
+                        if (json.nextName() == "html") {
+                            referencePattern.findAll(json.nextString()).forEach { match ->
+                                keys.add(match.groupValues[1])
+                            }
+                        } else {
+                            json.skipValue()
+                        }
+                    }
+                    json.endObject()
+                }
+                keys
+            }
+        }.getOrElse { emptySet() }
     }
 
     private fun readDatabase(dir: File): ReviewSnapshotResourceDatabase {
