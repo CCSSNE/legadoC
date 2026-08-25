@@ -43,7 +43,7 @@ object BookShortcutHelp {
     fun flowByCollection(collectionId: Long): Flow<List<Book>> =
         appDb.bookShortcutDao.flowByCollection(collectionId).map { shortcuts ->
             shortcuts.mapNotNull { item ->
-                item.book.takeUnless { it.isNotShelf }?.let(item::toShelfBook)
+                item.book.takeUnless { it.isNotShelf }?.let { item.toShelfBook(it) }
             }
         }
 
