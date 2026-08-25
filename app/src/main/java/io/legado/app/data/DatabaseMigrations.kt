@@ -27,7 +27,39 @@ object DatabaseMigrations {
             migration_102_103, migration_103_104,
             migration_104_105,
             migration_105_106,
+            migration_106_107,
         )
+    }
+
+    private val migration_106_107 = object : Migration(106, 107) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE `book_shortcuts_new` (
+                    `shortcutId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `bookUrl` TEXT NOT NULL,
+                    `group` INTEGER NOT NULL DEFAULT 0,
+                    `order` INTEGER NOT NULL DEFAULT 0,
+                    `collectionId` INTEGER,
+                    `createdTime` INTEGER NOT NULL DEFAULT 0,
+                    FOREIGN KEY(`bookUrl`) REFERENCES `books`(`bookUrl`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                    FOREIGN KEY(`collectionId`) REFERENCES `book_collections`(`collectionId`) ON UPDATE NO ACTION ON DELETE SET NULL
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                INSERT INTO `book_shortcuts_new` (`shortcutId`, `bookUrl`, `group`, `order`, `createdTime`)
+                SELECT `shortcutId`, `bookUrl`, `group`, `order`, `createdTime`
+                FROM `book_shortcuts`
+                """.trimIndent()
+            )
+            db.execSQL("DROP TABLE `book_shortcuts`")
+            db.execSQL("ALTER TABLE `book_shortcuts_new` RENAME TO `book_shortcuts`")
+            db.execSQL("CREATE INDEX `index_book_shortcuts_bookUrl` ON `book_shortcuts` (`bookUrl`)")
+            db.execSQL("CREATE INDEX `index_book_shortcuts_group` ON `book_shortcuts` (`group`)")
+            db.execSQL("CREATE INDEX `index_book_shortcuts_collectionId` ON `book_shortcuts` (`collectionId`)")
+        }
     }
 
     private val migration_105_106 = object : Migration(105, 106) {

@@ -119,7 +119,7 @@ class BookGroupSelectDialog() : BaseBottomSheetDialogFragment(R.layout.dialog_bo
         }
         shortcutIds.toList().mapNotNull { shortcutId ->
             appDb.bookShortcutDao.get(shortcutId)?.let {
-                it.copy(group = it.group or groupId)
+                it.copy(group = it.group or groupId, collectionId = null)
             }
         }.forEach(appDb.bookShortcutDao::update)
         withContext(Dispatchers.Main) {

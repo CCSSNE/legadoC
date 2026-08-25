@@ -21,6 +21,7 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookCollectionWithItems
 import io.legado.app.databinding.DialogBookCollectionSelectBinding
 import io.legado.app.databinding.ItemBookCollectionSelectBinding
+import io.legado.app.help.book.BookShortcutHelp
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.setLayout
@@ -52,13 +53,15 @@ class BookCollectionSelectDialog() : BaseBottomSheetDialogFragment(R.layout.dial
         bookUrls: ArrayList<String>,
         collectionIds: LongArray,
         openCreate: Boolean = false,
-        parentCollectionId: Long = 0L
+        parentCollectionId: Long = 0L,
+        shortcutIds: LongArray = longArrayOf()
     ) : this() {
         arguments = Bundle().apply {
             putStringArrayList("bookUrls", bookUrls)
             putLongArray("collectionIds", collectionIds)
             putBoolean("openCreate", openCreate)
             putLong("parentCollectionId", parentCollectionId)
+            putLongArray("shortcutIds", shortcutIds)
         }
     }
 
@@ -68,6 +71,8 @@ class BookCollectionSelectDialog() : BaseBottomSheetDialogFragment(R.layout.dial
         get() = arguments?.getStringArrayList("bookUrls").orEmpty()
     private val collectionIds: List<Long>
         get() = arguments?.getLongArray("collectionIds")?.toList().orEmpty()
+    private val shortcutIds: List<Long>
+        get() = arguments?.getLongArray("shortcutIds")?.toList().orEmpty()
     private val parentCollectionId: Long
         get() = arguments?.getLong("parentCollectionId") ?: 0L
 
@@ -147,9 +152,10 @@ class BookCollectionSelectDialog() : BaseBottomSheetDialogFragment(R.layout.dial
     }
 
     private fun moveToRoot() {
-        if (bookUrls.isEmpty() && collectionIds.isEmpty()) return
+        if (bookUrls.isEmpty() && collectionIds.isEmpty() && shortcutIds.isEmpty()) return
         lifecycleScope.launch(Dispatchers.IO) {
             appDb.bookCollectionDao.moveItemsToRoot(bookUrls, collectionIds)
+            BookShortcutHelp.moveToRoot(shortcutIds)
             withContext(Dispatchers.Main) {
                 postEvent(EventBus.BOOKSHELF_REFRESH, "")
                 dismissAllowingStateLoss()
@@ -181,6 +187,7 @@ class BookCollectionSelectDialog() : BaseBottomSheetDialogFragment(R.layout.dial
                 lifecycleScope.launch(Dispatchers.IO) {
                     val collectionId = appDb.bookCollectionDao.createCollection(name)
                     appDb.bookCollectionDao.addBookUrls(collectionId, bookUrls)
+                    BookShortcutHelp.moveToCollection(collectionId, shortcutIds)
                     appDb.bookCollectionDao.addChildCollectionIds(collectionId, collectionIds)
                     if (parentCollectionId > 0) {
                         appDb.bookCollectionDao.addChildCollectionIds(
@@ -202,6 +209,7 @@ class BookCollectionSelectDialog() : BaseBottomSheetDialogFragment(R.layout.dial
     private fun addToCollection(item: CollectionSelectItem) {
         lifecycleScope.launch(Dispatchers.IO) {
             appDb.bookCollectionDao.addBookUrls(item.source.collection.collectionId, bookUrls)
+            BookShortcutHelp.moveToCollection(item.source.collection.collectionId, shortcutIds)
             appDb.bookCollectionDao.addChildCollectionIds(
                 item.source.collection.collectionId,
                 collectionIds

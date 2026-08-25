@@ -18,11 +18,27 @@ interface BookShortcutDao {
     @Query("SELECT * FROM book_shortcuts ORDER BY `order`, createdTime, shortcutId")
     fun flowAll(): Flow<List<BookShortcutWithBook>>
 
+    @Transaction
+    @Query(
+        "SELECT * FROM book_shortcuts WHERE collectionId = :collectionId " +
+            "ORDER BY `order`, createdTime, shortcutId"
+    )
+    fun flowByCollection(collectionId: Long): Flow<List<BookShortcutWithBook>>
+
     @Query("SELECT * FROM book_shortcuts WHERE shortcutId = :shortcutId")
     fun get(shortcutId: Long): BookShortcut?
 
-    @Query("SELECT COALESCE(MAX(`order`), 0) FROM book_shortcuts WHERE `group` = :groupId")
+    @Query(
+        "SELECT COALESCE(MAX(`order`), 0) FROM book_shortcuts " +
+            "WHERE `group` = :groupId AND collectionId IS NULL"
+    )
     fun maxOrder(groupId: Long): Int
+
+    @Query(
+        "SELECT COALESCE(MAX(`order`), 0) FROM book_shortcuts " +
+            "WHERE collectionId = :collectionId"
+    )
+    fun maxOrderInCollection(collectionId: Long): Int
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
     fun insert(shortcuts: List<BookShortcut>)
@@ -41,4 +57,25 @@ interface BookShortcutDao {
 
     @Query("DELETE FROM book_shortcuts WHERE bookUrl = :bookUrl")
     fun deleteByBookUrl(bookUrl: String)
+
+    @Transaction
+    fun moveToCollection(collectionId: Long, shortcutIds: Collection<Long>) {
+        val ids = shortcutIds.distinct().filter { it > 0L }
+        if (collectionId <= 0L || ids.isEmpty()) return
+        val startOrder = maxOrderInCollection(collectionId) + 1
+        ids.forEachIndexed { index, shortcutId ->
+            get(shortcutId)?.let { shortcut ->
+                update(shortcut.copy(collectionId = collectionId, order = startOrder + index))
+            }
+        }
+    }
+
+    @Transaction
+    fun moveToRoot(shortcutIds: Collection<Long>) {
+        shortcutIds.distinct().filter { it > 0L }.forEach { shortcutId ->
+            get(shortcutId)?.takeIf { it.collectionId != null }?.let { shortcut ->
+                update(shortcut.copy(collectionId = null))
+            }
+        }
+    }
 }
