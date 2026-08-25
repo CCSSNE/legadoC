@@ -1,31 +1,31 @@
-<table align="center">
+<table align="center" width="100%">
   <tr>
-    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/1.png" width="100%" alt="界面截图 1" /></td>
-    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/2.png" width="100%" alt="界面截图 2" /></td>
-    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/3.png" width="100%" alt="界面截图 3" /></td>
+    <td width="33.33%" align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/1.png" width="100%" alt="界面截图 1" /></td>
+    <td width="33.33%" align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/2.png" width="100%" alt="界面截图 2" /></td>
+    <td width="33.33%" align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/3.png" width="100%" alt="界面截图 3" /></td>
   </tr>
   <tr>
-    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/4.png" width="100%" alt="界面截图 4" /></td>
-    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/5.png" width="100%" alt="界面截图 5" /></td>
-    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/6.png" width="100%" alt="界面截图 6" /></td>
+    <td width="33.33%" align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/4.png" width="100%" alt="界面截图 4" /></td>
+    <td width="33.33%" align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/5.png" width="100%" alt="界面截图 5" /></td>
+    <td width="33.33%" align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/6.png" width="100%" alt="界面截图 6" /></td>
   </tr>
   <tr>
-    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/7.png" width="100%" alt="界面截图 7" /></td>
-    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/8.png" width="100%" alt="界面截图 8" /></td>
-    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/9.png" width="100%" alt="界面截图 9" /></td>
+    <td width="33.33%" align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/7.png" width="100%" alt="界面截图 7" /></td>
+    <td width="33.33%" align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/8.png" width="100%" alt="界面截图 8" /></td>
+    <td width="33.33%" align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/9.png" width="100%" alt="界面截图 9" /></td>
   </tr>
   <tr>
-    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/10.png" width="100%" alt="界面截图 10" /></td>
-    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/11.png" width="100%" alt="界面截图 11" /></td>
-    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/12.png" width="100%" alt="界面截图 12" /></td>
+    <td width="33.33%" align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/10.png" width="100%" alt="界面截图 10" /></td>
+    <td width="33.33%" align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/11.png" width="100%" alt="界面截图 11" /></td>
+    <td width="33.33%" align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/12.png" width="100%" alt="界面截图 12" /></td>
   </tr>
   <tr>
-    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/13.png" width="100%" alt="界面截图 13" /></td>
-    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/14.png" width="100%" alt="界面截图 14" /></td>
-    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/15.png" width="100%" alt="界面截图 15" /></td>
+    <td width="33.33%" align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/13.png" width="100%" alt="界面截图 13" /></td>
+    <td width="33.33%" align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/14.png" width="100%" alt="界面截图 14" /></td>
+    <td width="33.33%" align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/15.png" width="100%" alt="界面截图 15" /></td>
   </tr>
   <tr>
-    <td align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/16.png" width="100%" alt="界面截图 16" /></td>
+    <td width="33.33%" align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/16.png" width="100%" alt="界面截图 16" /></td>
     <td colspan="2" align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/17-18.png" width="100%" alt="界面截图 17-18" /></td>
   </tr>
 </table>
