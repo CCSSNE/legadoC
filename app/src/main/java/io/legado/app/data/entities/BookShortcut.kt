@@ -14,9 +14,15 @@ import androidx.room.PrimaryKey
             parentColumns = ["bookUrl"],
             childColumns = ["bookUrl"],
             onDelete = ForeignKey.CASCADE
+        ),
+        ForeignKey(
+            entity = BookCollection::class,
+            parentColumns = ["collectionId"],
+            childColumns = ["collectionId"],
+            onDelete = ForeignKey.SET_NULL
         )
     ],
-    indices = [Index("bookUrl"), Index("group")]
+    indices = [Index("bookUrl"), Index("group"), Index("collectionId")]
 )
 data class BookShortcut(
     @PrimaryKey(autoGenerate = true)
@@ -26,6 +32,7 @@ data class BookShortcut(
     var group: Long = 0L,
     @ColumnInfo(defaultValue = "0")
     var order: Int = 0,
+    var collectionId: Long? = null,
     @ColumnInfo(defaultValue = "0")
     val createdTime: Long = System.currentTimeMillis()
 )

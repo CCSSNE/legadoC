@@ -297,10 +297,14 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             }
         }
         actionAddCollection.setOnClickListener {
-            val urls = selectedBookList().map { it.bookUrl }
+            val selected = selectedBookList()
+            val urls = selected.filterNot { it.isShortcut }.map { it.bookUrl }
+            val shortcutIds = selected.map { it.shortcutId }.filter { it > 0L }.toLongArray()
             val collectionIds = selectedCollectionList().map { it.id }.toLongArray()
-            if (urls.isEmpty() && collectionIds.isEmpty()) return@setOnClickListener
-            showDialogFragment(BookCollectionSelectDialog(ArrayList(urls), collectionIds))
+            if (urls.isEmpty() && shortcutIds.isEmpty() && collectionIds.isEmpty()) return@setOnClickListener
+            showDialogFragment(
+                BookCollectionSelectDialog(ArrayList(urls), collectionIds, shortcutIds = shortcutIds)
+            )
             clearSelection()
         }
         actionAddGroup.setOnClickListener {
@@ -768,8 +772,9 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             combine(
                 booksFlow,
                 appDb.bookCollectionDao.flowRootCollections(),
-                appDb.bookCollectionDao.flowCollectedBookUrls()
-            ) { bookData, collections, collectedBookUrls ->
+                appDb.bookCollectionDao.flowCollectedBookUrls(),
+                BookShortcutHelp.flowCollectionBooks()
+            ) { bookData, collections, collectedBookUrls, collectionShortcuts ->
                 val (allBooks, filteredBooks) = bookData
                 val visibleBookUrls = filteredBooks
                     .filterNot { it.isShortcut }
@@ -778,7 +783,11 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
                 val rootBooks = filteredBooks.filter {
                     it.isShortcut || it.bookUrl !in collectedBookUrlSet
                 }
-                val collectionItems = buildCollectionShelfItems(collections, visibleBookUrls)
+                val collectionItems = buildCollectionShelfItems(
+                    collections,
+                    visibleBookUrls,
+                    collectionShortcuts
+                )
                 Triple(allBooks, filteredBooks, collectionItems + rootBooks)
             }.flowWithLifecycleAndDatabaseChangeFirst(
                 viewLifecycleOwner.lifecycle,
@@ -808,10 +817,14 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
 
     private fun buildCollectionShelfItems(
         collections: List<BookCollectionWithItems>,
-        visibleBookUrls: Set<String>
+        visibleBookUrls: Set<String>,
+        collectionShortcuts: Map<Long, List<Book>>
     ): List<BookCollectionShelfItem> {
         val visibleBooksByCollectionId = collections.associate { item ->
-            item.collection.collectionId to item.books.filter { it.bookUrl in visibleBookUrls }
+            item.collection.collectionId to (
+                item.books.filter { it.bookUrl in visibleBookUrls } +
+                    collectionShortcuts[item.collection.collectionId].orEmpty()
+                )
         }
         return collections.mapNotNull { item ->
             val visibleBooks = visibleBooksByCollectionId[item.collection.collectionId].orEmpty()
@@ -822,10 +835,12 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
                     collection = item.collection,
                     books = visibleBooks,
                     childCollections = item.childCollections,
-                    previewBooks = appDb.bookCollectionDao.previewBooksInCollection(
-                        item.collection.collectionId,
-                        4
-                    )
+                    previewBooks = (
+                        visibleBooks + appDb.bookCollectionDao.previewBooksInCollection(
+                            item.collection.collectionId,
+                            4
+                        )
+                        ).distinctBy { it.shelfKey }.take(4)
                 )
             }
         }
@@ -1157,10 +1172,17 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         }
         val targetBook = findBookAt(rawX, rawY, books.mapTo(hashSetOf()) { it.shelfKey })
         if (targetBook != null) {
-            val urls = (books + targetBook).distinctBy { it.bookUrl }.map { it.bookUrl }
+            val selected = (books + targetBook).distinctBy { it.shelfKey }
+            val urls = selected.filterNot { it.isShortcut }.map { it.bookUrl }
+            val shortcutIds = selected.map { it.shortcutId }.filter { it > 0L }.toLongArray()
             val collectionIds = collections.map { it.id }.toLongArray()
             showDialogFragment(
-                BookCollectionSelectDialog(ArrayList(urls), collectionIds, openCreate = true)
+                BookCollectionSelectDialog(
+                    ArrayList(urls),
+                    collectionIds,
+                    openCreate = true,
+                    shortcutIds = shortcutIds
+                )
             )
             resetDraggingView()
             clearSelection()
@@ -1190,7 +1212,14 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         collectionId: Long
     ) {
         viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
-            appDb.bookCollectionDao.addBookUrls(collectionId, books.map { it.bookUrl })
+            appDb.bookCollectionDao.addBookUrls(
+                collectionId,
+                books.filterNot { it.isShortcut }.map { it.bookUrl }
+            )
+            BookShortcutHelp.moveToCollection(
+                collectionId,
+                books.map { it.shortcutId }.filter { it > 0L }
+            )
             appDb.bookCollectionDao.addChildCollectionIds(collectionId, collections.map { it.id })
             withContext(Dispatchers.Main) {
                 toastOnUi(R.string.book_collection_added)

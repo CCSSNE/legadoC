@@ -27,6 +27,7 @@ import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.FragmentBookshelf2Binding
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isShortcut
+import io.legado.app.help.book.shelfKey
 import io.legado.app.help.book.BookShortcutHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
@@ -273,14 +274,16 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
             combine(
                 booksFlow,
                 appDb.bookCollectionDao.flowRootCollections(),
-                appDb.bookCollectionDao.flowCollectedBookUrls()
-            ) { list, collections, collectedBookUrls ->
+                appDb.bookCollectionDao.flowCollectedBookUrls(),
+                BookShortcutHelp.flowCollectionBooks()
+            ) { list, collections, collectedBookUrls, collectionShortcuts ->
                 val shelfCollections = if (groupId == BookGroup.IdRoot) {
                     val visibleBookUrls = list
                         .filterNot { it.isShortcut }
                         .mapTo(hashSetOf()) { it.bookUrl }
                     collections.mapNotNull { item ->
-                        val visibleBooks = item.books.filter { it.bookUrl in visibleBookUrls }
+                        val visibleBooks = item.books.filter { it.bookUrl in visibleBookUrls } +
+                            collectionShortcuts[item.collection.collectionId].orEmpty()
                         if (visibleBooks.isEmpty() && item.childCollections.isEmpty()) {
                             null
                         } else {
@@ -288,10 +291,12 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
                                 collection = item.collection,
                                 books = visibleBooks,
                                 childCollections = item.childCollections,
-                                previewBooks = appDb.bookCollectionDao.previewBooksInCollection(
-                                    item.collection.collectionId,
-                                    4
-                                )
+                                previewBooks = (
+                                    visibleBooks + appDb.bookCollectionDao.previewBooksInCollection(
+                                        item.collection.collectionId,
+                                        4
+                                    )
+                                    ).distinctBy { it.shelfKey }.take(4)
                             )
                         }
                     }

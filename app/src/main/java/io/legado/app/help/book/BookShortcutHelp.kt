@@ -10,6 +10,7 @@ import io.legado.app.model.SourceCallBack
 import io.legado.app.model.localBook.LocalBook
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 
 /**
  * 快捷方式只是书架上的虚拟 Book：shortcutId 只用于区分入口，bookUrl 始终指向本体。
@@ -32,11 +33,29 @@ object BookShortcutHelp {
             .filterNot { it.isNotShelf }
             .associateBy { it.bookUrl }
         visibleBooks + shortcuts.mapNotNull { item ->
+            if (item.shortcut.collectionId != null) return@mapNotNull null
             val body = booksByUrl[item.shortcut.bookUrl] ?: return@mapNotNull null
             if (!matchesGroup(groupId, item.shortcut, body)) return@mapNotNull null
             item.toShelfBook(body)
         }
     }
+
+    fun flowByCollection(collectionId: Long): Flow<List<Book>> =
+        appDb.bookShortcutDao.flowByCollection(collectionId).map { shortcuts ->
+            shortcuts.mapNotNull { item ->
+                item.book.takeUnless { it.isNotShelf }?.let(item::toShelfBook)
+            }
+        }
+
+    fun flowCollectionBooks(): Flow<Map<Long, List<Book>>> =
+        appDb.bookShortcutDao.flowAll().map { shortcuts ->
+            shortcuts.asSequence()
+                .filter { it.shortcut.collectionId != null && !it.book.isNotShelf }
+                .groupBy(
+                    keySelector = { it.shortcut.collectionId!! },
+                    valueTransform = { it.toShelfBook(it.book) }
+                )
+        }
 
     fun create(books: List<Book>, groupId: Long) {
         val urls = books.map { it.bookUrl }.distinct()
@@ -67,6 +86,14 @@ object BookShortcutHelp {
 
     fun update(vararg books: Book) {
         books.forEach(::update)
+    }
+
+    fun moveToCollection(collectionId: Long, shortcutIds: Collection<Long>) {
+        appDb.bookShortcutDao.moveToCollection(collectionId, shortcutIds)
+    }
+
+    fun moveToRoot(shortcutIds: Collection<Long>) {
+        appDb.bookShortcutDao.moveToRoot(shortcutIds)
     }
 
     fun delete(
