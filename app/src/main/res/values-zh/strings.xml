@@ -227,8 +227,8 @@
     <string name="integer_input_range_invalid">请输入 %1$d 到 %2$d 之间的整数。</string>
     <string name="read_aloud_original_progress">原进度</string>
     <string name="read_aloud_from_current_page">从本页听</string>
-    <string name="read_aloud_page_start_at_paragraph">分页阅读以段落为界</string>
-    <string name="read_aloud_page_start_at_paragraph_summary">从本页听时，若页首位于段落中间，则从该段落开头开始朗读。</string>
+    <string name="read_aloud_page_start_at_paragraph">页首按段</string>
+    <string name="read_aloud_page_start_at_paragraph_summary">页首以本页第一个字为开始，还是以本页第一段的第一个字为开始？从本页读、按页朗读的起点都按此开关决定。</string>
     <string name="read_aloud_pause_playback">暂停播放</string>
     <string name="read_aloud_resume_playback">继续播放</string>
     <string name="open_read_aloud_player">进入听书页</string>
@@ -1117,7 +1117,7 @@
     <string name="custom_group_summary">关闭替换分组/开启添加分组</string>
     <string name="pref_media_button_per_next">媒体按钮•上一首|下一首</string>
     <string name="pref_media_button_per_next_summary">上一段|下一段/上一章|下一章</string>
-    <string name="read_aloud_by_page_summary">及时翻页，翻页时会停顿一下</string>
+    <string name="read_aloud_by_page_summary">打开后，翻到哪一页就从哪一页开始读，页首按“页首按段”开关决定。</string>
     <string name="check_source_show_debug_message">校验显示详细信息</string>
     <string name="check_source_show_debug_message_summary">书源校验时显示网络请求步骤和时间</string>
     <string name="need_login">需要登录</string>
