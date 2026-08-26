@@ -1818,6 +1818,10 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefInt(PreferKey.readAloudDoubleTapTimeout, value.coerceIn(120, 600))
         }
 
+    /**
+     * 页首按段：true 表示页首取本页第一段第一个字（页首若在段落中间则回退到段首），
+     * false 表示页首严格取本页第一个字；从本页读与按页朗读的起点都受此开关控制。
+     */
     val readAloudPageStartAtParagraph
         get() = appCtx.getPrefBoolean(PreferKey.readAloudPageStartAtParagraph, true)
 

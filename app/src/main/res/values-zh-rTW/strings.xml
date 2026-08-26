@@ -894,7 +894,7 @@
     <string name="custom_group_summary">關閉取代分組/開啟新增分組</string>
     <string name="pref_media_button_per_next">媒體按鈕•上一首|下一首</string>
     <string name="pref_media_button_per_next_summary">上一段|下一段/上一章|下一章</string>
-    <string name="read_aloud_by_page_summary">及時翻頁，翻頁時會停頓一下</string>
+    <string name="read_aloud_by_page_summary">開啟後，翻到哪一頁就從哪一頁開始讀，頁首按「頁首按段」開關決定。</string>
     <string name="check_source_show_debug_message">校驗書源顯示詳細資訊</string>
     <string name="check_source_show_debug_message_summary">書源校驗時顯示網路請求步驟和時間</string>
     <string name="need_login">需登入</string>
@@ -1341,6 +1341,6 @@
     <string name="disable_all_toast">關閉所有底部彈窗</string>
     <string name="disable_all_toast_summary">不顯示應用程式透過 Toast 發出的所有底部彈窗，包括書源彈窗</string>
     <string name="reverse_toc_display">&#x53CD;&#x5411;&#x986F;&#x793A;</string>
-    <string name="read_aloud_page_start_at_paragraph">分頁閱讀以段落為界</string>
-    <string name="read_aloud_page_start_at_paragraph_summary">從本頁聽時，若頁首位於段落中間，則從該段落開頭開始朗讀。</string>
+    <string name="read_aloud_page_start_at_paragraph">頁首按段</string>
+    <string name="read_aloud_page_start_at_paragraph_summary">頁首以本頁第一個字為開始，還是以本頁第一段的第一個字為開始？從本頁讀、按頁朗讀的起點都由這個開關決定。</string>
 </resources>
