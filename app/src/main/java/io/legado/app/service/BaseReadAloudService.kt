@@ -1081,14 +1081,18 @@ abstract class BaseReadAloudService : BaseService(),
         // 页首按段（readAloudPageStartAtParagraph）：
         // 开启——页首取本页第一段第一个字，若页首位于段落中间则回退到该段开头；
         // 关闭——页首严格取本页第一个字，从页首精确位置开始朗读。
-        // 当前仅在非按页朗读、从整页起点开始、非 toLast 时参与定位。
-        if (!readAloudByPage && startPos == 0 && !toLast && nowSpeak in chapter.paragraphs.indices) {
-            val paragraphStart = chapter.paragraphs[nowSpeak].chapterPosition
-            if (AppConfig.readAloudPageStartAtParagraph) {
-                readAloudNumber = paragraphStart
-                this@BaseReadAloudService.pageIndex = chapter.getPageIndexByCharIndex(paragraphStart)
-            } else {
-                pos = page.chapterPosition - paragraphStart
+        // 与“按页朗读”正交：无论是否按页朗读，从本页读/翻开新页的起点都按此开关决定
+        // （滚动模式天然以段落流朗读，调用方直接传入行内位置，不经过这里）。
+        if (startPos == 0 && !toLast) {
+            val paragraphIndex = chapter.getParagraphNum(readAloudNumber + 1, false) - 1
+            if (paragraphIndex in chapter.paragraphs.indices) {
+                val paragraphStart = chapter.paragraphs[paragraphIndex].chapterPosition
+                if (AppConfig.readAloudPageStartAtParagraph) {
+                    readAloudNumber = paragraphStart
+                    this@BaseReadAloudService.pageIndex = chapter.getPageIndexByCharIndex(paragraphStart)
+                } else {
+                    pos = page.chapterPosition - paragraphStart
+                }
             }
         }
         if (toLast) {
