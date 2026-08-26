@@ -262,24 +262,33 @@ data class TextPage(
             val textLine = textLines[index]
             val lineLength = textLine.text.length + if (textLine.isParagraphEnd) 1 else 0
             if (aloudSpanStart >= lineStart && aloudSpanStart < lineStart + lineLength) {
-                for (i in index - 1 downTo 0) {
-                    if (textLines[i].isParagraphEnd) {
-                        break
-                    } else {
-                        textLines[i].isReadAloud = true
-                    }
-                }
-                for (i in index until textLines.size) {
-                    if (textLines[i].isParagraphEnd) {
-                        textLines[i].isReadAloud = true
-                        break
-                    } else {
-                        textLines[i].isReadAloud = true
-                    }
-                }
+                markAloudLinesOfParagraph(index)
                 break
             }
             lineStart += lineLength
+        }
+    }
+
+    /**
+     * 将 [index] 所在段落（以全局段落号 paragraphNum 为界）在本页的行全部标记为朗读中。
+     * 段落跨页时只标记本页内的同一段行，避免把整页误标红或让红字跟丢。
+     */
+    private fun markAloudLinesOfParagraph(index: Int) {
+        val paragraphNum = textLines[index].paragraphNum
+        if (paragraphNum <= 0) {
+            return
+        }
+        for (i in index - 1 downTo 0) {
+            if (textLines[i].paragraphNum != paragraphNum) {
+                break
+            }
+            textLines[i].isReadAloud = true
+        }
+        for (i in index until textLines.size) {
+            if (textLines[i].paragraphNum != paragraphNum) {
+                break
+            }
+            textLines[i].isReadAloud = true
         }
     }
 

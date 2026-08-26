@@ -3143,18 +3143,23 @@ class ReadBookActivity : BaseReadBookActivity(),
             val chapterStart = progress.getInt("chapterPos")
             lastReadAloudChapterIndex = chapterIndex
             lastReadAloudChapterPos = chapterStart
-            lifecycleScope.launch(IO) {
+            // 朗读高亮（isReadAloud）直接改变行绘制状态，必须在主线程更新，
+            // 否则与渲染竞争会让红字丢失。脱钩（阅读页翻走）时阅读进度不跟随朗读，
+            // 但高亮仍按朗读所在页持续更新，用户翻回朗读页即可立即看到正确红字。
+            lifecycleScope.launch(Main) {
                 if (BaseReadAloudService.isPlay()) {
                     ReadBook.curTextChapter?.let { textChapter ->
-                        if (ReadBook.readAloudPageDetached || ReadBook.durChapterIndex != chapterIndex) {
+                        if (ReadBook.durChapterIndex != chapterIndex) {
                             return@let
                         }
-                        ReadBook.durChapterPos = chapterStart
-                        val pageIndex = ReadBook.durPageIndex
-                        val aloudSpanStart = chapterStart - textChapter.getReadLength(pageIndex)
-                        textChapter.getPage(pageIndex)
-                            ?.upPageAloudSpan(aloudSpanStart)
-                        upContent()
+                        val pageIndex = textChapter.getPageIndexByCharIndex(chapterStart)
+                        val aloudSpanStart =
+                            chapterStart - textChapter.getReadLength(pageIndex)
+                        textChapter.getPage(pageIndex)?.upPageAloudSpan(aloudSpanStart)
+                        if (!ReadBook.readAloudPageDetached) {
+                            ReadBook.durChapterPos = chapterStart
+                            upContent()
+                        }
                     }
                 }
             }
