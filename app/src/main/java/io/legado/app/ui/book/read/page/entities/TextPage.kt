@@ -86,7 +86,6 @@ data class TextPage(
     var doublePage = false
     var paddingTop = ChapterProvider.paddingTop
     var isCompleted = false
-    var hasReadAloudSpan = false
     var epubBackgroundSrc: String? = null
     var epubBackgroundColor: Int? = null
     var epubBackgroundSize: String? = null
@@ -235,61 +234,6 @@ data class TextPage(
             isCompleted = true
         }
         return this
-    }
-
-    /**
-     * 移除朗读标志
-     */
-    fun removePageAloudSpan(): TextPage {
-        if (!hasReadAloudSpan) {
-            return this
-        }
-        hasReadAloudSpan = false
-        for (i in textLines.indices) {
-            textLines[i].isReadAloud = false
-        }
-        return this
-    }
-
-    /**
-     * 更新朗读标志
-     * @param aloudSpanStart 朗读文字开始位置
-     */
-    fun upPageAloudSpan(aloudSpanStart: Int) {
-        removePageAloudSpan()
-        var lineStart = 0
-        for (index in textLines.indices) {
-            val textLine = textLines[index]
-            val lineLength = textLine.text.length + if (textLine.isParagraphEnd) 1 else 0
-            if (aloudSpanStart >= lineStart && aloudSpanStart < lineStart + lineLength) {
-                markAloudLinesOfParagraph(index)
-                break
-            }
-            lineStart += lineLength
-        }
-    }
-
-    /**
-     * 将 [index] 所在段落（以全局段落号 paragraphNum 为界）在本页的行全部标记为朗读中。
-     * 段落跨页时只标记本页内的同一段行，避免把整页误标红或让红字跟丢。
-     */
-    private fun markAloudLinesOfParagraph(index: Int) {
-        val paragraphNum = textLines[index].paragraphNum
-        if (paragraphNum <= 0) {
-            return
-        }
-        for (i in index - 1 downTo 0) {
-            if (textLines[i].paragraphNum != paragraphNum) {
-                break
-            }
-            textLines[i].isReadAloud = true
-        }
-        for (i in index until textLines.size) {
-            if (textLines[i].paragraphNum != paragraphNum) {
-                break
-            }
-            textLines[i].isReadAloud = true
-        }
     }
 
     /**

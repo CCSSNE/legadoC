@@ -1437,7 +1437,6 @@ class ReadBookActivity : BaseReadBookActivity(),
     ) {
         lifecycleScope.launch {
             binding.readView.upContent(relativePosition, resetPageOffset)
-            reconcileHighlightOnPageDisplayed()
             if (relativePosition == 0) {
                 upSeekBarProgress()
             }
@@ -1452,7 +1451,6 @@ class ReadBookActivity : BaseReadBookActivity(),
         success: (() -> Unit)?
     ) = withContext(Main.immediate) {
         binding.readView.upContent(relativePosition, resetPageOffset)
-        reconcileHighlightOnPageDisplayed()
         if (relativePosition == 0) {
             upSeekBarProgress()
         }
@@ -1485,7 +1483,6 @@ class ReadBookActivity : BaseReadBookActivity(),
         if (!fromReadAloud && !ReadBook.skipReadAloudSyncOnce) {
             onManualPageChanged()
         }
-        reconcileHighlightOnPageDisplayed()
         upChapterBookmarks()
         binding.readView.onPageChange()
         handler.post {
@@ -1934,10 +1931,6 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     private fun backToAloudProgress() {
         val position = ReadAloud.aloudPosition ?: return
-        clearAloudHighlight()
-        ReadBook.curTextChapter
-            ?.getPageByReadPos(ReadBook.durChapterPos)
-            ?.removePageAloudSpan()
         ReadBook.attachReadAloudPage()
         if (ReadBook.durChapterIndex != position.chapterIndex) {
             ReadBook.skipReadAloudSyncOnce = true
@@ -1962,7 +1955,6 @@ class ReadBookActivity : BaseReadBookActivity(),
         ReadBook.saveRead(true)
         hideReadAloudPagePanel()
         binding.readView.upContent(resetPageOffset = false)
-        reconcileHighlight(position)
         upSeekBarProgress()
         updateReadAloudPanels()
     }
@@ -2023,7 +2015,6 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     private fun switchReadAloudTo(position: ReadAloudPosition) {
-        clearAloudHighlight()
         ReadAloud.beginPositionSwitch(position)
         val chapter = ReadBook.curTextChapter
         val start = {
@@ -2064,60 +2055,6 @@ class ReadBookActivity : BaseReadBookActivity(),
                 "Cannot switch read aloud position: chapter=${position.chapterIndex}, " +
                     "position=${position.chapterPosition}"
             )
-        }
-    }
-
-    private fun clearAloudHighlight(position: ReadAloudPosition?) {
-        position ?: return
-        val textChapter = sequenceOf(
-            ReadBook.curTextChapter,
-            ReadBook.prevTextChapter,
-            ReadBook.nextTextChapter,
-        ).filterNotNull().firstOrNull { it.chapter.index == position.chapterIndex } ?: return
-        textChapter.getPageByReadPos(position.chapterPosition)?.removePageAloudSpan()
-    }
-
-    private fun clearAloudHighlight() {
-        clearAloudHighlight(ReadAloud.aloudPosition)
-    }
-
-    /**
-     * 统一朗读高亮对账：只作用于当前物理显示页，绝不预写离屏 TextPage。
-     * 显示页以 ReadView 当前页为准，不得用 durPageIndex 推导——
-     * switchReadAloudTo 会把 durChapterPos 写成朗读位置，
-     * 脱钩时它不代表用户眼前这一页。
-     * 当前显示页包含唯一 aloudPosition 则重设该页红字，否则清除本页高亮；
-     * progress 事件驱动与页面显示变化驱动两个入口共用本函数，是高亮唯一的计算入口。
-     * 只重建 UI：不修改 aloudPosition，不控制朗读引擎，
-     * 不触发朗读跳转，也不改变页面跟随状态。
-     */
-    private fun reconcileHighlight(aloudPosition: ReadAloudPosition?) {
-        val displayedPage = binding.readView.curPage.textPage
-        val textChapter = ReadBook.curTextChapter
-            ?.takeIf { it.chapter.index == displayedPage.chapterIndex } ?: return
-        val displayedPageIndex = displayedPage.index
-        val positionPageIndex = aloudPosition
-            ?.takeIf { it.chapterIndex == textChapter.chapter.index }
-            ?.let { textChapter.getPageIndexByCharIndex(it.chapterPosition) }
-        if (positionPageIndex != displayedPageIndex) {
-            textChapter.getPage(displayedPageIndex)?.removePageAloudSpan()
-            return
-        }
-        val aloudSpanStart =
-            aloudPosition.chapterPosition - textChapter.getReadLength(displayedPageIndex)
-        textChapter.getPage(displayedPageIndex)?.upPageAloudSpan(aloudSpanStart)
-    }
-
-    /**
-     * 页面显示变化驱动的高亮入口：页面显示完成/重新挂载后重读唯一 aloudPosition
-     * 调用同一个 [reconcileHighlight]；当前页包含该位置则恢复红字，否则清除本页残留高亮。
-     * 与 progress 事件入口的唯一区别是数据来源改为重读 ReadAloud.aloudPosition。
-     */
-    private fun reconcileHighlightOnPageDisplayed() {
-        if (!BaseReadAloudService.isPlay()) return
-        reconcileHighlight(ReadAloud.aloudPosition)
-        if (ReadBook.readAloudPageDetached) {
-            binding.readView.invalidateReadAloudHighlight()
         }
     }
 
@@ -3173,20 +3110,9 @@ class ReadBookActivity : BaseReadBookActivity(),
                 ReadBook.attachReadAloudPage()
                 hideReadAloudPagePanel()
             }
-            if (it == Status.STOP || it == Status.PAUSE) {
-                ReadBook.curTextChapter?.let { textChapter ->
-                    var highlightCleared = false
-                    textChapter.pages.forEach { page ->
-                        if (page.hasReadAloudSpan) {
-                            page.removePageAloudSpan()
-                            highlightCleared = true
-                        }
-                    }
-                    if (highlightCleared) {
-                        readView.upContent(resetPageOffset = false)
-                    }
-                }
-            }
+            // 红字是 aloudPosition 的绘制期投影，播放状态变化（PLAY/PAUSE/STOP）
+            // 只需触发一次重绘，投影内容由 TextLine.isReadAloud 在绘制时现算。
+            readView.invalidateReadAloudHighlight()
             updateReadAloudPanels()
         }
         observeEvent<Boolean>(EventBus.READ_ALOUD_PAGE_DETACHED) { detached ->
@@ -3214,26 +3140,22 @@ class ReadBookActivity : BaseReadBookActivity(),
         observeEventSticky<ReadAloudPositionUpdate>(EventBus.READ_ALOUD_POSITION) { update ->
             if (!ReadAloud.isCurrentPosition(update)) return@observeEventSticky
             val position = update.position
-            // 朗读高亮（isReadAloud）直接改变行绘制状态，必须在主线程更新，
-            // 否则与渲染竞争会让红字丢失。高亮只按当前显示页对账，不预写离屏页；
-            // 脱钩（阅读页翻走）时显示页通常不含朗读位置，红字被清掉，
-            // 翻回朗读页时由页面显示入口重新对账恢复红字。
+            // 红字是 aloudPosition 的绘制期投影（TextLine.isReadAloud 现算），
+            // 本观察者只负责页面跟随策略：attach 态跟随写 durChapterPos 并刷新页面；
+            // detach 态显示不动，只触发一次重绘让新位置的红字投影生效。
+            // switchConfirmed 只表示引擎已确认朗读位置，不具备解除页面脱钩的权限；
+            // 朗读位置切换与页面是否跟随是正交状态，脱钩只能由
+            // “回原进度”等明确要求重新跟随的入口解除（attachReadAloudPage）。
             lifecycleScope.launch(Main) {
-                clearAloudHighlight(update.previousPosition)
-                // switchConfirmed 只表示引擎已确认朗读位置，不具备解除页面脱钩的权限；
-                // 朗读位置切换与页面是否跟随是正交状态，脱钩只能由
-                // “回原进度”等明确要求重新跟随的入口解除（attachReadAloudPage）。
-                if (BaseReadAloudService.isPlay()) {
-                    reconcileHighlight(position)
-                    if (ReadBook.curTextChapter?.chapter?.index == position.chapterIndex &&
-                        !ReadBook.readAloudPageDetached
-                    ) {
-                        ReadBook.durChapterPos = position.chapterPosition
-                        upContent()
-                    }
-                    if (ReadBook.readAloudPageDetached) {
-                        binding.readView.invalidateReadAloudHighlight()
-                    }
+                if (!BaseReadAloudService.isPlay()) return@launch
+                // 先失效当前页绘制缓存，同页推进时 upContent 的重绘才会重录红字
+                binding.readView.invalidateReadAloudHighlight()
+                if (ReadBook.curTextChapter?.chapter?.index != position.chapterIndex) {
+                    return@launch
+                }
+                if (!ReadBook.readAloudPageDetached) {
+                    ReadBook.durChapterPos = position.chapterPosition
+                    upContent()
                 }
             }
         }

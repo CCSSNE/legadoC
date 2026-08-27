@@ -99,7 +99,7 @@ class TextPageFactory(dataSource: DataSource) : PageFactory<TextPage>(dataSource
             currentChapter?.let {
                 val pageIndex = pageIndex
                 if (pageIndex < it.pageSize - 1) {
-                    return@with it.getPage(pageIndex + 1)?.removePageAloudSpan()
+                    return@with it.getPage(pageIndex + 1)
                         ?: TextPage(title = it.title).format()
                 }
                 if (!it.isCompleted) {
@@ -107,7 +107,7 @@ class TextPageFactory(dataSource: DataSource) : PageFactory<TextPage>(dataSource
                 }
             }
             nextChapter?.let {
-                return@with it.getPage(0)?.removePageAloudSpan()
+                return@with it.getPage(0)
                     ?: TextPage(title = it.title).format()
             }
             return TextPage().format()
@@ -121,7 +121,7 @@ class TextPageFactory(dataSource: DataSource) : PageFactory<TextPage>(dataSource
             currentChapter?.let {
                 val pageIndex = pageIndex
                 if (pageIndex > 0) {
-                    return@with it.getPage(pageIndex - 1)?.removePageAloudSpan()
+                    return@with it.getPage(pageIndex - 1)
                         ?: TextPage(title = it.title).format()
                 }
                 if (!it.isCompleted) {
@@ -129,7 +129,7 @@ class TextPageFactory(dataSource: DataSource) : PageFactory<TextPage>(dataSource
                 }
             }
             prevChapter?.let {
-                return@with it.lastPage?.removePageAloudSpan()
+                return@with it.lastPage
                     ?: TextPage(title = it.title).format()
             }
             return TextPage().format()
@@ -140,7 +140,7 @@ class TextPageFactory(dataSource: DataSource) : PageFactory<TextPage>(dataSource
             currentChapter?.let {
                 val pageIndex = pageIndex
                 if (pageIndex < it.pageSize - 2) {
-                    return@with it.getPage(pageIndex + 2)?.removePageAloudSpan()
+                    return@with it.getPage(pageIndex + 2)
                         ?: TextPage(title = it.title).format()
                 }
                 if (!it.isCompleted) {
@@ -148,10 +148,10 @@ class TextPageFactory(dataSource: DataSource) : PageFactory<TextPage>(dataSource
                 }
                 nextChapter?.let { nc ->
                     if (pageIndex < it.pageSize - 1) {
-                        return@with nc.getPage(0)?.removePageAloudSpan()
+                        return@with nc.getPage(0)
                             ?: TextPage(title = nc.title).format()
                     }
-                    return@with nc.getPage(1)?.removePageAloudSpan()
+                    return@with nc.getPage(1)
                         ?: TextPage(text = keepSwipeTip).format()
                 }
             }
