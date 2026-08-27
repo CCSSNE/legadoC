@@ -63,6 +63,7 @@ import io.legado.app.help.glide.ImageLoader
 import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
 import io.legado.app.model.ReadAloud
+import io.legado.app.model.ReadAloudPosition
 import io.legado.app.model.ReadAloudUiState
 import io.legado.app.model.ReadBook
 import io.legado.app.receiver.MediaButtonReceiver
@@ -959,6 +960,7 @@ abstract class BaseReadAloudService : BaseService(),
         if (runningClass == this::class.java) {
             runningClass = null
             readAloudProgress = null
+            ReadAloud.clearAloudPosition()
         }
         abandonFocus()
         unregisterReceiver(broadcastReceiver)
@@ -1200,6 +1202,7 @@ abstract class BaseReadAloudService : BaseService(),
 
     protected fun postReadAloudTextPosition(progress: Int) {
         val chapterIndex = currentChapterIndex.takeIf { it >= 0 } ?: ReadBook.durChapterIndex
+        ReadAloud.updateAloudPosition(ReadAloudPosition(chapterIndex, progress))
         // 阅读页与朗读页脱离（detach）时，阅读位置保持用户当前翻到的页，
         // 不得被朗读进度覆盖——否则“从本页听”通过 durPageIndex 取起点时
         // 会被污染成原进度页，表现成点了“原进度”。
@@ -1328,13 +1331,13 @@ abstract class BaseReadAloudService : BaseService(),
 
     internal fun moveReadBookToPrevPageForReadAloud() {
         if (!ReadBook.readAloudPageDetached) {
-            ReadBook.moveToPrevPage()
+            ReadBook.moveToPrevPage(fromReadAloud = true)
         }
     }
 
     internal fun moveReadBookToNextPageForReadAloud() {
         if (!ReadBook.readAloudPageDetached) {
-            ReadBook.moveToNextPage()
+            ReadBook.moveToNextPage(fromReadAloud = true)
         }
     }
 

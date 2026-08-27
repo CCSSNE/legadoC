@@ -28,8 +28,26 @@ import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.getPrefBoolean
 import splitties.init.appCtx
 
+/** Absolute text position shared by every read-aloud engine and the reader UI. */
+data class ReadAloudPosition(
+    val chapterIndex: Int,
+    val chapterPosition: Int,
+)
+
 object ReadAloud {
     const val SOURCE_AUDIO_ENGINE_ID = "sourceAudio"
+
+    @Volatile
+    var aloudPosition: ReadAloudPosition? = null
+        private set
+
+    fun updateAloudPosition(position: ReadAloudPosition) {
+        aloudPosition = position
+    }
+
+    fun clearAloudPosition() {
+        aloudPosition = null
+    }
 
     val ttsEngine: String?
         get() = ReadBook.book?.let { book ->
@@ -97,8 +115,7 @@ object ReadAloud {
     /**
      * Returns a progress snapshot that matches the engine selected in settings.
      * A running service remains authoritative; when it has just been stopped for
-     * an engine switch, derive only from persisted chapter data and leave the
-     * progress unavailable if the source has not supplied a duration yet.
+     * an engine switch, use the shared text position before falling back to persisted data.
      */
     fun progressForSelectedEngine(): ReadAloudProgress? {
         val current = BaseReadAloudService.readAloudProgress
@@ -126,7 +143,11 @@ object ReadAloud {
                 appCtx.getPrefBoolean(PreferKey.readAloudByPage, false)
             )
             if (paragraphs.isEmpty()) return null
-            val chapterPosition = ReadBook.book?.durChapterPos ?: 0
+            val chapterPosition = aloudPosition
+                ?.takeIf { it.chapterIndex == chapterIndex }
+                ?.chapterPosition
+                ?: ReadBook.book?.durChapterPos
+                ?: 0
             val position = paragraphs.indexOfLast {
                 chapterPosition >= it.chapterPosition
             }.coerceAtLeast(0)
