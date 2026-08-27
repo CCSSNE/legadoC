@@ -3,6 +3,7 @@ package io.legado.app.model
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.EventBus
+import io.legado.app.constant.LogModule
 import io.legado.app.constant.PageAnim.scrollPageAnim
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
@@ -568,6 +569,10 @@ object ReadBook : CoroutineScope by MainScope() {
     fun detachReadAloudPage() {
         if (!readAloudPageDetached) {
             readAloudPageDetached = true
+            AppLog.putDebug(
+                "[朗读] 页面跟随 → 脱钩(显示保持用户页) 显示pos:$durChapterPos",
+                module = LogModule.READ_ALOUD
+            )
             postEvent(EventBus.READ_ALOUD_PAGE_DETACHED, true)
         }
     }
@@ -575,6 +580,10 @@ object ReadBook : CoroutineScope by MainScope() {
     fun attachReadAloudPage() {
         if (readAloudPageDetached) {
             readAloudPageDetached = false
+            AppLog.putDebug(
+                "[朗读] 页面跟随 → 跟随(显示归朗读位置管) 朗读pos:${ReadAloud.aloudPosition?.chapterPosition}",
+                module = LogModule.READ_ALOUD
+            )
             postEvent(EventBus.READ_ALOUD_PAGE_DETACHED, false)
         }
     }

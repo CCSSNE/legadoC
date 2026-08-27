@@ -213,6 +213,8 @@ $apk = 'D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_<version>
 
 流程收口：所有改变朗读位置的操作只经 `switchReadAloudTo(position)`（8 个核心函数见 `docs` 流程图）；引擎内部光标（`contentList/nowSpeak/readAloudNumber/textChapter/pageIndex/currentChapterIndex/paragraphStartPos`）只能由引擎推进方法读写，对外仅 `publishAloudPosition` / `publishParagraphProgress` 两个出口。
 
+朗读诊断日志约定：全部走 `AppLog.putDebug`（需开启"记录日志"设置）、统一 `[朗读]` 前缀、归属 `LogModule.READ_ALOUD`（ReadBookActivity/ReadBook/ReadView 等按类名会被误归阅读模块的调用点必须显式传 `module`）；覆盖点为操作层（双击/从本页读/手动翻页/回原进度/switchTo）、位置发布（publish/confirm/cancel/clear）、跟随决策（跟随写显示/脱钩保持/忽略）、引擎（章节准备/起点偏移/引擎进度/脱钩切章）、状态事件与高亮失效。绘制路径（TextLine/TextPage）禁止打点。用户报 bug 时附上普通日志（勾选朗读模块）即可按链路定位。
+
 ### 设置默认值
 
 每个设置的界面默认值与实际读取默认值必须一致：

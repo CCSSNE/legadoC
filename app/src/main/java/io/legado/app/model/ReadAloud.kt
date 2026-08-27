@@ -59,6 +59,9 @@ object ReadAloud {
 
     @Synchronized
     fun cancelPositionSwitch() {
+        if (pendingSwitchPosition != null) {
+            AppLog.putDebug("[朗读] 切换取消 (pending=${pendingSwitchPosition})")
+        }
         pendingSwitchPosition = null
     }
 
@@ -72,6 +75,11 @@ object ReadAloud {
         if (switchConfirmed) {
             pendingSwitchPosition = null
         }
+        AppLog.putDebug(
+            "[朗读] 位置发布 ch:${position.chapterIndex} pos:${position.chapterPosition} " +
+                "gen:$generation confirmed:$switchConfirmed " +
+                "prev:${previousPosition?.let { "ch${it.chapterIndex}:${it.chapterPosition}" } ?: "null"}"
+        )
         return ReadAloudPositionUpdate(position, previousPosition, switchConfirmed, generation).also {
             postEvent(EventBus.READ_ALOUD_POSITION, it)
         }
@@ -84,6 +92,9 @@ object ReadAloud {
 
     @Synchronized
     fun clearAloudPosition() {
+        AppLog.putDebug(
+            "[朗读] 位置清空 (原=${aloudPosition?.let { "ch${it.chapterIndex}:${it.chapterPosition}" } ?: "null"})"
+        )
         aloudPosition = null
         positionGeneration++
         pendingSwitchPosition = null

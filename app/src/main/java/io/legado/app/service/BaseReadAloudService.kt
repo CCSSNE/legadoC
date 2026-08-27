@@ -1125,6 +1125,11 @@ abstract class BaseReadAloudService : BaseService(),
             nowSpeak = contentList.lastIndex.coerceAtLeast(0)
         }
         paragraphStartPos = resolveParagraphStartPos(chapter)
+        AppLog.putDebug(
+            "[朗读] 章节准备 ch:${chapter.chapter.index} page:$safePageIndex startPos:$startPos " +
+                "number:$readAloudNumber nowSpeak:$nowSpeak offset:$paragraphStartPos " +
+                "byPage:$readAloudByPage toLast:${chapter.getLastParagraphPosition() == readAloudNumber}"
+        )
         publishParagraphProgress()
         return true
     }
@@ -1139,8 +1144,15 @@ abstract class BaseReadAloudService : BaseService(),
     private fun resolveParagraphStartPos(chapter: TextChapter): Int {
         val paragraphNum = chapter.getParagraphNum(readAloudNumber + 1, readAloudByPage)
         val paragraph = chapter.getParagraphs(readAloudByPage).getOrNull(paragraphNum - 1)
-            ?: return 0
-        return (readAloudNumber - paragraph.chapterPosition).coerceAtLeast(0)
+        val offset = paragraph
+            ?.let { (readAloudNumber - it.chapterPosition).coerceAtLeast(0) }
+            ?: 0
+        AppLog.putDebug(
+            "[朗读] 起点偏移 mode:${if (readAloudByPage) "按页" else "按段"} " +
+                "number:$readAloudNumber 单元:$paragraphNum 单元首:${paragraph?.chapterPosition ?: -1} " +
+                "偏移:$offset"
+        )
+        return offset
     }
 
     private fun publishPreparedAloudPosition() {
@@ -1246,10 +1258,16 @@ abstract class BaseReadAloudService : BaseService(),
         val chapterIndex = currentChapterIndex.takeIf { it >= 0 } ?: ReadBook.durChapterIndex
         val position = ReadAloudPosition(chapterIndex, progress)
         ReadAloud.publishAloudPosition(position)
+        val sameChapter = chapterIndex == ReadBook.durChapterIndex
+        val followWrite = sameChapter && !ReadBook.readAloudPageDetached
+        AppLog.putDebug(
+            "[朗读] 引擎进度 ch:$chapterIndex pos:$progress detach:${ReadBook.readAloudPageDetached} " +
+                "同章:$sameChapter → ${if (followWrite) "写显示进度" else "不改显示"}"
+        )
         // 阅读页与朗读页脱离（detach）时，阅读位置保持用户当前翻到的页，
         // 不得被朗读进度覆盖——否则“从本页听”通过 durPageIndex 取起点时
         // 会被污染成原进度页，表现成点了“原进度”。
-        if (chapterIndex == ReadBook.durChapterIndex && !ReadBook.readAloudPageDetached) {
+        if (followWrite) {
             ReadBook.durChapterPos = progress
             ReadBook.book?.durChapterPos = progress
         }
@@ -1833,6 +1851,10 @@ abstract class BaseReadAloudService : BaseService(),
             stopSelf()
             return
         }
+        AppLog.putDebug(
+            "[朗读] 脱钩切章 ${currentChapterIndex}→$targetIndex toLast:$toLast " +
+                "显示章:${ReadBook.durChapterIndex}"
+        )
         playStop()
         upReadAloudLoading(true)
         if (sessionChapterCanStartWithoutText) {

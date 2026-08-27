@@ -35,6 +35,7 @@ import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
+import io.legado.app.constant.LogModule
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Status
 import io.legado.app.data.appDb
@@ -1931,6 +1932,11 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     private fun backToAloudProgress() {
         val position = ReadAloud.aloudPosition ?: return
+        AppLog.putDebug(
+            "[朗读] 回原进度 ch:${position.chapterIndex} pos:${position.chapterPosition} " +
+                "当前章:${ReadBook.durChapterIndex} detach:${ReadBook.readAloudPageDetached}",
+            module = LogModule.READ_ALOUD
+        )
         ReadBook.attachReadAloudPage()
         if (ReadBook.durChapterIndex != position.chapterIndex) {
             ReadBook.skipReadAloudSyncOnce = true
@@ -1961,6 +1967,11 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun restartFromParagraph(position: Pair<Int, TextLine>) {
         val (chapterIndex, line) = position
+        AppLog.putDebug(
+            "[朗读] 双击段落 ch:$chapterIndex pos:${line.chapterPosition} " +
+                "段号:${line.paragraphNum}",
+            module = LogModule.READ_ALOUD
+        )
         switchReadAloudTo(ReadAloudPosition(chapterIndex, line.chapterPosition))
     }
 
@@ -1968,6 +1979,12 @@ class ReadBookActivity : BaseReadBookActivity(),
         val position = checkNotNull(resolvePageStart()) {
             "Cannot restart read aloud: visible page has no readable line"
         }
+        AppLog.putDebug(
+            "[朗读] 从本页读 ch:${position.chapterIndex} pos:${position.chapterPosition} " +
+                "段首:${AppConfig.readAloudPageStartAtParagraph} 滚动:${ReadBook.pageAnim() == 3} " +
+                "页首:${binding.readView.curPage.textPage.chapterPosition}",
+            module = LogModule.READ_ALOUD
+        )
         switchReadAloudTo(position)
     }
 
@@ -2015,6 +2032,12 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     private fun switchReadAloudTo(position: ReadAloudPosition) {
+        AppLog.putDebug(
+            "[朗读] switchTo ch:${position.chapterIndex} pos:${position.chapterPosition} " +
+                "当前章:${ReadBook.durChapterIndex} detach:${ReadBook.readAloudPageDetached} " +
+                "显示pos:${ReadBook.durChapterPos}",
+            module = LogModule.READ_ALOUD
+        )
         ReadAloud.beginPositionSwitch(position)
         val chapter = ReadBook.curTextChapter
         val start = {
@@ -2043,6 +2066,10 @@ class ReadBookActivity : BaseReadBookActivity(),
             start()
             return
         }
+        AppLog.putDebug(
+            "[朗读] switchTo 跨章打开 ch:${position.chapterIndex} pos:${position.chapterPosition}",
+            module = LogModule.READ_ALOUD
+        )
         ReadBook.skipReadAloudSyncOnce = true
         val opened = ReadBook.openChapter(position.chapterIndex, position.chapterPosition, false) {
             ReadBook.skipReadAloudSyncOnce = false
@@ -2065,6 +2092,11 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     private fun onManualPageChanged() {
         if (!BaseReadAloudService.isRun || ReadBook.skipReadAloudSyncOnce) return
+        AppLog.putDebug(
+            "[朗读] 手动翻页 byPage:${getPrefBoolean(PreferKey.readAloudByPage, false)} " +
+                "detach:${ReadBook.readAloudPageDetached} 显示pos:${ReadBook.durChapterPos}",
+            module = LogModule.READ_ALOUD
+        )
         suppressAutoPageFollow()
         if (getPrefBoolean(PreferKey.readAloudByPage, false)) {
             handler.post { restartFromPage() }
@@ -3105,6 +3137,10 @@ class ReadBookActivity : BaseReadBookActivity(),
             }
         }
         observeEvent<Int>(EventBus.ALOUD_STATE) {
+            AppLog.putDebug(
+                "[朗读] 状态事件:$it isRun:${BaseReadAloudService.isRun} pause:${BaseReadAloudService.pause}",
+                module = LogModule.READ_ALOUD
+            )
             updateReadAloudPageFloating()
             if (it == Status.STOP) {
                 ReadBook.attachReadAloudPage()
@@ -3147,15 +3183,34 @@ class ReadBookActivity : BaseReadBookActivity(),
             // 朗读位置切换与页面是否跟随是正交状态，脱钩只能由
             // “回原进度”等明确要求重新跟随的入口解除（attachReadAloudPage）。
             lifecycleScope.launch(Main) {
-                if (!BaseReadAloudService.isPlay()) return@launch
+                if (!BaseReadAloudService.isPlay()) {
+                    AppLog.putDebug(
+                        "[朗读] 位置事件忽略(未播放) ch:${position.chapterIndex} pos:${position.chapterPosition}",
+                        module = LogModule.READ_ALOUD
+                    )
+                    return@launch
+                }
                 // 先失效当前页绘制缓存，同页推进时 upContent 的重绘才会重录红字
                 binding.readView.invalidateReadAloudHighlight()
                 if (ReadBook.curTextChapter?.chapter?.index != position.chapterIndex) {
+                    AppLog.putDebug(
+                        "[朗读] 位置事件忽略(跨章 显示章:${ReadBook.durChapterIndex} 朗读章:${position.chapterIndex})",
+                        module = LogModule.READ_ALOUD
+                    )
                     return@launch
                 }
                 if (!ReadBook.readAloudPageDetached) {
+                    AppLog.putDebug(
+                        "[朗读] 跟随写显示 pos:${position.chapterPosition}",
+                        module = LogModule.READ_ALOUD
+                    )
                     ReadBook.durChapterPos = position.chapterPosition
                     upContent()
+                } else {
+                    AppLog.putDebug(
+                        "[朗读] 脱钩保持页面 显示pos:${ReadBook.durChapterPos} 朗读pos:${position.chapterPosition}",
+                        module = LogModule.READ_ALOUD
+                    )
                 }
             }
         }
