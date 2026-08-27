@@ -133,9 +133,13 @@ object AppLog {
         }
     }
 
-    fun putDebug(message: String?, throwable: Throwable? = null) {
+    fun putDebug(
+        message: String?,
+        throwable: Throwable? = null,
+        module: LogModule? = null,
+    ) {
         if (AppConfig.recordLog) {
-            put(message, throwable)
+            put(message, throwable, module = module)
         }
     }
 

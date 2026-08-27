@@ -11,6 +11,8 @@ import android.view.ViewConfiguration
 import android.view.WindowInsets
 import android.widget.FrameLayout
 import io.legado.app.R
+import io.legado.app.constant.AppLog
+import io.legado.app.constant.LogModule
 import io.legado.app.constant.PageAnim
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.Bookmark
@@ -1059,6 +1061,10 @@ class ReadView(context: Context, attrs: AttributeSet) :
     /** 清绘制缓存并重绘，让朗读红字按最新 aloudPosition 投影重新现算；
      *  滚动模式可视区可能跨三页，三页缓存都要失效。 */
     fun invalidateReadAloudHighlight() {
+        AppLog.putDebug(
+            "[朗读] 高亮失效 scroll:$isScroll",
+            module = LogModule.READ_ALOUD
+        )
         if (isScroll) {
             for (relativePos in 0..2) {
                 curPage.relativePage(relativePos).invalidateAll()
