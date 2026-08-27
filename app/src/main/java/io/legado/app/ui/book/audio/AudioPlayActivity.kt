@@ -975,10 +975,8 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         }
         observeEvent<Int>(EventBus.READ_ALOUD_DS) { updateSessionIndicators() }
         observeEvent<ReadAloudPositionUpdate>(EventBus.READ_ALOUD_POSITION) { update ->
-            val position = ReadAloud.aloudPosition ?: return@observeEvent
-            check(position == update.position) {
-                "Read-aloud position event does not match the authoritative position"
-            }
+            if (!ReadAloud.isCurrentPosition(update)) return@observeEvent
+            val position = update.position
             updateChapterUi()
             if (ReadAloud.selectedEngineType != ReadAloudEngineType.SOURCE_AUDIO) {
                 updateListeningTextHighlightAt(

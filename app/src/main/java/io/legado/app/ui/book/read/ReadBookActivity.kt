@@ -3157,10 +3157,8 @@ class ReadBookActivity : BaseReadBookActivity(),
             }
         }
         observeEventSticky<ReadAloudPositionUpdate>(EventBus.READ_ALOUD_POSITION) { update ->
-            val position = ReadAloud.aloudPosition ?: return@observeEventSticky
-            check(position == update.position) {
-                "Read-aloud position event does not match the authoritative position"
-            }
+            if (!ReadAloud.isCurrentPosition(update)) return@observeEventSticky
+            val position = update.position
             // 朗读高亮（isReadAloud）直接改变行绘制状态，必须在主线程更新，
             // 否则与渲染竞争会让红字丢失。脱钩（阅读页翻走）时阅读进度不跟随朗读，
             // 但高亮仍按朗读所在页持续更新，用户翻回朗读页即可立即看到正确红字。
