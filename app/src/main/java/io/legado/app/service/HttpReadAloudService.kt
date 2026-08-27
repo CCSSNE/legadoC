@@ -95,6 +95,11 @@ class HttpReadAloudService : BaseReadAloudService(),
     private var httpTtsSnapshot: HttpTTS? = null
     private var httpRequestJob: Job? = null
     private var playErrorNo = 0
+
+    // 上一句实测的单字符音频时长（毫秒）：流式播放拿不到总时长时，
+    // 作为句内进度轮询的步长估计（页间分段 OFF 时的被动预测兜底）
+    @Volatile
+    private var lastCharDurationMs = 100L
     private val downloadTaskActiveLock = Mutex()
 
     private data class PreparedMediaItem(
@@ -638,29 +643,49 @@ class HttpReadAloudService : BaseReadAloudService(),
         }
     }
 
+    /**
+     * 句内进度发布（页间分段 OFF 时的被动预测机制）：
+     * 网络引擎每句音频时长由 ExoPlayer 精确提供，按“时长/字符数”为步长轮询
+     * 播放进度，扫过页界即发布一次前进位置事件——真实音频信号，不是估算。
+     * 流式播放（streamReadAloudAudio）拿不到总时长时，退化为上一句实测的
+     * 单字符时长步长估计。显示是否翻页仍由 UI 侧跟随规则判定。
+     */
     private fun upPlayPos() {
         playIndexJob?.cancel()
         val textChapter = textChapter ?: return
         playIndexJob = lifecycleScope.launch {
             upTtsProgress(readAloudNumber + 1)
-            if (exoPlayer.duration <= 0) {
-                return@launch
-            }
             val content = contentList.getOrNull(nowSpeak) ?: return@launch
             val speakTextLength = content.length
             if (speakTextLength <= 0) {
                 return@launch
             }
-            val sleep = exoPlayer.duration / speakTextLength
-            val start = speakTextLength * exoPlayer.currentPosition / exoPlayer.duration
-            for (i in start..content.length) {
+            // 页间分段 ON：朗读单元已在页边界裂开，句内不存在页界，无需句内预测
+            if (pageSplit) {
+                return@launch
+            }
+            val duration = exoPlayer.duration
+            val sleep = if (duration > 0) {
+                (duration / speakTextLength).also {
+                    lastCharDurationMs = it
+                }
+            } else {
+                lastCharDurationMs
+            }.coerceAtLeast(1L)
+            val start = if (duration > 0) {
+                (speakTextLength.toLong() * exoPlayer.currentPosition / duration).toInt()
+            } else {
+                (exoPlayer.currentPosition / sleep).toInt()
+            }
+            for (i in start..speakTextLength) {
                 if (pageIndex + 1 < textChapter.pageSize
                     && readAloudNumber + i > textChapter.getReadLength(pageIndex + 1)
                 ) {
-                    // 按播放进度推算过页界（预测换页的未来挂载点）：
-                    // 只推进引擎私有页光标并发布位置，显示翻页由 UI 侧跟随规则处理
+                    // 扫过页界：只推进引擎私有页光标并发布位置，
+                    // 显示翻页由 UI 侧跟随规则处理
                     pageIndex++
-                    upTtsProgress(readAloudNumber + i.toInt())
+                    AppLog.putDebug("[朗读] HTTP过界发布 pos:${readAloudNumber + i}")
+                    upTtsProgress(readAloudNumber + i)
                 }
                 delay(sleep)
             }
