@@ -39,6 +39,7 @@ data class ReadAloudPositionUpdate(
     val position: ReadAloudPosition,
     val previousPosition: ReadAloudPosition?,
     val switchConfirmed: Boolean,
+    val generation: Long,
 )
 
 object ReadAloud {
@@ -49,6 +50,7 @@ object ReadAloud {
         private set
 
     private var pendingSwitchPosition: ReadAloudPosition? = null
+    private var positionGeneration = 0L
 
     @Synchronized
     fun beginPositionSwitch(position: ReadAloudPosition) {
@@ -65,18 +67,25 @@ object ReadAloud {
     fun publishAloudPosition(position: ReadAloudPosition): ReadAloudPositionUpdate {
         val previousPosition = aloudPosition
         aloudPosition = position
+        val generation = ++positionGeneration
         val switchConfirmed = pendingSwitchPosition == position
         if (switchConfirmed) {
             pendingSwitchPosition = null
         }
-        return ReadAloudPositionUpdate(position, previousPosition, switchConfirmed).also {
+        return ReadAloudPositionUpdate(position, previousPosition, switchConfirmed, generation).also {
             postEvent(EventBus.READ_ALOUD_POSITION, it)
         }
     }
 
     @Synchronized
+    fun isCurrentPosition(update: ReadAloudPositionUpdate): Boolean {
+        return update.generation == positionGeneration && update.position == aloudPosition
+    }
+
+    @Synchronized
     fun clearAloudPosition() {
         aloudPosition = null
+        positionGeneration++
         pendingSwitchPosition = null
     }
 
