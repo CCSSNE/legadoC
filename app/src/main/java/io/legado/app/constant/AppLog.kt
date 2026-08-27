@@ -133,8 +133,12 @@ object AppLog {
     }
 
     /** 调试日志始终记录，是否在普通日志弹窗显示由模块勾选决定 */
-    fun putDebug(message: String?, throwable: Throwable? = null) {
-        put(message, throwable)
+    fun putDebug(
+        message: String?,
+        throwable: Throwable? = null,
+        module: LogModule? = null,
+    ) {
+        put(message, throwable, module = module)
     }
 
     private fun persist(log: Entry) {
