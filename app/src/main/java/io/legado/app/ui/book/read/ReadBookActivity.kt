@@ -1481,12 +1481,14 @@ class ReadBookActivity : BaseReadBookActivity(),
      * 页面改变
      */
     override fun pageChanged(fromReadAloud: Boolean) {
-        if (!fromReadAloud && !ReadBook.skipReadAloudSyncOnce) {
-            onManualPageChanged()
-        }
-        upChapterBookmarks()
-        binding.readView.onPageChange()
+        // ReadBook 的内容加载协程在 IO 线程回调本方法；
+        // 面板动画等 UI 操作只能在 Looper 线程执行，统一收敛到主线程。
         handler.post {
+            if (!fromReadAloud && !ReadBook.skipReadAloudSyncOnce) {
+                onManualPageChanged()
+            }
+            upChapterBookmarks()
+            binding.readView.onPageChange()
             upSeekBarProgress()
         }
         executor.execute {
@@ -2711,8 +2713,11 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     override fun onLayoutPageCompleted(index: Int, page: TextPage) {
-        upSeekBarThrottle.invoke()
-        binding.readView.onLayoutPageCompleted(index, page)
+        // 排版协程在 IO 线程回调，View 访问统一收敛到主线程（保持 FIFO 顺序）。
+        handler.post {
+            upSeekBarThrottle.invoke()
+            binding.readView.onLayoutPageCompleted(index, page)
+        }
     }
 
     /* 全文搜索跳转 */
