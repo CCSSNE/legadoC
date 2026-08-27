@@ -1436,8 +1436,8 @@ class ReadBookActivity : BaseReadBookActivity(),
         success: (() -> Unit)?
     ) {
         lifecycleScope.launch {
-            reconcileHighlightOnPageDisplayed()
             binding.readView.upContent(relativePosition, resetPageOffset)
+            reconcileHighlightOnPageDisplayed()
             if (relativePosition == 0) {
                 upSeekBarProgress()
             }
@@ -1451,8 +1451,8 @@ class ReadBookActivity : BaseReadBookActivity(),
         resetPageOffset: Boolean,
         success: (() -> Unit)?
     ) = withContext(Main.immediate) {
-        reconcileHighlightOnPageDisplayed()
         binding.readView.upContent(relativePosition, resetPageOffset)
+        reconcileHighlightOnPageDisplayed()
         if (relativePosition == 0) {
             upSeekBarProgress()
         }
@@ -1959,10 +1959,10 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     private fun applyAloudPositionToReader(position: ReadAloudPosition) {
         ReadBook.durChapterPos = position.chapterPosition
-        reconcileHighlight(position)
         ReadBook.saveRead(true)
         hideReadAloudPagePanel()
         binding.readView.upContent(resetPageOffset = false)
+        reconcileHighlight(position)
         upSeekBarProgress()
         updateReadAloudPanels()
     }
@@ -2080,26 +2080,30 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     /**
-     * 统一朗读高亮对账：只作用于当前显示页，绝不预写离屏 TextPage。
+     * 统一朗读高亮对账：只作用于当前物理显示页，绝不预写离屏 TextPage。
+     * 显示页以 ReadView 当前页为准，不得用 durPageIndex 推导——
+     * switchReadAloudTo 会把 durChapterPos 写成朗读位置，
+     * 脱钩时它不代表用户眼前这一页。
      * 当前显示页包含唯一 aloudPosition 则重设该页红字，否则清除本页高亮；
      * progress 事件驱动与页面显示变化驱动两个入口共用本函数，是高亮唯一的计算入口。
      * 只重建 UI：不修改 aloudPosition，不控制朗读引擎，
      * 不触发朗读跳转，也不改变页面跟随状态。
      */
     private fun reconcileHighlight(aloudPosition: ReadAloudPosition?) {
-        val textChapter = ReadBook.curTextChapter ?: return
-        val displayedPageIndex = ReadBook.durPageIndex
-        val displayedPage = textChapter.getPage(displayedPageIndex) ?: return
+        val displayedPage = binding.readView.curPage.textPage
+        val textChapter = ReadBook.curTextChapter
+            ?.takeIf { it.chapter.index == displayedPage.chapterIndex } ?: return
+        val displayedPageIndex = displayedPage.index
         val positionPageIndex = aloudPosition
             ?.takeIf { it.chapterIndex == textChapter.chapter.index }
             ?.let { textChapter.getPageIndexByCharIndex(it.chapterPosition) }
         if (positionPageIndex != displayedPageIndex) {
-            displayedPage.removePageAloudSpan()
+            textChapter.getPage(displayedPageIndex)?.removePageAloudSpan()
             return
         }
         val aloudSpanStart =
             aloudPosition.chapterPosition - textChapter.getReadLength(displayedPageIndex)
-        displayedPage.upPageAloudSpan(aloudSpanStart)
+        textChapter.getPage(displayedPageIndex)?.upPageAloudSpan(aloudSpanStart)
     }
 
     /**
