@@ -77,6 +77,7 @@ import io.legado.app.lib.prefs.ColorPreference.ColorPickerDialogCompat
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadAloudPosition
+import io.legado.app.model.ReadAloudPositionUpdate
 import io.legado.app.model.ReadAloudUiState
 import io.legado.app.model.ReadBook
 import io.legado.app.utils.isJsonObject
@@ -2010,6 +2011,8 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     private fun switchReadAloudTo(position: ReadAloudPosition) {
         clearAloudHighlight()
+        ReadBook.detachReadAloudPage()
+        ReadAloud.beginPositionSwitch(position)
         val chapter = ReadBook.curTextChapter
         val start = {
             val current = ReadBook.curTextChapter
@@ -2030,7 +2033,6 @@ class ReadBookActivity : BaseReadBookActivity(),
                 pageIndex = pageIndex,
             )
         }
-        ReadBook.attachReadAloudPage()
         if (chapter?.chapter?.index == position.chapterIndex) {
             start()
             return
@@ -2042,6 +2044,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
         if (!opened) {
             ReadBook.skipReadAloudSyncOnce = false
+            ReadAloud.cancelPositionSwitch()
             error(
                 "Cannot switch read aloud position: chapter=${position.chapterIndex}, " +
                     "position=${position.chapterPosition}"
@@ -3153,34 +3156,30 @@ class ReadBookActivity : BaseReadBookActivity(),
                 updateReadAloudPanels()
             }
         }
-        observeEventSticky<Bundle>(EventBus.TTS_PROGRESS) { progress ->
-            val chapterIndex = progress.getInt("chapterIndex", ReadBook.durChapterIndex)
-            val chapterStart = progress.getInt("chapterPos")
-            val previousPosition = progress
-                .getInt("previousChapterIndex", -1)
-                .takeIf { it >= 0 }
-                ?.let {
-                    ReadAloudPosition(
-                        chapterIndex = it,
-                        chapterPosition = progress.getInt("previousChapterPos"),
-                    )
-                }
+        observeEventSticky<ReadAloudPositionUpdate>(EventBus.READ_ALOUD_POSITION) { update ->
+            val position = ReadAloud.aloudPosition ?: return@observeEventSticky
+            check(position == update.position) {
+                "Read-aloud position event does not match the authoritative position"
+            }
             // 朗读高亮（isReadAloud）直接改变行绘制状态，必须在主线程更新，
             // 否则与渲染竞争会让红字丢失。脱钩（阅读页翻走）时阅读进度不跟随朗读，
             // 但高亮仍按朗读所在页持续更新，用户翻回朗读页即可立即看到正确红字。
             lifecycleScope.launch(Main) {
+                clearAloudHighlight(update.previousPosition)
+                if (update.switchConfirmed) {
+                    ReadBook.attachReadAloudPage()
+                }
                 if (BaseReadAloudService.isPlay()) {
-                    clearAloudHighlight(previousPosition)
                     ReadBook.curTextChapter?.let { textChapter ->
-                        if (ReadBook.durChapterIndex != chapterIndex) {
+                        if (ReadBook.durChapterIndex != position.chapterIndex) {
                             return@let
                         }
-                        val pageIndex = textChapter.getPageIndexByCharIndex(chapterStart)
+                        val pageIndex = textChapter.getPageIndexByCharIndex(position.chapterPosition)
                         val aloudSpanStart =
-                            chapterStart - textChapter.getReadLength(pageIndex)
+                            position.chapterPosition - textChapter.getReadLength(pageIndex)
                         textChapter.getPage(pageIndex)?.upPageAloudSpan(aloudSpanStart)
                         if (!ReadBook.readAloudPageDetached) {
-                            ReadBook.durChapterPos = chapterStart
+                            ReadBook.durChapterPos = position.chapterPosition
                             upContent()
                         }
                     }

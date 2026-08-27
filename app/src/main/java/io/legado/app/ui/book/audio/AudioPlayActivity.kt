@@ -57,6 +57,7 @@ import io.legado.app.lib.permission.NotificationPermission
 import io.legado.app.model.BookCover
 import io.legado.app.model.ImageProvider
 import io.legado.app.model.ReadAloud
+import io.legado.app.model.ReadAloudPositionUpdate
 import io.legado.app.model.ReadAloudUiState
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.read.page.entities.ParagraphSegment
@@ -973,12 +974,16 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             updateProgressForSelectedEngine()
         }
         observeEvent<Int>(EventBus.READ_ALOUD_DS) { updateSessionIndicators() }
-        observeEvent<Bundle>(EventBus.TTS_PROGRESS) { progress ->
+        observeEvent<ReadAloudPositionUpdate>(EventBus.READ_ALOUD_POSITION) { update ->
+            val position = ReadAloud.aloudPosition ?: return@observeEvent
+            check(position == update.position) {
+                "Read-aloud position event does not match the authoritative position"
+            }
             updateChapterUi()
             if (ReadAloud.selectedEngineType != ReadAloudEngineType.SOURCE_AUDIO) {
                 updateListeningTextHighlightAt(
-                    progress.getInt("chapterIndex", ReadBook.durChapterIndex),
-                    progress.getInt("chapterPos", 0),
+                    position.chapterIndex,
+                    position.chapterPosition,
                 )
             }
         }

@@ -3,7 +3,6 @@ package io.legado.app.ui.book.read
 import android.app.Application
 import android.content.Intent
 import android.net.Uri
-import android.os.Bundle
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.MutableLiveData
 import io.legado.app.R
@@ -119,12 +118,6 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
                 val suppressReadAloudSync = fromReadAloudFloating && BaseReadAloudService.isRun
                 ReadBook.skipReadAloudSyncOnce = suppressReadAloudSync
                 val opened = openChapter(index, chapterPos) {
-                    if (BaseReadAloudService.isPlay()) {
-                        postEvent(EventBus.TTS_PROGRESS, Bundle().apply {
-                            putInt("chapterIndex", index)
-                            putInt("chapterPos", chapterPos)
-                        })
-                    }
                     if (suppressReadAloudSync) {
                         ReadBook.skipReadAloudSyncOnce = false
                     }
