@@ -1984,29 +1984,43 @@ class ReadBookActivity : BaseReadBookActivity(),
         if (ReadBook.pageAnim() == 3) {
             val (chapterIndex, firstVisibleLine) =
                 binding.readView.getReadAloudPos() ?: return null
-            val line = if (AppConfig.readAloudPageStartAtParagraph) {
+            val chapterPosition = if (AppConfig.readAloudPageStartAtParagraph) {
                 firstParagraphVisibleStart(binding.readView.getCurVisiblePage())
-                    ?: firstVisibleLine
+                    ?: firstVisibleLine.chapterPosition
             } else {
-                firstVisibleLine
+                firstVisibleLine.chapterPosition
             }
-            return ReadAloudPosition(chapterIndex, line.chapterPosition)
+            return ReadAloudPosition(chapterIndex, chapterPosition)
         }
         val page = binding.readView.curPage.textPage
-        val firstLine = if (AppConfig.readAloudPageStartAtParagraph) {
-            firstParagraphVisibleStart(page)
+        val chapterPosition = if (AppConfig.readAloudPageStartAtParagraph) {
+            firstParagraphVisibleStart(page) ?: page.lines.firstOrNull()?.chapterPosition
         } else {
-            page.lines.firstOrNull()
+            page.lines.firstOrNull()?.chapterPosition
         } ?: return null
-        return ReadAloudPosition(page.chapterIndex, firstLine.chapterPosition)
+        return ReadAloudPosition(page.chapterIndex, chapterPosition)
     }
 
-    private fun firstParagraphVisibleStart(page: TextPage): TextLine? {
-        val firstLine = page.lines.firstOrNull() ?: return null
-        if (firstLine.paragraphNum <= 0) {
-            return page.lines.firstOrNull { it.paragraphNum > 0 } ?: firstLine
+    /**
+     * 页首按段 ON 的“本页第一段第一字”：本页第一个正文段落在全章中的真正段首。
+     * 段落跨页时段首在上一页，必须回退到真正的段首，
+     * 否则该开关与“本页第一个字”没有任何可区分的行为。
+     * 解析不到所属段落时回退为该行自身的位置。
+     */
+    private fun firstParagraphVisibleStart(page: TextPage): Int? {
+        val firstLine = page.lines.firstOrNull { it.paragraphNum > 0 } ?: return null
+        sequenceOf(
+            ReadBook.curTextChapter,
+            ReadBook.prevTextChapter,
+            ReadBook.nextTextChapter,
+        ).filterNotNull().forEach { textChapter ->
+            val num = textChapter.getParagraphNum(firstLine.chapterPosition + 1, false)
+            val paragraph = textChapter.paragraphs.getOrNull(num - 1)
+            if (paragraph?.realNum == firstLine.paragraphNum) {
+                return paragraph.chapterPosition
+            }
         }
-        return page.lines.firstOrNull { it.paragraphNum == firstLine.paragraphNum } ?: firstLine
+        return firstLine.chapterPosition
     }
 
     private fun switchReadAloudTo(position: ReadAloudPosition) {
