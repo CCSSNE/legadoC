@@ -1212,7 +1212,8 @@ abstract class BaseReadAloudService : BaseService(),
 
     protected fun postReadAloudTextPosition(progress: Int) {
         val chapterIndex = currentChapterIndex.takeIf { it >= 0 } ?: ReadBook.durChapterIndex
-        ReadAloud.updateAloudPosition(ReadAloudPosition(chapterIndex, progress))
+        val position = ReadAloudPosition(chapterIndex, progress)
+        val previousPosition = ReadAloud.updateAloudPosition(position)
         // 阅读页与朗读页脱离（detach）时，阅读位置保持用户当前翻到的页，
         // 不得被朗读进度覆盖——否则“从本页听”通过 durPageIndex 取起点时
         // 会被污染成原进度页，表现成点了“原进度”。
@@ -1223,6 +1224,10 @@ abstract class BaseReadAloudService : BaseService(),
         postEvent(EventBus.TTS_PROGRESS, Bundle().apply {
             putInt("chapterIndex", chapterIndex)
             putInt("chapterPos", progress)
+            previousPosition?.let {
+                putInt("previousChapterIndex", it.chapterIndex)
+                putInt("previousChapterPos", it.chapterPosition)
+            }
         })
     }
 
