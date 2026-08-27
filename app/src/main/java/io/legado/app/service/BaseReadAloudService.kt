@@ -1021,8 +1021,8 @@ abstract class BaseReadAloudService : BaseService(),
                 intent.getIntExtra("chapterPosition", -1)
             )
             IntentAction.setSpeed -> setPlaybackSpeed(intent.getFloatExtra("speed", Float.NaN))
-            IntentAction.prev -> prevChapter()
-            IntentAction.next -> nextChapter()
+            IntentAction.prev -> prevChapter(fromUserAction = true)
+            IntentAction.next -> nextChapter(fromUserAction = true)
             IntentAction.addTimer -> addTimer()
             IntentAction.setTimer -> setTimer(intent.getIntExtra("minute", 0))
             IntentAction.stop -> stopSelf()
@@ -1556,7 +1556,7 @@ abstract class BaseReadAloudService : BaseService(),
 
             override fun onSkipToNext() {
                 if (getPrefBoolean("mediaButtonPerNext", false)) {
-                    nextChapter()
+                    nextChapter(fromUserAction = true)
                 } else {
                     nextP()
                 }
@@ -1564,7 +1564,7 @@ abstract class BaseReadAloudService : BaseService(),
 
             override fun onSkipToPrevious() {
                 if (getPrefBoolean("mediaButtonPerNext", false)) {
-                    prevChapter()
+                    prevChapter(fromUserAction = true)
                 } else {
                     prevP()
                 }
@@ -1773,16 +1773,31 @@ abstract class BaseReadAloudService : BaseService(),
 
     abstract fun aloudServicePendingIntent(actionStr: String): PendingIntent?
 
-    open fun prevChapter() {
+    open fun prevChapter(fromUserAction: Boolean = false) {
+        if (fromUserAction) attachPageFollowForUserJump()
         resumeReadAloudInternal()
         advanceToPrevChapter(toLast = false)
     }
 
-    open fun nextChapter() {
+    open fun nextChapter(fromUserAction: Boolean = false) {
+        if (fromUserAction) attachPageFollowForUserJump()
         ReadBook.upReadTime()
         AppLog.putDebug("${currentReadAloudChapterTitle()} 朗读结束跳转下一章并朗读")
         resumeReadAloudInternal()
         advanceToNextChapter()
+    }
+
+    /**
+     * 用户主动跳章（听书对话框/通知栏/媒体控件）属于明确要求重新跟随的入口：
+     * 解除页面脱钩，advanceToPrev/NextChapter 才会走 moveToPrev/NextChapter
+     * 的显示同步链路，视角跟随到目标章。引擎自动跨章（nextP 章尾、
+     * 子类播完推进）不经过这里，脱钩态仍保持显示不动。
+     */
+    private fun attachPageFollowForUserJump() {
+        if (ReadBook.readAloudPageDetached) {
+            AppLog.putDebug("[朗读] 用户跳章 解除脱钩并跟随视角")
+            ReadBook.attachReadAloudPage()
+        }
     }
 
     /**
