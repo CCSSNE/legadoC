@@ -51,9 +51,10 @@ class TTSReadAloudService : BaseReadAloudService() {
     @Volatile
     private var lastRangeOffset = 0
 
-    // 实测朗读速率（字/毫秒），初值按常见中文 TTS 默认语速约 250 字/分钟
+    // 实测朗读速率（字/毫秒）：由上一句 onDone 的真实总时长滚动校准，
+    // 初值按常见中文 TTS 语速约 480 字/分钟，只影响第一句的预估
     @Volatile
-    private var measuredCharRate = 250.0 / 60_000.0
+    private var measuredCharRate = 480.0 / 60_000.0
 
     private val TAG = "TTSReadAloudService"
 
@@ -120,7 +121,7 @@ class TTSReadAloudService : BaseReadAloudService() {
         val generation = speakGeneration
         AppLog.putDebug(
             "[朗读] 预测换页调度 单元:$nowSpeak 长:$utteranceTextLength " +
-                "页界偏移:$breakOffset 延时:${delayMs}ms"
+                "页界偏移:$breakOffset 延时:${delayMs}ms 速率:${(measuredCharRate * 60_000).toInt()}/min"
         )
         val runnable = Runnable {
             predictRunnable = null
@@ -453,8 +454,18 @@ class TTSReadAloudService : BaseReadAloudService() {
             val index = utteranceIndex(utteranceId) ?: return
             if (index < nowSpeak) return
             syncToUtteranceIndex(index)
-            // 朗读单元切换，旧单元的页界预测作废；预加载队列中下一单元
-            // onStart 时会按最新光标重新调度
+            // 本句真实总时长已知：先按它校准预测速率，再作废旧单元的页界预测
+            //（预加载队列中下一单元 onStart 时会按最新光标与速率重新调度）
+            val len = currentUtteranceTextLength()
+            val elapsed = SystemClock.elapsedRealtime() - utteranceStartRealtime
+            if (len > 0 && elapsed > 500) {
+                val sample = len.toDouble() / elapsed
+                measuredCharRate = measuredCharRate * 0.7 + sample * 0.3
+                AppLog.putDebug(
+                    "[朗读] 预测速率校准 len:$len 耗时:${elapsed}ms → " +
+                        "${(measuredCharRate * 60_000).toInt()}/min"
+                )
+            }
             cancelPageBreakPrediction()
             activeUtteranceId = null
             retryParagraphKey = null
