@@ -38,7 +38,6 @@ object EventBus {
     const val UPDATE_READ_ACTION_BAR = "updateReadActionBar"
     const val UP_SEEK_BAR = "upSeekBar"
     const val READ_ALOUD_PLAY = "readAloudPlay"
-    const val READ_ALOUD_PAGE_DETACHED = "readAloudPageDetached"
     const val OPEN_READ_ALOUD_DIALOG = "openReadAloudDialog"
     const val CLOSE_READ_ALOUD_DIALOG = "closeReadAloudDialog"
     const val READ_ALOUD_FLOATING_AVOIDANCE = "readAloudFloatingAvoidance"

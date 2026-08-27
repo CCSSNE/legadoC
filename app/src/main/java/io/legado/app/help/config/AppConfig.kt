@@ -1836,10 +1836,26 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
     /**
      * 页首按段：true 表示页首取本页第一段第一个字（页首若在段落中间则回退到段首），
-     * false 表示页首严格取本页第一个字；从本页读与按页朗读的起点都受此开关控制。
+     * false 表示页首严格取本页第一个字；从本页读与强制追页的起点都受此开关控制。
      */
     val readAloudPageStartAtParagraph
         get() = appCtx.getPrefBoolean(PreferKey.readAloudPageStartAtParagraph, true)
+
+    /**
+     * 页间分段：true 表示跨页的段从页边界裂成真正的两个朗读单元
+     * （边界绝对准，朗读到段间会有停顿）；false 表示整段朗读，
+     * 翻页时机由朗读位置过界自然触发。
+     */
+    val pageSplit
+        get() = appCtx.getPrefBoolean(PreferKey.pageSplit, false)
+
+    /**
+     * 强制追页：true 表示翻到哪页就相当于双击该页最上面的那一段开始朗读，
+     * 视角永远在朗读页；false 表示翻页不联动朗读，
+     * 显示与朗读的脱节由派生条件现算并呈现“回原进度”入口。
+     */
+    val forcePageFollow
+        get() = appCtx.getPrefBoolean(PreferKey.forcePageFollow, false)
 
     var readAloudScrollFollowTimeout: Int
         get() = appCtx.getPrefInt(PreferKey.readAloudScrollFollowTimeout, 3000).coerceIn(0, 10000)

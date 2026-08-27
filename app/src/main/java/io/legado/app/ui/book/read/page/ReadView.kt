@@ -1013,11 +1013,10 @@ class ReadView(context: Context, attrs: AttributeSet) :
     }
 
     /**
-     * 从选择位置开始朗读
+     * 从选择位置开始朗读（原语A“双击换段”的变体：只设朗读起点，不联动显示）
      */
     suspend fun aloudStartSelect() {
         val selectStartPos = curPage.selectStartPos
-        ReadBook.attachReadAloudPage()
         var pagePos = selectStartPos.relativePagePos
         val line = selectStartPos.lineIndex
         val column = selectStartPos.columnIndex

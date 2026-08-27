@@ -191,7 +191,7 @@ object ReadAloud {
             )
         } else {
             val paragraphs = chapter.getParagraphs(
-                appCtx.getPrefBoolean(PreferKey.readAloudByPage, false)
+                appCtx.getPrefBoolean(PreferKey.pageSplit, false)
             )
             if (paragraphs.isEmpty()) return null
             val chapterPosition = aloudPosition
@@ -349,10 +349,16 @@ object ReadAloud {
         }
     }
 
+    /**
+     * 上一章/下一章是用户显式传送：Intent 携带 syncView=true，
+     * 引擎跳章后会把显示视角同步到目标章（等效自动触发“回原进度”）。
+     * 引擎自然跨章不带该标记，视角是否跟随由跟随规则判定。
+     */
     fun prevChapter(context: Context) {
         if (BaseReadAloudService.isRun) {
             val intent = Intent(context, commandClass() ?: return)
             intent.action = IntentAction.prev
+            intent.putExtra("syncView", true)
             context.startForegroundServiceCompat(intent)
         }
     }
@@ -361,6 +367,7 @@ object ReadAloud {
         if (BaseReadAloudService.isRun) {
             val intent = Intent(context, commandClass() ?: return)
             intent.action = IntentAction.next
+            intent.putExtra("syncView", true)
             context.startForegroundServiceCompat(intent)
         }
     }

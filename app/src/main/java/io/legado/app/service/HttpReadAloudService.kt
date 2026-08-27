@@ -234,7 +234,7 @@ class HttpReadAloudService : BaseReadAloudService(),
 
     private suspend fun preDownloadAudios(httpTts: HttpTTS) {
         val textChapter = ReadBook.nextTextChapter ?: return
-        val contentList = textChapter.getNeedReadAloud(0, readAloudByPage, 0, 1)
+        val contentList = textChapter.getNeedReadAloud(0, pageSplit, 0, 1)
             .splitToSequence("\n")
             .filter { it.isNotEmpty() }
             .takePreloadContentList(maxLength = httpPreloadAheadLength())
@@ -335,7 +335,7 @@ class HttpReadAloudService : BaseReadAloudService(),
         downloaderChannel: Channel<Downloader>
     ) {
         val textChapter = ReadBook.nextTextChapter ?: return
-        val contentList = textChapter.getNeedReadAloud(0, readAloudByPage, 0, 1)
+        val contentList = textChapter.getNeedReadAloud(0, pageSplit, 0, 1)
             .splitToSequence("\n")
             .filter { it.isNotEmpty() }
             .takePreloadContentList(maxLength = httpPreloadAheadLength())
@@ -657,8 +657,9 @@ class HttpReadAloudService : BaseReadAloudService(),
                 if (pageIndex + 1 < textChapter.pageSize
                     && readAloudNumber + i > textChapter.getReadLength(pageIndex + 1)
                 ) {
+                    // 按播放进度推算过页界（预测换页的未来挂载点）：
+                    // 只推进引擎私有页光标并发布位置，显示翻页由 UI 侧跟随规则处理
                     pageIndex++
-                    moveReadBookToNextPageForReadAloud()
                     upTtsProgress(readAloudNumber + i.toInt())
                 }
                 delay(sleep)

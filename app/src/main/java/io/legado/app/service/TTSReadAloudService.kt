@@ -320,8 +320,8 @@ class TTSReadAloudService : BaseReadAloudService() {
                     if (pageIndex + 1 < it.pageSize
                         && readAloudNumber + 1 > it.getReadLength(pageIndex + 1)
                     ) {
+                        // 只推进引擎私有页光标，显示翻页由 UI 侧跟随规则处理
                         pageIndex++
-                        moveReadBookToNextPageForReadAloud()
                     }
                     upTtsProgress(readAloudNumber + 1)
                 }
@@ -346,8 +346,9 @@ class TTSReadAloudService : BaseReadAloudService() {
                     if (pageIndex + 1 < it.pageSize
                         && readAloudNumber + start > it.getReadLength(pageIndex + 1)
                     ) {
+                        // 按播放进度推算过页界（预测换页的未来挂载点）：
+                        // 只推进引擎私有页光标并发布位置，显示翻页由 UI 侧跟随规则处理
                         pageIndex++
-                        moveReadBookToNextPageForReadAloud()
                         upTtsProgress(readAloudNumber + start)
                     }
                 }

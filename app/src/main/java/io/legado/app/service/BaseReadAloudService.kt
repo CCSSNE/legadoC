@@ -281,7 +281,18 @@ abstract class BaseReadAloudService : BaseService(),
     var pageChanged = false
     private var toLast = false
     var paragraphStartPos = 0
-    var readAloudByPage = false
+
+    /**
+     * 页间分段：true=跨页的段从页边界裂成真正的两个朗读单元（边界绝对准，段间有停顿）；
+     * false=整段传给 TTS，翻页时机由朗读位置过界自然触发。
+     *
+     * 【预测换页 · 预留挂载点】未来可在此开关关闭时按“文字量比例预估音频时刻”翻页：
+     * TTS 返回整段音频时长 T、单元内页边界在字符占比 r 处 → 引擎按播放进度
+     * 在 T×r 时刻发布前进位置事件（经 upTtsProgress/postReadAloudTextPosition 输出），
+     * 翻页与否仍由 UI 侧跟随规则判定。约束：预测只允许影响位置事件的发布时机，
+     * 不得新增显示进度写点、不得绕过位置事件直改 UI。
+     */
+    var pageSplit = false
         private set
     @Volatile
     private var readAloudStartRequest = 0L
@@ -1021,8 +1032,8 @@ abstract class BaseReadAloudService : BaseService(),
                 intent.getIntExtra("chapterPosition", -1)
             )
             IntentAction.setSpeed -> setPlaybackSpeed(intent.getFloatExtra("speed", Float.NaN))
-            IntentAction.prev -> prevChapter(fromUserAction = true)
-            IntentAction.next -> nextChapter(fromUserAction = true)
+            IntentAction.prev -> prevChapter(intent.getBooleanExtra("syncView", false))
+            IntentAction.next -> nextChapter(intent.getBooleanExtra("syncView", false))
             IntentAction.addTimer -> addTimer()
             IntentAction.setTimer -> setTimer(intent.getIntExtra("minute", 0))
             IntentAction.stop -> stopSelf()
@@ -1108,11 +1119,11 @@ abstract class BaseReadAloudService : BaseService(),
             return false
         }
         readAloudNumber = chapter.getReadLength(safePageIndex) + startPos.coerceAtLeast(0)
-        readAloudByPage = getPrefBoolean(PreferKey.readAloudByPage)
-        contentList = chapter.getNeedReadAloud(0, readAloudByPage, 0)
+        pageSplit = getPrefBoolean(PreferKey.pageSplit)
+        contentList = chapter.getNeedReadAloud(0, pageSplit, 0)
             .split("\n")
             .filter { it.isNotEmpty() }
-        nowSpeak = chapter.getParagraphNum(readAloudNumber + 1, readAloudByPage) - 1
+        nowSpeak = chapter.getParagraphNum(readAloudNumber + 1, pageSplit) - 1
         nowSpeak = if (contentList.isEmpty()) {
             0
         } else {
@@ -1128,7 +1139,7 @@ abstract class BaseReadAloudService : BaseService(),
         AppLog.putDebug(
             "[朗读] 章节准备 ch:${chapter.chapter.index} page:$safePageIndex startPos:$startPos " +
                 "number:$readAloudNumber nowSpeak:$nowSpeak offset:$paragraphStartPos " +
-                "byPage:$readAloudByPage toLast:${chapter.getLastParagraphPosition() == readAloudNumber}"
+                "byPage:$pageSplit toLast:${chapter.getLastParagraphPosition() == readAloudNumber}"
         )
         publishParagraphProgress()
         return true
@@ -1136,19 +1147,19 @@ abstract class BaseReadAloudService : BaseService(),
 
     /**
      * [paragraphStartPos] 必须始终是 contentList[nowSpeak] 的内部偏移，绝不能是页内偏移。
-     * 朗读单元只由 readAloudByPage 决定：按段=整段段落 getParagraphs(false)，
+     * 朗读单元只由 pageSplit 决定：按段=整段段落 getParagraphs(false)，
      * 按页=页内段落片段 getParagraphs(true)（与 getNeedReadAloud 的 split("\n") 单元一致）。
      * 两种模式共用同一公式：readAloudNumber 相对所在朗读单元起点的偏移。
      * 跨页段落的页首续读、页中起读都由此保持单元内偏移语义，不会被吞回单元开头。
      */
     private fun resolveParagraphStartPos(chapter: TextChapter): Int {
-        val paragraphNum = chapter.getParagraphNum(readAloudNumber + 1, readAloudByPage)
-        val paragraph = chapter.getParagraphs(readAloudByPage).getOrNull(paragraphNum - 1)
+        val paragraphNum = chapter.getParagraphNum(readAloudNumber + 1, pageSplit)
+        val paragraph = chapter.getParagraphs(pageSplit).getOrNull(paragraphNum - 1)
         val offset = paragraph
             ?.let { (readAloudNumber - it.chapterPosition).coerceAtLeast(0) }
             ?: 0
         AppLog.putDebug(
-            "[朗读] 起点偏移 mode:${if (readAloudByPage) "按页" else "按段"} " +
+            "[朗读] 起点偏移 mode:${if (pageSplit) "按页" else "按段"} " +
                 "number:$readAloudNumber 单元:$paragraphNum 单元首:${paragraph?.chapterPosition ?: -1} " +
                 "偏移:$offset"
         )
@@ -1257,22 +1268,10 @@ abstract class BaseReadAloudService : BaseService(),
         if (preparedReadAloudStartRequest != readAloudStartRequest) return
         val chapterIndex = currentChapterIndex.takeIf { it >= 0 } ?: ReadBook.durChapterIndex
         val position = ReadAloudPosition(chapterIndex, progress)
+        // 引擎只发布朗读位置，绝不直写显示进度（durChapterPos）。
+        // 显示是否跟随、何时翻页，全部由 UI 侧跟随规则
+        // （ReadBookActivity.shouldFollowAloudAdvance）基于位置事件现算判定。
         ReadAloud.publishAloudPosition(position)
-        val sameChapter = chapterIndex == ReadBook.durChapterIndex
-        val followWrite = sameChapter && !ReadBook.readAloudPageDetached &&
-            // 跟随地板：补读期未到地板不写显示进度，与 UI 侧跟随写点共用同一闸门
-            ReadBook.aloudFollowAllowsWrite(position)
-        AppLog.putDebug(
-            "[朗读] 引擎进度 ch:$chapterIndex pos:$progress detach:${ReadBook.readAloudPageDetached} " +
-                "同章:$sameChapter → ${if (followWrite) "写显示进度" else "不改显示"}"
-        )
-        // 阅读页与朗读页脱离（detach）时，阅读位置保持用户当前翻到的页，
-        // 不得被朗读进度覆盖——否则“从本页听”通过 durPageIndex 取起点时
-        // 会被污染成原进度页，表现成点了“原进度”。
-        if (followWrite) {
-            ReadBook.durChapterPos = progress
-            ReadBook.book?.durChapterPos = progress
-        }
     }
 
     private fun publishParagraphProgress() {
@@ -1310,7 +1309,7 @@ abstract class BaseReadAloudService : BaseService(),
             )
             return
         }
-        val paragraphs = chapter.getParagraphs(readAloudByPage)
+        val paragraphs = chapter.getParagraphs(pageSplit)
         val paragraph = paragraphs.getOrNull(position) ?: run {
             stopReadAloudOnInvalidPosition(
                 "Read aloud paragraph mapping is inconsistent: " +
@@ -1360,7 +1359,7 @@ abstract class BaseReadAloudService : BaseService(),
             publishParagraphProgress()
             return
         }
-        val paragraphs = chapter.getParagraphs(readAloudByPage)
+        val paragraphs = chapter.getParagraphs(pageSplit)
         val position = paragraphs.indexOfFirst { chapterPosition in it.chapterIndices }
         if (position !in contentList.indices) {
             stopReadAloudOnInvalidPosition(
@@ -1388,18 +1387,6 @@ abstract class BaseReadAloudService : BaseService(),
         postEvent(EventBus.ALOUD_STATE, if (loading) Status.LOADING else Status.PLAY)
     }
 
-    internal fun moveReadBookToPrevPageForReadAloud() {
-        if (!ReadBook.readAloudPageDetached) {
-            ReadBook.moveToPrevPage(fromReadAloud = true)
-        }
-    }
-
-    internal fun moveReadBookToNextPageForReadAloud() {
-        if (!ReadBook.readAloudPageDetached) {
-            ReadBook.moveToNextPage(fromReadAloud = true)
-        }
-    }
-
     private fun prevP() {
         if (nowSpeak > 0) {
             playStop()
@@ -1409,13 +1396,12 @@ abstract class BaseReadAloudService : BaseService(),
                 paragraphStartPos = 0
             } while (nowSpeak > 0 && contentList[nowSpeak].matches(AppPattern.notReadAloudRegex))
             textChapter?.let {
-                if (readAloudByPage) {
+                if (pageSplit) {
                     val paragraphs = it.getParagraphs(true)
                     if (!paragraphs[nowSpeak].isParagraphEnd) readAloudNumber++
                 }
                 if (readAloudNumber < it.getReadLength(pageIndex)) {
                     pageIndex--
-                    moveReadBookToPrevPageForReadAloud()
                 }
             }
             upTtsProgress(readAloudNumber + 1)
@@ -1432,7 +1418,7 @@ abstract class BaseReadAloudService : BaseService(),
             paragraphStartPos = 0
             nowSpeak++
             textChapter?.let {
-                if (readAloudByPage) {
+                if (pageSplit) {
                     val paragraphs = it.getParagraphs(true)
                     if (!paragraphs[nowSpeak].isParagraphEnd) readAloudNumber--
                 }
@@ -1440,7 +1426,6 @@ abstract class BaseReadAloudService : BaseService(),
                     && readAloudNumber >= it.getReadLength(pageIndex + 1)
                 ) {
                     pageIndex++
-                    moveReadBookToNextPageForReadAloud()
                 }
             }
             upTtsProgress(readAloudNumber + 1)
@@ -1556,7 +1541,7 @@ abstract class BaseReadAloudService : BaseService(),
 
             override fun onSkipToNext() {
                 if (getPrefBoolean("mediaButtonPerNext", false)) {
-                    nextChapter(fromUserAction = true)
+                    nextChapter(syncView = true)
                 } else {
                     nextP()
                 }
@@ -1564,7 +1549,7 @@ abstract class BaseReadAloudService : BaseService(),
 
             override fun onSkipToPrevious() {
                 if (getPrefBoolean("mediaButtonPerNext", false)) {
-                    prevChapter(fromUserAction = true)
+                    prevChapter(syncView = true)
                 } else {
                     prevP()
                 }
@@ -1773,44 +1758,41 @@ abstract class BaseReadAloudService : BaseService(),
 
     abstract fun aloudServicePendingIntent(actionStr: String): PendingIntent?
 
-    open fun prevChapter(fromUserAction: Boolean = false) {
-        if (fromUserAction) attachPageFollowForUserJump()
+    /**
+     * 上一章。syncView=true 表示用户显式传送（对话框/通知栏/线控/媒体控件）：
+     * 跳章后显示视角同步到目标章，等效自动触发“回原进度”。
+     */
+    open fun prevChapter(syncView: Boolean = false) {
         resumeReadAloudInternal()
-        advanceToPrevChapter(toLast = false)
-    }
-
-    open fun nextChapter(fromUserAction: Boolean = false) {
-        if (fromUserAction) attachPageFollowForUserJump()
-        ReadBook.upReadTime()
-        AppLog.putDebug("${currentReadAloudChapterTitle()} 朗读结束跳转下一章并朗读")
-        resumeReadAloudInternal()
-        advanceToNextChapter()
+        advanceToPrevChapter(toLast = false, syncView = syncView)
     }
 
     /**
-     * 用户主动跳章（听书对话框/通知栏/媒体控件）属于明确要求重新跟随的入口：
-     * 解除页面脱钩，advanceToPrev/NextChapter 才会走 moveToPrev/NextChapter
-     * 的显示同步链路，视角跟随到目标章。引擎自动跨章（nextP 章尾、
-     * 子类播完推进）不经过这里，脱钩态仍保持显示不动。
+     * 下一章。syncView 语义同 [prevChapter]；引擎读到章尾自动推进时不带 syncView，
+     * 视角是否跟随由 [advanceToNextChapter] 内的派生判定决定。
      */
-    private fun attachPageFollowForUserJump() {
-        if (ReadBook.readAloudPageDetached) {
-            AppLog.putDebug("[朗读] 用户跳章 解除脱钩并跟随视角")
-            ReadBook.attachReadAloudPage()
-        }
+    open fun nextChapter(syncView: Boolean = false) {
+        ReadBook.upReadTime()
+        AppLog.putDebug("${currentReadAloudChapterTitle()} 朗读结束跳转下一章并朗读")
+        resumeReadAloudInternal()
+        advanceToNextChapter(syncView)
     }
 
     /**
      * 统一推进到上一章。
-     * 书源音频（sessionChapterCanStartWithoutText）：以 BookChapter.index 立即推进，不等待正文 TextChapter。
-     * 上一章正文已预加载完成时，moveToPrevChapter 的正文链路会经 curPageChanged 接管启动（附带段落进度）；
-     * 预加载未完成时正文链路不会启动，音频必须立即以统一阅读目标（ReadBook.durChapterIndex）推进并播放，
-     * 阅读页正文有则随后同步，无则音频继续。TTS / HTTP TTS 保持原有正文前置逻辑。
+     * 视角跟随是派生判定，不是存储状态：用户显式传送（syncView），
+     * 或显示章仍等于朗读章（一直在跟随），显示章节一起切；
+     * 显示章在别处（用户翻走了）→ 只切朗读，显示不动。
+     * 书源音频（sessionChapterCanStartWithoutText）：以 BookChapter.index 立即推进，
+     * 不等待正文 TextChapter；上一章正文已预加载完成时，moveToPrevChapter 的正文链路
+     * 会经 curPageChanged 接管启动（附带段落进度）；预加载未完成时音频立即以
+     * 统一阅读目标（ReadBook.durChapterIndex）推进并播放。TTS / HTTP TTS 保持正文前置逻辑。
      */
-    private fun advanceToPrevChapter(toLast: Boolean) {
+    private fun advanceToPrevChapter(toLast: Boolean, syncView: Boolean = false) {
         this.toLast = toLast
-        if (ReadBook.readAloudPageDetached) {
-            switchDetachedReadAloudChapterByOffset(-1, toLast)
+        val followDisplay = syncView || ReadBook.durChapterIndex == currentChapterIndex
+        if (!followDisplay) {
+            switchReadAloudChapterKeepingViewByOffset(-1, toLast)
         } else if (sessionChapterCanStartWithoutText) {
             val prevTextReady = ReadBook.prevTextChapter?.isCompleted == true
             if (!ReadBook.moveToPrevChapter(true, toLast = toLast, fromReadAloud = true)) {
@@ -1829,9 +1811,10 @@ abstract class BaseReadAloudService : BaseService(),
     /**
      * 统一推进到下一章，语义同 [advanceToPrevChapter]。
      */
-    private fun advanceToNextChapter() {
-        if (ReadBook.readAloudPageDetached) {
-            switchDetachedReadAloudChapterByOffset(1, toLast = false)
+    private fun advanceToNextChapter(syncView: Boolean = false) {
+        val followDisplay = syncView || ReadBook.durChapterIndex == currentChapterIndex
+        if (!followDisplay) {
+            switchReadAloudChapterKeepingViewByOffset(1, toLast = false)
         } else if (sessionChapterCanStartWithoutText) {
             val nextTextReady = ReadBook.nextTextChapter?.isCompleted == true
             if (!ReadBook.moveToNextChapter(true, fromReadAloud = true)) {
@@ -1854,22 +1837,25 @@ abstract class BaseReadAloudService : BaseService(),
         return textChapter?.title ?: ReadBook.curTextChapter?.title
     }
 
-    private fun switchDetachedReadAloudChapterByOffset(offset: Int, toLast: Boolean) {
+    private fun switchReadAloudChapterKeepingViewByOffset(offset: Int, toLast: Boolean) {
         val sourceIndex = currentChapterIndex.takeIf { it >= 0 } ?: run {
             stopReadAloudOnInvalidPosition("Detached read aloud chapter is missing")
             return
         }
-        switchDetachedReadAloudChapter(sourceIndex + offset, toLast)
+        switchReadAloudChapterKeepingView(sourceIndex + offset, toLast)
     }
 
-    private fun switchDetachedReadAloudChapter(targetIndex: Int, toLast: Boolean) {
+    /**
+     * 视角在别的章时只切朗读章节，显示不动（视角保持用户当前页）。
+     */
+    private fun switchReadAloudChapterKeepingView(targetIndex: Int, toLast: Boolean) {
         if (targetIndex !in 0 until ReadBook.simulatedChapterSize) {
             this.toLast = false
             stopSelf()
             return
         }
         AppLog.putDebug(
-            "[朗读] 脱钩切章 ${currentChapterIndex}→$targetIndex toLast:$toLast " +
+            "[朗读] 视角保持切章 ${currentChapterIndex}→$targetIndex toLast:$toLast " +
                 "显示章:${ReadBook.durChapterIndex}"
         )
         playStop()

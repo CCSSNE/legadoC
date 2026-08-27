@@ -931,7 +931,8 @@
     <string name="battery_show">%d%%</string>
     <string name="timer_m">%d min</string>
     <string name="brightness_auto">Auto-Brightness %s</string>
-    <string name="read_aloud_by_page">Speak by pages</string>
+    <string name="read_aloud_force_page_follow">Force page follow</string>
+    <string name="read_aloud_page_split">Split paragraphs at page breaks</string>
     <string name="speak_engine">Speak Engine</string>
     <string name="bg_image">Background images</string>
     <string name="bg_color">Background color</string>
@@ -1363,7 +1364,8 @@
     <string name="custom_group_summary">Turn off Replace Group / Turn on Add Group</string>
     <string name="pref_media_button_per_next">Media Buttons • Previous | Next</string>
     <string name="pref_media_button_per_next_summary">Previous Paragraph|Next Paragraph/Previous Chapter|Next Chapter</string>
-    <string name="read_aloud_by_page_summary">When on, reading starts from the page you turn to, and the page start follows the “page start at paragraph” switch.</string>
+    <string name="read_aloud_force_page_follow_summary">When on, turning to a page is like double-tapping the top paragraph of that page to start reading aloud; the view always stays on the read-aloud page.</string>
+    <string name="read_aloud_page_split_summary">When on, a paragraph crossing a page break becomes two real read-aloud units (exact boundary, slight pause); when off, the whole paragraph is read as one and the page turns naturally as reading passes the break.</string>
     <string name="check_source_show_debug_message">Check book source shows debug message</string>
     <string name="check_source_show_debug_message_summary">Show network status and timestamp during source checking</string>
     <string name="need_login">need login</string>
