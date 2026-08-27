@@ -2050,6 +2050,16 @@ class ReadBookActivity : BaseReadBookActivity(),
                 "显示pos:${ReadBook.durChapterPos}",
             module = LogModule.READ_ALOUD
         )
+        // 新起点作废旧地板，避免残留旧闩拦截合法跟随。
+        ReadBook.clearAloudFollowFloor()
+        if (position.chapterIndex == ReadBook.durChapterIndex &&
+            position.chapterPosition < ReadBook.durChapterPos
+        ) {
+            // 起点被回退到当前显示页之前（页首按段跨页回退/双击跨页段首）：
+            // 开跟随地板，语音补读当前位置之前内容期间显示不动，
+            // 否则首次位置发布会把显示进度拽小、页面翻回上一页。
+            ReadBook.setAloudFollowFloor(position.chapterIndex, ReadBook.durChapterPos)
+        }
         ReadAloud.beginPositionSwitch(position)
         val chapter = ReadBook.curTextChapter
         val start = {
@@ -3212,6 +3222,16 @@ class ReadBookActivity : BaseReadBookActivity(),
                     return@launch
                 }
                 if (!ReadBook.readAloudPageDetached) {
+                    // 跟随地板：起点回退到显示页之前的补读期，位置未到地板前不写显示进度，
+                    // 避免页面被拽回上一页；到达地板后恢复跟随翻页。
+                    if (!ReadBook.aloudFollowAllowsWrite(position)) {
+                        AppLog.putDebug(
+                            "[朗读] 跟随拦截(未到地板) 显示pos:${ReadBook.durChapterPos} " +
+                                "朗读pos:${position.chapterPosition}",
+                            module = LogModule.READ_ALOUD
+                        )
+                        return@launch
+                    }
                     AppLog.putDebug(
                         "[朗读] 跟随写显示 pos:${position.chapterPosition}",
                         module = LogModule.READ_ALOUD

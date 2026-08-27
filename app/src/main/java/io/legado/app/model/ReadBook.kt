@@ -102,6 +102,59 @@ object ReadBook : CoroutineScope by MainScope() {
      */
     var readAloudPageDetached = false
         private set
+
+    /**
+     * 跟随地板（补读锁）：起点被回退到当前显示页之前时（如“从本页读”回退跨页段首），
+     * 语音先补读当前页之前的内容，跟随写在到达地板前不写显示进度，
+     * 避免页面被拽回上一页；到达即自动清除，脱钩、重新跟随、新起点也立即清除。
+     * 这是页面跟随策略内部的瞬时闩，不是朗读位置副本；只经下面三个方法读写。
+     */
+    private var aloudFollowFloorChapterIndex = -1
+    private var aloudFollowFloorPos = -1
+
+    @Synchronized
+    fun setAloudFollowFloor(chapterIndex: Int, floorPos: Int) {
+        aloudFollowFloorChapterIndex = chapterIndex
+        aloudFollowFloorPos = floorPos
+        AppLog.putDebug(
+            "[朗读] 跟随地板 → 开启 ch:$chapterIndex floor:$floorPos 补读期间显示不动",
+            module = LogModule.READ_ALOUD
+        )
+    }
+
+    @Synchronized
+    fun clearAloudFollowFloor() {
+        if (aloudFollowFloorChapterIndex >= 0) {
+            AppLog.putDebug(
+                "[朗读] 跟随地板 → 清除 ch:$aloudFollowFloorChapterIndex floor:$aloudFollowFloorPos",
+                module = LogModule.READ_ALOUD
+            )
+        }
+        aloudFollowFloorChapterIndex = -1
+        aloudFollowFloorPos = -1
+    }
+
+    /**
+     * 跟随写显示进度前的统一闸门：位置已到地板或无地板时放行并顺带清闩，
+     * 未到地板时拦截，显示保持等待语音补读到位。
+     */
+    @Synchronized
+    fun aloudFollowAllowsWrite(position: ReadAloudPosition): Boolean {
+        val floorChapter = aloudFollowFloorChapterIndex
+        if (floorChapter < 0) return true
+        if (floorChapter != position.chapterIndex || position.chapterPosition >= aloudFollowFloorPos) {
+            AppLog.putDebug(
+                "[朗读] 跟随地板 → 补读到位 ch:$floorChapter floor:$aloudFollowFloorPos " +
+                    "到达:${position.chapterPosition}",
+                module = LogModule.READ_ALOUD
+            )
+            aloudFollowFloorChapterIndex = -1
+            aloudFollowFloorPos = -1
+            return true
+        }
+        return false
+    }
+
     private var pendingReadAloudChapterSync = false
     var prevTextChapter: TextChapter? = null
     var curTextChapter: TextChapter? = null
@@ -569,6 +622,7 @@ object ReadBook : CoroutineScope by MainScope() {
     fun detachReadAloudPage() {
         if (!readAloudPageDetached) {
             readAloudPageDetached = true
+            clearAloudFollowFloor()
             AppLog.putDebug(
                 "[朗读] 页面跟随 → 脱钩(显示保持用户页) 显示pos:$durChapterPos",
                 module = LogModule.READ_ALOUD
@@ -580,6 +634,7 @@ object ReadBook : CoroutineScope by MainScope() {
     fun attachReadAloudPage() {
         if (readAloudPageDetached) {
             readAloudPageDetached = false
+            clearAloudFollowFloor()
             AppLog.putDebug(
                 "[朗读] 页面跟随 → 跟随(显示归朗读位置管) 朗读pos:${ReadAloud.aloudPosition?.chapterPosition}",
                 module = LogModule.READ_ALOUD
