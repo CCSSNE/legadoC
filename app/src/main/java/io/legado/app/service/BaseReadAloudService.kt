@@ -1121,21 +1121,16 @@ abstract class BaseReadAloudService : BaseService(),
     }
 
     /**
-     * 阅读页已把朗读起点解析成绝对位置（[readAloudNumber]），引擎只负责原样保留：
-     * [paragraphStartPos] 是起点在真正读出单元（按段=整段，按页=页片段）内的偏移。
-     * 按段朗读时偏移必须相对整段段首计算——起点恰好落在页首的跨页段落
-     * 不能因为偏移为 0 就退回整段开头；按页朗读时偏移就是所在页片段内的偏移。
+     * [paragraphStartPos] 必须始终是 contentList[nowSpeak] 的内部偏移，绝不能是页内偏移。
+     * 朗读单元只由 readAloudByPage 决定：按段=整段段落 getParagraphs(false)，
+     * 按页=页内段落片段 getParagraphs(true)（与 getNeedReadAloud 的 split("\n") 单元一致）。
+     * 两种模式共用同一公式：readAloudNumber 相对所在朗读单元起点的偏移。
+     * 跨页段落的页首续读、页中起读都由此保持单元内偏移语义，不会被吞回单元开头。
      */
     private fun resolveParagraphStartPos(chapter: TextChapter): Int {
-        if (readAloudByPage) {
-            val targetPageIndex = chapter.getPageIndexByCharIndex(readAloudNumber.coerceAtLeast(0))
-            if (targetPageIndex !in 0 until chapter.pageSize) {
-                return 0
-            }
-            return (readAloudNumber - chapter.getReadLength(targetPageIndex)).coerceAtLeast(0)
-        }
-        val paragraphNum = chapter.getParagraphNum(readAloudNumber + 1, false)
-        val paragraph = chapter.getParagraphs(false).getOrNull(paragraphNum - 1) ?: return 0
+        val paragraphNum = chapter.getParagraphNum(readAloudNumber + 1, readAloudByPage)
+        val paragraph = chapter.getParagraphs(readAloudByPage).getOrNull(paragraphNum - 1)
+            ?: return 0
         return (readAloudNumber - paragraph.chapterPosition).coerceAtLeast(0)
     }
 
