@@ -1967,12 +1967,15 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun restartFromParagraph(position: Pair<Int, TextLine>) {
         val (chapterIndex, line) = position
+        // 双击选择的对象是“这一段”，起点必须是全章真段首；
+        // 点击映射的页内段首查找越过不了页边界，跨页段落曾退化为本页首字。
+        val paragraphStart = resolveTrueParagraphStart(line) ?: line.chapterPosition
         AppLog.putDebug(
-            "[朗读] 双击段落 ch:$chapterIndex pos:${line.chapterPosition} " +
-                "段号:${line.paragraphNum}",
+            "[朗读] 双击段落 ch:$chapterIndex 点击:${line.chapterPosition} " +
+                "段号:${line.paragraphNum} 真段首:$paragraphStart",
             module = LogModule.READ_ALOUD
         )
-        switchReadAloudTo(ReadAloudPosition(chapterIndex, line.chapterPosition))
+        switchReadAloudTo(ReadAloudPosition(chapterIndex, paragraphStart))
     }
 
     private fun restartFromPage() {
@@ -2010,25 +2013,34 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     /**
-     * 页首按段 ON 的“本页第一段第一字”：本页第一个正文段落在全章中的真正段首。
-     * 段落跨页时段首在上一页，必须回退到真正的段首，
-     * 否则该开关与“本页第一个字”没有任何可区分的行为。
-     * 解析不到所属段落时回退为该行自身的位置。
+     * 全章视角的“真正段首”：行所属段落（全局段号）在全章中的起始位置。
+     * 段落跨页时段首在上一页，页内查找无法越过页边界，必须按
+     * TextChapter.paragraphs 的全局段号回退，与引擎朗读单元划分同源；
+     * 解析不到所属段落时返回 null，由调用方决定兜底。
      */
-    private fun firstParagraphVisibleStart(page: TextPage): Int? {
-        val firstLine = page.lines.firstOrNull { it.paragraphNum > 0 } ?: return null
+    private fun resolveTrueParagraphStart(line: TextLine): Int? {
         sequenceOf(
             ReadBook.curTextChapter,
             ReadBook.prevTextChapter,
             ReadBook.nextTextChapter,
         ).filterNotNull().forEach { textChapter ->
-            val num = textChapter.getParagraphNum(firstLine.chapterPosition + 1, false)
+            val num = textChapter.getParagraphNum(line.chapterPosition + 1, false)
             val paragraph = textChapter.paragraphs.getOrNull(num - 1)
-            if (paragraph?.realNum == firstLine.paragraphNum) {
+            if (paragraph?.realNum == line.paragraphNum) {
                 return paragraph.chapterPosition
             }
         }
-        return firstLine.chapterPosition
+        return null
+    }
+
+    /**
+     * 页首按段 ON 的“本页第一段第一字”：本页第一个正文段落在全章中的真正段首。
+     * 段落跨页时段首在上一页，必须回退到真正的段首，
+     * 否则该开关与“本页第一个字”没有任何可区分的行为。
+     */
+    private fun firstParagraphVisibleStart(page: TextPage): Int? {
+        val firstLine = page.lines.firstOrNull { it.paragraphNum > 0 } ?: return null
+        return resolveTrueParagraphStart(firstLine) ?: firstLine.chapterPosition
     }
 
     private fun switchReadAloudTo(position: ReadAloudPosition) {
