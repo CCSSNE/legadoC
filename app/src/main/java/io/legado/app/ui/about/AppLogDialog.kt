@@ -9,6 +9,7 @@ import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.constant.AppLog
+import io.legado.app.help.config.AppConfig
 import io.legado.app.databinding.DialogRecyclerViewBinding
 import io.legado.app.databinding.ItemAppLogBinding
 import io.legado.app.lib.theme.primaryColor
@@ -41,12 +42,12 @@ class AppLogDialog : BaseLogDialogFragment() {
             recyclerView.layoutManager = LinearLayoutManager(requireContext())
             recyclerView.adapter = adapter
         }
-        adapter.setItems(AppLog.logs)
+        adapter.setItems(visibleLogs())
     }
 
     override fun observeLiveBus() {
         observeEvent<Int>(io.legado.app.constant.EventBus.APP_LOG_CHANGED) {
-            adapter.setItems(AppLog.logs)
+            adapter.setItems(visibleLogs())
         }
     }
 
@@ -56,11 +57,16 @@ class AppLogDialog : BaseLogDialogFragment() {
     }
 
     override fun copyAllLogs() {
-        requireContext().sendToClip(AppLog.formatLogs(AppLog.logs))
+        requireContext().sendToClip(AppLog.formatLogs(visibleLogs()))
+    }
+
+    /** 显示与复制共用同一份数据：通用条目始终显示，其余按勾选模块过滤 */
+    private fun visibleLogs(): List<AppLog.Entry> {
+        return AppLog.logsForView(AppConfig.logShownModules)
     }
 
     inner class LogAdapter(context: Context) :
-        RecyclerAdapter<Triple<Long, String, Throwable?>, ItemAppLogBinding>(context) {
+        RecyclerAdapter<AppLog.Entry, ItemAppLogBinding>(context) {
 
         override fun getViewBinding(parent: ViewGroup): ItemAppLogBinding {
             return ItemAppLogBinding.inflate(inflater, parent, false)
@@ -69,13 +75,13 @@ class AppLogDialog : BaseLogDialogFragment() {
         override fun convert(
             holder: ItemViewHolder,
             binding: ItemAppLogBinding,
-            item: Triple<Long, String, Throwable?>,
+            item: AppLog.Entry,
             payloads: MutableList<Any>
         ) {
-            binding.textTime.text = LogUtils.logTimeFormat.format(Date(item.first))
-            binding.textMessage.text = item.second
+            binding.textTime.text = LogUtils.logTimeFormat.format(Date(item.time))
+            binding.textMessage.text = item.message
             // 只有 [评论缓存] 逐章详细日志做两行折叠；普通日志保持原有显示方式
-            if (item.second.startsWith(REVIEW_LOG_PREFIX)) {
+            if (item.message.startsWith(REVIEW_LOG_PREFIX)) {
                 binding.textMessage.maxLines = 2
                 binding.textMessage.ellipsize = android.text.TextUtils.TruncateAt.END
             } else {
@@ -89,8 +95,8 @@ class AppLogDialog : BaseLogDialogFragment() {
                 getItem(holder.layoutPosition)?.let { item ->
                     // 点击任意一条日志：弹窗显示完整内容（列表只展示摘要）
                     val full = buildString {
-                        append(item.second)
-                        item.third?.let {
+                        append(item.message)
+                        item.throwable?.let {
                             append("\n").append(it.stackTraceToString())
                         }
                     }

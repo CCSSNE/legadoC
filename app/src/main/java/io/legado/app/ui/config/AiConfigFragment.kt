@@ -50,7 +50,7 @@ import kotlinx.coroutines.withContext
 class AiConfigFragment : PreferenceFragment(),
     SharedPreferences.OnSharedPreferenceChangeListener {
 
-    private var pendingAiLogs = emptyList<Triple<Long, String, Throwable?>>()
+    private var pendingAiLogs = emptyList<AppLog.Entry>()
 
     private val exportAiLogLauncher = registerForActivityResult(
         ActivityResultContracts.CreateDocument("text/plain")
@@ -236,7 +236,7 @@ class AiConfigFragment : PreferenceFragment(),
         editText.setSelection(editText.text?.length ?: 0)
     }
 
-    private fun writeAiLogs(uri: Uri, logs: List<Triple<Long, String, Throwable?>>) {
+    private fun writeAiLogs(uri: Uri, logs: List<AppLog.Entry>) {
         lifecycleScope.launch {
             val result = withContext(IO) {
                 runCatching {
