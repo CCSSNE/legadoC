@@ -1259,7 +1259,9 @@ abstract class BaseReadAloudService : BaseService(),
         val position = ReadAloudPosition(chapterIndex, progress)
         ReadAloud.publishAloudPosition(position)
         val sameChapter = chapterIndex == ReadBook.durChapterIndex
-        val followWrite = sameChapter && !ReadBook.readAloudPageDetached
+        val followWrite = sameChapter && !ReadBook.readAloudPageDetached &&
+            // 跟随地板：补读期未到地板不写显示进度，与 UI 侧跟随写点共用同一闸门
+            ReadBook.aloudFollowAllowsWrite(position)
         AppLog.putDebug(
             "[朗读] 引擎进度 ch:$chapterIndex pos:$progress detach:${ReadBook.readAloudPageDetached} " +
                 "同章:$sameChapter → ${if (followWrite) "写显示进度" else "不改显示"}"
