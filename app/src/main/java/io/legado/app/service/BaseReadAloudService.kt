@@ -274,6 +274,11 @@ abstract class BaseReadAloudService : BaseService(),
     var paragraphStartPos = 0
     var readAloudByPage = false
         private set
+    @Volatile
+    private var readAloudStartRequest = 0L
+
+    @Volatile
+    private var preparedReadAloudStartRequest = -1L
 
     internal fun minReadAloudPreloadLength(): Int {
         return MIN_READ_ALOUD_PRELOAD_LENGTH
@@ -816,7 +821,7 @@ abstract class BaseReadAloudService : BaseService(),
             val play = it.getBoolean("play")
             val pageIndex = it.getInt("pageIndex")
             val startPos = it.getInt("startPos")
-            newReadAloud(play, pageIndex, startPos)
+            requestReadAloud(play, pageIndex, startPos)
         }
         observeEvent<ReadAloudFloatingObstruction>(EventBus.READ_ALOUD_FLOATING_AVOIDANCE) {
             onReadAloudFloatingAvoidance(it)
@@ -865,6 +870,14 @@ abstract class BaseReadAloudService : BaseService(),
                 }
             }
         }
+    }
+
+    private fun requestReadAloud(play: Boolean, pageIndex: Int, startPos: Int) {
+        val request = ++readAloudStartRequest
+        preparedReadAloudStartRequest = -1L
+        // Stop callbacks and playback owned by the previous target before preparing the new one.
+        playStop()
+        newReadAloud(request, play, pageIndex, startPos)
     }
 
     private fun rebuildReadAloudFloatingWindow() {
@@ -979,10 +992,10 @@ abstract class BaseReadAloudService : BaseService(),
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            IntentAction.play -> newReadAloud(
-                intent.getBooleanExtra("play", true),
-                intent.getIntExtra("pageIndex", ReadBook.durPageIndex),
-                intent.getIntExtra("startPos", 0)
+            IntentAction.play -> requestReadAloud(
+                play = intent.getBooleanExtra("play", true),
+                pageIndex = intent.getIntExtra("pageIndex", ReadBook.durPageIndex),
+                startPos = intent.getIntExtra("startPos", 0),
             )
 
             IntentAction.pause -> pauseReadAloud()
@@ -1008,16 +1021,28 @@ abstract class BaseReadAloudService : BaseService(),
         return super.onStartCommand(intent, flags, startId)
     }
 
-    private fun newReadAloud(play: Boolean, pageIndex: Int, startPos: Int) {
+    private fun newReadAloud(
+        request: Long,
+        play: Boolean,
+        pageIndex: Int,
+        startPos: Int,
+    ) {
         execute(executeContext = IO) {
+            if (request != readAloudStartRequest) return@execute
             val textChapter = ReadBook.curTextChapter
             if (!sessionChapterCanStartWithoutText) {
-                val chapter = textChapter ?: return@execute
-                if (!prepareReadAloudChapter(chapter, pageIndex, startPos)) {
+                val chapter = textChapter ?: run {
+                    cancelReadAloudStart(request)
                     return@execute
                 }
+                if (!prepareReadAloudChapter(chapter, pageIndex, startPos)) {
+                    cancelReadAloudStart(request)
+                    return@execute
+                }
+                preparedReadAloudStartRequest = request
                 publishPreparedAloudPosition()
                 launch(Main) {
+                    if (request != readAloudStartRequest) return@launch
                     if (play) play() else pageChanged = true
                 }
                 return@execute
@@ -1030,16 +1055,26 @@ abstract class BaseReadAloudService : BaseService(),
                     tc.isCompleted && tc.pageSize > 0
             }?.let { tc ->
                 if (!prepareReadAloudChapter(tc, pageIndex, startPos)) {
+                    cancelReadAloudStart(request)
                     return@execute
                 }
             }
+            preparedReadAloudStartRequest = request
             publishPreparedAloudPosition()
             launch(Main) {
+                if (request != readAloudStartRequest) return@launch
                 if (play) play() else pageChanged = true
             }
         }.onError {
+            cancelReadAloudStart(request)
             AppLog.put("启动朗读出错\n${it.localizedMessage}", it, true)
         }
+    }
+
+    private fun cancelReadAloudStart(request: Long) {
+        if (request != readAloudStartRequest) return
+        preparedReadAloudStartRequest = -1L
+        ReadAloud.cancelPositionSwitch()
     }
 
     private fun prepareReadAloudChapter(
@@ -1082,23 +1117,7 @@ abstract class BaseReadAloudService : BaseService(),
         } else {
             nowSpeak.coerceIn(0, contentList.lastIndex)
         }
-        // 页首按段（readAloudPageStartAtParagraph）：
-        // 开启——页首取本页第一段第一个字（页首恰为新段开头时从段首读）；
-        // 关闭——页首严格取本页第一个字，从页首精确位置开始朗读。
-        // 关键约束：段首若在上一页（页首位于跨页段中间），不回退到上一页、
-        // 不修改 pageIndex —— “从本页读”必须维持本页，朗读从本页页首开始，
-        // 由 pos 记录段内偏移，让 TTS 从页首所在的段中间位置起读。
-        if (startPos == 0 && !toLast) {
-            val paragraphIndex = chapter.getParagraphNum(readAloudNumber + 1, false) - 1
-            if (paragraphIndex in chapter.paragraphs.indices) {
-                val paragraphStart = chapter.paragraphs[paragraphIndex].chapterPosition
-                if (AppConfig.readAloudPageStartAtParagraph && paragraphStart >= page.chapterPosition) {
-                    readAloudNumber = paragraphStart
-                } else {
-                    pos = page.chapterPosition - paragraphStart.coerceAtMost(page.chapterPosition)
-                }
-            }
-        }
+        // The reader resolves the absolute page-start position; the engine must preserve it.
         if (toLast) {
             toLast = false
             readAloudNumber = chapter.getLastParagraphPosition()
@@ -1117,7 +1136,7 @@ abstract class BaseReadAloudService : BaseService(),
         val chapterPosition = textChapter?.takeIf { it.chapter.index == chapterIndex }?.let {
             readAloudNumber
         } ?: ReadBook.durChapterPos
-        ReadAloud.updateAloudPosition(ReadAloudPosition(chapterIndex, chapterPosition))
+        ReadAloud.publishAloudPosition(ReadAloudPosition(chapterIndex, chapterPosition))
     }
 
     @SuppressLint("WakelockTimeout")
@@ -1211,9 +1230,10 @@ abstract class BaseReadAloudService : BaseService(),
     }
 
     protected fun postReadAloudTextPosition(progress: Int) {
+        if (preparedReadAloudStartRequest != readAloudStartRequest) return
         val chapterIndex = currentChapterIndex.takeIf { it >= 0 } ?: ReadBook.durChapterIndex
         val position = ReadAloudPosition(chapterIndex, progress)
-        val previousPosition = ReadAloud.updateAloudPosition(position)
+        ReadAloud.publishAloudPosition(position)
         // 阅读页与朗读页脱离（detach）时，阅读位置保持用户当前翻到的页，
         // 不得被朗读进度覆盖——否则“从本页听”通过 durPageIndex 取起点时
         // 会被污染成原进度页，表现成点了“原进度”。
@@ -1221,14 +1241,6 @@ abstract class BaseReadAloudService : BaseService(),
             ReadBook.durChapterPos = progress
             ReadBook.book?.durChapterPos = progress
         }
-        postEvent(EventBus.TTS_PROGRESS, Bundle().apply {
-            putInt("chapterIndex", chapterIndex)
-            putInt("chapterPos", progress)
-            previousPosition?.let {
-                putInt("previousChapterIndex", it.chapterIndex)
-                putInt("previousChapterPos", it.chapterPosition)
-            }
-        })
     }
 
     private fun publishParagraphProgress() {

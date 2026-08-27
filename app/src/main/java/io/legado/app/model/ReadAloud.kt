@@ -34,6 +34,13 @@ data class ReadAloudPosition(
     val chapterPosition: Int,
 )
 
+/** A position confirmed by the read-aloud engine, plus the position it replaces. */
+data class ReadAloudPositionUpdate(
+    val position: ReadAloudPosition,
+    val previousPosition: ReadAloudPosition?,
+    val switchConfirmed: Boolean,
+)
+
 object ReadAloud {
     const val SOURCE_AUDIO_ENGINE_ID = "sourceAudio"
 
@@ -41,14 +48,36 @@ object ReadAloud {
     var aloudPosition: ReadAloudPosition? = null
         private set
 
-    fun updateAloudPosition(position: ReadAloudPosition): ReadAloudPosition? {
-        val previousPosition = aloudPosition
-        aloudPosition = position
-        return previousPosition
+    private var pendingSwitchPosition: ReadAloudPosition? = null
+
+    @Synchronized
+    fun beginPositionSwitch(position: ReadAloudPosition) {
+        pendingSwitchPosition = position
     }
 
+    @Synchronized
+    fun cancelPositionSwitch() {
+        pendingSwitchPosition = null
+    }
+
+    /** The engine is the only authority allowed to update and publish this position. */
+    @Synchronized
+    fun publishAloudPosition(position: ReadAloudPosition): ReadAloudPositionUpdate {
+        val previousPosition = aloudPosition
+        aloudPosition = position
+        val switchConfirmed = pendingSwitchPosition == position
+        if (switchConfirmed) {
+            pendingSwitchPosition = null
+        }
+        return ReadAloudPositionUpdate(position, previousPosition, switchConfirmed).also {
+            postEvent(EventBus.READ_ALOUD_POSITION, it)
+        }
+    }
+
+    @Synchronized
     fun clearAloudPosition() {
         aloudPosition = null
+        pendingSwitchPosition = null
     }
 
     val ttsEngine: String?
@@ -191,7 +220,10 @@ object ReadAloud {
         pageIndex: Int = ReadBook.durPageIndex,
         startPos: Int = 0
     ) {
-        val serviceClass = commandClass() ?: return
+        val serviceClass = commandClass() ?: run {
+            cancelPositionSwitch()
+            return
+        }
         val intent = Intent(context, serviceClass)
         intent.action = IntentAction.play
         intent.putExtra("play", play)
@@ -201,6 +233,7 @@ object ReadAloud {
         try {
             context.startForegroundServiceCompat(intent)
         } catch (e: Exception) {
+            cancelPositionSwitch()
             val msg = "启动朗读服务出错\n${e.localizedMessage}"
             AppLog.put(msg, e)
             context.toastOnUi(msg)
