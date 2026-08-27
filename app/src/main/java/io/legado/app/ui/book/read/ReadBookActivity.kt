@@ -3217,9 +3217,9 @@ class ReadBookActivity : BaseReadBookActivity(),
             // 但高亮仍按朗读所在页持续更新，用户翻回朗读页即可立即看到正确红字。
             lifecycleScope.launch(Main) {
                 clearAloudHighlight(update.previousPosition)
-                if (update.switchConfirmed) {
-                    ReadBook.attachReadAloudPage()
-                }
+                // switchConfirmed 只表示引擎已确认朗读位置，不具备解除页面脱钩的权限；
+                // 朗读位置切换与页面是否跟随是正交状态，脱钩只能由
+                // “回原进度”等明确要求重新跟随的入口解除（attachReadAloudPage）。
                 if (BaseReadAloudService.isPlay()) {
                     reconcileHighlight(position)
                     if (ReadBook.curTextChapter?.chapter?.index == position.chapterIndex &&
