@@ -41,8 +41,10 @@ object ReadAloud {
     var aloudPosition: ReadAloudPosition? = null
         private set
 
-    fun updateAloudPosition(position: ReadAloudPosition) {
+    fun updateAloudPosition(position: ReadAloudPosition): ReadAloudPosition? {
+        val previousPosition = aloudPosition
         aloudPosition = position
+        return previousPosition
     }
 
     fun clearAloudPosition() {

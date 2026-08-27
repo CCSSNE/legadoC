@@ -2049,12 +2049,16 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
     }
 
-    private fun clearAloudHighlight() {
-        val position = ReadAloud.aloudPosition ?: return
+    private fun clearAloudHighlight(position: ReadAloudPosition?) {
+        position ?: return
         val textChapter = ReadBook.curTextChapter ?: return
         if (textChapter.chapter.index == position.chapterIndex) {
             textChapter.getPageByReadPos(position.chapterPosition)?.removePageAloudSpan()
         }
+    }
+
+    private fun clearAloudHighlight() {
+        clearAloudHighlight(ReadAloud.aloudPosition)
     }
 
     private fun suppressAutoPageFollow() {
@@ -3111,9 +3115,14 @@ class ReadBookActivity : BaseReadBookActivity(),
             }
             if (it == Status.STOP || it == Status.PAUSE) {
                 ReadBook.curTextChapter?.let { textChapter ->
-                    val page = textChapter.getPageByReadPos(ReadBook.durChapterPos)
-                    if (page != null) {
-                        page.removePageAloudSpan()
+                    var highlightCleared = false
+                    textChapter.pages.forEach { page ->
+                        if (page.hasReadAloudSpan) {
+                            page.removePageAloudSpan()
+                            highlightCleared = true
+                        }
+                    }
+                    if (highlightCleared) {
                         readView.upContent(resetPageOffset = false)
                     }
                 }
@@ -3145,6 +3154,15 @@ class ReadBookActivity : BaseReadBookActivity(),
         observeEventSticky<Bundle>(EventBus.TTS_PROGRESS) { progress ->
             val chapterIndex = progress.getInt("chapterIndex", ReadBook.durChapterIndex)
             val chapterStart = progress.getInt("chapterPos")
+            val previousPosition = progress
+                .getInt("previousChapterIndex", -1)
+                .takeIf { it >= 0 }
+                ?.let {
+                    ReadAloudPosition(
+                        chapterIndex = it,
+                        chapterPosition = progress.getInt("previousChapterPos"),
+                    )
+                }
             // 朗读高亮（isReadAloud）直接改变行绘制状态，必须在主线程更新，
             // 否则与渲染竞争会让红字丢失。脱钩（阅读页翻走）时阅读进度不跟随朗读，
             // 但高亮仍按朗读所在页持续更新，用户翻回朗读页即可立即看到正确红字。
@@ -3154,6 +3172,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                         if (ReadBook.durChapterIndex != chapterIndex) {
                             return@let
                         }
+                        clearAloudHighlight(previousPosition)
                         val pageIndex = textChapter.getPageIndexByCharIndex(chapterStart)
                         val aloudSpanStart =
                             chapterStart - textChapter.getReadLength(pageIndex)
