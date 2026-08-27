@@ -97,7 +97,7 @@ object ReadBook : CoroutineScope by MainScope() {
     /**
      * 页面跟随策略状态：true=用户手动翻页后与朗读位置脱钩，显示保持用户页面。
      * 写者只允许：用户手动翻页（detach）、明确要求重新跟随的入口
-     * （回原进度/选择朗读/朗读停止/跨章跟随同步）（attach）。
+     * （双击段落/从本页读经 switchReadAloudTo/回原进度/选择朗读/朗读停止/跨章跟随同步）（attach）。
      * 朗读位置确认事件（switchConfirmed）无权改写本状态。
      */
     var readAloudPageDetached = false

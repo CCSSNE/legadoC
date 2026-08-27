@@ -2050,6 +2050,11 @@ class ReadBookActivity : BaseReadBookActivity(),
                 "显示pos:${ReadBook.durChapterPos}",
             module = LogModule.READ_ALOUD
         )
+        // 双击段落/从本页读是用户明确要求“从这里开始跟随朗读”的入口，
+        // 与“回原进度”“选择朗读”同属 attach 写点：此前手动翻页留下的脱钩态
+        // 在此恢复跟随，否则朗读越过当前页尾后显示永远停在原页（读完页尾段不翻页）。
+        // 引擎位置确认事件（switchConfirmed）依然无权改写本状态。
+        ReadBook.attachReadAloudPage()
         // 新起点作废旧地板，避免残留旧闩拦截合法跟随。
         ReadBook.clearAloudFollowFloor()
         if (position.chapterIndex == ReadBook.durChapterIndex &&

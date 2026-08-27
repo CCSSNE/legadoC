@@ -204,7 +204,7 @@ $apk = 'D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_<version>
 |---|---|---|
 | `ReadAloud.aloudPosition`（朗读位置唯一真相） | 朗读引擎，经 `publishAloudPosition` 单点发布（带 generation 防乱序） | 只读 |
 | 显示进度（`ReadBook.durChapterPos` / 物理显示页） | 用户操作、数据同步、页面跟随策略（attach 态位置事件跟随写；脱钩时仅“回原进度”可写） | 朗读链路不得直写 |
-| 页面跟随（`ReadBook.readAloudPageDetached`） | 用户手动翻页（detach）、明确要求重新跟随的入口（attach：回原进度/选择朗读/朗读停止/跨章跟随同步） | 位置确认事件（`switchConfirmed`）无权改写 |
+| 页面跟随（`ReadBook.readAloudPageDetached`） | 用户手动翻页（detach）、明确要求重新跟随的入口（attach：双击段落/从本页读经 `switchReadAloudTo`、回原进度、选择朗读、朗读停止、跨章跟随同步） | 位置确认事件（`switchConfirmed`）无权改写 |
 
 派生投影（不得存储、不得反写）：
 
