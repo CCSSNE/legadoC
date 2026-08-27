@@ -80,10 +80,25 @@ object ReadBook : CoroutineScope by MainScope() {
     var chapterSize = 0
     var simulatedChapterSize = 0
     var durChapterIndex = 0
+
+    /**
+     * 显示进度（用户正在读哪）：写者只允许三类——
+     * 1) 用户操作（翻页/跳转/切章）2) 数据同步（setProgress/loadContent/迁移）
+     * 3) 页面跟随策略（朗读位置事件在 attach 态的跟随写）。
+     * 朗读链路其余任何代码不得直写；脱钩（readAloudPageDetached）时
+     * 只有“回原进度”能经 applyAloudPositionToReader 写入。
+     */
     var durChapterPos = 0
     var isLocalBook = true
     var chapterChanged = false
     var skipReadAloudSyncOnce = false
+
+    /**
+     * 页面跟随策略状态：true=用户手动翻页后与朗读位置脱钩，显示保持用户页面。
+     * 写者只允许：用户手动翻页（detach）、明确要求重新跟随的入口
+     * （回原进度/选择朗读/朗读停止/跨章跟随同步）（attach）。
+     * 朗读位置确认事件（switchConfirmed）无权改写本状态。
+     */
     var readAloudPageDetached = false
         private set
     private var pendingReadAloudChapterSync = false
@@ -350,7 +365,6 @@ object ReadBook : CoroutineScope by MainScope() {
             val nextPagePos = it.getNextPageLength(durChapterPos)
             if (nextPagePos >= 0) {
                 hasNextPage = true
-                it.getPage(durPageIndex)?.removePageAloudSpan()
                 durChapterPos = nextPagePos
                 callBack?.cancelSelect()
                 callBack?.upContent()

@@ -163,6 +163,15 @@ abstract class BaseReadAloudService : BaseService(),
     private val phoneStateListener by lazy {
         ReadAloudPhoneStateListener()
     }
+    /**
+     * 朗读引擎光标：contentList（读出单元序列）、nowSpeak（当前单元下标）、
+     * readAloudNumber（单元内位置映射的章节绝对位置）、textChapter、pageIndex、
+     * currentChapterIndex、paragraphStartPos（当前单元内部偏移）。
+     * 所有权契约：这组状态是引擎私有的位置光标，只能由引擎自己的推进方法
+     * （prepareReadAloudChapter / moveToNextParagraph / prevP / nextP / seek 系列）读写，
+     * 对外唯一出口是 publishAloudPosition / publishParagraphProgress 两个发布点。
+     * UI 与阅读模型不得直接读写其中任何一个字段。
+     */
     internal var contentList = emptyList<String>()
     internal var nowSpeak: Int = 0
     internal var readAloudNumber: Int = 0

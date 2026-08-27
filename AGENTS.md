@@ -196,6 +196,23 @@ $apk = 'D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_<version>
 
 > UI 设计相关规则（无头弹窗策略、UI 内核与浮层规范、异步 UI 与局部模糊）已单独维护在 `docs/ui-design-spec.md`。
 
+### 朗读状态所有权契约
+
+朗读系统只允许三个顶层状态，每个状态只有一个写者类别；任何新代码不得增加位置类状态副本或旁路写点：
+
+| 状态 | 唯一写者 | 其余模块 |
+|---|---|---|
+| `ReadAloud.aloudPosition`（朗读位置唯一真相） | 朗读引擎，经 `publishAloudPosition` 单点发布（带 generation 防乱序） | 只读 |
+| 显示进度（`ReadBook.durChapterPos` / 物理显示页） | 用户操作、数据同步、页面跟随策略（attach 态位置事件跟随写；脱钩时仅“回原进度”可写） | 朗读链路不得直写 |
+| 页面跟随（`ReadBook.readAloudPageDetached`） | 用户手动翻页（detach）、明确要求重新跟随的入口（attach：回原进度/选择朗读/朗读停止/跨章跟随同步） | 位置确认事件（`switchConfirmed`）无权改写 |
+
+派生投影（不得存储、不得反写）：
+
+- 朗读红字高亮 = `TextLine.isReadAloud` 绘制期现算：本行段号 == 引擎同款 `getParagraphNum` 判定的朗读段号且 `isPlay()`。禁止把高亮写进 TextPage/TextLine 存储字段；显示变化靠换页全量重绘覆盖，朗读/播放状态变化只经 `ReadView.invalidateReadAloudHighlight()` 单一失效入口清绘制缓存。
+- `durPageIndex` 是 `durChapterPos` 的推导值，不得当作物理显示页使用；物理显示页只认 `ReadView.curPage`。
+
+流程收口：所有改变朗读位置的操作只经 `switchReadAloudTo(position)`（8 个核心函数见 `docs` 流程图）；引擎内部光标（`contentList/nowSpeak/readAloudNumber/textChapter/pageIndex/currentChapterIndex/paragraphStartPos`）只能由引擎推进方法读写，对外仅 `publishAloudPosition` / `publishParagraphProgress` 两个出口。
+
 ### 设置默认值
 
 每个设置的界面默认值与实际读取默认值必须一致：

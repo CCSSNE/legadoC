@@ -11,7 +11,9 @@ import io.legado.app.help.PaintPool
 import io.legado.app.help.book.isImage
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
+import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
+import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.book.read.page.ContentTextView
 import io.legado.app.ui.book.read.page.entities.TextPage.Companion.emptyTextPage
 import io.legado.app.ui.book.read.page.entities.column.BaseColumn
@@ -61,15 +63,22 @@ data class TextLine(
     val canvasRecorder = CanvasRecorderFactory.create()
     var searchResultColumnCount = 0
     var bookmarkColumnCount = 0
-    var isReadAloud: Boolean = false
-        set(value) {
-            if (field != value) {
-                invalidate()
-            }
-            if (value) {
-                textPage.hasReadAloudSpan = true
-            }
-            field = value
+
+    /**
+     * 朗读红字是唯一 aloudPosition 的绘制期投影，不是存储状态：
+     * 本行所属段落（全局段号 paragraphNum）包含朗读位置、章节一致且引擎播放中才为 true。
+     * 段落归属判定与引擎 nowSpeak 定位使用同一个 TextChapter.getParagraphNum，
+     * 保证红字与声音永远指向同一段；高亮失效由朗读状态事件触发重绘，
+     * 显示变化由换页全量重绘覆盖，任何地方都不写行级高亮状态。
+     */
+    val isReadAloud: Boolean
+        get() {
+            if (paragraphNum <= 0) return false
+            val position = ReadAloud.aloudPosition ?: return false
+            if (!BaseReadAloudService.isPlay()) return false
+            val chapter = textPage.textChapter
+            if (chapter.chapter.index != position.chapterIndex) return false
+            return chapter.getParagraphNum(position.chapterPosition + 1, false) == paragraphNum
         }
     var textPage: TextPage = emptyTextPage
     var isLeftLine = true

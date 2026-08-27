@@ -1056,8 +1056,16 @@ class ReadView(context: Context, attrs: AttributeSet) :
         }
     }
 
-    /** Redraw the visible content after read-aloud highlight state changes. */
+    /** 清绘制缓存并重绘，让朗读红字按最新 aloudPosition 投影重新现算；
+     *  滚动模式可视区可能跨三页，三页缓存都要失效。 */
     fun invalidateReadAloudHighlight() {
+        if (callBack.isScroll) {
+            for (relativePos in 0..2) {
+                curPage.relativePage(relativePos).invalidateAll()
+            }
+        } else {
+            curPage.textPage.invalidateAll()
+        }
         curPage.invalidateContentView()
     }
 
