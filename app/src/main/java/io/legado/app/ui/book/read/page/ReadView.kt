@@ -672,7 +672,7 @@ class ReadView(context: Context, attrs: AttributeSet) :
         ) {
             removeCallbacks(pendingTap)
             clearPendingSingleTap()
-            readAloudFromPoint(readAloudPos)
+            callBack.restartFromParagraph(readAloudPos)
             return
         }
 
@@ -747,24 +747,6 @@ class ReadView(context: Context, attrs: AttributeSet) :
             trRect.contains(x, y) -> {
                 click(AppConfig.clickActionTR)
             }
-        }
-    }
-
-    private fun readAloudFromPoint(pos: Pair<Int, TextLine>) {
-        val (chapterIndex, line) = pos
-        ReadBook.attachReadAloudPage()
-        if (ReadBook.durChapterIndex != chapterIndex) {
-            ReadBook.skipReadAloudSyncOnce = true
-            val opened = ReadBook.openChapter(chapterIndex, line.chapterPosition, false) {
-                ReadBook.skipReadAloudSyncOnce = false
-                ReadBook.readAloud(startPos = line.pagePosition)
-            }
-            if (!opened) {
-                ReadBook.skipReadAloudSyncOnce = false
-            }
-        } else {
-            ReadBook.durChapterPos = line.chapterPosition
-            ReadBook.readAloud(startPos = line.pagePosition)
         }
     }
 
@@ -1038,8 +1020,8 @@ class ReadView(context: Context, attrs: AttributeSet) :
         val line = selectStartPos.lineIndex
         val column = selectStartPos.columnIndex
         while (pagePos > 0) {
-            if (!ReadBook.moveToNextPage()) {
-                ReadBook.moveToNextChapterAwait(false)
+            if (!ReadBook.moveToNextPage(fromReadAloud = true)) {
+                ReadBook.moveToNextChapterAwait(false, fromReadAloud = true)
             }
             pagePos--
         }
@@ -1144,5 +1126,6 @@ class ReadView(context: Context, attrs: AttributeSet) :
         fun openSearchActivity(searchWord: String?)
         fun upSystemUiVisibility()
         fun sureNewProgress(progress: BookProgress)
+        fun restartFromParagraph(position: Pair<Int, TextLine>)
     }
 }
