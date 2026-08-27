@@ -3161,6 +3161,8 @@ class ReadBookActivity : BaseReadBookActivity(),
                         if (!ReadBook.readAloudPageDetached) {
                             ReadBook.durChapterPos = chapterStart
                             upContent()
+                        } else {
+                            binding.readView.invalidateReadAloudHighlight()
                         }
                     }
                 }

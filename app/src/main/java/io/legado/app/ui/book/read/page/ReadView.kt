@@ -1056,6 +1056,11 @@ class ReadView(context: Context, attrs: AttributeSet) :
         }
     }
 
+    /** Redraw the visible content after read-aloud highlight state changes. */
+    fun invalidateReadAloudHighlight() {
+        curPage.invalidateContentView()
+    }
+
     fun onScrollAnimStart() {
         autoPager.pause()
     }
