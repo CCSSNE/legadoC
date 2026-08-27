@@ -1671,7 +1671,7 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     private fun currentReadAloudPanelMode() = ReadAloudUiState.readerPanelMode(
         BaseReadAloudService.isRun,
-        ReadBook.readAloudPageDetached,
+        isViewBehindAloud(),
     )
 
     private fun updateReadAloudPanelPresentation(mode: ReadAloudUiState.ReaderPanelMode) {
@@ -1717,7 +1717,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             readAloudPanelMode != ReadAloudUiState.ReaderPanelMode.PLAYBACK ||
             ReadAloudUiState.readerPanelMode(
                 BaseReadAloudService.isRun,
-                ReadBook.readAloudPageDetached,
+                isViewBehindAloud(),
             ) != ReadAloudUiState.ReaderPanelMode.PLAYBACK
         ) {
             return
@@ -1729,7 +1729,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                 readAloudPanelMode != ReadAloudUiState.ReaderPanelMode.PLAYBACK ||
                 ReadAloudUiState.readerPanelMode(
                     BaseReadAloudService.isRun,
-                    ReadBook.readAloudPageDetached,
+                    isViewBehindAloud(),
                 ) != ReadAloudUiState.ReaderPanelMode.PLAYBACK
             ) {
                 return@doOnLayout
@@ -1850,7 +1850,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             readAloudPanelMode != ReadAloudUiState.ReaderPanelMode.PAGE_ACTION ||
             ReadAloudUiState.readerPanelMode(
                 BaseReadAloudService.isRun,
-                ReadBook.readAloudPageDetached,
+                isViewBehindAloud(),
             ) != ReadAloudUiState.ReaderPanelMode.PAGE_ACTION
         ) {
             return
@@ -1862,7 +1862,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                 readAloudPanelMode != ReadAloudUiState.ReaderPanelMode.PAGE_ACTION ||
                 ReadAloudUiState.readerPanelMode(
                     BaseReadAloudService.isRun,
-                    ReadBook.readAloudPageDetached,
+                    isViewBehindAloud(),
                 ) != ReadAloudUiState.ReaderPanelMode.PAGE_ACTION
             ) {
                 return@doOnLayout
@@ -1930,14 +1930,59 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
     }
 
+    /** 当前物理显示页号：翻页模式取当前页，滚动模式取可视区页。 */
+    private fun currentDisplayPageIndex(): Int? {
+        return if (ReadBook.pageAnim() == 3) {
+            binding.readView.getCurVisiblePage().index
+        } else {
+            binding.readView.curPage.textPage.index
+        }
+    }
+
+    /**
+     * 跟随规则（纯判定，无存储）：显示页 == 朗读出发页时才跟随。
+     * - 正常跟随：显示在出发页 → 写显示进度、跨页时翻页。
+     * - 用户翻到别处：显示页不在出发页 → 不动，悬浮窗（派生）自动亮起。
+     * - 回退型起点（从本页读/双击跨页段首，段首在上一页）：补读期间显示页
+     *   不是出发页 → 不动；语音追上显示页后自然恢复跟随。
+     *   显示永不被朗读事件拽向后退——“该跳才跳”由这一条单调性规则全覆盖。
+     */
+    private fun shouldFollowAloudAdvance(
+        prev: ReadAloudPosition?,
+        current: ReadAloudPosition,
+    ): Boolean {
+        if (prev == null) return false
+        if (current.chapterIndex != ReadBook.durChapterIndex) return false
+        val chapter = ReadBook.curTextChapter ?: return false
+        if (chapter.chapter.index != current.chapterIndex) return false
+        if (current.chapterPosition <= prev.chapterPosition) return false
+        val displayPage = currentDisplayPageIndex() ?: return false
+        val prevPage = chapter.getPageIndexByCharIndex(prev.chapterPosition)
+        return displayPage == prevPage
+    }
+
+    /**
+     * 派生条件（每帧现算，不是状态）：显示页 != 朗读位置所在页 → 显示与朗读脱节，
+     * PAGE_ACTION 面板（回原进度/从本页读）由此出现；对齐后自动消失。
+     */
+    private fun isViewBehindAloud(): Boolean {
+        val position = ReadAloud.aloudPosition ?: return false
+        if (!BaseReadAloudService.isRun || !BaseReadAloudService.isPlay()) return false
+        if (ReadBook.durChapterIndex != position.chapterIndex) return true
+        val chapter = ReadBook.curTextChapter ?: return false
+        if (chapter.chapter.index != position.chapterIndex) return true
+        val displayPage = currentDisplayPageIndex() ?: return false
+        val aloudPage = chapter.getPageIndexByCharIndex(position.chapterPosition)
+        return displayPage != aloudPage
+    }
+
     private fun backToAloudProgress() {
         val position = ReadAloud.aloudPosition ?: return
         AppLog.putDebug(
             "[朗读] 回原进度 ch:${position.chapterIndex} pos:${position.chapterPosition} " +
-                "当前章:${ReadBook.durChapterIndex} detach:${ReadBook.readAloudPageDetached}",
+                "当前章:${ReadBook.durChapterIndex}",
             module = LogModule.READ_ALOUD
         )
-        ReadBook.attachReadAloudPage()
         if (ReadBook.durChapterIndex != position.chapterIndex) {
             ReadBook.skipReadAloudSyncOnce = true
             val opened = ReadBook.openChapter(position.chapterIndex, position.chapterPosition) {
@@ -1975,7 +2020,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                 "段号:${line.paragraphNum} 真段首:$paragraphStart",
             module = LogModule.READ_ALOUD
         )
-        switchReadAloudTo(ReadAloudPosition(chapterIndex, paragraphStart))
+        setAloudStart(ReadAloudPosition(chapterIndex, paragraphStart))
     }
 
     private fun restartFromPage() {
@@ -1984,11 +2029,12 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
         AppLog.putDebug(
             "[朗读] 从本页读 ch:${position.chapterIndex} pos:${position.chapterPosition} " +
-                "段首:${AppConfig.readAloudPageStartAtParagraph} 滚动:${ReadBook.pageAnim() == 3} " +
+                "段首:${AppConfig.readAloudPageStartAtParagraph} 分段:${AppConfig.pageSplit} " +
+                "滚动:${ReadBook.pageAnim() == 3} " +
                 "页首:${binding.readView.curPage.textPage.chapterPosition}",
             module = LogModule.READ_ALOUD
         )
-        switchReadAloudTo(position)
+        setAloudStart(position)
     }
 
     private fun resolvePageStart(): ReadAloudPosition? {
@@ -2043,28 +2089,18 @@ class ReadBookActivity : BaseReadBookActivity(),
         return resolveTrueParagraphStart(firstLine) ?: firstLine.chapterPosition
     }
 
-    private fun switchReadAloudTo(position: ReadAloudPosition) {
+    /**
+     * 原语A·双击换段：只写“读哪里”（朗读起点），不联动任何显示状态。
+     * 所有的起点设置（双击段落/从本页读/强制追页翻页/选择朗读）都归一到这里；
+     * 起点回退造成的补读期显示保持，由跟随规则
+     * （shouldFollowAloudAdvance 的“显示页==出发页”判定）天然保证，无需额外闩。
+     */
+    private fun setAloudStart(position: ReadAloudPosition) {
         AppLog.putDebug(
-            "[朗读] switchTo ch:${position.chapterIndex} pos:${position.chapterPosition} " +
-                "当前章:${ReadBook.durChapterIndex} detach:${ReadBook.readAloudPageDetached} " +
-                "显示pos:${ReadBook.durChapterPos}",
+            "[朗读] 双击换段 ch:${position.chapterIndex} pos:${position.chapterPosition} " +
+                "当前章:${ReadBook.durChapterIndex} 显示pos:${ReadBook.durChapterPos}",
             module = LogModule.READ_ALOUD
         )
-        // 双击段落/从本页读是用户明确要求“从这里开始跟随朗读”的入口，
-        // 与“回原进度”“选择朗读”同属 attach 写点：此前手动翻页留下的脱钩态
-        // 在此恢复跟随，否则朗读越过当前页尾后显示永远停在原页（读完页尾段不翻页）。
-        // 引擎位置确认事件（switchConfirmed）依然无权改写本状态。
-        ReadBook.attachReadAloudPage()
-        // 新起点作废旧地板，避免残留旧闩拦截合法跟随。
-        ReadBook.clearAloudFollowFloor()
-        if (position.chapterIndex == ReadBook.durChapterIndex &&
-            position.chapterPosition < ReadBook.durChapterPos
-        ) {
-            // 起点被回退到当前显示页之前（页首按段跨页回退/双击跨页段首）：
-            // 开跟随地板，语音补读当前位置之前内容期间显示不动，
-            // 否则首次位置发布会把显示进度拽小、页面翻回上一页。
-            ReadBook.setAloudFollowFloor(position.chapterIndex, ReadBook.durChapterPos)
-        }
         ReadAloud.beginPositionSwitch(position)
         val chapter = ReadBook.curTextChapter
         val start = {
@@ -2080,10 +2116,8 @@ class ReadBookActivity : BaseReadBookActivity(),
                     "position=${position.chapterPosition}"
             }
             val pageStart = current.getReadLength(pageIndex)
-            // 只切朗读位置，绝不直写显示进度（durChapterPos）：
-            // 脱钩时直写会让显示进度漂移到朗读位置，后续重定位把页面拉回朗读页。
-            // durChapterPos 只由页面跟随策略写：跟随态由位置事件写入，
-            // 脱钩态由“回原进度”写入。
+            // 只切朗读位置，绝不直写显示进度（durChapterPos）。
+            // 显示是否跟随、何时翻页，由观察者里的跟随规则基于位置事件现算判定。
             ReadBook.readAloud(
                 startPos = (position.chapterPosition - pageStart).coerceAtLeast(0),
                 pageIndex = pageIndex,
@@ -2094,7 +2128,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             return
         }
         AppLog.putDebug(
-            "[朗读] switchTo 跨章打开 ch:${position.chapterIndex} pos:${position.chapterPosition}",
+            "[朗读] 双击换段 跨章打开 ch:${position.chapterIndex} pos:${position.chapterPosition}",
             module = LogModule.READ_ALOUD
         )
         ReadBook.skipReadAloudSyncOnce = true
@@ -2112,21 +2146,24 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
     }
 
-    private fun suppressAutoPageFollow() {
-        if (!BaseReadAloudService.isRun || ReadBook.skipReadAloudSyncOnce) return
-        ReadBook.detachReadAloudPage()
-    }
-
+    /**
+     * 手动翻页（原语化处理）：
+     * - 强制追页 ON：翻页被翻译成“双击换段（新页第一段）”，视角永远在朗读页。
+     * - 强制追页 OFF：翻页只是翻页，不做任何联动；
+     *   显示与朗读是否脱节由派生条件（显示页 != 朗读页）现算，
+     *   悬浮窗/PAGE_ACTION 面板随之自动出现或消失。
+     */
     private fun onManualPageChanged() {
         if (!BaseReadAloudService.isRun || ReadBook.skipReadAloudSyncOnce) return
         AppLog.putDebug(
-            "[朗读] 手动翻页 byPage:${getPrefBoolean(PreferKey.readAloudByPage, false)} " +
-                "detach:${ReadBook.readAloudPageDetached} 显示pos:${ReadBook.durChapterPos}",
+            "[朗读] 手动翻页 追页:${getPrefBoolean(PreferKey.forcePageFollow, false)} " +
+                "显示pos:${ReadBook.durChapterPos}",
             module = LogModule.READ_ALOUD
         )
-        suppressAutoPageFollow()
-        if (getPrefBoolean(PreferKey.readAloudByPage, false)) {
+        if (getPrefBoolean(PreferKey.forcePageFollow, false)) {
             handler.post { restartFromPage() }
+        } else {
+            updateReadAloudPanels()
         }
     }
 
@@ -3170,18 +3207,11 @@ class ReadBookActivity : BaseReadBookActivity(),
             )
             updateReadAloudPageFloating()
             if (it == Status.STOP) {
-                ReadBook.attachReadAloudPage()
                 hideReadAloudPagePanel()
             }
             // 红字是 aloudPosition 的绘制期投影，播放状态变化（PLAY/PAUSE/STOP）
             // 只需触发一次重绘，投影内容由 TextLine.isReadAloud 在绘制时现算。
             readView.invalidateReadAloudHighlight()
-            updateReadAloudPanels()
-        }
-        observeEvent<Boolean>(EventBus.READ_ALOUD_PAGE_DETACHED) { detached ->
-            if (!detached) {
-                hideReadAloudPagePanel()
-            }
             updateReadAloudPanels()
         }
         observeEvent<Boolean>(EventBus.READ_ALOUD_DIALOG_VISIBILITY) { visible ->
@@ -3203,12 +3233,10 @@ class ReadBookActivity : BaseReadBookActivity(),
         observeEventSticky<ReadAloudPositionUpdate>(EventBus.READ_ALOUD_POSITION) { update ->
             if (!ReadAloud.isCurrentPosition(update)) return@observeEventSticky
             val position = update.position
-            // 红字是 aloudPosition 的绘制期投影（TextLine.isReadAloud 现算），
-            // 本观察者只负责页面跟随策略：attach 态跟随写 durChapterPos 并刷新页面；
-            // detach 态显示不动，只触发一次重绘让新位置的红字投影生效。
-            // switchConfirmed 只表示引擎已确认朗读位置，不具备解除页面脱钩的权限；
-            // 朗读位置切换与页面是否跟随是正交状态，脱钩只能由
-            // “回原进度”等明确要求重新跟随的入口解除（attachReadAloudPage）。
+            // 红字是 aloudPosition 的绘制期投影（TextLine.isReadAloud 现算）。
+            // 本观察者是显示进度的唯一跟随写点：是否跟随由 shouldFollowAloudAdvance
+            // 纯判定（显示页==朗读出发页），无任何存储的跟随/脱钩状态；
+            // 显示与朗读的脱节是派生事实（isViewBehindAloud），悬浮窗随之现算。
             lifecycleScope.launch(Main) {
                 if (!BaseReadAloudService.isPlay()) {
                     AppLog.putDebug(
@@ -3226,17 +3254,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                     )
                     return@launch
                 }
-                if (!ReadBook.readAloudPageDetached) {
-                    // 跟随地板：起点回退到显示页之前的补读期，位置未到地板前不写显示进度，
-                    // 避免页面被拽回上一页；到达地板后恢复跟随翻页。
-                    if (!ReadBook.aloudFollowAllowsWrite(position)) {
-                        AppLog.putDebug(
-                            "[朗读] 跟随拦截(未到地板) 显示pos:${ReadBook.durChapterPos} " +
-                                "朗读pos:${position.chapterPosition}",
-                            module = LogModule.READ_ALOUD
-                        )
-                        return@launch
-                    }
+                if (shouldFollowAloudAdvance(update.previousPosition, position)) {
                     AppLog.putDebug(
                         "[朗读] 跟随写显示 pos:${position.chapterPosition}",
                         module = LogModule.READ_ALOUD
@@ -3245,10 +3263,12 @@ class ReadBookActivity : BaseReadBookActivity(),
                     upContent()
                 } else {
                     AppLog.putDebug(
-                        "[朗读] 脱钩保持页面 显示pos:${ReadBook.durChapterPos} 朗读pos:${position.chapterPosition}",
+                        "[朗读] 不跟随 显示页与朗读出发页不同 显示pos:${ReadBook.durChapterPos} " +
+                            "朗读pos:${position.chapterPosition}",
                         module = LogModule.READ_ALOUD
                     )
                 }
+                updateReadAloudPanels()
             }
         }
         observeEvent<Boolean>(PreferKey.keepLight) {

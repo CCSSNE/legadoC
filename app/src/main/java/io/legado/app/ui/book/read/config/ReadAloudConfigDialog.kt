@@ -220,7 +220,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
             key: String?
         ) {
             when (key) {
-                PreferKey.readAloudByPage, PreferKey.streamReadAloudAudio -> {
+                PreferKey.pageSplit, PreferKey.streamReadAloudAudio -> {
                     if (BaseReadAloudService.isRun) {
                         postEvent(EventBus.MEDIA_BUTTON, false)
                     }

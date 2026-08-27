@@ -3,7 +3,6 @@ package io.legado.app.model
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.EventBus
-import io.legado.app.constant.LogModule
 import io.legado.app.constant.PageAnim.scrollPageAnim
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
@@ -85,75 +84,15 @@ object ReadBook : CoroutineScope by MainScope() {
     /**
      * 显示进度（用户正在读哪）：写者只允许三类——
      * 1) 用户操作（翻页/跳转/切章）2) 数据同步（setProgress/loadContent/迁移）
-     * 3) 页面跟随策略（朗读位置事件在 attach 态的跟随写）。
-     * 朗读链路其余任何代码不得直写；脱钩（readAloudPageDetached）时
-     * 只有“回原进度”能经 applyAloudPositionToReader 写入。
+     * 3) 页面跟随规则（朗读位置事件经 shouldFollowAloudAdvance 判定的跟随写，
+     * 在 ReadBookActivity 观察者单点执行）。
+     * 朗读位置本身永不直写本字段；显示与朗读的脱节是派生事实
+     * （显示页 != 朗读页），不再有可存储的脱钩状态。
      */
     var durChapterPos = 0
     var isLocalBook = true
     var chapterChanged = false
     var skipReadAloudSyncOnce = false
-
-    /**
-     * 页面跟随策略状态：true=用户手动翻页后与朗读位置脱钩，显示保持用户页面。
-     * 写者只允许：用户手动翻页（detach）、明确要求重新跟随的入口
-     * （双击段落/从本页读经 switchReadAloudTo/回原进度/选择朗读/朗读停止/跨章跟随同步）（attach）。
-     * 朗读位置确认事件（switchConfirmed）无权改写本状态。
-     */
-    var readAloudPageDetached = false
-        private set
-
-    /**
-     * 跟随地板（补读锁）：起点被回退到当前显示页之前时（如“从本页读”回退跨页段首），
-     * 语音先补读当前页之前的内容，跟随写在到达地板前不写显示进度，
-     * 避免页面被拽回上一页；到达即自动清除，脱钩、重新跟随、新起点也立即清除。
-     * 这是页面跟随策略内部的瞬时闩，不是朗读位置副本；只经下面三个方法读写。
-     */
-    private var aloudFollowFloorChapterIndex = -1
-    private var aloudFollowFloorPos = -1
-
-    @Synchronized
-    fun setAloudFollowFloor(chapterIndex: Int, floorPos: Int) {
-        aloudFollowFloorChapterIndex = chapterIndex
-        aloudFollowFloorPos = floorPos
-        AppLog.putDebug(
-            "[朗读] 跟随地板 → 开启 ch:$chapterIndex floor:$floorPos 补读期间显示不动",
-            module = LogModule.READ_ALOUD
-        )
-    }
-
-    @Synchronized
-    fun clearAloudFollowFloor() {
-        if (aloudFollowFloorChapterIndex >= 0) {
-            AppLog.putDebug(
-                "[朗读] 跟随地板 → 清除 ch:$aloudFollowFloorChapterIndex floor:$aloudFollowFloorPos",
-                module = LogModule.READ_ALOUD
-            )
-        }
-        aloudFollowFloorChapterIndex = -1
-        aloudFollowFloorPos = -1
-    }
-
-    /**
-     * 跟随写显示进度前的统一闸门：位置已到地板或无地板时放行并顺带清闩，
-     * 未到地板时拦截，显示保持等待语音补读到位。
-     */
-    @Synchronized
-    fun aloudFollowAllowsWrite(position: ReadAloudPosition): Boolean {
-        val floorChapter = aloudFollowFloorChapterIndex
-        if (floorChapter < 0) return true
-        if (floorChapter != position.chapterIndex || position.chapterPosition >= aloudFollowFloorPos) {
-            AppLog.putDebug(
-                "[朗读] 跟随地板 → 补读到位 ch:$floorChapter floor:$aloudFollowFloorPos " +
-                    "到达:${position.chapterPosition}",
-                module = LogModule.READ_ALOUD
-            )
-            aloudFollowFloorChapterIndex = -1
-            aloudFollowFloorPos = -1
-            return true
-        }
-        return false
-    }
 
     private var pendingReadAloudChapterSync = false
     var prevTextChapter: TextChapter? = null
@@ -606,7 +545,6 @@ object ReadBook : CoroutineScope by MainScope() {
                     if (syncFromReadAloud) {
                         if (it.isCompleted) {
                             pendingReadAloudChapterSync = false
-                            attachReadAloudPage()
                             readAloud(!BaseReadAloudService.pause)
                         } else {
                             pendingReadAloudChapterSync = true
@@ -617,30 +555,6 @@ object ReadBook : CoroutineScope by MainScope() {
         }
         upReadTime()
         preDownload()
-    }
-
-    fun detachReadAloudPage() {
-        if (!readAloudPageDetached) {
-            readAloudPageDetached = true
-            clearAloudFollowFloor()
-            AppLog.putDebug(
-                "[朗读] 页面跟随 → 脱钩(显示保持用户页) 显示pos:$durChapterPos",
-                module = LogModule.READ_ALOUD
-            )
-            postEvent(EventBus.READ_ALOUD_PAGE_DETACHED, true)
-        }
-    }
-
-    fun attachReadAloudPage() {
-        if (readAloudPageDetached) {
-            readAloudPageDetached = false
-            clearAloudFollowFloor()
-            AppLog.putDebug(
-                "[朗读] 页面跟随 → 跟随(显示归朗读位置管) 朗读pos:${ReadAloud.aloudPosition?.chapterPosition}",
-                module = LogModule.READ_ALOUD
-            )
-            postEvent(EventBus.READ_ALOUD_PAGE_DETACHED, false)
-        }
     }
 
     /**

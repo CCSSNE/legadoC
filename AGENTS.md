@@ -198,22 +198,37 @@ $apk = 'D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_<version>
 
 ### 朗读状态所有权契约
 
-朗读系统只允许三个顶层状态，每个状态只有一个写者类别；任何新代码不得增加位置类状态副本或旁路写点：
+朗读系统是“两个原语 + 一条跟随规则 + 派生事实 + 两个开关”，不存在存储的跟随/脱钩状态：
+
+**顶层状态（每个状态只有一个写者类别；任何新代码不得增加位置类状态副本或旁路写点）：**
 
 | 状态 | 唯一写者 | 其余模块 |
 |---|---|---|
 | `ReadAloud.aloudPosition`（朗读位置唯一真相） | 朗读引擎，经 `publishAloudPosition` 单点发布（带 generation 防乱序） | 只读 |
-| 显示进度（`ReadBook.durChapterPos` / 物理显示页） | 用户操作、数据同步、页面跟随策略（attach 态位置事件跟随写；脱钩时仅“回原进度”可写） | 朗读链路不得直写 |
-| 页面跟随（`ReadBook.readAloudPageDetached`） | 用户手动翻页（detach）、明确要求重新跟随的入口（attach：双击段落/从本页读经 `switchReadAloudTo`、回原进度、选择朗读、朗读停止、跨章跟随同步） | 位置确认事件（`switchConfirmed`）无权改写 |
+| 显示进度（`ReadBook.durChapterPos` / 物理显示页） | 用户操作、数据同步、跟随规则（`shouldFollowAloudAdvance` 判定通过后由 ReadBookActivity 观察者单点写）、`backToAloudProgress`（回原进度） | 朗读引擎零写权限（`postReadAloudTextPosition` 只发布位置） |
 
-派生投影（不得存储、不得反写）：
+**两个原语：**
 
+- 原语A 双击换段 `setAloudStart(position)`：只写“读哪里”，不联动任何显示状态。所有起点设置归一到它：双击段落（真段首）、从本页读（本页第一段）、强制追页翻页（新页第一段）、选择朗读。
+- 原语B 回原进度 `backToAloudProgress()`：把“看哪里”对齐“读哪里”。自动触发仅一处——用户上一章/下一章（命令层 Intent 携带 `syncView=true`，引擎跳章后显示章节一起切）；其余一切事件默认不触发。
+
+**跟随规则（纯判定，无存储）`shouldFollowAloudAdvance(prev, current)`：** 显示物理页 == 朗读出发页（prev 所在页）且位置前进时才写显示进度并翻页；其余（用户翻到别处、回退型起点补读期）一律不动。显示永不被朗读事件拽向后退，“该跳才跳/回退不拽页”由这一条单调性规则全覆盖，不需要地板/闩。
+
+**派生事实（每帧现算，禁止存储）：**
+
+- 显示与朗读脱节 `isViewBehindAloud()`：显示页 != 朗读位置所在页 → PAGE_ACTION 面板（回原进度/从本页读）出现，对齐后自动消失。
 - 朗读红字高亮 = `TextLine.isReadAloud` 绘制期现算：本行段号 == 引擎同款 `getParagraphNum` 判定的朗读段号且 `isPlay()`。禁止把高亮写进 TextPage/TextLine 存储字段；显示变化靠换页全量重绘覆盖，朗读/播放状态变化只经 `ReadView.invalidateReadAloudHighlight()` 单一失效入口清绘制缓存。
 - `durPageIndex` 是 `durChapterPos` 的推导值，不得当作物理显示页使用；物理显示页只认 `ReadView.curPage`。
 
-流程收口：所有改变朗读位置的操作只经 `switchReadAloudTo(position)`（8 个核心函数见 `docs` 流程图）；引擎内部光标（`contentList/nowSpeak/readAloudNumber/textChapter/pageIndex/currentChapterIndex/paragraphStartPos`）只能由引擎推进方法读写，对外仅 `publishAloudPosition` / `publishParagraphProgress` 两个出口。
+**两个开关（原 `readAloudByPage` 按页朗读已拆分删除，不做老配置迁移）：**
 
-朗读诊断日志约定：全部走 `AppLog.putDebug`（需开启"记录日志"设置）、统一 `[朗读]` 前缀、归属 `LogModule.READ_ALOUD`（ReadBookActivity/ReadBook/ReadView 等按类名会被误归阅读模块的调用点必须显式传 `module`）；覆盖点为操作层（双击/从本页读/手动翻页/回原进度/switchTo）、位置发布（publish/confirm/cancel/clear）、跟随决策（跟随写显示/脱钩保持/忽略）、引擎（章节准备/起点偏移/引擎进度/脱钩切章）、状态事件与高亮失效。绘制路径（TextLine/TextPage）禁止打点。用户报 bug 时附上普通日志（勾选朗读模块）即可按链路定位。
+- `forcePageFollow` 强制追页：ON 时翻页被翻译成双击换段（新页第一段），视角永远在朗读页；OFF 时翻页不联动，脱节由派生条件呈现。
+- `pageSplit` 页间分段：ON 时跨页的段从页边界裂成真正的两个朗读单元（边界绝对准，段间有停顿）；OFF 时整段连读，读到跨页处自然翻页。预测换页（按文字量比例预估翻页时刻）是未来高级功能，挂载点约定见 `BaseReadAloudService.pageSplit` 字段注释：预测只允许影响位置事件的发布时机，不得新增显示写点。
+- `readAloudPageStartAtParagraph` 页首按段保留：只影响“本页第一段”的解析方式，其回退行为由跟随规则自然兜住。
+
+流程收口：所有改变朗读位置的操作只经 `setAloudStart(position)`；引擎内部光标（`contentList/nowSpeak/readAloudNumber/textChapter/pageIndex/currentChapterIndex/paragraphStartPos`）只能由引擎推进方法读写，对外仅 `publishAloudPosition` / `publishParagraphProgress` 两个出口；引擎跨章推进时“显示章节是否跟随”同为派生判定（`syncView || 显示章==朗读章`），视角在别处时走 `switchReadAloudChapterKeepingView` 只切朗读不动显示。
+
+朗读诊断日志约定：全部走 `AppLog.putDebug`（需开启"记录日志"设置）、统一 `[朗读]` 前缀、归属 `LogModule.READ_ALOUD`（ReadBookActivity/ReadBook/ReadView 等按类名会被误归阅读模块的调用点必须显式传 `module`）；覆盖点为操作层（双击换段/从本页读/手动翻页/回原进度）、位置发布（publish/confirm/cancel/clear）、跟随决策（跟随写显示/不跟随/忽略）、引擎（章节准备/起点偏移/视角保持切章）、状态事件与高亮失效。绘制路径（TextLine/TextPage）禁止打点。用户报 bug 时附上普通日志（勾选朗读模块）即可按链路定位。
 
 ### 设置默认值
 

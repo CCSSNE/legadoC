@@ -40,7 +40,10 @@ object PreferKey {
     const val clickActionBR = "clickActionBottomRight"
     const val hideNavigationBar = "hideNavigationBar"
     const val precisionSearch = "precisionSearch"
-    const val readAloudByPage = "readAloudByPage"
+    // 页间分段：跨页的段从页边界裂成真正的两个朗读单元
+    const val pageSplit = "pageSplit"
+    // 强制追页：翻到哪页，就相当于双击该页最上面的那一段开始朗读
+    const val forcePageFollow = "forcePageFollow"
     const val ttsEngine = "appTtsEngine"
     const val ttsFollowSys = "ttsFollowSys"
     const val ttsSpeechRate = "ttsSpeechRate"
