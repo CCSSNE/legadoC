@@ -2024,7 +2024,6 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     private fun switchReadAloudTo(position: ReadAloudPosition) {
         clearAloudHighlight()
-        ReadBook.detachReadAloudPage()
         ReadAloud.beginPositionSwitch(position)
         val chapter = ReadBook.curTextChapter
         val start = {
@@ -2040,7 +2039,10 @@ class ReadBookActivity : BaseReadBookActivity(),
                     "position=${position.chapterPosition}"
             }
             val pageStart = current.getReadLength(pageIndex)
-            ReadBook.durChapterPos = position.chapterPosition
+            // 只切朗读位置，绝不直写显示进度（durChapterPos）：
+            // 脱钩时直写会让显示进度漂移到朗读位置，后续重定位把页面拉回朗读页。
+            // durChapterPos 只由页面跟随策略写：跟随态由位置事件写入，
+            // 脱钩态由“回原进度”写入。
             ReadBook.readAloud(
                 startPos = (position.chapterPosition - pageStart).coerceAtLeast(0),
                 pageIndex = pageIndex,
