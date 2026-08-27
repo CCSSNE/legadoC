@@ -5,6 +5,7 @@ import android.os.Build
 import io.legado.app.BuildConfig
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.LogModule
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.utils.GSON
@@ -79,6 +80,8 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var optimizeRender = CanvasRecorderFactory.isSupport
             && appCtx.getPrefBoolean(PreferKey.optimizeRender, false)
     var recordLog = appCtx.getPrefBoolean(PreferKey.recordLog)
+    var logShownModules = readLogShownModules()
+        private set
     var editFontScale = appCtx.getPrefInt(PreferKey.editFontScale, 16)
     var editNonPrintable = appCtx.getPrefInt(PreferKey.editNonPrintable, 0)
     var editAutoWrap = appCtx.getPrefBoolean(PreferKey.editAutoWrap, true)
@@ -163,7 +166,20 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
             PreferKey.recordLog -> recordLog = appCtx.getPrefBoolean(PreferKey.recordLog)
 
+            PreferKey.logShownModules -> logShownModules = readLogShownModules()
+
         }
+    }
+
+    /**
+     * 普通日志中除通用外要显示的模块名集合。
+     * key 未配置时默认全选，与勾选弹窗的界面默认值保持一致；
+     * 显式存入空集合表示用户取消全部模块，不视为未配置。
+     */
+    private fun readLogShownModules(): Set<String> {
+        val stored = appCtx.getPrefStringSet(PreferKey.logShownModules)
+            ?: return LogModule.selectableNames
+        return stored.filterTo(mutableSetOf()) { it in LogModule.selectableNames }
     }
 
     //dns配置

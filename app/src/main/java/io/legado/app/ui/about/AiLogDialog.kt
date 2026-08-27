@@ -47,7 +47,7 @@ class AiLogDialog : BaseLogDialogFragment() {
     }
 
     inner class LogAdapter(context: Context) :
-        RecyclerAdapter<Triple<Long, String, Throwable?>, ItemAiLogBinding>(context) {
+        RecyclerAdapter<AppLog.Entry, ItemAiLogBinding>(context) {
 
         override fun getViewBinding(parent: ViewGroup): ItemAiLogBinding {
             return ItemAiLogBinding.inflate(inflater, parent, false)
@@ -56,11 +56,11 @@ class AiLogDialog : BaseLogDialogFragment() {
         override fun convert(
             holder: ItemViewHolder,
             binding: ItemAiLogBinding,
-            item: Triple<Long, String, Throwable?>,
+            item: AppLog.Entry,
             payloads: MutableList<Any>
         ) {
-            binding.textTime.text = LogUtils.logTimeFormat.format(Date(item.first))
-            binding.textMessage.text = item.second.lineSequence()
+            binding.textTime.text = LogUtils.logTimeFormat.format(Date(item.time))
+            binding.textMessage.text = item.message.lineSequence()
                 .filter { it.isNotBlank() }
                 .take(2)
                 .joinToString(" · ")

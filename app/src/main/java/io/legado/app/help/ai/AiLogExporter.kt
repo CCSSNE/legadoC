@@ -16,7 +16,7 @@ object AiLogExporter {
         ).format(Date())}.txt"
     }
 
-    fun write(context: Context, uri: Uri, logs: List<Triple<Long, String, Throwable?>>) {
+    fun write(context: Context, uri: Uri, logs: List<AppLog.Entry>) {
         val output = context.contentResolver.openOutputStream(uri, "wt")
             ?: error("无法打开导出文件")
         output.use {

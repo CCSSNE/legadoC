@@ -16,6 +16,7 @@ import com.jeremyliao.liveeventbus.LiveEventBus
 import io.legado.app.R
 import io.legado.app.base.BaseActivity
 import io.legado.app.constant.EventBus
+import io.legado.app.constant.LogModule
 import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.DialogEditCodeBinding
 import io.legado.app.databinding.DialogEditTextBinding
@@ -43,6 +44,7 @@ import io.legado.app.utils.isJsonObject
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.putPrefString
+import io.legado.app.utils.putPrefStringSet
 import io.legado.app.utils.removePref
 import io.legado.app.utils.restart
 import io.legado.app.utils.setEdgeEffectColor
@@ -233,8 +235,37 @@ class OtherConfigFragment : PreferenceFragment(),
             PreferKey.clearWebViewData -> clearWebViewData()
             "localPassword" -> alertLocalPassword()
             PreferKey.shrinkDatabase -> shrinkDatabase()
+            PreferKey.logShownModules -> showLogShownModulesDialog()
         }
         return super.onPreferenceTreeClick(preference)
+    }
+
+    /** 勾选普通日志中显示的模块；通用模块始终显示，不在弹窗中出现 */
+    private fun showLogShownModulesDialog() {
+        val modules = LogModule.selectable
+        val labels = modules.map { getString(it.labelRes) }.toTypedArray()
+        val shown = AppConfig.logShownModules
+        val checked = BooleanArray(modules.size) { modules[it].name in shown }
+        alert(getString(R.string.log_shown_modules_t)) {
+            multiChoiceItems(labels, checked) { _, which, isChecked ->
+                checked[which] = isChecked
+            }
+            okButton {
+                val selected = (0 until modules.size)
+                    .filter { checked[it] }
+                    .mapTo(mutableSetOf()) { modules[it].name }
+                putPrefStringSet(PreferKey.logShownModules, selected)
+            }
+            negativeButton(R.string.select_all) {
+                repeat(checked.size) { index -> checked[index] = true }
+                putPrefStringSet(PreferKey.logShownModules, LogModule.selectableNames.toMutableSet())
+            }
+            neutralButton(R.string.restore_default) {
+                repeat(checked.size) { index -> checked[index] = true }
+                removePref(PreferKey.logShownModules)
+            }
+            cancelButton()
+        }
     }
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
