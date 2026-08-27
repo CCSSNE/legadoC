@@ -1013,7 +1013,6 @@
     <string name="a10_permission_toast">Android 10+ unable to read and write file due to permission restrictions</string>
     <string name="add_to_text_context_menu_s">Long tap to display 阅读R·Search in the operation menu</string>
     <string name="add_to_text_context_menu_t">Text operation display Search</string>
-    <string name="record_log">Record log</string>
     <string name="log">Log</string>
     <string name="chinese_converter">Simplified conversion</string>
     <string name="change_icon_error">The icon is a vector icon, which was not supported before Android 8.0</string>
@@ -1461,9 +1460,8 @@
     <string name="seconds">Seconds</string>
     <string name="less_than">Less than</string>
     <string name="check_source_config_summary">Check timeout: %1$ss\nCheck item:%2$s</string>
-    <string name="record_debug_log">Record debug log</string>
     <string name="log_shown_modules_t">Normal log modules</string>
-    <string name="log_shown_modules_s">Choose which module logs appear in the log viewer; general logs are always shown</string>
+    <string name="log_shown_modules_s">Check modules to record and show their detailed logs; general logs are always shown</string>
     <string name="log_module_general">General</string>
     <string name="log_module_read_aloud">Read aloud</string>
     <string name="log_module_download_cache">Download/cache</string>

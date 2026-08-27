@@ -32,7 +32,7 @@ object DispatchersMonitor {
 
     fun init() {
         scope.coroutineContext.cancelChildren()
-        if (!AppConfig.recordLog) {
+        if (!AppConfig.debugLogEnabled) {
             return
         }
         monitor(IO)

@@ -120,8 +120,8 @@ class AboutFragment : PreferenceFragmentCompat() {
                 appCtx.toastOnUi("未设置备份目录")
                 return@async
             }
-            if (!AppConfig.recordLog) {
-                appCtx.toastOnUi("未开启日志记录，请去其他设置里打开记录日志")
+            if (AppConfig.logShownModules.isEmpty()) {
+                appCtx.toastOnUi("调试日志未开启，可在其他设置的普通日志模块中勾选")
                 delay(3000)
             }
             val doc = FileDoc.fromUri(Uri.parse(backupPath), true)
