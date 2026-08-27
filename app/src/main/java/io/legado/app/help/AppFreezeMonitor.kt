@@ -27,7 +27,7 @@ object AppFreezeMonitor {
 
     @SuppressLint("UnspecifiedRegisterReceiverFlag")
     fun init(context: Context) {
-        if (!AppConfig.recordLog) {
+        if (!AppConfig.debugLogEnabled) {
             if (registeredReceiver) {
                 registeredReceiver = false
                 context.unregisterReceiver(screenStatusReceiver)
@@ -54,7 +54,7 @@ object AppFreezeMonitor {
 
                 previous = current
 
-                if (AppConfig.recordLog) {
+                if (AppConfig.debugLogEnabled) {
                     handler.postDelayed(this, 3000)
                 }
             }

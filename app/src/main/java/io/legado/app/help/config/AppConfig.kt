@@ -79,9 +79,12 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var loadCoverHighQuality = appCtx.getPrefBoolean(PreferKey.loadCoverHighQuality, false)
     var optimizeRender = CanvasRecorderFactory.isSupport
             && appCtx.getPrefBoolean(PreferKey.optimizeRender, false)
-    var recordLog = appCtx.getPrefBoolean(PreferKey.recordLog)
     var logShownModules = readLogShownModules()
         private set
+
+    /** 是否开启了任意调试模块：监控器、EventBus 日志等重型诊断以此为准 */
+    val debugLogEnabled: Boolean
+        get() = logShownModules.isNotEmpty()
     var editFontScale = appCtx.getPrefInt(PreferKey.editFontScale, 16)
     var editNonPrintable = appCtx.getPrefInt(PreferKey.editNonPrintable, 0)
     var editAutoWrap = appCtx.getPrefBoolean(PreferKey.editAutoWrap, true)
@@ -164,21 +167,18 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             PreferKey.optimizeRender -> optimizeRender = CanvasRecorderFactory.isSupport
                     && appCtx.getPrefBoolean(PreferKey.optimizeRender, false)
 
-            PreferKey.recordLog -> recordLog = appCtx.getPrefBoolean(PreferKey.recordLog)
-
             PreferKey.logShownModules -> logShownModules = readLogShownModules()
 
         }
     }
 
     /**
-     * 普通日志中除通用外要显示的模块名集合。
-     * key 未配置时默认全选，与勾选弹窗的界面默认值保持一致；
-     * 显式存入空集合表示用户取消全部模块，不视为未配置。
+     * 普通日志中除通用外要显示并详细记录的模块名集合。
+     * 勾选模块即是打开该模块的详细调试日志；未配置时默认全部关闭，
+     * 普通用户只看到通用日志，避免被开发向调试日志刷屏。
      */
     private fun readLogShownModules(): Set<String> {
-        val stored = appCtx.getPrefStringSet(PreferKey.logShownModules)
-            ?: return LogModule.selectableNames
+        val stored = appCtx.getPrefStringSet(PreferKey.logShownModules) ?: return emptySet()
         return stored.filterTo(mutableSetOf()) { it in LogModule.selectableNames }
     }
 

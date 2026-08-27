@@ -75,7 +75,7 @@ object LogUtils {
                         return getCurrentDateStr(TIME_PATTERN) + ": " + record.message + "\n"
                     }
                 }
-                level = if (AppConfig.recordLog) {
+                level = if (AppConfig.debugLogEnabled) {
                     Level.INFO
                 } else {
                     Level.OFF
@@ -89,7 +89,7 @@ object LogUtils {
     }
 
     fun upLevel() {
-        val level = if (AppConfig.recordLog) {
+        val level = if (AppConfig.debugLogEnabled) {
             Level.INFO
         } else {
             Level.OFF

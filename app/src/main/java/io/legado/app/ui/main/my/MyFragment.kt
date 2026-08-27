@@ -265,7 +265,7 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
                     }
                 }
 
-                "recordLog" -> LogUtils.upLevel()
+                PreferKey.logShownModules -> LogUtils.upLevel()
                 PreferKey.showRssPageInSettings -> updateSettingsEntryVisibility()
             }
         }

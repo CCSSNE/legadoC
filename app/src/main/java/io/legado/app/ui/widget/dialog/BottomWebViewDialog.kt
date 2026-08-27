@@ -1020,7 +1020,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
 
         /* 监听网页日志 */
         override fun onConsoleMessage(consoleMessage: ConsoleMessage): Boolean {
-            if (!AppConfig.recordLog) return false
+            if (!AppConfig.debugLogEnabled) return false
             val source = source ?: return false
             val messageLevel = consoleMessage.messageLevel().name
             val message = consoleMessage.message()

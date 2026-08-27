@@ -3,7 +3,6 @@ package io.legado.app.constant
 import android.util.Log
 import android.util.Base64
 import io.legado.app.BuildConfig
-import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.toastOnUi
@@ -133,14 +132,9 @@ object AppLog {
         }
     }
 
-    fun putDebug(
-        message: String?,
-        throwable: Throwable? = null,
-        module: LogModule? = null,
-    ) {
-        if (AppConfig.recordLog) {
-            put(message, throwable, module = module)
-        }
+    /** 调试日志始终记录，是否在普通日志弹窗显示由模块勾选决定 */
+    fun putDebug(message: String?, throwable: Throwable? = null) {
+        put(message, throwable)
     }
 
     private fun persist(log: Entry) {

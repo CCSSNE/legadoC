@@ -78,7 +78,7 @@ object UrlUtil {
         conn.instanceFollowRedirects = false
         conn.connect()
 
-        if (AppConfig.recordLog || BuildConfig.DEBUG) {
+        if (AppConfig.debugLogEnabled || BuildConfig.DEBUG) {
             val headers = conn.headerFields
             val headersString = buildString {
                 headers.forEach { (key, value) ->
@@ -130,7 +130,7 @@ object UrlUtil {
             val newUrl= URL(URLDecoder.decode(redirectUrl, "UTF-8"))
             getFileNameFromPath(newUrl)
         } else {
-            AppLog.put("Cannot obtain URL file name, enable recordLog for response header")
+            AppLog.put("Cannot obtain URL file name, enable debug log modules for response header")
             null
         }
     }

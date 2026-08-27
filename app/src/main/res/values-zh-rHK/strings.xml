@@ -656,7 +656,6 @@
     <string name="a10_permission_toast">Android10 以上因權限限制可能無法讀寫文件</string>
     <string name="add_to_text_context_menu_s">長按文字在操作菜單中顯示閲讀·搜索</string>
     <string name="add_to_text_context_menu_t">文字操作顯示搜索</string>
-    <string name="record_log">記錄日誌</string>
     <string name="log">日誌</string>
     <string name="chinese_converter">中文簡繁體轉換</string>
     <string name="change_icon_error">圖標為矢量圖標，Android8.0 以前不支持</string>
@@ -970,7 +969,6 @@
     <string name="seconds">秒</string>
     <string name="less_than">小于</string>
     <string name="check_source_config_summary">校验超时: %1$s秒\n校验项目:%2$s</string>
-    <string name="record_debug_log">记录调试日志</string>
     <string name="sub_dir">子文件夹</string>
     <string name="general">全局</string>
     <string name="use_replace">使用替换</string>

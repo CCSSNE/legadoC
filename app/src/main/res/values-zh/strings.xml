@@ -770,7 +770,6 @@
     <string name="a10_permission_toast">Android 10 以上因系统权限限制可能无法读写文件</string>
     <string name="add_to_text_context_menu_s">长按文字在操作菜单中显示阅读·搜索</string>
     <string name="add_to_text_context_menu_t">文字操作显示搜索</string>
-    <string name="record_log">记录日志</string>
     <string name="log">日志</string>
     <string name="chinese_converter">中文简繁体转换</string>
     <string name="change_icon_error">图标为矢量图标，Android 8.0 以前不支持</string>
@@ -1212,9 +1211,8 @@
     <string name="seconds">秒</string>
     <string name="less_than">小于</string>
     <string name="check_source_config_summary">校验超时：%1$s秒\n校验项目：%2$s</string>
-    <string name="record_debug_log">记录调试日志</string>
     <string name="log_shown_modules_t">普通日志模块</string>
-    <string name="log_shown_modules_s">选择普通日志中显示的模块，通用日志始终显示</string>
+    <string name="log_shown_modules_s">勾选后记录并显示该模块的详细日志，通用日志始终显示</string>
     <string name="log_module_general">通用</string>
     <string name="log_module_read_aloud">朗读链路</string>
     <string name="log_module_download_cache">下载/缓存链路</string>
