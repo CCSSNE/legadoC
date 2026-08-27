@@ -1103,14 +1103,6 @@ abstract class BaseReadAloudService : BaseService(),
         contentList = chapter.getNeedReadAloud(0, readAloudByPage, 0)
             .split("\n")
             .filter { it.isNotEmpty() }
-        var pos = startPos.coerceAtLeast(0)
-        if (pos > 0) {
-            for (paragraph in page.paragraphs) {
-                val tmp = pos - paragraph.length - 1
-                if (tmp < 0) break
-                pos = tmp
-            }
-        }
         nowSpeak = chapter.getParagraphNum(readAloudNumber + 1, readAloudByPage) - 1
         nowSpeak = if (contentList.isEmpty()) {
             0
@@ -1122,13 +1114,29 @@ abstract class BaseReadAloudService : BaseService(),
             toLast = false
             readAloudNumber = chapter.getLastParagraphPosition()
             nowSpeak = contentList.lastIndex.coerceAtLeast(0)
-            if (contentList.isNotEmpty() && page.paragraphs.size == 1 && nowSpeak in chapter.paragraphs.indices) {
-                pos = page.chapterPosition - chapter.paragraphs[nowSpeak].chapterPosition
-            }
         }
-        paragraphStartPos = pos
+        paragraphStartPos = resolveParagraphStartPos(chapter)
         publishParagraphProgress()
         return true
+    }
+
+    /**
+     * 阅读页已把朗读起点解析成绝对位置（[readAloudNumber]），引擎只负责原样保留：
+     * [paragraphStartPos] 是起点在真正读出单元（按段=整段，按页=页片段）内的偏移。
+     * 按段朗读时偏移必须相对整段段首计算——起点恰好落在页首的跨页段落
+     * 不能因为偏移为 0 就退回整段开头；按页朗读时偏移就是所在页片段内的偏移。
+     */
+    private fun resolveParagraphStartPos(chapter: TextChapter): Int {
+        if (readAloudByPage) {
+            val targetPageIndex = chapter.getPageIndexByCharIndex(readAloudNumber.coerceAtLeast(0))
+            if (targetPageIndex !in 0 until chapter.pageSize) {
+                return 0
+            }
+            return (readAloudNumber - chapter.getReadLength(targetPageIndex)).coerceAtLeast(0)
+        }
+        val paragraphNum = chapter.getParagraphNum(readAloudNumber + 1, false)
+        val paragraph = chapter.getParagraphs(false).getOrNull(paragraphNum - 1) ?: return 0
+        return (readAloudNumber - paragraph.chapterPosition).coerceAtLeast(0)
     }
 
     private fun publishPreparedAloudPosition() {
