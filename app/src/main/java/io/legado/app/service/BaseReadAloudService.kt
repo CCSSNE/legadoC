@@ -1016,6 +1016,7 @@ abstract class BaseReadAloudService : BaseService(),
                 if (!prepareReadAloudChapter(chapter, pageIndex, startPos)) {
                     return@execute
                 }
+                publishPreparedAloudPosition()
                 launch(Main) {
                     if (play) play() else pageChanged = true
                 }
@@ -1032,6 +1033,7 @@ abstract class BaseReadAloudService : BaseService(),
                     return@execute
                 }
             }
+            publishPreparedAloudPosition()
             launch(Main) {
                 if (play) play() else pageChanged = true
             }
@@ -1108,6 +1110,14 @@ abstract class BaseReadAloudService : BaseService(),
         paragraphStartPos = pos
         publishParagraphProgress()
         return true
+    }
+
+    private fun publishPreparedAloudPosition() {
+        val chapterIndex = currentChapterIndex.takeIf { it >= 0 } ?: return
+        val chapterPosition = textChapter?.takeIf { it.chapter.index == chapterIndex }?.let {
+            readAloudNumber
+        } ?: ReadBook.durChapterPos
+        ReadAloud.updateAloudPosition(ReadAloudPosition(chapterIndex, chapterPosition))
     }
 
     @SuppressLint("WakelockTimeout")
