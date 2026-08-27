@@ -2051,10 +2051,12 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     private fun clearAloudHighlight(position: ReadAloudPosition?) {
         position ?: return
-        val textChapter = ReadBook.curTextChapter ?: return
-        if (textChapter.chapter.index == position.chapterIndex) {
-            textChapter.getPageByReadPos(position.chapterPosition)?.removePageAloudSpan()
-        }
+        val textChapter = sequenceOf(
+            ReadBook.curTextChapter,
+            ReadBook.prevTextChapter,
+            ReadBook.nextTextChapter,
+        ).filterNotNull().firstOrNull { it.chapter.index == position.chapterIndex } ?: return
+        textChapter.getPageByReadPos(position.chapterPosition)?.removePageAloudSpan()
     }
 
     private fun clearAloudHighlight() {
@@ -3168,11 +3170,11 @@ class ReadBookActivity : BaseReadBookActivity(),
             // 但高亮仍按朗读所在页持续更新，用户翻回朗读页即可立即看到正确红字。
             lifecycleScope.launch(Main) {
                 if (BaseReadAloudService.isPlay()) {
+                    clearAloudHighlight(previousPosition)
                     ReadBook.curTextChapter?.let { textChapter ->
                         if (ReadBook.durChapterIndex != chapterIndex) {
                             return@let
                         }
-                        clearAloudHighlight(previousPosition)
                         val pageIndex = textChapter.getPageIndexByCharIndex(chapterStart)
                         val aloudSpanStart =
                             chapterStart - textChapter.getReadLength(pageIndex)
@@ -3180,9 +3182,10 @@ class ReadBookActivity : BaseReadBookActivity(),
                         if (!ReadBook.readAloudPageDetached) {
                             ReadBook.durChapterPos = chapterStart
                             upContent()
-                        } else {
-                            binding.readView.invalidateReadAloudHighlight()
                         }
+                    }
+                    if (ReadBook.readAloudPageDetached) {
+                        binding.readView.invalidateReadAloudHighlight()
                     }
                 }
             }
