@@ -1437,7 +1437,6 @@ class ReadBookActivity : BaseReadBookActivity(),
         lifecycleScope.launch {
             binding.readView.upContent(relativePosition, resetPageOffset)
             if (relativePosition == 0) {
-                postAttachReadAloudProgressIfCurrentPage()
                 upSeekBarProgress()
             }
             loadStates = false
@@ -1452,7 +1451,6 @@ class ReadBookActivity : BaseReadBookActivity(),
     ) = withContext(Main.immediate) {
         binding.readView.upContent(relativePosition, resetPageOffset)
         if (relativePosition == 0) {
-            postAttachReadAloudProgressIfCurrentPage()
             upSeekBarProgress()
         }
         loadStates = false
@@ -1482,11 +1480,10 @@ class ReadBookActivity : BaseReadBookActivity(),
      */
     override fun pageChanged(fromReadAloud: Boolean) {
         if (!fromReadAloud && !ReadBook.skipReadAloudSyncOnce) {
-            handler.post { onManualPageChanged() }
+            onManualPageChanged()
         }
         upChapterBookmarks()
         binding.readView.onPageChange()
-        postAttachReadAloudProgressIfCurrentPage()
         handler.post {
             upSeekBarProgress()
         }
@@ -1970,24 +1967,6 @@ class ReadBookActivity : BaseReadBookActivity(),
         updateReadAloudPanels()
     }
 
-    private fun postAttachReadAloudProgressIfCurrentPage() {
-        handler.post {
-            attachReadAloudProgressIfCurrentPage()
-        }
-    }
-
-    private fun attachReadAloudProgressIfCurrentPage() {
-        if (!ReadBook.readAloudPageDetached || !BaseReadAloudService.isRun) return
-        val position = ReadAloud.aloudPosition ?: return
-        if (ReadBook.durChapterIndex != position.chapterIndex) return
-        val textChapter = ReadBook.curTextChapter ?: return
-        val readAloudPage = textChapter.getPageByReadPos(position.chapterPosition) ?: return
-        if (readAloudPage.index != ReadBook.durPageIndex) return
-        textChapter.getPageByReadPos(ReadBook.durChapterPos)?.removePageAloudSpan()
-        ReadBook.attachReadAloudPage()
-        applyAloudPositionToReader(position)
-    }
-
     override fun restartFromParagraph(position: Pair<Int, TextLine>) {
         val (chapterIndex, line) = position
         switchReadAloudTo(ReadAloudPosition(chapterIndex, line.chapterPosition))
@@ -2051,7 +2030,6 @@ class ReadBookActivity : BaseReadBookActivity(),
                 pageIndex = pageIndex,
             )
         }
-        ReadAloud.updateAloudPosition(position)
         ReadBook.attachReadAloudPage()
         if (chapter?.chapter?.index == position.chapterIndex) {
             start()
@@ -2086,10 +2064,9 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     private fun onManualPageChanged() {
         if (!BaseReadAloudService.isRun || ReadBook.skipReadAloudSyncOnce) return
+        suppressAutoPageFollow()
         if (getPrefBoolean(PreferKey.readAloudByPage, false)) {
-            restartFromPage()
-        } else {
-            suppressAutoPageFollow()
+            handler.post { restartFromPage() }
         }
     }
 
@@ -3129,7 +3106,6 @@ class ReadBookActivity : BaseReadBookActivity(),
         observeEvent<Int>(EventBus.ALOUD_STATE) {
             updateReadAloudPageFloating()
             if (it == Status.STOP) {
-                ReadAloud.clearAloudPosition()
                 ReadBook.attachReadAloudPage()
                 hideReadAloudPagePanel()
             }
@@ -3169,9 +3145,6 @@ class ReadBookActivity : BaseReadBookActivity(),
         observeEventSticky<Bundle>(EventBus.TTS_PROGRESS) { progress ->
             val chapterIndex = progress.getInt("chapterIndex", ReadBook.durChapterIndex)
             val chapterStart = progress.getInt("chapterPos")
-            if (BaseReadAloudService.isRun) {
-                ReadAloud.updateAloudPosition(ReadAloudPosition(chapterIndex, chapterStart))
-            }
             // 朗读高亮（isReadAloud）直接改变行绘制状态，必须在主线程更新，
             // 否则与渲染竞争会让红字丢失。脱钩（阅读页翻走）时阅读进度不跟随朗读，
             // 但高亮仍按朗读所在页持续更新，用户翻回朗读页即可立即看到正确红字。
