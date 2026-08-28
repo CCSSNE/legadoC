@@ -16,6 +16,7 @@ internal class CacheWorkerDispatcherImpl(
     private val bodyAdapter = TextBodyWorkerAdapter(workerPort)
     private val reviewAdapter = ReviewWorkerAdapter(workerPort)
     private val mediaAdapter = MediaWorkerAdapter(workerPort)
+    private val ttsAdapter = TtsWorkerAdapter(workerPort)
 
     override fun start(submission: CacheSubmission) {
         val lease = workerPort.acquire(submission)
@@ -47,6 +48,9 @@ internal class CacheWorkerDispatcherImpl(
             task.phase == CachePhase.MEDIA -> {
                 mediaAdapter.pause(submission)
             }
+            task.phase == CachePhase.TTS && task.kind.ttsPrerequisitePhase() != null -> {
+                ttsAdapter.pause(submission)
+            }
             else -> {
                 val error = "no pause adapter for kind=${task.kind} phase=${task.phase}"
                 recordDispatchFailure(submission, error)
@@ -68,6 +72,9 @@ internal class CacheWorkerDispatcherImpl(
             }
             task.phase == CachePhase.MEDIA -> {
                 mediaAdapter.cancel(submission)
+            }
+            task.phase == CachePhase.TTS && task.kind.ttsPrerequisitePhase() != null -> {
+                ttsAdapter.cancel(submission)
             }
             else -> {
                 val error = "no cancel adapter for kind=${task.kind} phase=${task.phase}"
@@ -113,6 +120,9 @@ internal class CacheWorkerDispatcherImpl(
                 }
                 task.phase == CachePhase.MEDIA -> {
                     mediaAdapter.start(task, lease)
+                }
+                task.phase == CachePhase.TTS && task.kind.ttsPrerequisitePhase() != null -> {
+                    ttsAdapter.start(task, lease)
                 }
                 else -> {
                     val message = "no worker adapter for kind=${task.kind} phase=${task.phase}"

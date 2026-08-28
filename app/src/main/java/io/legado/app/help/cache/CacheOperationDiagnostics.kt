@@ -21,6 +21,7 @@ internal object CacheOperationDiagnostics {
         BODY,
         REVIEW,
         MEDIA,
+        TTS,
     }
 
     data class Context(
