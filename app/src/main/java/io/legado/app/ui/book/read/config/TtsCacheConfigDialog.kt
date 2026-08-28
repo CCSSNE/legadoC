@@ -10,6 +10,7 @@ import io.legado.app.base.BasePrefDialogFragment
 import io.legado.app.lib.prefs.fragment.PreferenceFragment
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.utils.setEdgeEffectColor
+import io.legado.app.utils.setLayout
 
 /** TTS 缓存设置弹窗：命中 key 维度勾选（引擎+章节+文本固定必选）。 */
 class TtsCacheConfigDialog : BasePrefDialogFragment() {

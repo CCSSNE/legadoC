@@ -8,6 +8,7 @@ import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.MD5Utils
+import io.legado.app.utils.fromJsonObject
 import java.io.File
 
 /**
@@ -28,8 +29,8 @@ object TtsCacheStore {
     /** key 方案版本：key 组成变化时递增，旧文件自然失配等待重合成。 */
     private const val KEY_VERSION = "ttsv1"
 
-    private const val DEFAULT_ENGINE_KEY = "default"
-    private const val DEFAULT_VOICE_KEY = "default"
+    const val DEFAULT_ENGINE_KEY = "default"
+    const val DEFAULT_VOICE_KEY = "default"
 
     /** 跟随系统语速时应用感知不到系统 TTS 内部语速，语速维度退化为常量标记。 */
     const val FOLLOW_SYS_SPEED_KEY = "followSys"
