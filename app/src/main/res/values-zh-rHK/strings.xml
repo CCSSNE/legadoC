@@ -98,6 +98,10 @@
     <string name="tts_cache_failed">TTS 緩存任務提交失敗：%1$s</string>
     <string name="tts_cache_chapters_empty">沒有可緩存的章節</string>
     <string name="tts_cache_requires_wav">TTS 緩存需要先開啟 TTS-Wav 模式</string>
+    <string name="read_aloud_tts_realtime_cache">實時緩存</string>
+    <string name="read_aloud_tts_realtime_cache_summary">開啟後邊播邊把後面的段預先合成進 TTS 緩存。依賴 TTS-Wav 模式；朗讀中切換會重新開始朗讀。</string>
+    <string name="tts_cache_prefetch_count">實時預取段數</string>
+    <string name="tts_cache_prefetch_count_value">當前段之後預合成 %1$d 段</string>
     <string name="tts_cache_settings">TTS緩存設置</string>
     <string name="tts_cache_settings_summary">緩存命中維度（引擎+章節+文本固定必選）</string>
     <string name="tts_cache_hit_keys_category">緩存命中維度</string>
