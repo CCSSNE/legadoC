@@ -148,6 +148,8 @@
     <string name="tts_cache_key_speed_summary">Unchecked: changing the rate still hits cached audio. Follow-system mode cannot sense the system-internal rate.</string>
     <string name="tts_cache_key_voice">Match by voice</string>
     <string name="tts_cache_key_voice_summary">Unchecked: changing the voice still hits cached audio.</string>
+    <string name="tts_cache_include_in_package">Include TTS cache in cache package</string>
+    <string name="tts_cache_include_in_package_summary">When checked, the WebDAV cache package also backs up the TTS audio cache. Off by default: wav files are large and can be re-synthesized.</string>
     <string name="offline_cache_t">Offline cache</string>
     <string name="offline_cache_s">cache the selected chapter(s) to Storage</string>
     <string name="change_origin">Change Origin</string>

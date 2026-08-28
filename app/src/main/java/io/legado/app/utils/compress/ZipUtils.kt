@@ -82,7 +82,7 @@ object ZipUtils {
         if (srcFilePaths == null || zipFilePath == null) return@withContext false
         ZipOutputStream(FileOutputStream(zipFilePath)).use {
             for (srcFile in srcFilePaths) {
-                if (!zipFile(getFileByPath(srcFile)!!, "", it, comment))
+                if (!zipFile(getFileByPath(srcFile)!!, "", it, comment, null))
                     return@withContext false
             }
             return@withContext true
@@ -113,7 +113,7 @@ object ZipUtils {
         ZipOutputStream(FileOutputStream(zipFile)).use { zos ->
             zos.setLevel(compressionLevel)
             for (srcFile in srcFiles) {
-                if (!zipFile(srcFile, "", zos, comment) { byteCount ->
+                if (!zipFile(srcFile, "", zos, comment, null) { byteCount ->
                         processedBytes += byteCount
                         onProgress?.invoke(processedBytes, totalBytes)
                     }
@@ -171,24 +171,28 @@ object ZipUtils {
     fun zipFile(
         srcFile: File?,
         zipFile: File?,
-        comment: String? = null
+        comment: String? = null,
+        fileFilter: ((File) -> Boolean)? = null,
     ): Boolean {
         if (srcFile == null || zipFile == null) return false
         ZipOutputStream(FileOutputStream(zipFile)).use { zos ->
-            return zipFile(srcFile, "", zos, comment, null)
+            return zipFile(srcFile, "", zos, comment, fileFilter, null)
         }
     }
 
+    /** [fileFilter] 对递归中每个文件/目录生效，返回 false 时整个子树被剪除。 */
     @Throws(IOException::class)
     private fun zipFile(
         srcFile: File,
         rootPath: String,
         zos: ZipOutputStream,
         comment: String?,
+        fileFilter: ((File) -> Boolean)? = null,
         onBytesWritten: ((Int) -> Unit)? = null,
     ): Boolean {
-        var rootPath1 = rootPath
         if (!srcFile.exists()) return true
+        if (fileFilter != null && !fileFilter.invoke(srcFile)) return true
+        var rootPath1 = rootPath
         rootPath1 = rootPath1 + (if (isSpace(rootPath1)) "" else File.separator) + srcFile.name
         if (srcFile.isDirectory) {
             val fileList = srcFile.listFiles()
@@ -199,7 +203,9 @@ object ZipUtils {
                 zos.closeEntry()
             } else {
                 for (file in fileList) {
-                    if (!zipFile(file, rootPath1, zos, comment, onBytesWritten)) return false
+                    if (!zipFile(file, rootPath1, zos, comment, fileFilter, onBytesWritten)) {
+                        return false
+                    }
                 }
             }
         } else {

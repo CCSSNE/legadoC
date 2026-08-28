@@ -33,7 +33,9 @@ import io.legado.app.help.cache.CacheCoordinator
 import io.legado.app.help.cache.CacheRequestSource
 import io.legado.app.help.cache.CacheTaskStatus
 import io.legado.app.help.cache.MediaCacheTaskState
+import io.legado.app.help.config.AppConfig
 import io.legado.app.help.review.ReviewSnapshotStore
+import io.legado.app.help.tts.TtsCacheStore
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.MD5Utils
@@ -411,7 +413,10 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
         }
     }
 
-    suspend fun createCachePackage(book: Book): File {
+    suspend fun createCachePackage(
+        book: Book,
+        includeTtsCache: Boolean = AppConfig.ttsCacheIncludeInPackage,
+    ): File {
         return withContext(Dispatchers.IO) {
             val cacheDir = BookHelp.getCacheDir(book)
             val outDir = File(appCtx.externalCache, "cache_package").apply {
@@ -429,7 +434,16 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
             if (!cacheDir.exists() || cacheDir.listFiles().isNullOrEmpty()) {
                 throw IllegalStateException(context.getString(R.string.cache_manage_no_cache))
             }
-            if (!ZipUtils.zipFile(cacheDir, zipFile) || !zipFile.exists() || zipFile.length() <= 0L) {
+            // 默认剪除 tts_cache 子目录：wav 体积大且可由文本+引擎重新合成
+            val ttsCacheDir = File(cacheDir, TtsCacheStore.DIR_NAME).absolutePath
+            val fileFilter: ((File) -> Boolean)? = if (includeTtsCache) {
+                null
+            } else {
+                { file: File -> file.absolutePath != ttsCacheDir }
+            }
+            if (!ZipUtils.zipFile(cacheDir, zipFile, fileFilter = fileFilter) ||
+                !zipFile.exists() || zipFile.length() <= 0L
+            ) {
                 throw IllegalStateException(context.getString(R.string.cache_manage_pack_failed))
             }
             zipFile
