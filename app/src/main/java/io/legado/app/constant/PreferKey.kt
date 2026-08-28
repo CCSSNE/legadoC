@@ -46,6 +46,9 @@ object PreferKey {
     const val forcePageFollow = "forcePageFollow"
     // TTS-Wav 模式：系统 TTS 先合成到本地 wav 再自行播放，音频时长精确可知
     const val ttsWavMode = "ttsWavMode"
+    // TTS 缓存命中 key 可选维度（引擎+章节+文本固定必选）：语速 / 音色
+    const val ttsCacheKeySpeed = "ttsCacheKeySpeed"
+    const val ttsCacheKeyVoice = "ttsCacheKeyVoice"
     const val ttsEngine = "appTtsEngine"
     const val ttsFollowSys = "ttsFollowSys"
     const val ttsSpeechRate = "ttsSpeechRate"

@@ -1865,6 +1865,23 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val ttsWavMode
         get() = appCtx.getPrefBoolean(PreferKey.ttsWavMode, true)
 
+    /**
+     * TTS 缓存命中 key 是否包含语速维度。默认包含；
+     * 跟随系统语速（ttsFollowSys）时语速感知不到系统内部设置，该维度退化为常量标记。
+     */
+    var ttsCacheKeySpeed: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.ttsCacheKeySpeed, true)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.ttsCacheKeySpeed, value)
+        }
+
+    /** TTS 缓存命中 key 是否包含音色维度。默认包含；关闭后换音色仍会命中旧音频。 */
+    var ttsCacheKeyVoice: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.ttsCacheKeyVoice, true)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.ttsCacheKeyVoice, value)
+        }
+
     var readAloudScrollFollowTimeout: Int
         get() = appCtx.getPrefInt(PreferKey.readAloudScrollFollowTimeout, 3000).coerceIn(0, 10000)
         set(value) {
