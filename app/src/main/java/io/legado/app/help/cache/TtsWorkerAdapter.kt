@@ -1,6 +1,8 @@
 package io.legado.app.help.cache
 
 import io.legado.app.data.appDb
+import io.legado.app.help.book.isAudio
+import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.tts.TtsCacheManager
 import io.legado.app.service.TtsCacheService

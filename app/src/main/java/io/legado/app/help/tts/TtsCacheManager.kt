@@ -10,6 +10,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
+import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.cache.CacheOperationDiagnostics
 import io.legado.app.help.cache.CacheWorkerLease
 import io.legado.app.help.config.AppConfig
@@ -22,6 +23,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import splitties.init.appCtx
@@ -51,7 +53,7 @@ internal object TtsCacheManager {
         val key: String,
         val book: Book,
         val chapter: BookChapter,
-        val executionLease: CacheWorkerLease?,
+        val executionLease: CacheWorkerLease,
         val commitIfLeaseActive: ((() -> Unit) -> Boolean),
         val reportProgress: (processedUnits: Int, totalUnits: Int, failedUnits: Int) -> Unit,
     )
@@ -136,7 +138,7 @@ internal object TtsCacheManager {
             val retained = ArrayList<QueueTask>()
             while (true) {
                 val task = channel.tryReceive().getOrNull() ?: break
-                if (task.executionLease?.let { taskKey(it) } != ownerKey) retained += task
+                if (taskKey(task.executionLease) != ownerKey) retained += task
             }
             retained.forEach { channel.trySend(it) }
             group.queued.clear()
@@ -152,7 +154,7 @@ internal object TtsCacheManager {
 
     /** TTS 宿主处理任务（suspend：内部排版、逐单元合成、落盘） */
     internal suspend fun processTask(task: QueueTask): TaskResult {
-        val lease = requireNotNull(task.executionLease) { "tts task requires a worker lease" }
+        val lease = task.executionLease
         val diagnostics = CacheOperationDiagnostics.Context(
             domain = CacheOperationDiagnostics.Domain.TTS,
             sessionId = lease.sessionId,
@@ -382,7 +384,7 @@ internal object TtsCacheManager {
     private fun registerActiveExecution(task: QueueTask, job: Job): ExecutionGroup {
         var callbacks = emptyList<() -> Unit>()
         val group = synchronized(queueLock) {
-            val lease = requireNotNull(task.executionLease) { "tts task requires a worker lease" }
+            val lease = task.executionLease
             val current = requireNotNull(executionGroups[leaseKey(lease)]) {
                 "tts claimed task has no execution group: ${task.key}"
             }

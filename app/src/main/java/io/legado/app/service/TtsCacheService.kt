@@ -85,13 +85,11 @@ class TtsCacheService : BaseService() {
                                 .getOrElse { TtsCacheManager.TaskResult.FAILED }
                             val chapterIndex = task.key.substringAfter('|').toIntOrNull()
                             if (chapterIndex != null && result != TtsCacheManager.TaskResult.STOPPED) {
-                                task.executionLease?.let { lease ->
-                                    CacheTtsWorkerRegistry.onChapterFinished(
-                                        lease,
-                                        chapterIndex,
-                                        result == TtsCacheManager.TaskResult.SUCCEEDED,
-                                    )
-                                }
+                                CacheTtsWorkerRegistry.onChapterFinished(
+                                    task.executionLease,
+                                    chapterIndex,
+                                    result == TtsCacheManager.TaskResult.SUCCEEDED,
+                                )
                             }
                         } finally {
                             activeCount.decrementAndGet()
