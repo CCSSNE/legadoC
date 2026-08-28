@@ -53,6 +53,7 @@ class TtsCacheConfigDialog : BasePrefDialogFragment() {
         override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
             addPreferencesFromResource(R.xml.pref_config_tts_cache)
             upPrefetchCountSummary()
+            upSegmentTimeoutSummary()
         }
 
         override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -65,6 +66,7 @@ class TtsCacheConfigDialog : BasePrefDialogFragment() {
         override fun onPreferenceTreeClick(preference: Preference): Boolean {
             when (preference.key) {
                 PreferKey.ttsCachePrefetchCount -> showPrefetchCountDialog()
+                PreferKey.ttsCacheSegmentTimeoutSeconds -> showSegmentTimeoutDialog()
             }
             return super.onPreferenceTreeClick(preference)
         }
@@ -86,6 +88,26 @@ class TtsCacheConfigDialog : BasePrefDialogFragment() {
                 getString(
                     R.string.tts_cache_prefetch_count_value,
                     AppConfig.ttsCachePrefetchCount
+                )
+        }
+
+        private fun showSegmentTimeoutDialog() {
+            showIntegerInputDialog(
+                title = R.string.tts_cache_segment_timeout,
+                currentValue = AppConfig.ttsCacheSegmentTimeoutSeconds,
+                validRange = 5..600,
+                defaultValue = 90
+            ) {
+                AppConfig.ttsCacheSegmentTimeoutSeconds = it
+                upSegmentTimeoutSummary()
+            }
+        }
+
+        private fun upSegmentTimeoutSummary() {
+            findPreference<Preference>(PreferKey.ttsCacheSegmentTimeoutSeconds)?.summary =
+                getString(
+                    R.string.tts_cache_segment_timeout_value,
+                    AppConfig.ttsCacheSegmentTimeoutSeconds
                 )
         }
     }

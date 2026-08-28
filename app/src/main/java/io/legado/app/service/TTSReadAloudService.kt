@@ -103,6 +103,7 @@ class TTSReadAloudService : BaseReadAloudService() {
         val index: Int,
         val tempFile: File,
         val key: TtsCacheStore.UnitKey,
+        val watchdog: Runnable,
     )
 
     private val realtimePending = linkedMapOf<Int, RealtimeSynthesis>()
@@ -110,6 +111,7 @@ class TTSReadAloudService : BaseReadAloudService() {
     private fun clearRealtimePending() {
         synchronized(realtimePending) {
             realtimePending.values.forEach { record ->
+                predictHandler.removeCallbacks(record.watchdog)
                 runCatching { record.tempFile.delete() }
             }
             realtimePending.clear()
@@ -354,7 +356,13 @@ class TTSReadAloudService : BaseReadAloudService() {
         )
     }
 
-    /** 派发一个单元给引擎合成（临时文件），完成回调里提交进 TTS 缓存。 */
+    /**
+     * 派发一个单元给引擎合成（临时文件），完成回调里提交进 TTS 缓存。
+     * 每次派发挂一个超时看门狗：系统 TTS 引擎挂死时 onDone/onError 都不会
+     * 到来，没有看门狗则该段永久占用在途表——预取段堵死引擎队列，成为
+     * 当前段时静默等待 forever。超时按失败清理；当前段走重试链
+     * （clearTTS+initTts 正好是解卡引擎的手段）。
+     */
     private fun dispatchRealtimeSynthesis(
         book: Book,
         chapter: BookChapter,
@@ -364,7 +372,8 @@ class TTSReadAloudService : BaseReadAloudService() {
     ) {
         val tts = textToSpeech ?: return
         val tempFile = File(wavDir, "rt_${speakGeneration}_$index.wav")
-        realtimePending[index] = RealtimeSynthesis(index, tempFile, key)
+        val watchdog = Runnable { onRealtimeSynthesisTimeout(index) }
+        realtimePending[index] = RealtimeSynthesis(index, tempFile, key, watchdog)
         val result = tts.runCatching {
             synthesizeToFile(text, Bundle(), tempFile, utteranceId(index))
         }.getOrElse {
@@ -372,17 +381,37 @@ class TTSReadAloudService : BaseReadAloudService() {
             TextToSpeech.ERROR
         }
         if (result == TextToSpeech.ERROR) {
+            predictHandler.removeCallbacks(watchdog)
             realtimePending.remove(index)
             tempFile.delete()
             if (index == nowSpeak && isRun && !pause) {
                 handleSpeakError("tts realtime synthesize error", retryWithReinit = true)
             }
+        } else {
+            predictHandler.postDelayed(
+                watchdog,
+                AppConfig.ttsCacheSegmentTimeoutSeconds * 1000L,
+            )
         }
+    }
+
+    /** 看门狗触发：引擎在超时时限内没有回报任何回调，按合成失败清理。 */
+    private fun onRealtimeSynthesisTimeout(index: Int) {
+        val record = synchronized(realtimePending) { realtimePending.remove(index) } ?: return
+        record.tempFile.delete()
+        AppLog.put(
+            "[朗读] 实时缓存合成超时(${AppConfig.ttsCacheSegmentTimeoutSeconds}s) 单元:$index"
+        )
+        if (index == nowSpeak && isRun && !pause) {
+            handleSpeakError("tts realtime synthesize timeout", retryWithReinit = true)
+        }
+        // 预取段超时通常意味着引擎已挂死：当前段的看门狗随后也会触发并重init
     }
 
     /** 合成完成：提交进缓存；当前单元直接播，预取单元落库等翻句时命中。 */
     private fun onRealtimeSynthesisDone(index: Int) {
         val record = synchronized(realtimePending) { realtimePending.remove(index) } ?: return
+        predictHandler.removeCallbacks(record.watchdog)
         lifecycleScope.launch {
             val book = ReadBook.book
             val cacheFile = if (book == null) {
@@ -408,6 +437,7 @@ class TTSReadAloudService : BaseReadAloudService() {
     private fun onRealtimeSynthesisError(index: Int?) {
         if (index == null) return
         val record = synchronized(realtimePending) { realtimePending.remove(index) } ?: return
+        predictHandler.removeCallbacks(record.watchdog)
         record.tempFile.delete()
         AppLog.putDebug("[朗读] 实时缓存合成失败 单元:$index")
         if (index == nowSpeak && isRun && !pause) {

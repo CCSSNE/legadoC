@@ -1880,6 +1880,16 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         }
 
     /**
+     * 实时缓存单段合成超时秒数（看门狗）：引擎挂死时回调永不到来，
+     * 超时按失败清理在途记录；当前段超时走重试链解卡引擎。
+     */
+    var ttsCacheSegmentTimeoutSeconds: Int
+        get() = appCtx.getPrefInt(PreferKey.ttsCacheSegmentTimeoutSeconds, 90).coerceIn(5, 600)
+        set(value) {
+            appCtx.putPrefInt(PreferKey.ttsCacheSegmentTimeoutSeconds, value.coerceIn(5, 600))
+        }
+
+    /**
      * TTS 缓存命中 key 是否包含语速维度。默认包含；
      * 跟随系统语速（ttsFollowSys）时语速感知不到系统内部设置，该维度退化为常量标记。
      */

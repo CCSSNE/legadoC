@@ -142,6 +142,8 @@
     <string name="read_aloud_tts_realtime_cache_summary">开启后边播边把后面的段预先合成进 TTS 缓存。依赖 TTS-Wav 模式；朗读中切换会重新开始朗读。</string>
     <string name="tts_cache_prefetch_count">实时预取段数</string>
     <string name="tts_cache_prefetch_count_value">当前段之后预合成 %1$d 段</string>
+    <string name="tts_cache_segment_timeout">单段合成超时</string>
+    <string name="tts_cache_segment_timeout_value">看门狗超时 %1$d 秒：引擎卡死的段会被清理，不会永久阻塞播放</string>
     <string name="tts_cache_settings">TTS缓存设置</string>
     <string name="tts_cache_settings_summary">缓存命中维度（引擎+章节+文本固定必选）</string>
     <string name="tts_cache_hit_keys_category">缓存命中维度</string>
