@@ -44,6 +44,8 @@ object PreferKey {
     const val pageSplit = "pageSplit"
     // 强制追页：翻到哪页，就相当于双击该页最上面的那一段开始朗读
     const val forcePageFollow = "forcePageFollow"
+    // TTS-Wav 模式：系统 TTS 先合成到本地 wav 再自行播放，音频时长精确可知
+    const val ttsWavMode = "ttsWavMode"
     const val ttsEngine = "appTtsEngine"
     const val ttsFollowSys = "ttsFollowSys"
     const val ttsSpeechRate = "ttsSpeechRate"

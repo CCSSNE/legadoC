@@ -1,13 +1,18 @@
 package io.legado.app.service
 
 import android.app.PendingIntent
+import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import androidx.lifecycle.lifecycleScope
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
 import io.legado.app.R
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
@@ -23,7 +28,11 @@ import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.servicePendingIntent
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.Main
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.io.File
 
 class TTSReadAloudService : BaseReadAloudService() {
 
@@ -56,6 +65,26 @@ class TTSReadAloudService : BaseReadAloudService() {
     @Volatile
     private var measuredCharRate = 480.0 / 60_000.0
 
+    // ---- TTS-Wav 模式：synthesizeToFile 合成本地 wav 后由应用自行播放 ----
+    // 音频时长精确可知，句内进度按真实音频位置轮询发布（与 HTTP 引擎同款），
+    // 翻页仍由 UI 侧跟随规则判定；播放当前句时后台预合成下一句保证无缝衔接。
+    private val wavPlayer: ExoPlayer by lazy {
+        ExoPlayer.Builder(this).build().apply { addListener(wavPlayerListener) }
+    }
+    private val wavDir: File by lazy {
+        File(cacheDir, "ttsWav").apply { mkdirs() }
+    }
+    private var wavPosJob: Job? = null
+    private var wavPendingSynthesisIndex = -1
+    private var wavPendingSynthesisFile: File? = null
+    private var wavReadyIndex = -1
+    private var wavReadyFile: File? = null
+    private var lastWavFile: File? = null
+
+    /** 暂停恢复标志：区分“从暂停继续播放当前 wav”和“从头开始新句子”。 */
+    @Volatile
+    private var wavPausedPlayback = false
+
     private val TAG = "TTSReadAloudService"
 
     override fun onCreate() {
@@ -70,6 +99,7 @@ class TTSReadAloudService : BaseReadAloudService() {
     override fun onDestroy() {
         super.onDestroy()
         clearTTS(forgetVoice = true)
+        runCatching { wavPlayer.release() }
     }
 
     @Synchronized
@@ -134,12 +164,236 @@ class TTSReadAloudService : BaseReadAloudService() {
         predictHandler.postDelayed(runnable, delayMs)
     }
 
+    // ---- TTS-Wav 模式（synthesizeToFile 合成本地 wav + 应用自播）----
+
+    private val wavPlayerListener = object : Player.Listener {
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            if (playbackState == Player.STATE_ENDED) {
+                lifecycleScope.launch(Main) {
+                    if (AppConfig.ttsWavMode && isRun && !pause) {
+                        advanceWavParagraph()
+                    }
+                }
+            }
+        }
+
+        override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+            AppLog.put("TTS-Wav 播放错误：${error.localizedMessage}", error)
+            lifecycleScope.launch(Main) {
+                if (AppConfig.ttsWavMode && isRun && !pause) {
+                    lastWavFile?.delete()
+                    lastWavFile = null
+                    // 播放失败跳过本句，继续下一句（日志已暴露）
+                    advanceWavParagraph()
+                }
+            }
+        }
+    }
+
+    /** 停止/废弃播放现场：清播放器、轮询、在途与就绪的合成产物。 */
+    private fun resetWavPlayback() {
+        wavPosJob?.cancel()
+        wavPosJob = null
+        if (wavPlayer.isCommandAvailable(androidx.media3.common.Player.COMMAND_STOP)) {
+            runCatching {
+                wavPlayer.stop()
+                wavPlayer.clearMediaItems()
+            }
+        }
+        wavPendingSynthesisIndex = -1
+        wavPendingSynthesisFile?.delete()
+        wavPendingSynthesisFile = null
+        wavReadyIndex = -1
+        wavReadyFile?.delete()
+        wavReadyFile = null
+        lastWavFile?.delete()
+        lastWavFile = null
+        wavPausedPlayback = false
+    }
+
+    /** Wav 模式取当前朗读单元：跳过不可读单元（与 speak 模式的 while 循环同语义）。 */
+    private fun speakWavCurrentParagraph() {
+        while (nowSpeak < contentList.size) {
+            val content = contentList[nowSpeak]
+            val text = if (paragraphStartPos > 0) {
+                content.substring(paragraphStartPos.coerceAtMost(content.length))
+            } else {
+                content
+            }
+            if (text.isNotEmpty() && !text.matches(AppPattern.notReadAloudRegex)) {
+                synthesizeAndPlayCurrent(text)
+                return
+            }
+            moveToNextParagraph()
+        }
+        nextChapter()
+    }
+
+    /** 合成当前朗读单元为本地 wav，完成后回调驱动播放。 */
+    private fun synthesizeAndPlayCurrent(text: String) {
+        val tts = textToSpeech ?: throw NoStackTraceException("tts is null")
+        val index = nowSpeak
+        if (wavPendingSynthesisIndex == index) {
+            // 该句预合成已在途，直接等其完成回调驱动播放
+            return
+        }
+        val file = File(wavDir, "utt_${speakGeneration}_$index.wav")
+        wavPendingSynthesisIndex = index
+        wavPendingSynthesisFile = file
+        AppLog.putDebug("[朗读] WAV合成请求 单元:$index 长:${text.length}")
+        val result = tts.runCatching {
+            synthesizeToFile(text, Bundle(), file, utteranceId(index))
+        }.getOrElse {
+            AppLog.put("tts wav 合成请求出错\n${it.localizedMessage}", it, true)
+            TextToSpeech.ERROR
+        }
+        if (result == TextToSpeech.ERROR) {
+            wavPendingSynthesisIndex = -1
+            wavPendingSynthesisFile = null
+            file.delete()
+            handleSpeakError("tts wav synthesize error", retryWithReinit = true)
+        }
+    }
+
+    /** 合成完成回调：当前句直接播放，下一句暂存为预合成产物。 */
+    private fun onWavSynthesisDone(utteranceIdStr: String) {
+        val index = utteranceIndex(utteranceIdStr) ?: return
+        if (index != wavPendingSynthesisIndex) return
+        val file = wavPendingSynthesisFile
+        wavPendingSynthesisIndex = -1
+        wavPendingSynthesisFile = null
+        lifecycleScope.launch(Main) {
+            when {
+                index == nowSpeak && isRun && !pause -> playWavFile(index, file)
+                index == nowSpeak + 1 && file != null -> {
+                    wavReadyIndex = index
+                    wavReadyFile = file
+                    AppLog.putDebug("[朗读] WAV预合成完成 单元:$index")
+                }
+                else -> file?.delete()
+            }
+        }
+    }
+
+    /** 合成失败：清理在途产物并走既有错误链（重试一次，仍失败跳句）。 */
+    private fun onWavSynthesisError() {
+        if (wavPendingSynthesisIndex < 0) return
+        wavPendingSynthesisFile?.delete()
+        wavPendingSynthesisIndex = -1
+        wavPendingSynthesisFile = null
+        lifecycleScope.launch(Main) {
+            if (isRun && !pause) {
+                handleSpeakError("tts wav synthesize error", retryWithReinit = true)
+            }
+        }
+    }
+
+    /** 播放当前句的 wav 文件，并预合成下一句保证衔接。 */
+    private fun playWavFile(index: Int, file: File?) {
+        if (index != nowSpeak) {
+            file?.delete()
+            return
+        }
+        if (file == null || !file.exists() || file.length() <= 0L) {
+            file?.delete()
+            handleSpeakError("tts wav file invalid", retryWithReinit = false)
+            return
+        }
+        lastWavFile?.delete()
+        lastWavFile = file
+        wavPausedPlayback = false
+        wavPlayer.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
+        wavPlayer.prepare()
+        wavPlayer.play()
+        upWavPlayPos()
+        scheduleWavPreSynthesis()
+    }
+
+    /** 当前句播完推进：优先使用预合成的下一句，未就绪则现场合成。 */
+    private fun advanceWavParagraph() {
+        wavPosJob?.cancel()
+        wavPosJob = null
+        if (!moveToNextParagraph()) {
+            nextChapter()
+            return
+        }
+        if (wavReadyIndex == nowSpeak && wavReadyFile != null) {
+            val ready = wavReadyFile
+            wavReadyIndex = -1
+            wavReadyFile = null
+            playWavFile(nowSpeak, ready)
+        } else {
+            speakWavCurrentParagraph()
+        }
+    }
+
+    /**
+     * 句内进度发布：wav 时长由播放器精确提供，按“位置/时长 × 句字符数”换算
+     * 字符位置，扫过页界即发布一次前进位置事件——真实音频信号，不是估算。
+     * 页间分段 ON 时单元已在页界裂开，句内无页界，无需轮询。
+     */
+    private fun upWavPlayPos() {
+        wavPosJob?.cancel()
+        val chapter = textChapter ?: return
+        val utteranceLen = currentUtteranceTextLength()
+        if (utteranceLen <= 0) return
+        wavPosJob = lifecycleScope.launch {
+            upTtsProgress(readAloudNumber + 1)
+            if (pageSplit) return@launch
+            while (isActive && isRun && !pause) {
+                val duration = wavPlayer.duration
+                if (duration > 0) {
+                    val pos = (utteranceLen.toLong() * wavPlayer.currentPosition / duration).toInt()
+                    if (pageIndex + 1 < chapter.pageSize
+                        && readAloudNumber + pos > chapter.getReadLength(pageIndex + 1)
+                    ) {
+                        // 扫过页界：只推进引擎私有页光标并发布位置，
+                        // 显示翻页由 UI 侧跟随规则处理
+                        pageIndex++
+                        AppLog.putDebug("[朗读] WAV过界发布 pos:${readAloudNumber + pos}")
+                        upTtsProgress(readAloudNumber + pos)
+                    }
+                    if (wavPlayer.currentPosition >= duration) break
+                }
+                delay(80)
+            }
+        }
+    }
+
+    /** 预合成下一句（一个槽位），播放中完成，翻句时零等待衔接。 */
+    private fun scheduleWavPreSynthesis() {
+        if (wavReadyIndex == nowSpeak + 1 && wavReadyFile != null) return
+        val next = nowSpeak + 1
+        val text = contentList.getOrNull(next)?.takeIf {
+            it.isNotEmpty() && !it.matches(AppPattern.notReadAloudRegex)
+        } ?: return
+        val tts = textToSpeech ?: return
+        val file = File(wavDir, "utt_${speakGeneration}_$next.wav")
+        wavPendingSynthesisIndex = next
+        wavPendingSynthesisFile = file
+        val result = tts.runCatching {
+            synthesizeToFile(text, Bundle(), file, utteranceId(next))
+        }.getOrElse {
+            wavPendingSynthesisIndex = -1
+            wavPendingSynthesisFile = null
+            file.delete()
+            AppLog.put("tts wav 预合成请求出错\n${it.localizedMessage}", it)
+            TextToSpeech.ERROR
+        }
+        if (result == TextToSpeech.ERROR) {
+            // 预合成失败不影响当前句播放，翻句时现场合成兜底
+            wavPendingSynthesisIndex = -1
+            wavPendingSynthesisFile = null
+        }
+    }
+
     @Synchronized
     private fun clearTTS(forgetVoice: Boolean = false) {
         activeUtteranceId = null
         queuedUntilIndex = -1
         speakGeneration++
         cancelPageBreakPrediction()
+        resetWavPlayback()
         ttsInitGeneration++
         if (forgetVoice) {
             ttsVoiceName = null
@@ -218,6 +472,7 @@ class TTSReadAloudService : BaseReadAloudService() {
         queuedUntilIndex = -1
         speakGeneration++
         cancelPageBreakPrediction()
+        resetWavPlayback()
         retryParagraphKey = null
         retryingTtsInit = false
         textToSpeech?.runCatching {
@@ -230,6 +485,22 @@ class TTSReadAloudService : BaseReadAloudService() {
         if (pause) return
         // 发起新朗读单元前作废旧页界预测，新单元 onStart 时按最新光标重新调度
         cancelPageBreakPrediction()
+        if (AppConfig.ttsWavMode) {
+            // 暂停恢复：播放器仍持有当前句现场，从暂停位置继续
+            if (wavPausedPlayback
+                && wavPlayer.currentMediaItem != null
+                && wavPlayer.playbackState == Player.STATE_READY
+                && !wavPlayer.isPlaying
+            ) {
+                wavPausedPlayback = false
+                wavPlayer.play()
+                upWavPlayPos()
+                return
+            }
+            wavPausedPlayback = false
+            speakWavCurrentParagraph()
+            return
+        }
         val tts = textToSpeech ?: throw NoStackTraceException("tts is null")
         while (nowSpeak < contentList.size) {
             var text = contentList[nowSpeak]
@@ -369,6 +640,12 @@ class TTSReadAloudService : BaseReadAloudService() {
         cancelPageBreakPrediction()
         retryParagraphKey = null
         retryingTtsInit = false
+        if (AppConfig.ttsWavMode) {
+            // 暂停时保留播放器现场，恢复时从当前位置继续当前句
+            wavPosJob?.cancel()
+            runCatching { wavPlayer.pause() }
+            wavPausedPlayback = true
+        }
         textToSpeech?.runCatching {
             stop()
         }
@@ -405,6 +682,11 @@ class TTSReadAloudService : BaseReadAloudService() {
         }
 
         override fun onDone(s: String) {
+            if (AppConfig.ttsWavMode) {
+                // Wav 模式：onDone 表示合成完成（synthesizeToFile），驱动播放
+                onWavSynthesisDone(s)
+                return
+            }
             runActiveUtteranceCallback(s) {
                 LogUtils.d(TAG, "onDone utteranceId:$s")
                 nextParagraph(s)
@@ -440,6 +722,10 @@ class TTSReadAloudService : BaseReadAloudService() {
         }
 
         override fun onError(utteranceId: String?, errorCode: Int) {
+            if (AppConfig.ttsWavMode) {
+                onWavSynthesisError()
+                return
+            }
             runActiveUtteranceCallback(utteranceId) {
                 utteranceIndex(utteranceId)?.let { syncToUtteranceIndex(it) }
                 LogUtils.d(

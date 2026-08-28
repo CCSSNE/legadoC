@@ -48,6 +48,13 @@
             android:key="pageSplit"
             app:iconSpaceReserved="false" />
 
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="true"
+            android:title="@string/read_aloud_tts_wav_mode"
+            android:summary="@string/read_aloud_tts_wav_mode_summary"
+            android:key="ttsWavMode"
+            app:iconSpaceReserved="false" />
+
         <!-- 页首按段：控制“页首”这个概念本身——从本页读/强制追页落到某一页时，
              起点是本页第一个字，还是本页第一个段落的第一个字。
              与上面的强制追页正交：强制追页决定“翻到哪页读哪页”，
