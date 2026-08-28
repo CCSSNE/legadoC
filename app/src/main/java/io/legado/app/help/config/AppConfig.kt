@@ -1866,6 +1866,20 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         get() = appCtx.getPrefBoolean(PreferKey.ttsWavMode, true)
 
     /**
+     * TTS 实时缓存：true 表示播放当前段时预合成其后若干段并写入 TTS 缓存。
+     * 依赖 TTS-Wav 模式（合成产物前置）；朗读中切换会重启朗读会话。
+     */
+    val ttsRealtimeCache
+        get() = appCtx.getPrefBoolean(PreferKey.ttsRealtimeCache, false)
+
+    /** 实时缓存任务列表向后预取的段数（当前段之后预合成的可读单元数）。 */
+    var ttsCachePrefetchCount: Int
+        get() = appCtx.getPrefInt(PreferKey.ttsCachePrefetchCount, 5).coerceIn(1, 500)
+        set(value) {
+            appCtx.putPrefInt(PreferKey.ttsCachePrefetchCount, value.coerceIn(1, 500))
+        }
+
+    /**
      * TTS 缓存命中 key 是否包含语速维度。默认包含；
      * 跟随系统语速（ttsFollowSys）时语速感知不到系统内部设置，该维度退化为常量标记。
      */

@@ -55,6 +55,14 @@
             android:key="ttsWavMode"
             app:iconSpaceReserved="false" />
 
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="false"
+            android:dependency="ttsWavMode"
+            android:title="@string/read_aloud_tts_realtime_cache"
+            android:summary="@string/read_aloud_tts_realtime_cache_summary"
+            android:key="ttsRealtimeCache"
+            app:iconSpaceReserved="false" />
+
         <io.legado.app.lib.prefs.Preference
             android:key="ttsCacheSettings"
             android:summary="@string/tts_cache_settings_summary"

@@ -139,6 +139,10 @@
     <string name="tts_cache_failed">Failed to submit TTS cache task: %1$s</string>
     <string name="tts_cache_chapters_empty">No chapters to cache</string>
     <string name="tts_cache_requires_wav">TTS cache requires TTS-Wav mode</string>
+    <string name="read_aloud_tts_realtime_cache">Realtime cache</string>
+    <string name="read_aloud_tts_realtime_cache_summary">Pre-synthesize upcoming segments into the TTS cache while playing. Requires TTS-Wav mode; changing it restarts reading.</string>
+    <string name="tts_cache_prefetch_count">Realtime prefetch segments</string>
+    <string name="tts_cache_prefetch_count_value">Pre-synthesize %1$d segments after the current one</string>
     <string name="tts_cache_settings">TTS cache settings</string>
     <string name="tts_cache_settings_summary">Cache hit keys (engine + chapter + text always on)</string>
     <string name="tts_cache_hit_keys_category">Cache hit keys</string>

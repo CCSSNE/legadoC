@@ -17,21 +17,27 @@ import io.legado.app.R
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
+import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookChapter
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.MediaHelp
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.tts.TtsCacheStore
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.model.ReadAloud
+import io.legado.app.model.ReadBook
 import io.legado.app.utils.GSON
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.servicePendingIntent
 import io.legado.app.utils.toastOnUi
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Dispatchers.Main
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 class TTSReadAloudService : BaseReadAloudService() {
@@ -84,6 +90,31 @@ class TTSReadAloudService : BaseReadAloudService() {
     /** 暂停恢复标志：区分“从暂停继续播放当前 wav”和“从头开始新句子”。 */
     @Volatile
     private var wavPausedPlayback = false
+
+    // ---- 实时缓存：任务列表 + 在途合成 ----
+    // 每当新的朗读单元成为当前单元：先解决当前段三态（命中→直接播；在途→等
+    // 合成完成回调；缺失→立即派发，排在引擎队列最前），随后重建任务列表
+    // （当前段之后 ttsCachePrefetchCount 个可读单元：命中跳过、在途跳过、
+    // 缺失派发）。引擎串行合成，引擎忙碌时当前段要等手头的合成做完——这是
+    // 开启实时缓存的固定代价。预取失败的段无需显式重试：变为当前段时自然
+    // 落入“缺失”状态重新派发。
+
+    private class RealtimeSynthesis(
+        val index: Int,
+        val tempFile: File,
+        val key: TtsCacheStore.UnitKey,
+    )
+
+    private val realtimePending = linkedMapOf<Int, RealtimeSynthesis>()
+
+    private fun clearRealtimePending() {
+        synchronized(realtimePending) {
+            realtimePending.values.forEach { record ->
+                runCatching { record.tempFile.delete() }
+            }
+            realtimePending.clear()
+        }
+    }
 
     private val TAG = "TTSReadAloudService"
 
@@ -206,13 +237,21 @@ class TTSReadAloudService : BaseReadAloudService() {
         wavReadyIndex = -1
         wavReadyFile?.delete()
         wavReadyFile = null
-        lastWavFile?.delete()
+        // 实时缓存模式下 lastWavFile 是缓存文件，只能由缓存生命周期管理
+        if (!AppConfig.ttsRealtimeCache) {
+            lastWavFile?.delete()
+        }
         lastWavFile = null
         wavPausedPlayback = false
+        clearRealtimePending()
     }
 
     /** Wav 模式取当前朗读单元：跳过不可读单元（与 speak 模式的 while 循环同语义）。 */
     private fun speakWavCurrentParagraph() {
+        if (AppConfig.ttsRealtimeCache) {
+            speakRealtimeCurrentParagraph()
+            return
+        }
         while (nowSpeak < contentList.size) {
             val content = contentList[nowSpeak]
             val text = if (paragraphStartPos > 0) {
@@ -227,6 +266,153 @@ class TTSReadAloudService : BaseReadAloudService() {
             moveToNextParagraph()
         }
         nextChapter()
+    }
+
+    // ---- 实时缓存调度 ----
+
+    /** 实时缓存取当前朗读单元：跳过不可读单元（与 speak 模式的 while 循环同语义）。 */
+    private fun speakRealtimeCurrentParagraph() {
+        while (nowSpeak < contentList.size) {
+            val content = contentList[nowSpeak]
+            val text = if (paragraphStartPos > 0) {
+                content.substring(paragraphStartPos.coerceAtMost(content.length))
+            } else {
+                content
+            }
+            if (text.isNotEmpty() && !text.matches(AppPattern.notReadAloudRegex)) {
+                speakRealtimeUnit(nowSpeak, text)
+                return
+            }
+            moveToNextParagraph()
+        }
+        nextChapter()
+    }
+
+    /**
+     * 当前单元三态解决：
+     * 1. 命中缓存 → 直接播（任务列表照建，全命中则不派发任何合成）；
+     * 2. 引擎正在合成 → 任务列表照建，等合成完成回调驱动播放；
+     * 3. 未合成也不在缓存 → 立即派发（排在引擎队列最前），等回调。
+     * 当前段先解决、任务列表随后建立：保证当前段在引擎队列中优先产出，
+     * 已知代价是引擎忙碌时当前段要等手头的合成做完（引擎串行，无法插队）。
+     */
+    private fun speakRealtimeUnit(index: Int, text: String) {
+        val book = ReadBook.book ?: return
+        val chapter = textChapter?.chapter ?: return
+        val key = TtsCacheStore.buildUnitKey(book, chapter, text, ttsVoiceName)
+        if (TtsCacheStore.has(book, key)) {
+            // 状态1：命中缓存直接播
+            AppLog.putDebug("[朗读] 实时缓存命中 单元:$index")
+            playWavFile(index, TtsCacheStore.unitFile(book, key))
+        } else {
+            val pending = synchronized(realtimePending) { realtimePending.containsKey(index) }
+            if (!pending) {
+                // 状态3：立即派发；状态2（在途）不做任何事，等回调
+                synchronized(realtimePending) {
+                    if (!realtimePending.containsKey(index)) {
+                        dispatchRealtimeSynthesis(book, chapter, index, text, key)
+                    }
+                }
+            }
+        }
+        // 任务列表（当前段之后 N 个可读单元）：命中/在途跳过，缺失派发
+        buildRealtimeTaskList(book, chapter, index)
+    }
+
+    /**
+     * 任务列表：从 fromIndex+1 起向后取 ttsCachePrefetchCount 个可读单元，
+     * 命中缓存或在途的跳过，缺失的派发给引擎。预取失败的段无需显式重试：
+     * 变为当前段时自然落入“缺失”状态重新派发。
+     */
+    private fun buildRealtimeTaskList(book: Book, chapter: BookChapter, fromIndex: Int) {
+        val maxCount = AppConfig.ttsCachePrefetchCount
+        var scheduled = 0
+        var index = fromIndex + 1
+        while (index < contentList.size && scheduled < maxCount) {
+            val text = contentList[index]
+            if (text.isEmpty() || text.matches(AppPattern.notReadAloudRegex)) {
+                index++
+                continue
+            }
+            scheduled++
+            val pending = synchronized(realtimePending) { realtimePending.containsKey(index) }
+            if (!pending) {
+                val key = TtsCacheStore.buildUnitKey(book, chapter, text, ttsVoiceName)
+                if (!TtsCacheStore.has(book, key)) {
+                    synchronized(realtimePending) {
+                        if (!realtimePending.containsKey(index)) {
+                            dispatchRealtimeSynthesis(book, chapter, index, text, key)
+                        }
+                    }
+                }
+            }
+            index++
+        }
+        AppLog.putDebug(
+            "[朗读] 实时缓存任务列表 当前:$fromIndex 窗口:$maxCount " +
+                "在途:${synchronized(realtimePending) { realtimePending.size }}"
+        )
+    }
+
+    /** 派发一个单元给引擎合成（临时文件），完成回调里提交进 TTS 缓存。 */
+    private fun dispatchRealtimeSynthesis(
+        book: Book,
+        chapter: BookChapter,
+        index: Int,
+        text: String,
+        key: TtsCacheStore.UnitKey,
+    ) {
+        val tts = textToSpeech ?: return
+        val tempFile = File(wavDir, "rt_${speakGeneration}_$index.wav")
+        realtimePending[index] = RealtimeSynthesis(index, tempFile, key)
+        val result = tts.runCatching {
+            synthesizeToFile(text, Bundle(), tempFile, utteranceId(index))
+        }.getOrElse {
+            AppLog.put("[朗读] 实时缓存合成请求出错 单元:$index\n${it.localizedMessage}", it)
+            TextToSpeech.ERROR
+        }
+        if (result == TextToSpeech.ERROR) {
+            realtimePending.remove(index)
+            tempFile.delete()
+            if (index == nowSpeak && isRun && !pause) {
+                handleSpeakError("tts realtime synthesize error", retryWithReinit = true)
+            }
+        }
+    }
+
+    /** 合成完成：提交进缓存；当前单元直接播，预取单元落库等翻句时命中。 */
+    private fun onRealtimeSynthesisDone(index: Int) {
+        val record = synchronized(realtimePending) { realtimePending.remove(index) } ?: return
+        lifecycleScope.launch {
+            val book = ReadBook.book
+            val cacheFile = if (book == null) {
+                record.tempFile.delete()
+                null
+            } else {
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        TtsCacheStore.commit(record.tempFile, TtsCacheStore.unitFile(book, record.key))
+                    }.onFailure {
+                        record.tempFile.delete()
+                        AppLog.put("[朗读] 实时缓存提交失败 单元:$index\n${it.localizedMessage}", it)
+                    }.isSuccess
+                }.takeIf { it }?.let { TtsCacheStore.unitFile(book, record.key) }
+            }
+            if (index == nowSpeak && isRun && !pause) {
+                playWavFile(index, cacheFile)
+            }
+        }
+    }
+
+    /** 合成失败：当前单元走既有错误链（重试一次/跳句），预取单元静默丢弃、后续重派发。 */
+    private fun onRealtimeSynthesisError(index: Int?) {
+        if (index == null) return
+        val record = synchronized(realtimePending) { realtimePending.remove(index) } ?: return
+        record.tempFile.delete()
+        AppLog.putDebug("[朗读] 实时缓存合成失败 单元:$index")
+        if (index == nowSpeak && isRun && !pause) {
+            handleSpeakError("tts realtime synthesize error", retryWithReinit = true)
+        }
     }
 
     /** 合成当前朗读单元为本地 wav，完成后回调驱动播放。 */
@@ -258,6 +444,10 @@ class TTSReadAloudService : BaseReadAloudService() {
     /** 合成完成回调：当前句直接播放，下一句暂存为预合成产物。 */
     private fun onWavSynthesisDone(utteranceIdStr: String) {
         val index = utteranceIndex(utteranceIdStr) ?: return
+        if (AppConfig.ttsRealtimeCache) {
+            onRealtimeSynthesisDone(index)
+            return
+        }
         if (index != wavPendingSynthesisIndex) return
         val file = wavPendingSynthesisFile
         wavPendingSynthesisIndex = -1
@@ -276,7 +466,11 @@ class TTSReadAloudService : BaseReadAloudService() {
     }
 
     /** 合成失败：清理在途产物并走既有错误链（重试一次，仍失败跳句）。 */
-    private fun onWavSynthesisError() {
+    private fun onWavSynthesisError(index: Int?) {
+        if (AppConfig.ttsRealtimeCache) {
+            onRealtimeSynthesisError(index)
+            return
+        }
         if (wavPendingSynthesisIndex < 0) return
         wavPendingSynthesisFile?.delete()
         wavPendingSynthesisIndex = -1
@@ -290,8 +484,9 @@ class TTSReadAloudService : BaseReadAloudService() {
 
     /** 播放当前句的 wav 文件，并预合成下一句保证衔接。 */
     private fun playWavFile(index: Int, file: File?) {
+        // 实时缓存模式下传入的是已提交的缓存文件，任何路径都不得误删
         if (index != nowSpeak) {
-            file?.delete()
+            if (!AppConfig.ttsRealtimeCache) file?.delete()
             return
         }
         if (file == null || !file.exists() || file.length() <= 0L) {
@@ -299,7 +494,9 @@ class TTSReadAloudService : BaseReadAloudService() {
             handleSpeakError("tts wav file invalid", retryWithReinit = false)
             return
         }
-        lastWavFile?.delete()
+        if (!AppConfig.ttsRealtimeCache) {
+            lastWavFile?.delete()
+        }
         lastWavFile = file
         wavPausedPlayback = false
         wavPlayer.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
@@ -362,6 +559,8 @@ class TTSReadAloudService : BaseReadAloudService() {
 
     /** 预合成下一句（一个槽位），播放中完成，翻句时零等待衔接。 */
     private fun scheduleWavPreSynthesis() {
+        // 实时缓存模式：预取由任务列表统一调度，单槽位不介入
+        if (AppConfig.ttsRealtimeCache) return
         if (wavReadyIndex == nowSpeak + 1 && wavReadyFile != null) return
         val next = nowSpeak + 1
         val text = contentList.getOrNull(next)?.takeIf {
@@ -646,6 +845,8 @@ class TTSReadAloudService : BaseReadAloudService() {
             runCatching { wavPlayer.pause() }
             wavPausedPlayback = true
         }
+        // tts.stop() 会冲掉引擎队列里的在途合成，任务列表在恢复/推进时重建
+        clearRealtimePending()
         textToSpeech?.runCatching {
             stop()
         }
@@ -723,7 +924,7 @@ class TTSReadAloudService : BaseReadAloudService() {
 
         override fun onError(utteranceId: String?, errorCode: Int) {
             if (AppConfig.ttsWavMode) {
-                onWavSynthesisError()
+                onWavSynthesisError(utteranceIndex(utteranceId))
                 return
             }
             runActiveUtteranceCallback(utteranceId) {
