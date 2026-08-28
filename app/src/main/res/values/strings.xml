@@ -139,6 +139,15 @@
     <string name="tts_cache_failed">Failed to submit TTS cache task: %1$s</string>
     <string name="tts_cache_chapters_empty">No chapters to cache</string>
     <string name="tts_cache_requires_wav">TTS cache requires TTS-Wav mode</string>
+    <string name="tts_cache_settings">TTS cache settings</string>
+    <string name="tts_cache_settings_summary">Cache hit keys (engine + chapter + text always on)</string>
+    <string name="tts_cache_hit_keys_category">Cache hit keys</string>
+    <string name="tts_cache_hit_keys_fixed">Required dimensions</string>
+    <string name="tts_cache_hit_keys_fixed_summary">Engine + chapter + read-aloud text</string>
+    <string name="tts_cache_key_speed">Match by speech rate</string>
+    <string name="tts_cache_key_speed_summary">Unchecked: changing the rate still hits cached audio. Follow-system mode cannot sense the system-internal rate.</string>
+    <string name="tts_cache_key_voice">Match by voice</string>
+    <string name="tts_cache_key_voice_summary">Unchecked: changing the voice still hits cached audio.</string>
     <string name="offline_cache_t">Offline cache</string>
     <string name="offline_cache_s">cache the selected chapter(s) to Storage</string>
     <string name="change_origin">Change Origin</string>

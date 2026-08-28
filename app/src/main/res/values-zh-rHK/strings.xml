@@ -98,6 +98,15 @@
     <string name="tts_cache_failed">TTS 緩存任務提交失敗：%1$s</string>
     <string name="tts_cache_chapters_empty">沒有可緩存的章節</string>
     <string name="tts_cache_requires_wav">TTS 緩存需要先開啟 TTS-Wav 模式</string>
+    <string name="tts_cache_settings">TTS緩存設置</string>
+    <string name="tts_cache_settings_summary">緩存命中維度（引擎+章節+文本固定必選）</string>
+    <string name="tts_cache_hit_keys_category">緩存命中維度</string>
+    <string name="tts_cache_hit_keys_fixed">固定必選維度</string>
+    <string name="tts_cache_hit_keys_fixed_summary">引擎 + 章節 + 朗讀文本</string>
+    <string name="tts_cache_key_speed">命中維度：語速</string>
+    <string name="tts_cache_key_speed_summary">勾選後語速參與命中；不勾選則改語速仍命中舊音頻。跟隨系統語速時無法感知系統內部設置。</string>
+    <string name="tts_cache_key_voice">命中維度：音色</string>
+    <string name="tts_cache_key_voice_summary">勾選後音色參與命中；不勾選則換音色仍命中舊音頻。</string>
     <string name="offline_cache_t">離線緩存</string>
     <string name="offline_cache_s">緩存已選擇的章節到本地</string>
     <string name="change_origin">換源</string>

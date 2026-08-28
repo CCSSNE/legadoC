@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <io.legado.app.lib.prefs.PreferenceCategory
+        android:title="@string/tts_cache_hit_keys_category"
+        app:allowDividerAbove="false"
+        app:allowDividerBelow="false"
+        app:iconSpaceReserved="false">
+
+        <io.legado.app.lib.prefs.Preference
+            android:enabled="false"
+            android:key="ttsCacheRequiredKeys"
+            android:summary="@string/tts_cache_hit_keys_fixed_summary"
+            android:title="@string/tts_cache_hit_keys_fixed"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="true"
+            android:key="ttsCacheKeySpeed"
+            android:summary="@string/tts_cache_key_speed_summary"
+            android:title="@string/tts_cache_key_speed"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="true"
+            android:key="ttsCacheKeyVoice"
+            android:summary="@string/tts_cache_key_voice_summary"
+            android:title="@string/tts_cache_key_voice"
+            app:iconSpaceReserved="false" />
+
+    </io.legado.app.lib.prefs.PreferenceCategory>
+
+</androidx.preference.PreferenceScreen>

@@ -122,6 +122,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
             when (preference.key) {
                 PreferKey.ttsEngine -> showDialogFragment(SpeakEngineDialog())
                 "sysTtsConfig" -> IntentHelp.openTTSSetting()
+                "ttsCacheSettings" -> showDialogFragment(TtsCacheConfigDialog())
                 PreferKey.readAloudCoverRotationDuration -> showCoverRotationDurationDialog()
                 PreferKey.readAloudScrollFollowTimeout -> showScrollFollowTimeoutDialog()
                 PreferKey.readAloudProgressPollInterval -> showProgressPollIntervalDialog()
