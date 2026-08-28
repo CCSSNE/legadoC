@@ -460,7 +460,8 @@ object BookHelp {
 
     /**
      * 删除单章缓存。漫画会一并删除正文中引用的图片缓存，
-     * 同时删除该章节的评论页快照，避免删除正文重新缓存后命中旧评论。
+     * 同时删除该章节的评论页快照，避免删除正文重新缓存后命中旧评论；
+     * 并删除该章节的 TTS 音频缓存（tts_cache 子目录）。
      */
     fun delChapterCache(book: Book, bookChapter: BookChapter) {
         if (book.isImage) {
@@ -468,6 +469,7 @@ object BookHelp {
         }
         delContent(book, bookChapter)
         io.legado.app.help.review.ReviewSnapshotStore.deleteChapter(book, bookChapter)
+        io.legado.app.help.tts.TtsCacheStore.deleteChapter(book, bookChapter)
     }
 
     private fun delChapterImages(book: Book, bookChapter: BookChapter) {
