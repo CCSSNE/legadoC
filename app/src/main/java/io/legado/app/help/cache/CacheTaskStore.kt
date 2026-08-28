@@ -157,6 +157,7 @@ internal class CacheTaskStore(
             units = request.units.distinct().map { CacheUnitState(it, updatedAt = now) },
             reviewEnabled = request.reviewEnabled,
             reviewRetryTargets = request.reviewRetryTargets,
+            ttsEnabled = request.ttsEnabled,
             updatedAt = now,
         )
         val trace = CacheOperationDiagnostics.begin(

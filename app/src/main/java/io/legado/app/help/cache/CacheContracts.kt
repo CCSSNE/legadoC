@@ -20,11 +20,13 @@ enum class CachePhase {
     BODY,
     REVIEW,
     MEDIA,
+    TTS,
 }
 
 /** The legal artifact combinations owned by the cache domain. */
 internal fun CacheKind.supports(phase: CachePhase): Boolean = when (this) {
-    CacheKind.TEXT -> phase == CachePhase.BODY || phase == CachePhase.REVIEW
+    CacheKind.TEXT ->
+        phase == CachePhase.BODY || phase == CachePhase.REVIEW || phase == CachePhase.TTS
     CacheKind.AUDIO -> phase == CachePhase.MEDIA || phase == CachePhase.REVIEW
     CacheKind.VIDEO -> phase == CachePhase.MEDIA
 }
@@ -33,6 +35,13 @@ internal fun CacheKind.supports(phase: CachePhase): Boolean = when (this) {
 internal fun CacheKind.reviewPrerequisitePhase(): CachePhase? = when (this) {
     CacheKind.TEXT -> CachePhase.BODY
     CacheKind.AUDIO -> CachePhase.MEDIA
+    CacheKind.VIDEO -> null
+}
+
+/** TTS 音频是文字书正文的衍生产物：正文产物完整是该章可合成的唯一前置。 */
+internal fun CacheKind.ttsPrerequisitePhase(): CachePhase? = when (this) {
+    CacheKind.TEXT -> CachePhase.BODY
+    CacheKind.AUDIO -> null
     CacheKind.VIDEO -> null
 }
 
@@ -103,6 +112,8 @@ data class CacheRequest(
     val reviewEnabled: Boolean = false,
     /** Empty for normal review caching; non-empty targets only recorded failed buttons. */
     val reviewRetryTargets: List<CacheReviewRetryTarget> = emptyList(),
+    /** TEXT+BODY 任务终态后追加 TEXT+TTS 任务。 */
+    val ttsEnabled: Boolean = false,
 )
 
 internal data class CacheWorkerLease(
@@ -123,6 +134,8 @@ data class CacheTaskState(
     val reviewEnabled: Boolean = false,
     /** Persisted with a REVIEW task so a resumed retry cannot widen back to a chapter refresh. */
     val reviewRetryTargets: List<CacheReviewRetryTarget> = emptyList(),
+    /** Persisted with a TEXT+BODY task so process recovery still appends the TTS sibling. */
+    val ttsEnabled: Boolean = false,
     val status: CacheLifecycle = CacheLifecycle.QUEUED,
     val result: CacheResult? = null,
     val skipReason: CacheTaskSkipReason? = null,
@@ -164,6 +177,8 @@ enum class CacheProgressMode {
     CHAPTERS,
     BYTES,
     SNAPSHOTS,
+    /** TTS 章节内部的朗读单元合成进度。 */
+    UNITS,
     INDETERMINATE,
 }
 
