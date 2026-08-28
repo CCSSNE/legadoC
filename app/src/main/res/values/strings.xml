@@ -1495,6 +1495,7 @@
     <string name="log_shown_modules_s">Check modules to record and show their detailed logs; general logs are always shown</string>
     <string name="log_module_general">General</string>
     <string name="log_module_read_aloud">Read aloud</string>
+    <string name="log_module_tts_cache">TTS cache</string>
     <string name="log_module_download_cache">Download/cache</string>
     <string name="log_module_reading">Reading/layout</string>
     <string name="log_module_source_network">Source/network</string>

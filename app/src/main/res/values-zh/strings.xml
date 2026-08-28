@@ -1246,6 +1246,7 @@
     <string name="log_shown_modules_s">勾选后记录并显示该模块的详细日志，通用日志始终显示</string>
     <string name="log_module_general">通用</string>
     <string name="log_module_read_aloud">朗读链路</string>
+    <string name="log_module_tts_cache">TTS缓存</string>
     <string name="log_module_download_cache">下载/缓存链路</string>
     <string name="log_module_reading">阅读/分页/渲染</string>
     <string name="log_module_source_network">书源/网络</string>

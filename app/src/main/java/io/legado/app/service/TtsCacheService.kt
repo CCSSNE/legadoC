@@ -3,10 +3,10 @@ package io.legado.app.service
 import android.content.Intent
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.base.BaseService
-import io.legado.app.constant.AppLog
 import io.legado.app.constant.NotificationId
 import io.legado.app.help.cache.CacheNotificationBridge
 import io.legado.app.help.cache.CacheTtsWorkerRegistry
+import io.legado.app.help.tts.TtsCacheLog
 import io.legado.app.help.tts.TtsCacheManager
 import io.legado.app.utils.startService
 import kotlinx.coroutines.Dispatchers
@@ -33,7 +33,7 @@ class TtsCacheService : BaseService() {
                 true
             }.onFailure {
                 startRequested.set(false)
-                AppLog.put("TTS缓存宿主启动失败：${it.localizedMessage}", it)
+                TtsCacheLog.put("宿主启动失败：${it.localizedMessage}", it)
             }.getOrDefault(false)
         }
 
@@ -77,8 +77,8 @@ class TtsCacheService : BaseService() {
                         try {
                             val result = runCatching { TtsCacheManager.processTask(task) }
                                 .onFailure {
-                                    AppLog.put(
-                                        "TTS缓存任务处理失败 ${task.key}\n${it.localizedMessage}",
+                                    TtsCacheLog.put(
+                                        "任务处理失败 ${task.key}\n${it.localizedMessage}",
                                         it,
                                     )
                                 }
@@ -103,7 +103,7 @@ class TtsCacheService : BaseService() {
     override fun onDestroy() {
         resetStartRequest()
         if (CacheTtsWorkerRegistry.hasCoordinatorTasks()) {
-            AppLog.put("TTS缓存宿主异常结束：收敛未完成的 Coordinator 任务")
+            TtsCacheLog.put("宿主异常结束：收敛未完成的 Coordinator 任务")
             CacheTtsWorkerRegistry.onServiceFinished(cancelled = true)
         }
         workJob?.cancel()

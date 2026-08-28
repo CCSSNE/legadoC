@@ -10,6 +10,7 @@ import io.legado.app.R
 enum class LogModule(val labelRes: Int) {
     GENERAL(R.string.log_module_general),
     READ_ALOUD(R.string.log_module_read_aloud),
+    TTS_CACHE(R.string.log_module_tts_cache),
     DOWNLOAD_CACHE(R.string.log_module_download_cache),
     READING(R.string.log_module_reading),
     SOURCE_NETWORK(R.string.log_module_source_network),
@@ -20,7 +21,15 @@ enum class LogModule(val labelRes: Int) {
 
         /** 可勾选的模块（不含始终显示的 GENERAL），顺序即弹窗中的展示顺序 */
         val selectable: List<LogModule>
-            get() = listOf(READ_ALOUD, DOWNLOAD_CACHE, READING, SOURCE_NETWORK, PERFORMANCE, AI)
+            get() = listOf(
+                READ_ALOUD,
+                TTS_CACHE,
+                DOWNLOAD_CACHE,
+                READING,
+                SOURCE_NETWORK,
+                PERFORMANCE,
+                AI,
+            )
 
         val selectableNames: Set<String> = selectable.map { it.name }.toSet()
 
@@ -40,6 +49,9 @@ enum class LogModule(val labelRes: Int) {
                     "eventbus",
                     "threadutils",
                 ) -> PERFORMANCE
+
+                // 必须先于 "tts"（READ_ALOUD）判定：TtsCache* 系列类名都含 tts
+                containsAny(name, "ttscache") -> TTS_CACHE
 
                 containsAny(
                     name,
