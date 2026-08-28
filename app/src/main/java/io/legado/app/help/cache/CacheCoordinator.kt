@@ -10,6 +10,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.AudioOfflineState
 import io.legado.app.help.book.BodyOfflineState
+import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfig
@@ -172,6 +173,7 @@ object CacheCoordinator : CacheUiPort {
     override fun submit(request: CacheRequest): CacheSubmission {
         validateUiRequest(request)
         validateReaderReviewPrerequisite(request)
+        validateReaderTtsPrerequisite(request)
         val session = store.createSession(request.bookName)
         val task = store.addTask(session.sessionId, request)
         record(
@@ -208,6 +210,7 @@ object CacheCoordinator : CacheUiPort {
         chapterIndexes: Iterable<Int>,
         source: CacheRequestSource,
         reviewEnabled: Boolean = AppConfig.syncCacheReview,
+        ttsEnabled: Boolean = false,
     ): CacheSubmission {
         require(!book.isAudio && !book.isVideo) {
             "text download is invalid for media book: ${book.bookUrl}"
@@ -223,8 +226,58 @@ object CacheCoordinator : CacheUiPort {
                 bookName = book.name,
                 units = indexes.map { CacheUnitKey(book.bookUrl, it) },
                 reviewEnabled = reviewEnabled,
+                ttsEnabled = ttsEnabled,
             )
         )
+    }
+
+    /**
+     * TTS 音频缓存提交：正文文本已可用的章直提 TEXT+TTS；有缺章时走 TEXT+BODY
+     * （不搭车评论缓存），正文终态后由 Coordinator 追加 TTS 任务。
+     * TTS-Wav 模式是合成产物的前置，任何路径都强制要求。
+     */
+    fun submitTtsCacheDownload(
+        book: Book,
+        chapterIndexes: Iterable<Int>,
+        source: CacheRequestSource,
+    ): CacheSubmission {
+        require(!book.isAudio && !book.isVideo) {
+            "tts cache download is invalid for media book: ${book.bookUrl}"
+        }
+        require(AppConfig.ttsWavMode) { "tts cache requires TTS-Wav mode" }
+        val indexes = chapterIndexes
+            .filterNot { index ->
+                appDb.bookChapterDao.getChapter(book.bookUrl, index)?.isVolume == true
+            }
+            .distinct()
+            .sorted()
+        require(indexes.isNotEmpty()) { "tts cache download has no chapters" }
+        val units = indexes.map { CacheUnitKey(book.bookUrl, it) }
+        val allBodyAvailable = units.all { unit ->
+            val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, unit.chapterIndex)
+            chapter != null && BookHelp.hasContent(book, chapter)
+        }
+        return if (allBodyAvailable) {
+            submit(
+                CacheRequest(
+                    source = source,
+                    kind = CacheKind.TEXT,
+                    phase = CachePhase.TTS,
+                    bookUrl = book.bookUrl,
+                    bookName = book.name,
+                    units = units,
+                    ttsEnabled = true,
+                )
+            )
+        } else {
+            submitTextDownload(
+                book,
+                indexes,
+                source,
+                reviewEnabled = false,
+                ttsEnabled = true,
+            )
+        }
     }
 
     /** Shared MEDIA submission used by every audio/video-book download action. */
@@ -444,6 +497,65 @@ object CacheCoordinator : CacheUiPort {
         return store.currentTask(submission.sessionId, submission.taskId)
     }
 
+    /** Append TTS only after the TEXT+BODY prerequisite has reached a terminal state. */
+    internal fun appendTtsTask(
+        sessionId: String,
+        prerequisiteTaskId: String,
+    ): CacheSubmission? {
+        val prerequisite = store.currentTask(sessionId, prerequisiteTaskId)
+            ?: error("unknown tts prerequisite: session=$sessionId task=$prerequisiteTaskId")
+        require(prerequisite.kind.ttsPrerequisitePhase() == prerequisite.phase) {
+            "tts task cannot follow ${prerequisite.kind}/${prerequisite.phase}"
+        }
+        require(prerequisite.ttsEnabled) {
+            "${prerequisite.phase} task did not request tts caching"
+        }
+        require(
+            prerequisite.status == CacheLifecycle.COMPLETED ||
+                prerequisite.status == CacheLifecycle.FAILED
+        ) { "tts task cannot be appended before prerequisite completion" }
+        require(prerequisite.result != CacheResult.SKIPPED) {
+            "tts task cannot follow a skipped prerequisite"
+        }
+        store.findTask(
+            sessionId,
+            prerequisite.kind,
+            CachePhase.TTS,
+            prerequisite.bookUrl,
+        )?.let {
+            return CacheSubmission(sessionId, it.taskId)
+        }
+        val book = appDb.bookDao.getBook(prerequisite.bookUrl)
+            ?: error("tts prerequisite book not found: ${prerequisite.bookUrl}")
+        // 资格以正文文本可用为准：覆盖本次下载成功与"本就完整而跳过"的章；
+        // 正文失败的章不进入 TTS 任务（失败只阻断本章）。
+        val eligible = prerequisite.units.mapNotNull { unit ->
+            val chapter = appDb.bookChapterDao.getChapter(
+                prerequisite.bookUrl,
+                unit.key.chapterIndex,
+            )
+            unit.key.takeIf { chapter != null && BookHelp.hasContent(book, chapter) }
+        }
+        if (eligible.isEmpty()) return null
+        val request = CacheRequest(
+            source = prerequisite.source,
+            kind = prerequisite.kind,
+            phase = CachePhase.TTS,
+            bookUrl = prerequisite.bookUrl,
+            bookName = prerequisite.bookName,
+            units = eligible,
+            ttsEnabled = true,
+        )
+        val task = store.addTask(sessionId, request)
+        record(
+            CacheLogEventType.TASK_QUEUED,
+            sessionId,
+            task.taskId,
+            "appended=TTS units=${task.units.size}",
+        )
+        return CacheSubmission(sessionId, task.taskId).also(workerDispatcher::start)
+    }
+
     private fun acceptTerminalTransition(accepted: Boolean): Boolean {
         if (accepted) replayPendingTerminalEffects()
         return accepted
@@ -472,6 +584,14 @@ object CacheCoordinator : CacheUiPort {
                 task.status in setOf(CacheLifecycle.COMPLETED, CacheLifecycle.FAILED)
             ) {
                 appendReviewTask(task.sessionId, task.taskId)
+            }
+            if (
+                task.kind.ttsPrerequisitePhase() == task.phase &&
+                task.ttsEnabled &&
+                task.result != CacheResult.SKIPPED &&
+                task.status in setOf(CacheLifecycle.COMPLETED, CacheLifecycle.FAILED)
+            ) {
+                appendTtsTask(task.sessionId, task.taskId)
             }
             val finalTask = currentTask(submission)
                 ?: error("terminal task disappeared: ${submission.sessionId}/${submission.taskId}")
@@ -609,16 +729,30 @@ object CacheCoordinator : CacheUiPort {
     }
 
     private fun validateUiRequest(request: CacheRequest) {
-        if (request.phase == CachePhase.REVIEW) {
-            require(request.kind.reviewPrerequisitePhase() != null) {
-                "${request.kind} requests cannot use REVIEW phase"
+        when (request.phase) {
+            CachePhase.REVIEW -> {
+                require(request.kind.reviewPrerequisitePhase() != null) {
+                    "${request.kind} requests cannot use REVIEW phase"
+                }
+                require(request.source == CacheRequestSource.READER) {
+                    "REVIEW tasks must be appended by the coordinator or submitted by READER"
+                }
             }
-            require(request.source == CacheRequestSource.READER) {
-                "REVIEW tasks must be appended by the coordinator or submitted by READER"
+            CachePhase.TTS -> {
+                require(request.kind.ttsPrerequisitePhase() != null) {
+                    "${request.kind} requests cannot use TTS phase"
+                }
+                require(request.source == CacheRequestSource.READER) {
+                    "TTS tasks must be appended by the coordinator or submitted by READER"
+                }
+                require(AppConfig.ttsWavMode) {
+                    "TTS cache requires TTS-Wav mode"
+                }
             }
-        } else {
-            require(request.kind != CacheKind.TEXT || request.phase == CachePhase.BODY) {
-                "text UI requests must use BODY phase"
+            else -> {
+                require(request.kind != CacheKind.TEXT || request.phase == CachePhase.BODY) {
+                    "text UI requests must use BODY phase"
+                }
             }
         }
         validateCommon(request)
@@ -661,6 +795,33 @@ object CacheCoordinator : CacheUiPort {
         }
     }
 
+    /** READER may submit TTS only when the same chapter's body text is already available. */
+    private fun validateReaderTtsPrerequisite(request: CacheRequest) {
+        if (request.phase != CachePhase.TTS || request.source != CacheRequestSource.READER) return
+        val book = appDb.bookDao.getBook(request.bookUrl)
+            ?: error("reader tts prerequisite book not found: ${request.bookUrl}")
+        require(request.kind == CacheKind.TEXT) {
+            "reader tts kind ${request.kind} is not TEXT"
+        }
+        require(!book.isAudio && !book.isVideo) {
+            "tts artifacts require a text book: ${book.bookUrl}"
+        }
+        val chaptersByIndex = request.units.associate { unit ->
+            unit.chapterIndex to appDb.bookChapterDao.getChapter(request.bookUrl, unit.chapterIndex)
+        }
+        require(chaptersByIndex.values.all { it != null }) {
+            "reader tts prerequisite chapter is missing: ${request.bookUrl}"
+        }
+        val incomplete = request.units.mapNotNull { unit ->
+            val chapter = requireNotNull(chaptersByIndex[unit.chapterIndex])
+            unit.takeUnless { BookHelp.hasContent(book, chapter) }
+        }
+        require(incomplete.isEmpty()) {
+            "reader tts prerequisite body text unavailable: " +
+                incomplete.joinToString { it.chapterIndex.toString() }
+        }
+    }
+
     private fun validateCommon(request: CacheRequest) {
         require(request.bookUrl.isNotBlank()) { "cache request bookUrl is blank" }
         require(request.bookName.isNotBlank()) { "cache request bookName is blank" }
@@ -693,6 +854,14 @@ object CacheCoordinator : CacheUiPort {
                     request.kind.reviewPrerequisitePhase() == request.phase
             ) {
                 "${request.kind}/${request.phase} cannot enable review caching"
+            }
+        }
+        if (request.ttsEnabled) {
+            require(
+                request.phase == CachePhase.TTS ||
+                    request.kind.ttsPrerequisitePhase() == request.phase
+            ) {
+                "${request.kind}/${request.phase} cannot enable tts caching"
             }
         }
     }
