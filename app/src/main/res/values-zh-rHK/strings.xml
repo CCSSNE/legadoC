@@ -580,6 +580,7 @@
     <string name="brightness_auto">自動亮度 %s</string>
     <string name="read_aloud_force_page_follow">強制追頁</string>
     <string name="read_aloud_page_split">頁間分段</string>
+    <string name="read_aloud_tts_wav_mode">TTS-Wav 模式</string>
     <string name="speak_engine">朗讀引擎</string>
     <string name="bg_image">背景圖片</string>
     <string name="bg_color">背景顏色</string>
@@ -896,6 +897,7 @@
     <string name="pref_media_button_per_next_summary">上一段|下一段/上一章|下一章</string>
     <string name="read_aloud_force_page_follow_summary">開啟後，翻到哪一頁就相當於雙擊該頁最上面的那一段開始朗讀，視角始終停在朗讀頁。</string>
     <string name="read_aloud_page_split_summary">開啟後，跨頁的段從頁邊界裂成真正的兩段朗讀（邊界絕對精準，段間稍有停頓）；關閉時整段連讀，讀到跨頁處自然翻頁。</string>
+    <string name="read_aloud_tts_wav_mode_summary">引擎先把每段合成到本地 wav 檔案，再由應用自行播放。音訊時長精確可知，跨頁翻頁跟隨真實音訊進度。第一段合成略有延遲，之後各段在播放時提前合成銜接。</string>
     <string name="check_source_show_debug_message">校驗書源顯示詳細信息</string>
     <string name="check_source_show_debug_message_summary">書源校驗時顯示網絡請求步驟和時間</string>
     <string name="need_login">需登錄</string>

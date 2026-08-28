@@ -1857,6 +1857,14 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val forcePageFollow
         get() = appCtx.getPrefBoolean(PreferKey.forcePageFollow, false)
 
+    /**
+     * TTS-Wav 模式：true 表示系统 TTS 引擎先合成到本地 wav 文件、由应用自行播放，
+     * 每句音频时长精确可知，跨页翻页按真实音频进度精确发布；
+     * false 表示传统 speak() 直播模式（引擎自己发声，句长靠滚动校准估算）。
+     */
+    val ttsWavMode
+        get() = appCtx.getPrefBoolean(PreferKey.ttsWavMode, true)
+
     var readAloudScrollFollowTimeout: Int
         get() = appCtx.getPrefInt(PreferKey.readAloudScrollFollowTimeout, 3000).coerceIn(0, 10000)
         set(value) {
