@@ -30,6 +30,7 @@ import io.legado.app.service.ReadAloudDialogFloatingPresentation
 import io.legado.app.service.ReadAloudEngineType
 import io.legado.app.service.ReadAloudFloatingHost
 import io.legado.app.service.ReadAloudProgress
+import io.legado.app.ui.book.cache.TtsCacheChapterDialog
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
 import io.legado.app.utils.*
@@ -166,6 +167,8 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
             ivTtsSpeechAdd.setColorFilter(textColor)
             ivCatalog.setColorFilter(textColor)
             tvCatalog.setTextColor(textColor)
+            ivTtsCache.setColorFilter(textColor)
+            tvTtsCache.setTextColor(textColor)
             ivMainMenu.setColorFilter(textColor)
             tvMainMenu.setTextColor(textColor)
             ivToBackstage.setColorFilter(textColor)
@@ -189,8 +192,18 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
     private fun initEvent() = binding.run {
         ivCatalog.gone()
         llMainMenu.visible(AppConfig.readAloudHideFloatingWindow && BaseReadAloudService.isRun)
+        // TTS 缓存入口：仅系统 TTS 引擎；TTS-Wav 模式关闭时置灰不可点（合成产物前置）
+        llTtsCache.visible(ReadAloud.selectedEngineType == ReadAloudEngineType.SYSTEM_TTS)
+        llTtsCache.isEnabled = AppConfig.ttsWavMode
+        llTtsCache.alpha = if (AppConfig.ttsWavMode) 1f else 0.45f
         llCatalog.setOnClickListener {
             SpeakEngineDialog().show(childFragmentManager, "speakEngineDialog")
+        }
+        llTtsCache.setOnClickListener {
+            ReadBook.book?.let { book ->
+                TtsCacheChapterDialog.newInstance(book)
+                    .show(childFragmentManager, "ttsCacheChapterDialog")
+            }
         }
         llMainMenu.setOnClickListener {
             showMainMenuOnDismiss = true

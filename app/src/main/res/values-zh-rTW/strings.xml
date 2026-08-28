@@ -90,6 +90,16 @@
     <string name="web_service_desc">瀏覽器寫源、看書</string>
     <string name="web_edit_source">web編輯書源</string>
     <string name="offline_cache">離線快取</string>
+    <string name="tts_cache">TTS快取</string>
+    <string name="tts_cache_chapter_range">第%1$d-%2$d章</string>
+    <string name="tts_cache_group_chapter_count">%1$d章</string>
+    <string name="tts_cache_group_hint">每 20 章合併為一條，點擊展開後可單選章節；勾選條目即整組選中。</string>
+    <string name="tts_cache_selected_count">已選 %1$d 章</string>
+    <string name="tts_cache_start">開始快取</string>
+    <string name="tts_cache_started">已送出 TTS 快取任務</string>
+    <string name="tts_cache_failed">TTS 快取任務送出失敗：%1$s</string>
+    <string name="tts_cache_chapters_empty">沒有可快取的章節</string>
+    <string name="tts_cache_requires_wav">TTS 快取需要先開啟 TTS-Wav 模式</string>
     <string name="offline_cache_t">離線快取</string>
     <string name="offline_cache_s">快取選擇的章節到本機</string>
     <string name="change_origin">換源</string>

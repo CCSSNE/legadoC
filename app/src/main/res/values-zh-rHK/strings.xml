@@ -88,6 +88,16 @@
     <string name="web_service_desc">瀏覽器寫源,看書</string>
     <string name="web_edit_source">web 編輯書源</string>
     <string name="offline_cache">離線緩存</string>
+    <string name="tts_cache">TTS緩存</string>
+    <string name="tts_cache_chapter_range">第%1$d-%2$d章</string>
+    <string name="tts_cache_group_chapter_count">%1$d章</string>
+    <string name="tts_cache_group_hint">每 20 章合併為一條，點擊展開後可單選章節；勾選條目即整組選中。</string>
+    <string name="tts_cache_selected_count">已選 %1$d 章</string>
+    <string name="tts_cache_start">開始緩存</string>
+    <string name="tts_cache_started">已提交 TTS 緩存任務</string>
+    <string name="tts_cache_failed">TTS 緩存任務提交失敗：%1$s</string>
+    <string name="tts_cache_chapters_empty">沒有可緩存的章節</string>
+    <string name="tts_cache_requires_wav">TTS 緩存需要先開啟 TTS-Wav 模式</string>
     <string name="offline_cache_t">離線緩存</string>
     <string name="offline_cache_s">緩存已選擇的章節到本地</string>
     <string name="change_origin">換源</string>

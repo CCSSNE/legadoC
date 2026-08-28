@@ -51,7 +51,9 @@ import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.cache.CacheCoordinator
 import io.legado.app.help.cache.CacheRequestSource
+import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.isVideo
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.permission.NotificationPermission
 import io.legado.app.model.BookCover
@@ -72,6 +74,7 @@ import io.legado.app.ui.book.audio.config.AudioPlayDisplaySettingDialog
 import io.legado.app.ui.book.audio.config.AudioSkipCredits
 import io.legado.app.ui.book.read.config.SpeakEngineDialog
 import io.legado.app.ui.book.cache.CacheManageActivity
+import io.legado.app.ui.book.cache.TtsCacheChapterDialog
 import io.legado.app.ui.book.toc.TocActivityResult
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
 import io.legado.app.utils.applyNavigationBarPadding
@@ -240,7 +243,14 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
             speedControlPopup.showAsDropDown(it, 0, (-100).dpToPx(), Gravity.TOP)
         }
         ivChapter.setOnClickListener { tocActivityResult.launch(book.bookUrl) }
-        ivCache?.setOnClickListener { showBookDownloadRangeDialog(book) }
+        ivCache?.setOnClickListener {
+            if (isLocalTextTtsPlayback()) {
+                TtsCacheChapterDialog.newInstance(book)
+                    .show(supportFragmentManager, "ttsCacheChapterDialog")
+            } else {
+                showBookDownloadRangeDialog(book)
+            }
+        }
         listeningTextScroll.setOnTouchListener { _, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
@@ -273,10 +283,26 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     private fun updateEngineUi() = binding.run {
         ivCache?.apply {
             visible()
-            isEnabled = ReadBook.book?.isLocal == false
+            if (isLocalTextTtsPlayback()) {
+                // 本地文字书走系统 TTS 朗读：下载按钮转为 TTS 缓存入口
+                contentDescription = getString(R.string.tts_cache)
+                isEnabled = AppConfig.ttsWavMode
+                alpha = if (AppConfig.ttsWavMode) 1f else 0.45f
+            } else {
+                contentDescription = getString(R.string.offline_cache)
+                isEnabled = ReadBook.book?.isLocal == false
+                alpha = 1f
+            }
         }
         bindListeningText()
         invalidateOptionsMenu()
+    }
+
+    /** 本地文字书 + 系统 TTS 引擎：沉浸页的下载按钮语义转为 TTS 缓存。 */
+    private fun isLocalTextTtsPlayback(): Boolean {
+        val book = ReadBook.book ?: return false
+        return book.isLocal && !book.isAudio && !book.isVideo &&
+            ReadAloud.engineType == ReadAloudEngineType.SYSTEM_TTS
     }
 
     /**
