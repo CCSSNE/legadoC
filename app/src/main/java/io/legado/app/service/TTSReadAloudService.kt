@@ -17,6 +17,7 @@ import io.legado.app.R
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
+import io.legado.app.constant.LogModule
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.exception.NoStackTraceException
@@ -309,12 +310,16 @@ class TTSReadAloudService : BaseReadAloudService() {
         } else {
             val pending = synchronized(realtimePending) { realtimePending.containsKey(index) }
             if (!pending) {
-                // 状态3：立即派发；状态2（在途）不做任何事，等回调
+                // 状态3：缺失，立即派发（排在引擎队列最前）
+                AppLog.putDebug("[朗读] 实时缓存未命中，立即派发 单元:$index")
                 synchronized(realtimePending) {
                     if (!realtimePending.containsKey(index)) {
                         dispatchRealtimeSynthesis(book, chapter, index, text, key)
                     }
                 }
+            } else {
+                // 状态2：引擎正在合成该段，等完成回调驱动播放
+                AppLog.putDebug("[朗读] 实时缓存在途等待 单元:$index")
             }
         }
         // 任务列表（当前段之后 N 个可读单元）：命中/在途跳过，缺失派发
@@ -392,6 +397,7 @@ class TTSReadAloudService : BaseReadAloudService() {
                 watchdog,
                 AppConfig.ttsCacheSegmentTimeoutSeconds * 1000L,
             )
+            AppLog.putDebug("[朗读] 实时缓存合成派发 单元:$index 在途:${realtimePending.size}")
         }
     }
 
@@ -428,7 +434,12 @@ class TTSReadAloudService : BaseReadAloudService() {
                 }.takeIf { it }?.let { TtsCacheStore.unitFile(book, record.key) }
             }
             if (index == nowSpeak && isRun && !pause) {
+                AppLog.putDebug("[朗读] 实时缓存合成完成，当前段播放 单元:$index")
                 playWavFile(index, cacheFile)
+            } else {
+                AppLog.putDebug(
+                    "[朗读] 实时缓存合成完成，预取落库 单元:$index 缓存:${cacheFile != null}"
+                )
             }
         }
     }
@@ -740,11 +751,29 @@ class TTSReadAloudService : BaseReadAloudService() {
                 val utteranceId = utteranceId(nowSpeak)
                 activeUtteranceId = utteranceId
                 queuedUntilIndex = nowSpeak
+                // QUEUE_FLUSH 会让引擎在空闲队列上执行内部 stop 路径（MultiTTS 等引擎
+                // 存在 synthesizer 空对象 NPE，且该异常会同步透传回客户端）。
+                // 所有到达这里的路径都保证引擎已被 stop/前句已 onDone，
+                // flush 与 add 语义等价：异常时退化为 QUEUE_ADD 重试，
+                // 不再当作致命错误轰炸 toast。
                 val result = tts.runCatching {
                     speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
                 }.getOrElse {
-                    AppLog.put("tts error\n${it.localizedMessage}", it, true)
-                    TextToSpeech.ERROR
+                    AppLog.put(
+                        "[朗读] 引擎speak异常，QUEUE_ADD 重试\n${it.localizedMessage}",
+                        it,
+                        module = LogModule.READ_ALOUD,
+                    )
+                    tts.runCatching {
+                        speak(text, TextToSpeech.QUEUE_ADD, null, utteranceId)
+                    }.getOrElse { retryError ->
+                        AppLog.put(
+                            "[朗读] 引擎speak重试失败\n${retryError.localizedMessage}",
+                            retryError,
+                            module = LogModule.READ_ALOUD,
+                        )
+                        TextToSpeech.ERROR
+                    }
                 }
                 if (result == TextToSpeech.ERROR) {
                     queuedUntilIndex = -1
