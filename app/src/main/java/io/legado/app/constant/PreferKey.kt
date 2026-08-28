@@ -49,6 +49,8 @@ object PreferKey {
     // TTS 缓存命中 key 可选维度（引擎+章节+文本固定必选）：语速 / 音色
     const val ttsCacheKeySpeed = "ttsCacheKeySpeed"
     const val ttsCacheKeyVoice = "ttsCacheKeyVoice"
+    // 缓存包是否包含 TTS 缓存（默认不包含：wav 体积大且可由文本重新合成）
+    const val ttsCacheIncludeInPackage = "ttsCacheIncludeInPackage"
     const val ttsEngine = "appTtsEngine"
     const val ttsFollowSys = "ttsFollowSys"
     const val ttsSpeechRate = "ttsSpeechRate"

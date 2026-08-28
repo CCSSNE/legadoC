@@ -1882,6 +1882,13 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefBoolean(PreferKey.ttsCacheKeyVoice, value)
         }
 
+    /** 缓存包备份是否包含 TTS 缓存。默认不包含：wav 体积大且可由文本+引擎重新合成。 */
+    var ttsCacheIncludeInPackage: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.ttsCacheIncludeInPackage, false)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.ttsCacheIncludeInPackage, value)
+        }
+
     var readAloudScrollFollowTimeout: Int
         get() = appCtx.getPrefInt(PreferKey.readAloudScrollFollowTimeout, 3000).coerceIn(0, 10000)
         set(value) {

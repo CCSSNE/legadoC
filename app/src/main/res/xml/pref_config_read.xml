@@ -413,6 +413,12 @@
         android:title="@string/comment_cache_concurrency"
         app:iconSpaceReserved="false" />
 
+    <io.legado.app.lib.prefs.SwitchPreference
+        android:defaultValue="false"
+        android:key="ttsCacheIncludeInPackage"
+        android:summary="@string/tts_cache_include_in_package_summary"
+        android:title="@string/tts_cache_include_in_package" />
+
     <io.legado.app.lib.prefs.NameListPreference
         android:defaultValue="network"
         android:entries="@array/review_open_mode_title"

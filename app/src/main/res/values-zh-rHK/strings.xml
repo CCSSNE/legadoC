@@ -107,6 +107,8 @@
     <string name="tts_cache_key_speed_summary">勾選後語速參與命中；不勾選則改語速仍命中舊音頻。跟隨系統語速時無法感知系統內部設置。</string>
     <string name="tts_cache_key_voice">命中維度：音色</string>
     <string name="tts_cache_key_voice_summary">勾選後音色參與命中；不勾選則換音色仍命中舊音頻。</string>
+    <string name="tts_cache_include_in_package">緩存包包含 TTS 緩存</string>
+    <string name="tts_cache_include_in_package_summary">勾選後 WebDAV 緩存包會一併備份 TTS 音頻緩存。wav 體積較大且可重新合成，默認不勾選。</string>
     <string name="offline_cache_t">離線緩存</string>
     <string name="offline_cache_s">緩存已選擇的章節到本地</string>
     <string name="change_origin">換源</string>
