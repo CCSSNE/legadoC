@@ -523,6 +523,9 @@
             android:name=".service.ReviewCacheService"
             android:foregroundServiceType="dataSync" />
         <service
+            android:name=".service.TtsCacheService"
+            android:foregroundServiceType="dataSync" />
+        <service
             android:name=".service.ExportBookService"
             android:foregroundServiceType="dataSync" />
         <service

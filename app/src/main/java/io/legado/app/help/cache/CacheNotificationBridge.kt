@@ -114,6 +114,8 @@ internal object CacheNotificationBridge {
         task.phase == CachePhase.MEDIA &&
             (task.kind == CacheKind.AUDIO || task.kind == CacheKind.VIDEO) ->
             mediaPresentation(task, progress)
+        task.phase == CachePhase.TTS && task.kind.ttsPrerequisitePhase() != null ->
+            ttsPresentation(task, progress)
         else -> error("unsupported cache notification task: ${task.kind}/${task.phase}")
     }
 
@@ -157,6 +159,24 @@ internal object CacheNotificationBridge {
         return Presentation(
             title = "缓存评论",
             text = "${displayUnitText(task, progress)}  快照：$snapshotText  失败：$failed  " +
+                chapterText(chapters.completed, chapters.total),
+            progress = total?.let { chapterProgress(it, completed) }
+                ?: Progress(max = 0, current = 0, indeterminate = true),
+        )
+    }
+
+    private fun ttsPresentation(
+        task: CacheTaskState,
+        progress: CacheProgressState?,
+    ): Presentation {
+        val completed = progress?.current?.toInt() ?: 0
+        val total = progress?.total?.toInt()
+        val failed = progress?.failed?.toInt() ?: 0
+        val chapters = ttsChapterProgress(task)
+        val unitText = total?.let { "$completed/$it" } ?: "处理中"
+        return Presentation(
+            title = "缓存TTS音频",
+            text = "${displayUnitText(task, progress)}  单元：$unitText  失败：$failed  " +
                 chapterText(chapters.completed, chapters.total),
             progress = total?.let { chapterProgress(it, completed) }
                 ?: Progress(max = 0, current = 0, indeterminate = true),
@@ -273,6 +293,14 @@ internal object CacheNotificationBridge {
         return ChapterProgress(
             completed = completedChapters(review),
             total = review.units.size,
+        )
+    }
+
+    /** TTS 同样只认自己任务的章节集，x/y章 不借用前置 BODY 任务的总数。 */
+    private fun ttsChapterProgress(task: CacheTaskState): ChapterProgress {
+        return ChapterProgress(
+            completed = completedChapters(task),
+            total = task.units.size,
         )
     }
 
