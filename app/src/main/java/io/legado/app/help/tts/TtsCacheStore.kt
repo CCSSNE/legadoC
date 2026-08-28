@@ -2,9 +2,9 @@ package io.legado.app.help.tts
 
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
-import io.legado.app.data.entities.SelectItem
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.config.AppConfig
+import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.MD5Utils
@@ -120,11 +120,14 @@ object TtsCacheStore {
 object TtsCacheParams {
 
     /** 引擎标识：书级 ttsEngine 优先，回落全局设置；未指定（系统默认引擎）记 default。 */
-    fun engineKey(book: Book): String {
+    fun engineKey(book: Book): String =
+        engineValue(book)?.takeIf { it.isNotBlank() } ?: TtsCacheStore.DEFAULT_ENGINE_KEY
+
+    /** 引擎包名原值：空表示系统默认引擎（TextToSpeech 不指定 engine）。 */
+    fun engineValue(book: Book): String? {
         val raw = book.getTtsEngine() ?: AppConfig.ttsEngine
-        if (raw.isNullOrBlank()) return TtsCacheStore.DEFAULT_ENGINE_KEY
-        val value = GSON.fromJsonObject<SelectItem<String>>(raw).getOrNull()?.value
-        return value?.takeIf { it.isNotBlank() } ?: TtsCacheStore.DEFAULT_ENGINE_KEY
+        if (raw.isNullOrBlank()) return null
+        return GSON.fromJsonObject<SelectItem<String>>(raw).getOrNull()?.value
     }
 
     /** 语速 key：跟随系统时无法感知系统内部语速，退化为常量标记。 */
