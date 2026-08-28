@@ -129,6 +129,16 @@
     <string name="web_service_desc">Web edit source and read book</string>
     <string name="web_edit_source">Edit book sources on the web</string>
     <string name="offline_cache">Offline cache</string>
+    <string name="tts_cache">TTS cache</string>
+    <string name="tts_cache_chapter_range">Chapters %1$d-%2$d</string>
+    <string name="tts_cache_group_chapter_count">%1$d chapters</string>
+    <string name="tts_cache_group_hint">Every 20 chapters merge into one row. Tap a row to expand and pick chapters; check a row to select the whole group.</string>
+    <string name="tts_cache_selected_count">Selected %1$d chapters</string>
+    <string name="tts_cache_start">Start caching</string>
+    <string name="tts_cache_started">TTS cache task submitted</string>
+    <string name="tts_cache_failed">Failed to submit TTS cache task: %1$s</string>
+    <string name="tts_cache_chapters_empty">No chapters to cache</string>
+    <string name="tts_cache_requires_wav">TTS cache requires TTS-Wav mode</string>
     <string name="offline_cache_t">Offline cache</string>
     <string name="offline_cache_s">cache the selected chapter(s) to Storage</string>
     <string name="change_origin">Change Origin</string>

@@ -358,6 +358,48 @@
             android:layout_width="8dp"
             android:layout_height="match_parent"
             android:layout_weight="0" />
+        <!--TTS缓存按钮-->
+        <LinearLayout
+            android:id="@+id/ll_tts_cache"
+            android:layout_width="60dp"
+            android:layout_height="wrap_content"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:contentDescription="@string/tts_cache"
+            android:focusable="true"
+            android:orientation="vertical"
+            android:paddingBottom="7dp"
+            tools:ignore="TextSizeCheck">
+
+            <androidx.appcompat.widget.AppCompatImageView
+                android:id="@+id/iv_tts_cache"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:adjustViewBounds="true"
+                android:contentDescription="@string/tts_cache"
+                android:maxHeight="20dp"
+                android:src="@drawable/ic_download_line"
+                app:tint="@color/primaryText"
+                tools:ignore="NestedWeights" />
+
+            <TextView
+                android:id="@+id/tv_tts_cache"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="3dp"
+                android:ellipsize="middle"
+                android:singleLine="true"
+                android:text="@string/tts_cache"
+                android:textColor="@color/primaryText"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="8dp"
+            android:layout_height="match_parent"
+            android:layout_weight="0" />
         <!--调节按钮-->
         <LinearLayout
             android:id="@+id/ll_main_menu"
