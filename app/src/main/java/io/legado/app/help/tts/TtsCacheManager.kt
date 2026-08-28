@@ -4,7 +4,6 @@ import android.os.Build
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
-import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -149,7 +148,7 @@ internal object TtsCacheManager {
             job.cancel(CancellationException("tts Coordinator task stopped: $ownerKey"))
         }
         callbacks.forEach { it() }
-        AppLog.put("tts cache stop requested: $ownerKey")
+        TtsCacheLog.put("tts cache stop requested: $ownerKey")
     }
 
     /** TTS 宿主处理任务（suspend：内部排版、逐单元合成、落盘） */
@@ -174,7 +173,7 @@ internal object TtsCacheManager {
                     processChapter(task, diagnostics, this)
                 }.onFailure {
                     if (it !is CancellationException) {
-                        AppLog.put("TTS缓存 章节 ${task.key} 处理失败\n${it.localizedMessage}", it)
+                        TtsCacheLog.put("章节 ${task.key} 处理失败\n${it.localizedMessage}", it)
                     }
                 }.getOrElse { false }
                 if (success) TaskResult.SUCCEEDED else TaskResult.FAILED
@@ -198,7 +197,7 @@ internal object TtsCacheManager {
             // 1. 正文（TEXT+TTS 只读本领域产物；正文缺失直接失败，不静默兜底）
             val rawContent = BookHelp.getContent(book, chapter)
             if (rawContent.isNullOrBlank()) {
-                AppLog.put("TTS缓存 第${chapter.index + 1}章 正文不可用，无法合成")
+                TtsCacheLog.put("第${chapter.index + 1}章 正文不可用，无法合成")
                 trace.fail(IllegalStateException("body content unavailable"))
                 return false
             }
@@ -225,7 +224,7 @@ internal object TtsCacheManager {
             )
             textChapter.layoutChannel.receiveAsFlow().collect()
             if (!textChapter.isCompleted || textChapter.pages.isEmpty()) {
-                AppLog.put("TTS缓存 第${chapter.index + 1}章 排版失败")
+                TtsCacheLog.put("第${chapter.index + 1}章 排版失败")
                 trace.fail(IllegalStateException("text chapter layout failed"))
                 return false
             }
@@ -264,7 +263,7 @@ internal object TtsCacheManager {
         }
         val tts = createTextToSpeech(TtsCacheParams.engineValue(book))
         if (tts == null) {
-            AppLog.put("TTS缓存 第${chapter.index + 1}章 TTS 引擎初始化失败")
+            TtsCacheLog.put("第${chapter.index + 1}章 TTS 引擎初始化失败")
             return false
         }
         var failed = 0
@@ -303,7 +302,7 @@ internal object TtsCacheManager {
                 } else {
                     tempFile.delete()
                     failed++
-                    AppLog.put("TTS缓存 第${chapter.index + 1}章 单元${index + 1} 合成失败")
+                    TtsCacheLog.put("第${chapter.index + 1}章 单元${index + 1} 合成失败")
                 }
                 processed++
                 task.reportProgress(processed, total, failed)
@@ -367,7 +366,7 @@ internal object TtsCacheManager {
         val requested = runCatching {
             tts.synthesizeToFile(text, Bundle(), tempFile, utteranceId)
         }.getOrElse {
-            AppLog.put("TTS缓存 合成请求出错\n${it.localizedMessage}", it)
+            TtsCacheLog.put("合成请求出错\n${it.localizedMessage}", it)
             TextToSpeech.ERROR
         }
         if (requested == TextToSpeech.ERROR) finish(false)
