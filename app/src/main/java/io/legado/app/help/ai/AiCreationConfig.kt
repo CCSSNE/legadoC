@@ -5,8 +5,10 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.main.ai.AiModelConfig
 import io.legado.app.ui.main.ai.AiProviderConfig
 import io.legado.app.utils.getPrefBoolean
+import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.putPrefBoolean
+import io.legado.app.utils.putPrefInt
 import io.legado.app.utils.putPrefString
 import io.legado.app.utils.removePref
 import org.json.JSONArray
@@ -24,6 +26,10 @@ data class AiCreationNamedTemplate(
 )
 
 object AiCreationConfig {
+
+    const val DEFAULT_IMAGE_RETRY_COUNT = 3
+    const val MIN_IMAGE_RETRY_COUNT = 0
+    const val MAX_IMAGE_RETRY_COUNT = 10
 
     const val SECTION_SELECTED_TEXT = "selected_text"
     const val SECTION_BACKGROUND = "background"
@@ -219,8 +225,66 @@ object AiCreationConfig {
             ?: throw IllegalStateException("路由指向的请求模板不存在：$name")
     }
 
-    fun requireModelTarget(): AiCreationModelTarget {
-        if (reuseCurrentModel) {
+    val defaultImageRequestTemplateJson: String = """
+        {
+          "model": "{{model}}",
+          "prompt": "{{prompt}}",
+          "n": {{n}},
+          "size": "1024x1024"
+        }
+    """.trimIndent()
+
+    var imageUrl: String
+        get() = appCtx.getPrefString(PreferKey.aiCreationImageUrl).orEmpty().trim()
+        set(value) = appCtx.putPrefString(PreferKey.aiCreationImageUrl, value.trim())
+
+    var imageApiKey: String
+        get() = appCtx.getPrefString(PreferKey.aiCreationImageApiKey).orEmpty().trim()
+        set(value) = appCtx.putPrefString(PreferKey.aiCreationImageApiKey, value.trim())
+
+    var imageModel: String
+        get() = appCtx.getPrefString(PreferKey.aiCreationImageModel).orEmpty().trim()
+        set(value) = appCtx.putPrefString(PreferKey.aiCreationImageModel, value.trim())
+
+    var imageRetryCount: Int
+        get() = appCtx.getPrefInt(PreferKey.aiCreationImageRetryCount, DEFAULT_IMAGE_RETRY_COUNT)
+            .coerceIn(MIN_IMAGE_RETRY_COUNT, MAX_IMAGE_RETRY_COUNT)
+        set(value) = appCtx.putPrefInt(
+            PreferKey.aiCreationImageRetryCount,
+            value.coerceIn(MIN_IMAGE_RETRY_COUNT, MAX_IMAGE_RETRY_COUNT)
+        )
+
+    var imageRequestTemplate: String
+        get() = appCtx.getPrefString(PreferKey.aiCreationImageRequestTemplate)
+            ?.takeIf { it.isNotBlank() }
+            ?: defaultImageRequestTemplateJson
+        set(value) {
+            appCtx.putPrefString(
+                PreferKey.aiCreationImageRequestTemplate,
+                parseImageRequestTemplate(value)
+            )
+        }
+
+    fun parseImageRequestTemplate(json: String): String {
+        val normalized = json.trim()
+        require(normalized.isNotEmpty()) { "图片请求模板不能为空" }
+        try {
+            JSONObject(normalized.replace("{{n}}", "1"))
+        } catch (throwable: Throwable) {
+            throw IllegalStateException(
+                "图片请求模板 JSON 无效：${throwable.message}",
+                throwable
+            )
+        }
+        return normalized
+    }
+
+    fun requireImageApiReady() {
+        require(imageUrl.isNotBlank()) { "请先在 AI 设置中配置图片 API 地址" }
+        require(imageModel.isNotBlank()) { "请先在 AI 设置中配置图片模型" }
+    }
+
+    fun requireModelTarget(): AiCreationModelTarget {        if (reuseCurrentModel) {
             val provider = AppConfig.aiCurrentProvider
                 ?: error("请先配置当前 AI 提供商，或关闭“复用当前 AI 模型”后选择 AI 创作模型")
             val model = AppConfig.aiCurrentModelConfig?.modelId.orEmpty()

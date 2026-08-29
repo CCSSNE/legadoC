@@ -42,7 +42,7 @@ object AiCreationHelper {
         return stripThinking(response)
     }
 
-    private fun buildValues(
+    fun buildValues(
         session: AiCreationSession,
         cardsById: Map<Long, CreationCard>,
         variables: List<AiCreationVariable>
