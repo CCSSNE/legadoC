@@ -68,7 +68,6 @@ class BdReadAloudService : BaseReadAloudService() {
 
     override fun play() {
         super.play()
-        isRun = true
         synthesizeCurrent()
     }
 

@@ -37,15 +37,17 @@ object AiCreationConfig {
     const val SCOPE_SESSION = "session"
     val scopeValues = listOf(SCOPE_GLOBAL, SCOPE_BOOK, SCOPE_SESSION)
 
+    const val AI_CREATION_EPHEMERAL_BOOK = "__AI创作会话__"
+
     val defaultPromptTemplate = """
         你是专业的 AI 绘画与视频提示词生成器。
         请根据素材与参数，生成一段高质量的图像或视频生成提示词。
 
         # 参数
-        \${参数}
+        ${'$'}{参数}
 
         # 素材
-        \${素材}
+        ${'$'}{素材}
 
         要求：
         1. 只输出最终提示词正文，不要任何解释、前言或标题。

@@ -10,7 +10,7 @@ data class AiCreationVariable(
     val format: String = FORMAT_OPTIONS,
     val options: List<String> = emptyList(),
     val defaultValue: String = "",
-    val group: String = GROUP_IMAGE
+    val group: String = AiCreationVariables.GROUP_IMAGE
 ) {
     companion object {
         const val FORMAT_SWITCH = "switch"

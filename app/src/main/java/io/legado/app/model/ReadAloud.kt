@@ -46,7 +46,6 @@ data class ReadAloudPositionUpdate(
 object ReadAloud {
     const val SOURCE_AUDIO_ENGINE_ID = "sourceAudio"
     const val BAIDU_ENGINE_ID = "bdtts"
-    const val BAIDU_ENGINE_ID = "bdtts"
 
     @Volatile
     var aloudPosition: ReadAloudPosition? = null
