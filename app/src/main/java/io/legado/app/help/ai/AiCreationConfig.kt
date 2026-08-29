@@ -9,11 +9,18 @@ import io.legado.app.utils.getPrefString
 import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.putPrefString
 import io.legado.app.utils.removePref
+import org.json.JSONArray
+import org.json.JSONObject
 import splitties.init.appCtx
 
 data class AiCreationModelTarget(
     val provider: AiProviderConfig,
     val modelId: String
+)
+
+data class AiCreationNamedTemplate(
+    val name: String,
+    val body: String
 )
 
 object AiCreationConfig {
@@ -37,41 +44,78 @@ object AiCreationConfig {
     const val SCOPE_SESSION = "session"
     val scopeValues = listOf(SCOPE_GLOBAL, SCOPE_BOOK, SCOPE_SESSION)
 
-    const val AI_CREATION_EPHEMERAL_BOOK = "__AI创作会话__"
-
     val defaultPromptTemplate = """
         你是专业的 AI 绘画与视频提示词生成器。
-        请根据素材与参数，生成一段高质量的图像或视频生成提示词。
-
-        # 参数
-        ${'$'}{参数}
-
-        # 素材
-        ${'$'}{素材}
+        请根据用户消息中的素材与要求，生成一段高质量的提示词。
 
         要求：
         1. 只输出最终提示词正文，不要任何解释、前言或标题。
         2. 使用中文，画面描述具体可执行，充分利用素材中的场景、人设与参考信息。
-        3. 素材未覆盖的部分按参数要求补全，不要虚构与素材冲突的设定。
+        3. 素材未覆盖的部分按用户消息中的要求补全，不要虚构与素材冲突的设定。
     """.trimIndent()
 
-    val defaultRequestTemplate = """
-        {
-          "model": "{{model}}",
-          "stream": true,
-          "messages": [
-            {
-              "role": "system",
-              "content": "{{systemPrompt}}"
-            },
-            {
-              "role": "user",
-              "content": "{{userContent}}"
-            }
-          ],
-          "temperature": 0.7
+    private fun defaultTemplateBody(userContent: String): JSONObject {
+        return JSONObject().apply {
+            put("model", "{{model}}")
+            put("stream", true)
+            put(
+                "messages",
+                JSONArray().apply {
+                    put(
+                        JSONObject()
+                            .put("role", "system")
+                            .put("content", "{{systemPrompt}}")
+                    )
+                    put(
+                        JSONObject()
+                            .put("role", "user")
+                            .put("content", userContent)
+                    )
+                }
+            )
+            put("temperature", 0.7)
         }
-    """.trimIndent()
+    }
+
+    val defaultRequestTemplatesJson: String by lazy {
+        JSONArray().apply {
+            put(
+                JSONObject()
+                    .put("name", "连环画")
+                    .put(
+                        "body",
+                        defaultTemplateBody(
+                            "本次按连环画分镜脚本生成提示词：将素材拆分为连续分镜，" +
+                                "每格包含画面描述、构图与镜头调度。\n\n素材：\n\${素材}\n\n" +
+                                "风格：\${style}；比例：\${ratio}；画质：\${quality}"
+                        )
+                    )
+            )
+            put(
+                JSONObject()
+                    .put("name", "单场景")
+                    .put(
+                        "body",
+                        defaultTemplateBody(
+                            "本次生成单场景精绘提示词：一个完整画面，" +
+                                "涵盖主体、环境、光影与构图。\n\n素材：\n\${素材}\n\n" +
+                                "风格：\${style}；比例：\${ratio}；画质：\${quality}"
+                        )
+                    )
+            )
+            put(
+                JSONObject()
+                    .put("name", "视频")
+                    .put(
+                        "body",
+                        defaultTemplateBody(
+                            "本次生成视频提示词：\${shot}，分辨率 \${resolution}，" +
+                                "时长 \${duration}。\n\n素材：\n\${素材}"
+                        )
+                    )
+            )
+        }.toString()
+    }
 
     var reuseCurrentModel: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.aiCreationReuseCurrentModel, true)
@@ -105,12 +149,6 @@ object AiCreationConfig {
             )
         }
 
-    var requestTemplate: String
-        get() = appCtx.getPrefString(PreferKey.aiCreationRequestTemplate)
-            ?.takeIf { it.isNotBlank() }
-            ?: defaultRequestTemplate
-        set(value) = appCtx.putPrefString(PreferKey.aiCreationRequestTemplate, value.trim())
-
     var variablesJson: String
         get() = appCtx.getPrefString(PreferKey.aiCreationVariables)
             ?.takeIf { it.isNotBlank() }
@@ -123,8 +161,63 @@ object AiCreationConfig {
             )
         }
 
-    val variables: List<AiCreationVariable>
+    val definition: AiCreationDefinition
         get() = AiCreationVariables.parse(variablesJson)
+
+    var requestTemplatesJson: String
+        get() = appCtx.getPrefString(PreferKey.aiCreationRequestTemplate)
+            ?.takeIf { it.isNotBlank() }
+            ?: defaultRequestTemplatesJson
+        set(value) {
+            val normalized = value.trim()
+            parseRequestTemplates(normalized)
+            appCtx.putPrefString(PreferKey.aiCreationRequestTemplate, normalized)
+        }
+
+    val requestTemplates: List<AiCreationNamedTemplate>
+        get() = parseRequestTemplates(requestTemplatesJson)
+
+    fun parseRequestTemplates(json: String): List<AiCreationNamedTemplate> {
+        val array = try {
+            JSONArray(json)
+        } catch (throwable: Throwable) {
+            throw IllegalStateException(
+                "AI 创作请求模板必须是 JSON 数组：${throwable.message}",
+                throwable
+            )
+        }
+        val list = mutableListOf<AiCreationNamedTemplate>()
+        for (index in 0 until array.length()) {
+            val item = array.optJSONObject(index)
+                ?: throw IllegalStateException("AI 创作请求模板第 ${index + 1} 项必须是对象")
+            val name = item.optString("name").trim()
+            require(name.isNotEmpty()) { "AI 创作请求模板第 ${index + 1} 项缺少识别名 name" }
+            val body = item.optJSONObject("body")
+                ?: throw IllegalStateException("AI 创作请求模板「$name」缺少 body 或 body 不是 JSON 对象")
+            list.add(AiCreationNamedTemplate(name, body.toString()))
+        }
+        val duplicated = list.groupBy { it.name }.filterValues { it.size > 1 }.keys
+        require(duplicated.isEmpty()) { "AI 创作请求模板识别名重复：${duplicated.joinToString("，")}" }
+        return list
+    }
+
+    fun resolveTemplateName(
+        definition: AiCreationDefinition,
+        params: Map<String, String>
+    ): String {
+        val matched = definition.routes.firstOrNull { route ->
+            route.conditions.all { (key, value) -> params[key] == value }
+        } ?: throw IllegalStateException(
+            "没有命中任何请求模板路由，当前参数：" +
+                params.entries.joinToString("，") { "${it.key}=${it.value}" }
+        )
+        return matched.template
+    }
+
+    fun requestTemplateBody(name: String): String {
+        return requestTemplates.firstOrNull { it.name == name }?.body
+            ?: throw IllegalStateException("路由指向的请求模板不存在：$name")
+    }
 
     fun requireModelTarget(): AiCreationModelTarget {
         if (reuseCurrentModel) {
@@ -169,8 +262,8 @@ object AiCreationConfig {
     }
 
     fun defaultScopeOf(section: String): String = when (section) {
-        SECTION_SELECTED_TEXT -> SCOPE_SESSION
-        SECTION_NOTE -> SCOPE_GLOBAL
-        else -> SCOPE_BOOK
+        SECTION_NOTE -> SCOPE_SESSION
+        SECTION_SELECTED_TEXT -> SCOPE_BOOK
+        else -> SCOPE_GLOBAL
     }
 }

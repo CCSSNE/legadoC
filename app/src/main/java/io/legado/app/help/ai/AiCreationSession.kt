@@ -1,13 +1,17 @@
 package io.legado.app.help.ai
 
+import com.google.gson.annotations.SerializedName
 import io.legado.app.data.entities.CreationCard
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 
+const val AI_CREATION_EPHEMERAL_BOOK = "\u0000ephemeral"
+const val AI_CREATION_MODE_KEY = "mode"
+
 data class AiCreationVariable(
     val key: String,
     val label: String,
-    val format: String = FORMAT_OPTIONS,
+    val format: String = AiCreationVariable.FORMAT_OPTIONS,
     val options: List<String> = emptyList(),
     val defaultValue: String = "",
     val group: String = AiCreationVariables.GROUP_IMAGE
@@ -26,8 +30,20 @@ data class AiCreationVariableGroup(
     val variables: List<AiCreationVariable> = emptyList()
 )
 
-data class AiCreationVariableGroups(
-    val groups: List<AiCreationVariableGroup> = emptyList()
+data class AiCreationRoute(
+    @SerializedName("when") val conditions: Map<String, String> = emptyMap(),
+    val template: String = ""
+)
+
+data class AiCreationVariableDoc(
+    val groups: List<AiCreationVariableGroup>? = null,
+    val routes: List<AiCreationRoute>? = null
+)
+
+data class AiCreationDefinition(
+    val groups: List<AiCreationVariableGroup>,
+    val variables: List<AiCreationVariable>,
+    val routes: List<AiCreationRoute>
 )
 
 object AiCreationVariables {
@@ -35,7 +51,7 @@ object AiCreationVariables {
     const val GROUP_IMAGE = "image"
     const val GROUP_VIDEO = "video"
 
-    val defaultGroups = AiCreationVariableGroups(
+    private val defaultDoc = AiCreationVariableDoc(
         groups = listOf(
             AiCreationVariableGroup(
                 key = GROUP_IMAGE,
@@ -96,40 +112,77 @@ object AiCreationVariables {
                     )
                 )
             )
+        ),
+        routes = listOf(
+            AiCreationRoute(
+                conditions = mapOf(AI_CREATION_MODE_KEY to GROUP_IMAGE, "style" to "连环画"),
+                template = "连环画"
+            ),
+            AiCreationRoute(
+                conditions = mapOf(AI_CREATION_MODE_KEY to GROUP_IMAGE, "style" to "单场景"),
+                template = "单场景"
+            ),
+            AiCreationRoute(
+                conditions = mapOf(AI_CREATION_MODE_KEY to GROUP_VIDEO),
+                template = "视频"
+            )
         )
     )
 
-    val defaultJson: String by lazy { GSON.toJson(defaultGroups) }
+    val defaultJson: String by lazy { GSON.toJson(defaultDoc) }
 
-    fun parse(json: String): List<AiCreationVariable> {
-        val groups = GSON.fromJsonObject<AiCreationVariableGroups>(json).getOrNull()
+    fun parse(json: String): AiCreationDefinition {
+        val doc = GSON.fromJsonObject<AiCreationVariableDoc>(json).getOrNull()
             ?: throw IllegalStateException("AI 创作变量定义 JSON 无效：无法解析")
-        val all = groups.groups.flatMap { group ->
-            group.variables.map { if (it.group.isBlank()) it.copy(group = group.key) else it }
-        }
-        require(all.isNotEmpty()) { "AI 创作变量定义不能为空" }
+        val groups = requireNotNull(doc.groups) { "AI 创作变量定义缺少 groups" }
+        val routes = requireNotNull(doc.routes) { "AI 创作变量定义缺少 routes（没有路由就无法选择请求模板）" }
+        require(groups.isNotEmpty()) { "AI 创作变量定义 groups 不能为空" }
+        val variables = mutableListOf<AiCreationVariable>()
         val keys = mutableSetOf<String>()
-        all.forEach { variable ->
-            require(variable.key.isNotBlank()) { "AI 创作变量 key 不能为空：${variable.label}" }
-            require(variable.format in AiCreationVariable.formats) {
-                "AI 创作变量 ${variable.key} 的 format 无效：${variable.format}"
+        groups.forEach { group ->
+            require(group.key.isNotBlank()) { "AI 创作变量分组 key 不能为空" }
+            group.variables.forEach { variable ->
+                val withGroup = if (variable.group.isBlank()) {
+                    variable.copy(group = group.key)
+                } else {
+                    variable
+                }
+                require(withGroup.key.isNotBlank()) {
+                    "AI 创作变量 key 不能为空：${withGroup.label}"
+                }
+                require(withGroup.key != AI_CREATION_MODE_KEY) {
+                    "AI 创作变量 key 不能使用保留字：$AI_CREATION_MODE_KEY"
+                }
+                require(withGroup.format in AiCreationVariable.formats) {
+                    "AI 创作变量 ${withGroup.key} 的 format 无效：${withGroup.format}"
+                }
+                if (withGroup.format == AiCreationVariable.FORMAT_OPTIONS) {
+                    require(withGroup.options.isNotEmpty()) {
+                        "AI 创作变量 ${withGroup.key} 为选项式但没有选项"
+                    }
+                }
+                require(keys.add(withGroup.key)) { "AI 创作变量 key 重复：${withGroup.key}" }
+                variables.add(withGroup)
             }
-            if (variable.format == AiCreationVariable.FORMAT_OPTIONS) {
-                require(variable.options.isNotEmpty()) {
-                    "AI 创作变量 ${variable.key} 为选项式但没有选项"
+        }
+        require(variables.isNotEmpty()) { "AI 创作变量定义不能为空" }
+        val knownKeys = keys + AI_CREATION_MODE_KEY
+        routes.forEach { route ->
+            require(route.template.isNotBlank()) { "AI 创作路由缺少 template（请求模板识别名）" }
+            require(route.conditions.isNotEmpty()) {
+                "AI 创作路由（→ ${route.template}）缺少 when 条件"
+            }
+            route.conditions.forEach { (key, value) ->
+                require(key in knownKeys) {
+                    "AI 创作路由（→ ${route.template}）when 引用了未定义的变量：$key"
+                }
+                require(value.isNotBlank()) {
+                    "AI 创作路由（→ ${route.template}）when 的 $key 取值为空"
                 }
             }
-            require(keys.add(variable.key)) { "AI 创作变量 key 重复：${variable.key}" }
         }
-        return all
+        return AiCreationDefinition(groups, variables, routes)
     }
-
-    fun groupLabelOf(group: AiCreationVariableGroup): String =
-        when (group.key) {
-            GROUP_IMAGE -> "图片"
-            GROUP_VIDEO -> "视频"
-            else -> group.label.ifBlank { group.key }
-        }
 }
 
 data class CreationSectionItem(
@@ -246,14 +299,6 @@ class AiCreationSession {
             }
         }
         return builder.toString().trim()
-    }
-
-    fun buildParamsText(variables: List<AiCreationVariable>): String {
-        return variables.mapNotNull { variable ->
-            params[variable.key]?.takeIf { it.isNotBlank() }?.let {
-                "${variable.label}: $it"
-            }
-        }.joinToString("\n")
     }
 
     private fun appendEntry(builder: StringBuilder, label: String, contents: List<String>) {

@@ -407,13 +407,39 @@ class AiConfigFragment : PreferenceFragment(),
     }
 
     private fun showCreationRequestDialog() {
-        showRequestTemplateDialog(
-            titleResource = R.string.ai_creation_request_template,
-            currentTemplate = { AiCreationConfig.requestTemplate },
-            save = { AiCreationConfig.requestTemplate = it },
-            restore = { AiCreationConfig.requestTemplate = AiCreationConfig.defaultRequestTemplate },
-            restoreLabelResource = R.string.restore_default
-        )
+        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
+            editView.hint = getString(R.string.ai_creation_request_template_hint)
+            editView.inputType = InputType.TYPE_CLASS_TEXT or
+                InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+                InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            editView.minLines = 16
+            editView.setText(AiCreationConfig.requestTemplatesJson)
+            editView.setSelection(editView.text?.length ?: 0)
+        }
+        alert(titleResource = R.string.ai_creation_request_template) {
+            customView { binding.root }
+            okButton {
+                val json = binding.editView.text?.toString()?.trim().orEmpty()
+                val error = runCatching {
+                    AiCreationConfig.requestTemplatesJson = json
+                }.exceptionOrNull()
+                if (error != null) {
+                    toastOnUi(
+                        getString(
+                            R.string.ai_creation_request_template_invalid,
+                            error.message.orEmpty()
+                        )
+                    )
+                    return@okButton
+                }
+                refreshUi()
+            }
+            neutralButton(R.string.restore_default) {
+                AiCreationConfig.requestTemplatesJson = AiCreationConfig.defaultRequestTemplatesJson
+                refreshUi()
+            }
+            cancelButton()
+        }
     }
 
     private fun showCreationVariablesDialog() {
@@ -432,7 +458,7 @@ class AiConfigFragment : PreferenceFragment(),
                 val json = binding.editView.text?.toString()?.trim().orEmpty()
                 val error = runCatching {
                     AiCreationConfig.variablesJson = json
-                    AiCreationConfig.variables
+                    AiCreationConfig.definition
                 }.exceptionOrNull()
                 if (error != null) {
                     toastOnUi(
@@ -458,7 +484,14 @@ class AiConfigFragment : PreferenceFragment(),
             toastOnUi(it.message ?: it.javaClass.simpleName)
             return
         }
-        testAiConnection(target.provider, target.modelId, AiCreationConfig.requestTemplate)
+        val body = runCatching {
+            AiCreationConfig.requestTemplates.firstOrNull()?.body
+                ?: error("AI 创作请求模板仓库为空")
+        }.getOrElse {
+            toastOnUi(it.message ?: it.javaClass.simpleName)
+            return
+        }
+        testAiConnection(target.provider, target.modelId, body)
     }
 
     private fun showCreationScopeDialog(section: String) {
