@@ -34,6 +34,16 @@
             android:tint="@color/primaryText"
             android:visibility="gone" />
 
+        <androidx.appcompat.widget.AppCompatImageView
+            android:id="@+id/iv_menu_edit"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:background="@drawable/bg_popup_action_item"
+            android:contentDescription="@string/edit"
+            android:padding="8dp"
+            android:src="@drawable/ic_edit"
+            android:tint="@color/primaryText" />
+
     </LinearLayout>
 
     <androidx.recyclerview.widget.RecyclerView

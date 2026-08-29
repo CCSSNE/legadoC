@@ -104,6 +104,7 @@ import io.legado.app.ui.book.read.config.BgTextConfigDialog.Companion.BG_COLOR
 import io.legado.app.ui.book.read.config.BgTextConfigDialog.Companion.READ_MENU_BG_COLOR
 import io.legado.app.ui.book.read.config.BgTextConfigDialog.Companion.TEXT_ACCENT_COLOR
 import io.legado.app.ui.book.read.config.BgTextConfigDialog.Companion.TEXT_COLOR
+import io.legado.app.ui.book.read.config.ContentSelectMenuConfigDialog
 import io.legado.app.ui.book.read.config.MoreConfigDialog
 import io.legado.app.ui.book.read.config.ReadAloudDialog
 import io.legado.app.ui.book.read.config.ReadStyleDialog
@@ -1363,6 +1364,15 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun onMenuActionFinally() = binding.run {
         textActionMenu.dismiss()
         readView.cancelSelect()
+    }
+
+    /**
+     * 打开正文长按菜单配置弹窗
+     */
+    override fun onMenuConfigRequested() {
+        textActionMenu.dismiss()
+        binding.readView.cancelSelect()
+        ContentSelectMenuConfigDialog().show(supportFragmentManager, "contentSelectMenuConfig")
     }
 
     /**
@@ -3319,6 +3329,9 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
         observeEvent<Boolean>(PreferKey.textSelectAble) {
             readView.curPage.upSelectAble(it)
+        }
+        observeEvent<Boolean>(EventBus.CONTENT_SELECT_MENU_CONFIG_CHANGED) {
+            textActionMenu.upMenu()
         }
         observeEvent<String>(PreferKey.showBrightnessView) {
             readMenu.upBrightnessState()
