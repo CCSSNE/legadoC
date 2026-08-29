@@ -1,6 +1,6 @@
 package com.baidu.tts.jni;
 
-public class EmbeddedSynthesizerEnginf implements IEmbeddedSynthesizerEnginf {
+public class EmbeddedSynthesizerEnginf implements IEmbeddedSynthesizerEngine {
     private OnNewDataListener mNewDataListener;
     private final String tag;
 
