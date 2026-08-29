@@ -1299,36 +1299,58 @@ class ReadBookActivity : BaseReadBookActivity(),
                 showAiCreation()
                 return true
             }
+            R.id.menu_stage -> {
+                stageSelectedText()
+                return true
+            }
         }
         return false
+    }
+
+    /**
+     * 按选中文本分区的作用域把文本落成 AI 创作素材卡片，并挂入当前创作会话
+     */
+    private suspend fun insertSelectedTextCard(text: String) = withContext(IO) {
+        val section = AiCreationConfig.SECTION_SELECTED_TEXT
+        val scope = AiCreationConfig.sectionScope(section)
+        val cardBookName = when (scope) {
+            AiCreationConfig.SCOPE_GLOBAL -> ""
+            AiCreationConfig.SCOPE_BOOK -> ReadBook.book?.name.orEmpty()
+            else -> AI_CREATION_EPHEMERAL_BOOK
+        }
+        val cardId = appDb.creationCardDao.insert(
+            CreationCard(
+                section = section,
+                name = text.take(12),
+                content = text,
+                bookName = cardBookName
+            )
+        )
+        AiCreationSessionHolder.session.addCard(section, cardId)
     }
 
     private fun showAiCreation() {
         val text = selectedText.trim()
         lifecycleScope.launch {
             if (text.isNotEmpty()) {
-                withContext(IO) {
-                    val section = AiCreationConfig.SECTION_SELECTED_TEXT
-                    val scope = AiCreationConfig.sectionScope(section)
-                    val cardBookName = when (scope) {
-                        AiCreationConfig.SCOPE_GLOBAL -> ""
-                        AiCreationConfig.SCOPE_BOOK -> ReadBook.book?.name.orEmpty()
-                        else -> AI_CREATION_EPHEMERAL_BOOK
-                    }
-                    val cardId = appDb.creationCardDao.insert(
-                        CreationCard(
-                            section = section,
-                            name = text.take(12),
-                            content = text,
-                            bookName = cardBookName
-                        )
-                    )
-                    AiCreationSessionHolder.session.addCard(section, cardId)
-                }
+                insertSelectedTextCard(text)
             }
             showDialogFragment(
                 AiCreationDialog.newInstance(ReadBook.book?.name.orEmpty())
             )
+        }
+    }
+
+    /**
+     * 暂存：只把选中文本落成选中文本卡片挂入会话，不进入 AI 创作界面，
+     * 因此不触发任何销毁流程；销毁仍只发生在 AI 创作界面的清空动作
+     */
+    private fun stageSelectedText() {
+        val text = selectedText.trim()
+        if (text.isEmpty()) return
+        lifecycleScope.launch {
+            insertSelectedTextCard(text)
+            toastOnUi(R.string.ai_creation_staged)
         }
     }
 

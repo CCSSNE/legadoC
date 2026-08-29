@@ -45,10 +45,11 @@ class ContentSelectMenuConfigDialog :
             "aloud" to R.string.read_aloud,
             "dict" to R.string.dict,
             "ask_ai" to R.string.ask_ai,
-            "ai_create" to R.string.ai_create
+            "ai_create" to R.string.ai_create,
+            "stage" to R.string.stage_text
         )
         private val defaultCheckedIds =
-            setOf("replace", "copy", "bookmark", "paragraph_bookmark", "aloud", "ai_create")
+            setOf("replace", "copy", "bookmark", "paragraph_bookmark", "aloud", "ai_create", "stage")
         private val defaultOpenValues = listOf("", "dict", "ask_ai")
         private val removedActionIds = setOf("generate_image")
     }

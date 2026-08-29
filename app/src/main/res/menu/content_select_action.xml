@@ -35,6 +35,10 @@
         android:title="@string/ai_create" />
 
     <item
+        android:id="@+id/menu_stage"
+        android:title="@string/stage_text" />
+
+    <item
         android:id="@+id/menu_review"
         android:title="@string/review" />
 
