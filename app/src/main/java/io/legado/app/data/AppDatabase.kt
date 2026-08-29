@@ -16,6 +16,7 @@ import io.legado.app.data.dao.BookCollectionDao
 import io.legado.app.data.dao.BookDao
 import io.legado.app.data.dao.BookGroupDao
 import io.legado.app.data.dao.BookIllustrationDao
+import io.legado.app.data.dao.BookRoleDao
 import io.legado.app.data.dao.BookSourceDao
 import io.legado.app.data.dao.BookShortcutDao
 import io.legado.app.data.dao.CreationCardDao
@@ -47,9 +48,12 @@ import io.legado.app.data.entities.BookCollectionChild
 import io.legado.app.data.entities.BookCollectionItem
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookIllustration
+import io.legado.app.data.entities.BookRole
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.BookShortcut
+import io.legado.app.data.entities.BookTtsCastRole
+import io.legado.app.data.entities.BookTtsVoiceBinding
 import io.legado.app.data.entities.CreationCard
 import io.legado.app.data.entities.CreationResult
 import io.legado.app.data.entities.Bookmark
@@ -86,7 +90,7 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 109,
+    version = 110,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
         BookCollection::class, BookCollectionItem::class, BookCollectionChild::class,
@@ -96,7 +100,8 @@ val appDb by lazy {
         HttpTTS::class, Cache::class, BookIllustration::class,
         RuleSub::class, DictRule::class, KeyboardAssist::class, Server::class,
         ReadRecentBook::class, AiChapterPurifyRecord::class, BookShortcut::class,
-        CreationCard::class, CreationResult::class],
+        CreationCard::class, CreationResult::class,
+        BookRole::class, BookTtsCastRole::class, BookTtsVoiceBinding::class],
     views = [BookSourcePart::class],
     autoMigrations = [
         AutoMigration(from = 43, to = 44),
@@ -155,6 +160,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract val bookShortcutDao: BookShortcutDao
     abstract val creationCardDao: CreationCardDao
     abstract val creationResultDao: CreationResultDao
+    abstract val bookRoleDao: BookRoleDao
     abstract val bookGroupDao: BookGroupDao
     abstract val bookIllustrationDao: BookIllustrationDao
     abstract val bookSourceDao: BookSourceDao
