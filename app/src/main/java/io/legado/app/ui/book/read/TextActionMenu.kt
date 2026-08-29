@@ -205,13 +205,16 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
                 return
             }
         }
+        val margin = 8.dpToPx()
+        // 弹窗宽度固定：只由窗口宽度决定，不随可见菜单项数量变化，
+        // 避免按内容测量出不同宽度导致弹窗反复改尺寸、按钮跨行跳动
+        val windowWidth = if (view.width > 0) view.width else context.resources.displayMetrics.widthPixels
+        val popupWidth = (windowWidth - 2 * margin).coerceAtLeast(margin)
         contentView.measure(
-            View.MeasureSpec.UNSPECIFIED,
+            View.MeasureSpec.makeMeasureSpec(popupWidth, View.MeasureSpec.EXACTLY),
             View.MeasureSpec.UNSPECIFIED,
         )
-        val popupWidth = contentView.measuredWidth
         val popupHeight = contentView.measuredHeight
-        val margin = 8.dpToPx()
         val textHeight = (startTextBottomY - startTopY).coerceAtLeast(0)
         val textTopY = (startTopY - textHeight).coerceAtLeast(0)
         val selectionBottomY = maxOf(startBottomY, endBottomY)
@@ -236,6 +239,10 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
             // 已显示时原地更新位置与尺寸，避免重建窗口造成闪动
             update(x, y, popupWidth, popupHeight)
         } else {
+            // 首次弹出也使用与预测量相同的固定尺寸，避免窗口内按内容自适应
+            // 在首帧后改宽改高、按钮跨行跳动
+            width = popupWidth
+            height = popupHeight
             // 重新弹出前清掉上次布局残留的子项，避免首帧闪出旧菜单内容
             binding.recyclerView.removeAllViews()
             binding.recyclerViewMore.removeAllViews()
