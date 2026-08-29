@@ -290,6 +290,7 @@ object PreferKey {
     const val expandTextMenu = "expandTextMenu"
     const val contentSelectMenuConfig = "contentSelectMenuConfig"
     const val contentSelectActions = "contentSelectActions"
+    const val contentSelectActionsOrder = "contentSelectActionsOrder"
     const val contentSelectDefaultOpen = "contentSelectDefaultOpen"
     const val advancedTitleConfig = "advancedTitleConfig"
     const val advancedTitleLottieJson = "advancedTitleLottieJson"

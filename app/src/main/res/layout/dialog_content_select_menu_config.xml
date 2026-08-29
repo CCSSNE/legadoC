@@ -37,53 +37,12 @@
                 android:text="@string/content_select_actions"
                 android:textSize="15sp" />
 
-            <io.legado.app.lib.theme.view.ThemeCheckBox
-                android:id="@+id/cb_replace"
-                android:layout_width="wrap_content"
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/recycler_view"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/replace" />
-
-            <io.legado.app.lib.theme.view.ThemeCheckBox
-                android:id="@+id/cb_copy"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/copy_text" />
-
-            <io.legado.app.lib.theme.view.ThemeCheckBox
-                android:id="@+id/cb_bookmark"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/bookmark" />
-
-            <io.legado.app.lib.theme.view.ThemeCheckBox
-                android:id="@+id/cb_paragraph_bookmark"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/paragraph_bookmark" />
-
-            <io.legado.app.lib.theme.view.ThemeCheckBox
-                android:id="@+id/cb_aloud"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/read_aloud" />
-
-            <io.legado.app.lib.theme.view.ThemeCheckBox
-                android:id="@+id/cb_dict"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/dict" />
-
-            <io.legado.app.lib.theme.view.ThemeCheckBox
-                android:id="@+id/cb_ask_ai"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/ask_ai" />
-
-            <io.legado.app.lib.theme.view.ThemeCheckBox
-                android:id="@+id/cb_ai_create"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/ai_create" />
+                android:overScrollMode="never"
+                app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
 
             <io.legado.app.ui.widget.text.AccentTextView
                 android:layout_width="match_parent"
