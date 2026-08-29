@@ -180,6 +180,82 @@
     </io.legado.app.lib.prefs.PreferenceCategory>
 
     <io.legado.app.lib.prefs.PreferenceCategory
+        android:key="aiCreationCategory"
+        android:title="@string/ai_creation"
+        app:allowDividerAbove="false"
+        app:allowDividerBelow="false"
+        app:iconSpaceReserved="false"
+        app:layout="@layout/view_preference_category">
+
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="true"
+            android:key="aiCreationReuseCurrentModel"
+            android:summary="@string/ai_creation_reuse_current_model_summary"
+            android:title="@string/ai_creation_reuse_current_model"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiCreationProvider"
+            android:title="@string/ai_creation_provider"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiCreationModel"
+            android:title="@string/ai_creation_model"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiCreationVariables"
+            android:summary="@string/ai_creation_variables_summary"
+            android:title="@string/ai_creation_variables"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiCreationPromptTemplate"
+            android:summary="@string/ai_creation_prompt_template_summary"
+            android:title="@string/ai_creation_prompt_template"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiCreationRequestTemplate"
+            android:summary="@string/ai_creation_request_template_summary"
+            android:title="@string/ai_creation_request_template"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiCreationTestConnection"
+            android:summary="@string/ai_creation_test_connection_summary"
+            android:title="@string/ai_creation_test_connection"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiCreationScopeSelectedText"
+            android:title="@string/ai_creation_scope_selected_text"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiCreationScopeBackground"
+            android:title="@string/ai_creation_scope_background"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiCreationScopeScene"
+            android:title="@string/ai_creation_scope_scene"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiCreationScopeCharacter"
+            android:title="@string/ai_creation_scope_character"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiCreationScopeNote"
+            android:title="@string/ai_creation_scope_note"
+            app:iconSpaceReserved="false" />
+
+    </io.legado.app.lib.prefs.PreferenceCategory>
+
+    <io.legado.app.lib.prefs.PreferenceCategory
         android:title="@string/ai_advanced_settings_category"
         app:allowDividerAbove="false"
         app:allowDividerBelow="false"

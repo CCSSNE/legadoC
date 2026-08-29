@@ -44,6 +44,7 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookIllustration
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
+import io.legado.app.data.entities.CreationCard
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.IntentData
@@ -51,6 +52,9 @@ import io.legado.app.help.ai.AiChapterPurifyException
 import io.legado.app.help.ai.AiChapterPurifyConfig
 import io.legado.app.help.ai.AiChapterPurifyProgress
 import io.legado.app.help.ai.AiChapterPurifyService
+import io.legado.app.help.ai.AI_CREATION_EPHEMERAL_BOOK
+import io.legado.app.help.ai.AiCreationConfig
+import io.legado.app.help.ai.AiCreationSessionHolder
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.BookImgClick
 import io.legado.app.help.book.ContentProcessor
@@ -95,6 +99,7 @@ import io.legado.app.ui.book.changesource.ChangeChapterSourceDialog
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.read.config.IllustrationEditDialog
 import io.legado.app.ui.book.read.config.AutoReadDialog
+import io.legado.app.ui.book.read.creation.AiCreationDialog
 import io.legado.app.ui.book.read.config.BgTextConfigDialog.Companion.BG_COLOR
 import io.legado.app.ui.book.read.config.BgTextConfigDialog.Companion.READ_MENU_BG_COLOR
 import io.legado.app.ui.book.read.config.BgTextConfigDialog.Companion.TEXT_ACCENT_COLOR
@@ -1282,8 +1287,41 @@ class ReadBookActivity : BaseReadBookActivity(),
                 askAiBySelection()
                 return true
             }
+            R.id.menu_ai_create -> {
+                showAiCreation()
+                return true
+            }
         }
         return false
+    }
+
+    private fun showAiCreation() {
+        val text = selectedText.trim()
+        lifecycleScope.launch {
+            if (text.isNotEmpty()) {
+                withContext(IO) {
+                    val section = AiCreationConfig.SECTION_SELECTED_TEXT
+                    val scope = AiCreationConfig.sectionScope(section)
+                    val cardBookName = when (scope) {
+                        AiCreationConfig.SCOPE_GLOBAL -> ""
+                        AiCreationConfig.SCOPE_BOOK -> ReadBook.book?.name.orEmpty()
+                        else -> AI_CREATION_EPHEMERAL_BOOK
+                    }
+                    val cardId = appDb.creationCardDao.insert(
+                        CreationCard(
+                            section = section,
+                            name = text.take(12),
+                            content = text,
+                            bookName = cardBookName
+                        )
+                    )
+                    AiCreationSessionHolder.session.addCard(section, cardId)
+                }
+            }
+            showDialogFragment(
+                AiCreationDialog.newInstance(ReadBook.book?.name.orEmpty())
+            )
+        }
     }
 
     private fun askAiBySelection() {

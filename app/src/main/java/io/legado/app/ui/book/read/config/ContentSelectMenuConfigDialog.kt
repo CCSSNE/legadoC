@@ -27,7 +27,8 @@ class ContentSelectMenuConfigDialog : BaseDialogFragment(R.layout.dialog_content
     private data class MenuAction(val id: String, val checkBox: ThemeCheckBox)
 
     companion object {
-        private const val DEFAULT_ACTIONS = "replace,copy,bookmark,paragraph_bookmark,aloud,dict,ask_ai"
+        private const val DEFAULT_ACTIONS =
+            "replace,copy,bookmark,paragraph_bookmark,aloud,dict,ask_ai,ai_create"
         private val defaultOpenValues = listOf("", "dict", "ask_ai")
         private val removedActionIds = setOf("generate_image")
     }
@@ -42,6 +43,7 @@ class ContentSelectMenuConfigDialog : BaseDialogFragment(R.layout.dialog_content
                 MenuAction("aloud", cbAloud),
                 MenuAction("dict", cbDict),
                 MenuAction("ask_ai", cbAskAi),
+                MenuAction("ai_create", cbAiCreate),
             )
         }
 

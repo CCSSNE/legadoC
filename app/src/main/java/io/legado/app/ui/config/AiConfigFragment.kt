@@ -20,6 +20,8 @@ import io.legado.app.databinding.DialogAiProviderEditBinding
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.ai.AiChapterPurifyConfig
 import io.legado.app.help.ai.AiChatService
+import io.legado.app.help.ai.AiCreationConfig
+import io.legado.app.help.ai.AiCreationVariables
 import io.legado.app.help.ai.AiLogExporter
 import io.legado.app.help.ai.AiLogConfig
 import io.legado.app.help.ai.AiRequestTimeoutConfig
@@ -164,6 +166,27 @@ class AiConfigFragment : PreferenceFragment(),
                 AiChapterPurifyConfig.MIN_CONCURRENCY,
                 AiChapterPurifyConfig.MAX_CONCURRENCY
             ) { AiChapterPurifyConfig.concurrency = it }
+            PreferKey.aiCreationProvider -> showSelectCreationProviderDialog()
+            PreferKey.aiCreationModel -> showSelectCreationModelDialog()
+            PreferKey.aiCreationVariables -> showCreationVariablesDialog()
+            PreferKey.aiCreationPromptTemplate -> showCreationPromptDialog()
+            PreferKey.aiCreationRequestTemplate -> showCreationRequestDialog()
+            "aiCreationTestConnection" -> testCreationConnection()
+            PreferKey.aiCreationScopeSelectedText -> showCreationScopeDialog(
+                AiCreationConfig.SECTION_SELECTED_TEXT
+            )
+            PreferKey.aiCreationScopeBackground -> showCreationScopeDialog(
+                AiCreationConfig.SECTION_BACKGROUND
+            )
+            PreferKey.aiCreationScopeScene -> showCreationScopeDialog(
+                AiCreationConfig.SECTION_SCENE
+            )
+            PreferKey.aiCreationScopeCharacter -> showCreationScopeDialog(
+                AiCreationConfig.SECTION_CHARACTER
+            )
+            PreferKey.aiCreationScopeNote -> showCreationScopeDialog(
+                AiCreationConfig.SECTION_NOTE
+            )
         }
         return super.onPreferenceTreeClick(preference)
     }
@@ -173,6 +196,7 @@ class AiConfigFragment : PreferenceFragment(),
             key == PreferKey.aiAdvancedSettingsEnabled ||
             key == PreferKey.aiChapterPurifyReuseCurrentModel ||
             key == PreferKey.aiChapterPurifyRequestTemplate ||
+            key == PreferKey.aiCreationReuseCurrentModel ||
             key == PreferKey.aiSseIdleTimeoutSeconds ||
             key == PreferKey.aiGenerationTimeoutSeconds ||
             key == PreferKey.aiThinkingInterruptSeconds ||
@@ -319,6 +343,149 @@ class AiConfigFragment : PreferenceFragment(),
             getString(R.string.ai_chapter_purify_flow_info_message)
         ) {
             okButton()
+        }
+    }
+
+    private fun showSelectCreationProviderDialog() {
+        val providers = AppConfig.aiProviderList
+        if (providers.isEmpty()) {
+            toastOnUi(R.string.ai_no_providers)
+            return
+        }
+        context?.selector(
+            getString(R.string.ai_creation_provider),
+            providers.map { it.name }
+        ) { _, _, index ->
+            AiCreationConfig.independentProviderId = providers[index].id
+            AiCreationConfig.independentModelId = ""
+            refreshUi()
+        }
+    }
+
+    private fun showSelectCreationModelDialog() {
+        val provider = AiCreationConfig.independentProvider
+        if (provider == null) {
+            toastOnUi(R.string.ai_chapter_purify_select_provider_first)
+            return
+        }
+        val models = AppConfig.aiModelConfigList.filter { it.providerId == provider.id }
+        if (models.isEmpty()) {
+            toastOnUi(R.string.ai_chapter_purify_provider_no_models)
+            return
+        }
+        context?.selector(
+            getString(R.string.ai_creation_model),
+            models.map { it.modelId }
+        ) { _, _, index ->
+            AiCreationConfig.independentModelId = models[index].id
+            refreshUi()
+        }
+    }
+
+    private fun showCreationPromptDialog() {
+        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
+            editView.hint = getString(R.string.ai_creation_prompt_template_hint)
+            editView.inputType = InputType.TYPE_CLASS_TEXT or
+                InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+                InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            editView.minLines = 12
+            editView.setText(AiCreationConfig.promptTemplate)
+            editView.setSelection(editView.text?.length ?: 0)
+        }
+        alert(titleResource = R.string.ai_creation_prompt_template) {
+            customView { binding.root }
+            okButton {
+                AiCreationConfig.promptTemplate = binding.editView.text?.toString().orEmpty()
+                refreshUi()
+            }
+            neutralButton(R.string.restore_default) {
+                AiCreationConfig.promptTemplate = AiCreationConfig.defaultPromptTemplate
+                refreshUi()
+            }
+            cancelButton()
+        }
+    }
+
+    private fun showCreationRequestDialog() {
+        showRequestTemplateDialog(
+            titleResource = R.string.ai_creation_request_template,
+            currentTemplate = { AiCreationConfig.requestTemplate },
+            save = { AiCreationConfig.requestTemplate = it },
+            restore = { AiCreationConfig.requestTemplate = AiCreationConfig.defaultRequestTemplate },
+            restoreLabelResource = R.string.restore_default
+        )
+    }
+
+    private fun showCreationVariablesDialog() {
+        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
+            editView.hint = getString(R.string.ai_creation_variables_hint)
+            editView.inputType = InputType.TYPE_CLASS_TEXT or
+                InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+                InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            editView.minLines = 16
+            editView.setText(AiCreationConfig.variablesJson)
+            editView.setSelection(editView.text?.length ?: 0)
+        }
+        alert(titleResource = R.string.ai_creation_variables) {
+            customView { binding.root }
+            okButton {
+                val json = binding.editView.text?.toString()?.trim().orEmpty()
+                val error = runCatching {
+                    AiCreationConfig.variablesJson = json
+                    AiCreationConfig.variables
+                }.exceptionOrNull()
+                if (error != null) {
+                    toastOnUi(
+                        getString(
+                            R.string.ai_creation_variables_invalid,
+                            error.message.orEmpty()
+                        )
+                    )
+                    return@okButton
+                }
+                refreshUi()
+            }
+            neutralButton(R.string.restore_default) {
+                AiCreationConfig.variablesJson = AiCreationVariables.defaultJson
+                refreshUi()
+            }
+            cancelButton()
+        }
+    }
+
+    private fun testCreationConnection() {
+        val target = runCatching { AiCreationConfig.requireModelTarget() }.getOrElse {
+            toastOnUi(it.message ?: it.javaClass.simpleName)
+            return
+        }
+        testAiConnection(target.provider, target.modelId, AiCreationConfig.requestTemplate)
+    }
+
+    private fun showCreationScopeDialog(section: String) {
+        val values = AiCreationConfig.scopeValues
+        val labels = values.map { scope ->
+            getString(
+                when (scope) {
+                    AiCreationConfig.SCOPE_GLOBAL -> R.string.ai_creation_scope_global
+                    AiCreationConfig.SCOPE_BOOK -> R.string.ai_creation_scope_book
+                    else -> R.string.ai_creation_scope_session
+                }
+            )
+        }
+        context?.selector(
+            getString(
+                when (section) {
+                    AiCreationConfig.SECTION_SELECTED_TEXT -> R.string.ai_creation_scope_selected_text
+                    AiCreationConfig.SECTION_BACKGROUND -> R.string.ai_creation_scope_background
+                    AiCreationConfig.SECTION_SCENE -> R.string.ai_creation_scope_scene
+                    AiCreationConfig.SECTION_CHARACTER -> R.string.ai_creation_scope_character
+                    else -> R.string.ai_creation_scope_note
+                }
+            ),
+            labels
+        ) { _, _, index ->
+            AiCreationConfig.setSectionScope(section, values[index])
+            refreshUi()
         }
     }
 
@@ -1496,6 +1663,52 @@ class AiConfigFragment : PreferenceFragment(),
             getString(R.string.ai_chapter_purify_retry_count_summary, AiChapterPurifyConfig.retryCount)
         findPreference<Preference>(PreferKey.aiChapterPurifyConcurrency)?.summary =
             getString(R.string.ai_chapter_purify_concurrency_summary, AiChapterPurifyConfig.concurrency)
+        val creationReuseCurrentModel = AiCreationConfig.reuseCurrentModel
+        findPreference<SwitchPreference>(PreferKey.aiCreationReuseCurrentModel)?.isChecked =
+            creationReuseCurrentModel
+        findPreference<Preference>(PreferKey.aiCreationProvider)?.apply {
+            isVisible = !creationReuseCurrentModel
+            val provider = AiCreationConfig.independentProvider
+            summary = when {
+                provider != null -> provider.name
+                AiCreationConfig.independentProviderId.isNotBlank() ->
+                    getString(R.string.ai_chapter_purify_reference_missing)
+                else -> getString(R.string.ai_creation_provider_summary_empty)
+            }
+        }
+        findPreference<Preference>(PreferKey.aiCreationModel)?.apply {
+            isVisible = !creationReuseCurrentModel
+            val model = AiCreationConfig.independentModel
+            summary = when {
+                model != null -> model.modelId
+                AiCreationConfig.independentModelId.isNotBlank() ->
+                    getString(R.string.ai_chapter_purify_reference_missing)
+                else -> getString(R.string.ai_creation_model_summary_empty)
+            }
+        }
+        findPreference<Preference>(PreferKey.aiCreationVariables)?.summary =
+            getString(R.string.ai_creation_variables_summary)
+        findPreference<Preference>(PreferKey.aiCreationPromptTemplate)?.summary =
+            getString(R.string.ai_creation_prompt_template_summary)
+        findPreference<Preference>(PreferKey.aiCreationRequestTemplate)?.summary =
+            getString(R.string.ai_creation_request_template_summary)
+        findPreference<Preference>("aiCreationTestConnection")?.isVisible =
+            !creationReuseCurrentModel
+        mapOf(
+            PreferKey.aiCreationScopeSelectedText to AiCreationConfig.SECTION_SELECTED_TEXT,
+            PreferKey.aiCreationScopeBackground to AiCreationConfig.SECTION_BACKGROUND,
+            PreferKey.aiCreationScopeScene to AiCreationConfig.SECTION_SCENE,
+            PreferKey.aiCreationScopeCharacter to AiCreationConfig.SECTION_CHARACTER,
+            PreferKey.aiCreationScopeNote to AiCreationConfig.SECTION_NOTE
+        ).forEach { (key, section) ->
+            findPreference<Preference>(key)?.summary = getString(
+                when (AiCreationConfig.sectionScope(section)) {
+                    AiCreationConfig.SCOPE_GLOBAL -> R.string.ai_creation_scope_global
+                    AiCreationConfig.SCOPE_BOOK -> R.string.ai_creation_scope_book
+                    else -> R.string.ai_creation_scope_session
+                }
+            )
+        }
         val skills = AppConfig.aiSkillList
         val enabledSkillCount = skills.count { it.enabled }
         findPreference<Preference>(PreferKey.aiSkillPrompt)?.summary =
