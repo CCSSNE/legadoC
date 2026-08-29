@@ -11,7 +11,10 @@ import io.github.rosemoe.sora.langs.textmate.registry.provider.AssetsFileResolve
 import io.github.rosemoe.sora.widget.CodeEditor
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
+import io.legado.app.data.appDb
+import io.legado.app.data.entities.CreationCard
 import io.legado.app.help.CacheManager
+import io.legado.app.help.ai.AiCreationCardImages
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.BackstageWebView
 import io.legado.app.help.webView.WebJsExtensions.Companion.nameCache
@@ -40,6 +43,8 @@ class CodeEditViewModel(application: Application) : BaseViewModel(application) {
     private val themeRegistry: ThemeRegistry = ThemeRegistry.getInstance()
     var writable = true
     var title: String? = null
+    var creationCard: CreationCard? = null
+    var creationCardId = -1L
 
     fun initSora() {
         //初始化sora加载
@@ -53,27 +58,97 @@ class CodeEditViewModel(application: Application) : BaseViewModel(application) {
         intent: Intent, success: () -> Unit
     ) {
         execute {
-            val cacheKey = intent.getStringExtra("cacheKey")
-            if (cacheKey != null) {
-                val cacheText = CacheManager.getFromMemory(cacheKey) as? String ?: throw Exception("未获取到查看文本")
-                writable = false
-                initialText = cacheText
+            val cardId = intent.getLongExtra("creationCardId", -1L)
+            if (cardId > 0) {
+                val card = appDb.creationCardDao.getById(cardId)
+                    ?: throw Exception("未找到创作卡片")
+                creationCard = card
+                creationCardId = cardId
+                writable = true
+                initialText = card.content
+                languageName = "text.html.markdown"
+                title = card.name
             } else {
-                initialText = intent.getStringExtra("text") ?: throw Exception("未获取到待编辑文本")
-            }
-            if (isHtmlStr(initialText)) {
-                languageName = "text.html.basic"
-            } else {
-                intent.getStringExtra("languageName")?.let { languageName = it }
+                val cacheKey = intent.getStringExtra("cacheKey")
+                if (cacheKey != null) {
+                    val cacheText = CacheManager.getFromMemory(cacheKey) as? String
+                        ?: throw Exception("未获取到查看文本")
+                    writable = false
+                    initialText = cacheText
+                } else {
+                    initialText = intent.getStringExtra("text") ?: throw Exception("未获取到待编辑文本")
+                }
+                if (isHtmlStr(initialText)) {
+                    languageName = "text.html.basic"
+                } else {
+                    intent.getStringExtra("languageName")?.let { languageName = it }
+                }
             }
             language = TextMateLanguage.create(languageName, AppConfig.editAutoComplete)
             cursorPosition = intent.getIntExtra("cursorPosition", 0)
-            title = intent.getStringExtra("title")
+            if (creationCardId <= 0) {
+                title = intent.getStringExtra("title")
+            }
         }.onSuccess {
             success.invoke()
         }.onError {
             context.toastOnUi("error\n${it.localizedMessage}")
             it.printOnDebug()
+        }
+    }
+
+    fun saveCreationCard(content: String, onBlankDeleted: () -> Unit, onSaved: () -> Unit) {
+        val card = creationCard ?: return
+        execute {
+            if (content.isBlank()) {
+                appDb.creationCardDao.delete(card)
+                AiCreationCardImages.cleanup(card.content)
+                creationCard = null
+                creationCardId = -1L
+            } else {
+                val updated = card.copy(content = content, updateTime = System.currentTimeMillis())
+                appDb.creationCardDao.update(updated)
+                creationCard = updated
+                initialText = content
+            }
+        }.onSuccess {
+            if (creationCard == null) onBlankDeleted() else onSaved()
+        }.onError {
+            AppLog.put("创作卡片保存失败", it, true)
+            context.toastOnUi("保存失败\n${it.localizedMessage}")
+        }
+    }
+
+    fun renameCreationCard(name: String, onRenamed: (CreationCard) -> Unit) {
+        val card = creationCard ?: return
+        execute {
+            val updated = card.copy(
+                name = name.trim().ifBlank { card.name },
+                updateTime = System.currentTimeMillis()
+            )
+            appDb.creationCardDao.update(updated)
+            updated
+        }.onSuccess {
+            title = it.name
+            onRenamed(it)
+        }.onError {
+            AppLog.put("创作卡片重命名失败", it, true)
+            context.toastOnUi("重命名失败\n${it.localizedMessage}")
+        }
+    }
+
+    fun deleteCreationCard(onDeleted: () -> Unit) {
+        val card = creationCard ?: return
+        execute {
+            appDb.creationCardDao.delete(card)
+            AiCreationCardImages.cleanup(card.content)
+            creationCard = null
+            creationCardId = -1L
+        }.onSuccess {
+            onDeleted()
+        }.onError {
+            AppLog.put("创作卡片删除失败", it, true)
+            context.toastOnUi("删除失败\n${it.localizedMessage}")
         }
     }
 

@@ -17,6 +17,24 @@
         app:showAsAction="always" />
 
     <item
+        android:id="@+id/menu_insert_image"
+        android:title="@string/menu_insert_image"
+        android:visible="false"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/menu_rename_card"
+        android:title="@string/rename"
+        android:visible="false"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/menu_delete_card"
+        android:title="@string/delete"
+        android:visible="false"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/menu_change_theme"
         android:title="@string/change_theme"
         app:showAsAction="never" />
