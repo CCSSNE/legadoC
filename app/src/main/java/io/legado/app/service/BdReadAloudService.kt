@@ -1,7 +1,6 @@
 package io.legado.app.service
 
 import android.app.PendingIntent
-import android.content.Intent
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -14,6 +13,7 @@ import io.legado.app.help.bdtts.BdSynthCallback
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.ReadAloud
 import io.legado.app.utils.getPrefString
+import io.legado.app.utils.servicePendingIntent
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.Executors
@@ -247,8 +247,7 @@ class BdReadAloudService : BaseReadAloudService() {
     }
 
     override fun aloudServicePendingIntent(actionStr: String): PendingIntent? {
-        val intent = Intent(this, BdReadAloudService::class.java).setAction(actionStr)
-        return PendingIntent.getService(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT)
+        return servicePendingIntent<BdReadAloudService>(actionStr)
     }
 
     override fun pauseReadAloud(abandonFocus: Boolean) {
