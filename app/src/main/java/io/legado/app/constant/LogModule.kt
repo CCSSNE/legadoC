@@ -6,12 +6,17 @@ import io.legado.app.R
 /**
  * 普通日志的模块归属。GENERAL 是兜底模块，始终在普通日志中显示；
  * 其余模块由用户在其他设置的“普通日志模块”弹窗中勾选是否显示。
+ *
+ * AI_CAST（AI分角色）约定：AI 分镜/角色收编/自动选音链路的日志必须显式传 module，
+ * 不依赖类名归类——其调用点分布在 help.tts 包（类名含 tts 会被误归 READ_ALOUD）
+ * 与 BdReadAloudService（已钉定为 BAIDU_TTS），两类都无法按类名得到正确归属。
  */
 enum class LogModule(val labelRes: Int) {
     GENERAL(R.string.log_module_general),
     READ_ALOUD(R.string.log_module_read_aloud),
     BAIDU_TTS(R.string.log_module_baidu_tts),
     TTS_CACHE(R.string.log_module_tts_cache),
+    AI_CAST(R.string.log_module_ai_cast),
     DOWNLOAD_CACHE(R.string.log_module_download_cache),
     READING(R.string.log_module_reading),
     SOURCE_NETWORK(R.string.log_module_source_network),
@@ -26,6 +31,7 @@ enum class LogModule(val labelRes: Int) {
                 READ_ALOUD,
                 BAIDU_TTS,
                 TTS_CACHE,
+                AI_CAST,
                 DOWNLOAD_CACHE,
                 READING,
                 SOURCE_NETWORK,

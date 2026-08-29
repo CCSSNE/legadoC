@@ -1395,6 +1395,7 @@
     <string name="log_module_read_aloud">朗读链路</string>
     <string name="log_module_baidu_tts">百度TTS</string>
     <string name="log_module_tts_cache">TTS缓存</string>
+    <string name="log_module_ai_cast">AI分角色</string>
     <string name="log_module_download_cache">下载/缓存链路</string>
     <string name="log_module_reading">阅读/分页/渲染</string>
     <string name="log_module_source_network">书源/网络</string>

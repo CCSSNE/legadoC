@@ -3,6 +3,7 @@ package io.legado.app.help.tts
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.LogModule
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookRole
 import io.legado.app.data.entities.BookTtsCastRole
@@ -92,7 +93,7 @@ object BookTtsCastingCoordinator {
             if (target.castRoleId == loser.castRoleId) return@forEach
             mergeCastRole(workKey, target, loser)
             remap[staleId] = target.castRoleId
-            AppLog.put("AI分镜临时角色并归：${loser.name} → ${target.name}")
+            AppLog.put("AI分镜临时角色并归：${loser.name} → ${target.name}", module = LogModule.AI_CAST)
         }
         return remap
     }
@@ -593,11 +594,11 @@ object BookTtsCastingCoordinator {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
-            AppLog.put("AI自动选音失败，已保留对白兜底\n${e.localizedMessage}")
+            AppLog.put("AI自动选音失败，已保留对白兜底\n${e.localizedMessage}", module = LogModule.AI_CAST)
             return emptyList()
         }
         return runCatching { parseAssignments(result) }.getOrElse { error ->
-            AppLog.put("AI自动选音返回无效\n${error.localizedMessage}")
+            AppLog.put("AI自动选音返回无效\n${error.localizedMessage}", module = LogModule.AI_CAST)
             emptyList()
         }
     }

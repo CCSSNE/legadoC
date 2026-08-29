@@ -10,6 +10,8 @@ import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
+import io.legado.app.constant.AppLog
+import io.legado.app.constant.LogModule
 import io.legado.app.databinding.DialogAiStoryboardCacheBinding
 import io.legado.app.databinding.ItemAiStoryboardCacheBinding
 import io.legado.app.help.ai.AiStoryboardConfig
@@ -153,7 +155,7 @@ class AiStoryboardCacheDialog : BaseDialogFragment(R.layout.dialog_ai_storyboard
                 )
             }.onFailure { error ->
                 withContext(Dispatchers.Main) {
-                    io.legado.app.constant.AppLog.put("AI分镜重新生成失败\n${error.localizedMessage}")
+                    AppLog.put("AI分镜重新生成失败\n${error.localizedMessage}", module = LogModule.AI_CAST)
                 }
             }
             withContext(Dispatchers.Main) { loadCaches() }

@@ -1,6 +1,7 @@
 package io.legado.app.help.tts
 
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.LogModule
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.model.ReadBook
@@ -66,7 +67,7 @@ object AiStoryboardBatchAnalyzer {
                         }
                     } catch (e: Exception) {
                         failed++
-                        AppLog.put("[AI分镜] 批量分析第 ${index + 1} 章失败\n${e.localizedMessage}")
+                        AppLog.put("[AI分镜] 批量分析第 ${index + 1} 章失败\n${e.localizedMessage}", module = LogModule.AI_CAST)
                     }
                     completed++
                     _progress.value = _progress.value.copy(completed = completed)

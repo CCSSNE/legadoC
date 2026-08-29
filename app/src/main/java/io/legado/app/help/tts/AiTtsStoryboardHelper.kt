@@ -3,6 +3,7 @@ package io.legado.app.help.tts
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.LogModule
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookRole
@@ -371,7 +372,7 @@ object AiTtsStoryboardHelper {
         }.getOrElse { error ->
             if (error is CancellationException) throw error
             if (units.size < 2) throw error
-            AppLog.put("AI听书分镜整章结果无效，改为两段重试\n${error.localizedMessage}")
+            AppLog.put("AI听书分镜整章结果无效，改为两段重试\n${error.localizedMessage}", module = LogModule.AI_CAST)
             val midpoint = (units.size + 1) / 2
             val assignments = listOf(units.take(midpoint), units.drop(midpoint)).flatMap { chunk ->
                 requestModelUnitsOnce(
