@@ -1,6 +1,7 @@
 package io.legado.app.help.bdtts
 
 import android.content.Context
+import io.legado.app.constant.AppLog
 import org.yaml.snakeyaml.Yaml
 import java.io.File
 import java.io.InputStream
@@ -31,7 +32,9 @@ object BdVoicePackImporter {
         if (!config.isFile) {
             throw BdImportException("config.yaml not found in package")
         }
-        return parseAndStore(config.readText(Charsets.UTF_8))
+        val count = parseAndStore(config.readText(Charsets.UTF_8))
+        AppLog.putDebug("[百度TTS] 语音包导入完成：$count 个发音人")
+        return count
     }
 
     /**
@@ -41,8 +44,16 @@ object BdVoicePackImporter {
     fun parseAndStore(yamlText: String): Int {
         // 去掉 SnakeYAML 类型标签，直接解析为 Map 结构
         val cleaned = yamlText.replace(SPEAKER_TAG, "")
-        val root: Map<*, *> = Yaml().load(cleaned) ?: return 0
-        val speakers = (root[ENGINE_GROUP] as? List<*>) ?: return 0
+        val root: Map<*, *> = Yaml().load(cleaned)
+        if (root == null) {
+            AppLog.putDebug("[百度TTS] 语音包解析失败：config.yaml 内容为空")
+            return 0
+        }
+        val speakers = root[ENGINE_GROUP] as? List<*>
+        if (speakers == null) {
+            AppLog.putDebug("[百度TTS] 语音包解析失败：未找到 bdetts 发音人列表")
+            return 0
+        }
         val records = mutableListOf<BdSpeakerRecord>()
         for (item in speakers) {
             val map = item as? Map<*, *> ?: continue

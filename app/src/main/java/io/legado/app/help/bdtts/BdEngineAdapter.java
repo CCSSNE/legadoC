@@ -11,6 +11,8 @@ import com.baidu.tts.jni.IEmbeddedSynthesizerEngine;
 import com.baidu.tts.jni.LicenseInfo;
 import com.baidu.tts.jni.OnNewDataListener;
 
+import io.legado.app.constant.AppLog;
+
 import org.json.JSONObject;
 
 import java.io.File;
@@ -106,6 +108,7 @@ public class BdEngineAdapter implements BdTtsEngine, OnNewDataListener {
     @Override
     public void init() {
         initError = null;
+        AppLog.putDebug("[百度TTS] 引擎初始化开始：speaker=" + speakerCode + " engine=" + engineId);
         BdOfflineParams p = new BdOfflineParams();
         p.speakerCode = speakerCode;
         p.engineId = engineId;
@@ -135,6 +138,7 @@ public class BdEngineAdapter implements BdTtsEngine, OnNewDataListener {
         }
         if (missing.length() > 0) {
             initError = "语音包数据文件缺失: " + missing.toString().trim();
+            AppLog.putDebug("[百度TTS] 引擎初始化失败：" + initError);
             return;
         }
 
@@ -146,21 +150,25 @@ public class BdEngineAdapter implements BdTtsEngine, OnNewDataListener {
                     APP_CODE, HOST_TAG, licence);
             if (info != null && info.getRet() != 0) {
                 initError = "license ret=" + info.getRet() + " " + info.getAppDesc();
+                AppLog.putDebug("[百度TTS] 引擎初始化失败：" + initError);
             }
         } catch (Throwable t) {
             initError = "license error: " + t.getMessage();
+            AppLog.putDebug("[百度TTS] 引擎初始化失败：" + initError);
         }
 
         // 刷新模型路径（modelJson → params）并初始化引擎
         int reloaded = synth.reloadModel();
         if (reloaded == -1) {
             initError = "reload model failed";
+            AppLog.putDebug("[百度TTS] 引擎初始化失败：" + initError);
             return;
         }
         if (initError == null) {
             ETtsError err = synth.initEngine();
             if (err != null && err.getRet() != 0) {
                 initError = "engine init ret=" + err.getRet() + " " + err.getMessage();
+                AppLog.putDebug("[百度TTS] 引擎初始化失败：" + initError);
                 return;
             }
             // 域数据（<code>.res.dat）存在时注册
@@ -170,6 +178,8 @@ public class BdEngineAdapter implements BdTtsEngine, OnNewDataListener {
                     nativeEngine.bdTTSDomainDataInit(res, synth.engineHandle);
                 }
             }
+            AppLog.putDebug("[百度TTS] 引擎初始化成功：speaker=" + speakerCode
+                    + " engine=" + engineId + " handle=" + synth.engineHandle);
         }
     }
 
@@ -189,6 +199,8 @@ public class BdEngineAdapter implements BdTtsEngine, OnNewDataListener {
         BdOfflineParams p = synth.params;
         p.speed = speed * 0.14f;
         p.pitch = volume * 0.15f;
+        AppLog.putDebug("[百度TTS] 开始合成：engine=" + engineId
+                + " 字数=" + text.length() + " speed=" + speed);
         cb.onStart();
         ETtsError err = synth.synthesize(text);
         if (err == null || err.getRet() == 0 || err.getRet() == 530 || err.getRet() == 531) {

@@ -1,5 +1,6 @@
 package io.legado.app.help.bdtts
 
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefStringSet
@@ -51,6 +52,7 @@ object BdMultiVoice {
         if (segments.isEmpty()) {
             segments.add(Segment(text, current))
         }
+        AppLog.putDebug("[百度TTS] 多角色分段：${text.length}字 → ${segments.size} 子段")
         return segments
     }
 

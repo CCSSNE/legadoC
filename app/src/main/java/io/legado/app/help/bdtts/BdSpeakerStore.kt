@@ -2,6 +2,7 @@ package io.legado.app.help.bdtts
 
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import io.legado.app.constant.AppLog
 import splitties.init.appCtx
 import java.io.File
 
@@ -29,6 +30,7 @@ object BdSpeakerStore {
             val type = object : TypeToken<MutableList<BdSpeakerRecord>>() {}.type
             gson.fromJson(f.readText(), type) ?: mutableListOf()
         } catch (e: Exception) {
+            AppLog.putDebug("[百度TTS] 发音人列表解析失败：${e.message}")
             mutableListOf()
         }
     }

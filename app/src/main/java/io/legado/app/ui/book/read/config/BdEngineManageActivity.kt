@@ -239,6 +239,7 @@ class BdEngineManageActivity : BaseActivity<BdEngineManageActivity.ContentBindin
                 }
                 val wav = outcome.wav
                 if (wav == null) {
+                    AppLog.putDebug("[百度TTS] 试听失败：${outcome.error}")
                     toastOnUi("试听失败：${outcome.error}")
                     return@launch
                 }
