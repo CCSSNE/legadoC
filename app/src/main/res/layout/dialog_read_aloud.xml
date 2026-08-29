@@ -313,12 +313,12 @@
         android:paddingEnd="8dp"
         android:paddingBottom="4dp">
 
-        <!--目录按钮-->
+        <!--目录按钮（当前引擎，文字较长，稍宽）-->
         <LinearLayout
             android:id="@+id/ll_catalog"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
+            android:layout_weight="1.2"
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:clickable="true"
             android:contentDescription="@string/speak_engine"
@@ -326,7 +326,7 @@
             android:gravity="center_vertical"
             android:minHeight="54dp"
             android:orientation="vertical"
-            android:paddingEnd="12dp"
+            android:paddingEnd="6dp"
             android:paddingBottom="7dp">
 
             <androidx.appcompat.widget.AppCompatImageView
@@ -355,14 +355,58 @@
         </LinearLayout>
 
         <View
-            android:layout_width="8dp"
+            android:layout_width="6dp"
+            android:layout_height="match_parent"
+            android:layout_weight="0" />
+        <!--AI角色按钮-->
+        <LinearLayout
+            android:id="@+id/ll_ai_role"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:contentDescription="@string/ai_multi_voice"
+            android:focusable="true"
+            android:orientation="vertical"
+            android:paddingBottom="7dp"
+            tools:ignore="TextSizeCheck">
+
+            <androidx.appcompat.widget.AppCompatImageView
+                android:id="@+id/iv_ai_role"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:adjustViewBounds="true"
+                android:contentDescription="@string/ai_multi_voice"
+                android:maxHeight="20dp"
+                android:src="@drawable/ic_groups"
+                app:tint="@color/primaryText"
+                tools:ignore="NestedWeights" />
+
+            <TextView
+                android:id="@+id/tv_ai_role"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="3dp"
+                android:ellipsize="middle"
+                android:singleLine="true"
+                android:text="@string/ai_multi_voice"
+                android:textColor="@color/primaryText"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="6dp"
             android:layout_height="match_parent"
             android:layout_weight="0" />
         <!--TTS缓存按钮-->
         <LinearLayout
             android:id="@+id/ll_tts_cache"
-            android:layout_width="60dp"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_weight="1"
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:clickable="true"
             android:contentDescription="@string/tts_cache"
@@ -397,14 +441,15 @@
         </LinearLayout>
 
         <View
-            android:layout_width="8dp"
+            android:layout_width="6dp"
             android:layout_height="match_parent"
             android:layout_weight="0" />
         <!--调节按钮-->
         <LinearLayout
             android:id="@+id/ll_main_menu"
-            android:layout_width="60dp"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_weight="1"
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:clickable="true"
             android:contentDescription="@string/main_menu"
@@ -440,14 +485,15 @@
         </LinearLayout>
 
         <View
-            android:layout_width="8dp"
+            android:layout_width="6dp"
             android:layout_height="match_parent"
             android:layout_weight="0" />
         <!--界面按钮-->
         <LinearLayout
             android:id="@+id/ll_to_backstage"
-            android:layout_width="60dp"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_weight="1"
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:clickable="true"
             android:contentDescription="@string/to_backstage"
@@ -481,14 +527,15 @@
         </LinearLayout>
 
         <View
-            android:layout_width="8dp"
+            android:layout_width="6dp"
             android:layout_height="match_parent"
             android:layout_weight="0" />
         <!--设置按钮-->
         <LinearLayout
             android:id="@+id/ll_setting"
-            android:layout_width="60dp"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_weight="1"
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:clickable="true"
             android:contentDescription="@string/setting"

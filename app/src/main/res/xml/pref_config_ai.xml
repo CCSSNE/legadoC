@@ -283,6 +283,31 @@
     </io.legado.app.lib.prefs.PreferenceCategory>
 
     <io.legado.app.lib.prefs.PreferenceCategory
+        android:key="aiStoryboardCategory"
+        android:title="@string/ai_storyboard_category"
+        app:allowDividerAbove="false"
+        app:allowDividerBelow="false"
+        app:iconSpaceReserved="false"
+        app:layout="@layout/view_preference_category">
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiStoryboardProviderId"
+            android:title="@string/ai_storyboard_provider"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiStoryboardModelId"
+            android:title="@string/ai_storyboard_model"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiStoryboardPreloadCount"
+            android:title="@string/ai_storyboard_preload_count"
+            app:iconSpaceReserved="false" />
+
+    </io.legado.app.lib.prefs.PreferenceCategory>
+
+    <io.legado.app.lib.prefs.PreferenceCategory
         android:title="@string/ai_advanced_settings_category"
         app:allowDividerAbove="false"
         app:allowDividerBelow="false"

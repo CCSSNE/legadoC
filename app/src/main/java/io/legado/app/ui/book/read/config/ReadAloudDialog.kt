@@ -199,6 +199,9 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
         llCatalog.setOnClickListener {
             SpeakEngineDialog().show(childFragmentManager, "speakEngineDialog")
         }
+        llAiRole.setOnClickListener {
+            AiMultiVoiceDialog.show(childFragmentManager)
+        }
         llTtsCache.setOnClickListener {
             ReadBook.book?.let { book ->
                 TtsCacheChapterDialog.newInstance(book)
