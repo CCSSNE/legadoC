@@ -182,6 +182,15 @@ $versionName = '3.26.<MMddHH>' # <MMddHH> uses UTC; appC automatically appends c
 - 2026-08-24：用 PowerShell 字符串拼接生成后台构建 `.bat` 时，含拼接表达式的行被拆成多行、重定向路径断裂，进程秒退且无任何日志文件。此类"启动器损坏"一律按未启动处理，不得等待或误判为编译卡死；生成脚本改用纯字面量 here-string（长路径经 `%VAR%` 间接引用），且必须先回读校验行数与内容再 `Start-Process` 启动。
 - 2026-08-24：后台构建 `.bat` 用 `echo %EXIT_CODE%> "file"` 记录退出码，`%EXIT_CODE%` 为纯数字（如 0）时该行被 cmd 解析为句柄 `0>` 重定向，退出码文件为 0 字节空文件（构建本身正常，成功以 out.log 的 BUILD SUCCESSFUL 与空 err.log 为准，此问题不触发重编译）。记录退出码必须把重定向写在行首：`> "file" echo %EXIT_CODE%`。
 
+### 双构建路线（自有 / 开源）
+
+主代码只经 `app/src/main/java/io/legado/app/plugin` 的空接口与注册表（`ReadAloudEngines` / `TtsVoiceDirectories` / 各 flavor 的 `AppPlugins.init`）接触专有功能；插件缺失时主代码正常运行：引擎列表不渲染该行、路由到未内置引擎 id 明示回退系统 TTS、AI 选角在发音人目录缺失时自动降级。
+
+- 自有构建（阅读C）= `assembleAppC`：flavor `app` 自动并入 `app/src/app` 源集——百度引擎（`help/bdtts`、`BdReadAloudService`、`BdEngineManageActivity`、`com.baidu` SDK、`jniLibs/*.so`、自身 `app/src/app/AndroidManifest.xml` 与 `appImplementation(libs.snakeyaml)`）整体在包内，由自有 `AppPlugins` 注册为插件。
+- 开源构建 = `assembleOssRelease`：flavor `oss` 不并入 `app/src/app`，专有插件源码/so/组件声明/snakeyaml 完全不参与编译与打包（产物内不存在这些代码）；包名 `io.legado.app.refgd`、应用名"阅读"（`src/oss/res` 覆盖，繁中为"閱讀"）、版本 `3.26.MMddHH` 无后缀。
+- 新增专有功能一律放 `app/src/app`（或另开 flavor 专属源集）并在自有 `AppPlugins` 注册；开源构建自动剥离。
+- 若公开发布整个仓库源码而非仅 APK，`app/src/app` 下的专有代码会随源码泄露，需要导出过滤（只发布 APK 不受影响）。
+
 ### 产物验证
 
 ```powershell
