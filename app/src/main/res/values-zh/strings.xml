@@ -2390,4 +2390,7 @@
     <string name="disable_all_toast">关闭所有底部弹窗</string>
     <string name="disable_all_toast_summary">不显示应用内通过 Toast 发出的所有底部弹窗，包括书源弹窗</string>
     <string name="reverse_toc_display">&#x53CD;&#x5411;&#x663E;&#x793A;</string>
+    <string name="ai_creation_scope">作用域</string>
+    <string name="ai_creation_scope_summary">配置选中文本、背景、场景、人设和描述与备注的作用域</string>
+    <string name="ai_creation_scope_item">%1$s：%2$s</string>
 </resources>

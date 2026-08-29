@@ -2536,4 +2536,7 @@ Selected text or question:
     <string name="disable_source_toast_summary">Do not show bottom messages sent by book-source scripts through toast or longToast.</string>
     <string name="disable_all_toast">Hide all bottom messages</string>
     <string name="disable_all_toast_summary">Do not show any in-app Toast bottom messages, including messages sent by book sources.</string>
+    <string name="ai_creation_scope">Scope</string>
+    <string name="ai_creation_scope_summary">Configure the scopes for selected text, background, scene, character, and notes</string>
+    <string name="ai_creation_scope_item">%1$s: %2$s</string>
 </resources>

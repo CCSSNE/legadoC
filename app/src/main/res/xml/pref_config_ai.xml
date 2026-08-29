@@ -229,28 +229,9 @@
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
-            android:key="aiCreationScopeSelectedText"
-            android:title="@string/ai_creation_scope_selected_text"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.Preference
-            android:key="aiCreationScopeBackground"
-            android:title="@string/ai_creation_scope_background"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.Preference
-            android:key="aiCreationScopeScene"
-            android:title="@string/ai_creation_scope_scene"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.Preference
-            android:key="aiCreationScopeCharacter"
-            android:title="@string/ai_creation_scope_character"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.Preference
-            android:key="aiCreationScopeNote"
-            android:title="@string/ai_creation_scope_note"
+            android:key="aiCreationScope"
+            android:summary="@string/ai_creation_scope_summary"
+            android:title="@string/ai_creation_scope"
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference

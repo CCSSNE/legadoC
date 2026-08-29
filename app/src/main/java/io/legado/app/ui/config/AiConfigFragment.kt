@@ -175,21 +175,7 @@ class AiConfigFragment : PreferenceFragment(),
             PreferKey.aiCreationPromptTemplate -> showCreationPromptDialog()
             PreferKey.aiCreationRequestTemplate -> showCreationRequestDialog()
             "aiCreationTestConnection" -> testCreationConnection()
-            PreferKey.aiCreationScopeSelectedText -> showCreationScopeDialog(
-                AiCreationConfig.SECTION_SELECTED_TEXT
-            )
-            PreferKey.aiCreationScopeBackground -> showCreationScopeDialog(
-                AiCreationConfig.SECTION_BACKGROUND
-            )
-            PreferKey.aiCreationScopeScene -> showCreationScopeDialog(
-                AiCreationConfig.SECTION_SCENE
-            )
-            PreferKey.aiCreationScopeCharacter -> showCreationScopeDialog(
-                AiCreationConfig.SECTION_CHARACTER
-            )
-            PreferKey.aiCreationScopeNote -> showCreationScopeDialog(
-                AiCreationConfig.SECTION_NOTE
-            )
+            PreferKey.aiCreationScope -> showCreationScopeSettingsDialog()
             PreferKey.aiCreationImageUrl -> showCreationImageUrlDialog()
             PreferKey.aiCreationImageApiKey -> showCreationImageApiKeyDialog()
             PreferKey.aiCreationImageApiKeyGuide ->
@@ -651,29 +637,54 @@ class AiConfigFragment : PreferenceFragment(),
     private fun showCreationScopeDialog(section: String) {
         val values = AiCreationConfig.scopeValues
         val labels = values.map { scope ->
-            getString(
-                when (scope) {
-                    AiCreationConfig.SCOPE_GLOBAL -> R.string.ai_creation_scope_global
-                    AiCreationConfig.SCOPE_BOOK -> R.string.ai_creation_scope_book
-                    else -> R.string.ai_creation_scope_session
-                }
-            )
+            creationScopeLabel(scope)
         }
         context?.selector(
-            getString(
-                when (section) {
-                    AiCreationConfig.SECTION_SELECTED_TEXT -> R.string.ai_creation_scope_selected_text
-                    AiCreationConfig.SECTION_BACKGROUND -> R.string.ai_creation_scope_background
-                    AiCreationConfig.SECTION_SCENE -> R.string.ai_creation_scope_scene
-                    AiCreationConfig.SECTION_CHARACTER -> R.string.ai_creation_scope_character
-                    else -> R.string.ai_creation_scope_note
-                }
-            ),
+            creationScopeTitle(section),
             labels
         ) { _, _, index ->
             AiCreationConfig.setSectionScope(section, values[index])
             refreshUi()
         }
+    }
+
+    private fun showCreationScopeSettingsDialog() {
+        val sections = AiCreationConfig.sectionOrder
+        val items = sections.map { section ->
+            getString(
+                R.string.ai_creation_scope_item,
+                creationScopeTitle(section),
+                creationScopeLabel(AiCreationConfig.sectionScope(section))
+            )
+        }
+        context?.selector(
+            getString(R.string.ai_creation_scope),
+            items
+        ) { _, _, index ->
+            showCreationScopeDialog(sections[index])
+        }
+    }
+
+    private fun creationScopeTitle(section: String): String {
+        return getString(
+            when (section) {
+                AiCreationConfig.SECTION_SELECTED_TEXT -> R.string.ai_creation_scope_selected_text
+                AiCreationConfig.SECTION_BACKGROUND -> R.string.ai_creation_scope_background
+                AiCreationConfig.SECTION_SCENE -> R.string.ai_creation_scope_scene
+                AiCreationConfig.SECTION_CHARACTER -> R.string.ai_creation_scope_character
+                else -> R.string.ai_creation_scope_note
+            }
+        )
+    }
+
+    private fun creationScopeLabel(scope: String): String {
+        return getString(
+            when (scope) {
+                AiCreationConfig.SCOPE_GLOBAL -> R.string.ai_creation_scope_global
+                AiCreationConfig.SCOPE_BOOK -> R.string.ai_creation_scope_book
+                else -> R.string.ai_creation_scope_session
+            }
+        )
     }
 
     private fun showChapterPurifyPreprocessDialog() {
@@ -1901,21 +1912,8 @@ class AiConfigFragment : PreferenceFragment(),
         }
         findPreference<Preference>(PreferKey.aiStoryboardPreloadCount)?.summary =
             getString(R.string.ai_storyboard_preload_count_summary, AiStoryboardConfig.preloadCount)
-        mapOf(
-            PreferKey.aiCreationScopeSelectedText to AiCreationConfig.SECTION_SELECTED_TEXT,
-            PreferKey.aiCreationScopeBackground to AiCreationConfig.SECTION_BACKGROUND,
-            PreferKey.aiCreationScopeScene to AiCreationConfig.SECTION_SCENE,
-            PreferKey.aiCreationScopeCharacter to AiCreationConfig.SECTION_CHARACTER,
-            PreferKey.aiCreationScopeNote to AiCreationConfig.SECTION_NOTE
-        ).forEach { (key, section) ->
-            findPreference<Preference>(key)?.summary = getString(
-                when (AiCreationConfig.sectionScope(section)) {
-                    AiCreationConfig.SCOPE_GLOBAL -> R.string.ai_creation_scope_global
-                    AiCreationConfig.SCOPE_BOOK -> R.string.ai_creation_scope_book
-                    else -> R.string.ai_creation_scope_session
-                }
-            )
-        }
+        findPreference<Preference>(PreferKey.aiCreationScope)?.summary =
+            getString(R.string.ai_creation_scope_summary)
         findPreference<Preference>(PreferKey.aiCreationImageUrl)?.summary =
             AiCreationConfig.imageUrl.ifBlank {
                 getString(R.string.ai_creation_provider_summary_empty)

@@ -127,6 +127,7 @@ object PreferKey {
     const val aiCreationRequestTemplate = "aiCreationRequestTemplate"
     const val aiCreationVariables = "aiCreationVariables"
     const val aiCreationParams = "aiCreationParams"
+    const val aiCreationScope = "aiCreationScope"
     const val aiCreationScopeSelectedText = "aiCreationScopeSelectedText"
     const val aiCreationScopeBackground = "aiCreationScopeBackground"
     const val aiCreationScopeScene = "aiCreationScopeScene"
