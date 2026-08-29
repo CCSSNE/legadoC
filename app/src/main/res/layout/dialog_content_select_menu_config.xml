@@ -79,6 +79,12 @@
                 android:layout_height="wrap_content"
                 android:text="@string/ask_ai" />
 
+            <io.legado.app.lib.theme.view.ThemeCheckBox
+                android:id="@+id/cb_ai_create"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/ai_create" />
+
             <io.legado.app.ui.widget.text.AccentTextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

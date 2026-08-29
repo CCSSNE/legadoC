@@ -31,6 +31,10 @@
         android:title="@string/ask_ai" />
 
     <item
+        android:id="@+id/menu_ai_create"
+        android:title="@string/ai_create" />
+
+    <item
         android:id="@+id/menu_review"
         android:title="@string/review" />
 
