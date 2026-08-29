@@ -425,7 +425,6 @@
     <string name="ai_creation_scope_session">Session only</string>
     <string name="ai_creation_generate_image">Generate image</string>
     <string name="ai_creation_image_count_hint">N</string>
-    <string name="ai_creation_task_running">An image generation task is already running</string>
     <string name="ai_creation_preview_title">Preview</string>
     <string name="ai_creation_grid_one">1-grid</string>
     <string name="ai_creation_grid_two">2-grid</string>

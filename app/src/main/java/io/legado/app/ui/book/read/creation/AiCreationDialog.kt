@@ -686,10 +686,6 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
     }
 
     private fun startImageGeneration(prompt: String) {
-        if (AiCreationImageTaskHolder.running) {
-            toastOnUi(R.string.ai_creation_task_running)
-            return
-        }
         val count = binding.etImageCount.text?.toString()?.toIntOrNull()
             ?.coerceIn(1, 10) ?: 1
         val cardIds = AiCreationConfig.sectionOrder
@@ -709,10 +705,8 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
                 AiCreationConfig.requireImageApiReady()
                 AiCreationImageTaskHolder.start(prompt, count, values)
             }
-            result.onSuccess { started ->
-                if (started) {
-                    showPage(3)
-                }
+            result.onSuccess {
+                showPage(3)
             }.onFailure { throwable ->
                 toastOnUi(throwable.message ?: throwable.javaClass.simpleName)
             }

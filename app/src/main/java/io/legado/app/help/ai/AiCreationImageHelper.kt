@@ -22,14 +22,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import splitties.init.appCtx
 import java.io.File
 import java.io.FileOutputStream
+import java.util.concurrent.atomic.AtomicInteger
 
 object AiCreationImageFile {
 
@@ -43,8 +42,11 @@ object AiCreationImageFile {
         return File(dir, fileName)
     }
 
-    fun saveBytes(bytes: ByteArray, seq: Int): String {
-        val fileName = "img_${System.currentTimeMillis()}_$seq.png"
+    private val nameSeq = AtomicInteger(0)
+
+    /** 文件名单点保证唯一：时间戳 + 进程内自增序号，并发任务同时落盘也不会撞名覆盖 */
+    fun saveBytes(bytes: ByteArray): String {
+        val fileName = "img_${System.currentTimeMillis()}_${nameSeq.incrementAndGet()}.png"
         val target = File(dir, fileName)
         FileOutputStream(target).use { out ->
             out.write(bytes)
@@ -129,6 +131,19 @@ object AiCreationImageTaskHolder {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    /**
+     * 一次生图请求一个任务。展示权唯一归属最新任务（以新的为准）：
+     * 新请求不阻塞也不打断老任务，老任务继续后台跑完，
+     * 返回的图照常落盘入库，报错与过程提示静默不再打扰。
+     */
+    private class GenerationTask(initial: List<AiCreationImageSlot>) {
+        val slots = initial.toMutableList()
+    }
+
+    private val displayLock = Any()
+    private var latestTask: GenerationTask? = null
+    private val runningTasks = AtomicInteger(0)
+
     private val _slots = MutableStateFlow<List<AiCreationImageSlot>>(emptyList())
     val slots: StateFlow<List<AiCreationImageSlot>> = _slots.asStateFlow()
 
@@ -142,9 +157,6 @@ object AiCreationImageTaskHolder {
         private set
 
     var uiVisible = false
-        private set
-
-    var running = false
         private set
 
     fun setUiVisible(visible: Boolean) {
@@ -163,54 +175,75 @@ object AiCreationImageTaskHolder {
         return message
     }
 
-    fun start(prompt: String, count: Int, extraValues: Map<String, String>): Boolean {
-        if (running) return false
+    fun start(prompt: String, count: Int, extraValues: Map<String, String>) {
         AiCreationConfig.requireImageApiReady()
+        val task = GenerationTask((0 until count).map { index -> AiCreationImageSlot(index = index) })
+        synchronized(displayLock) {
+            //直接以新的为准：展示与提示立即切到新任务，老任务不取消不阻塞
+            latestTask = task
+            _slots.value = task.slots.toList()
+            _notice.value = null
+        }
         floatingDismissed = false
-        _notice.value = null
-        _slots.value = (0 until count).map { index -> AiCreationImageSlot(index = index) }
-        running = true
+        runningTasks.incrementAndGet()
         updateFloatingState()
         scope.launch {
             try {
-                runGeneration(prompt, count, extraValues)
+                runGeneration(task, prompt, count, extraValues)
             } finally {
-                running = false
+                runningTasks.decrementAndGet()
                 updateFloatingState()
             }
         }
-        return true
     }
 
     private fun updateFloatingState() {
         _floatingState.value = AiCreationFloatingState(
             hasTask = _slots.value.isNotEmpty(),
-            taskRunning = running,
+            taskRunning = runningTasks.get() > 0,
             dismissed = floatingDismissed,
             uiVisible = uiVisible
         )
     }
 
+    /** 过程提示只归最新任务；被接管的老任务静默，报错也不管 */
+    private fun postNotice(task: GenerationTask, message: String) {
+        synchronized(displayLock) {
+            if (latestTask !== task) return
+            _notice.value = message
+        }
+    }
+
+    /** 槽位展示更新只作用于最新任务；与 start 的任务切换同锁，避免切换瞬间被老任务的发布覆盖 */
+    private fun publishSlots(task: GenerationTask, transform: (MutableList<AiCreationImageSlot>) -> Unit) {
+        synchronized(displayLock) {
+            if (latestTask !== task) return
+            transform(task.slots)
+            _slots.value = task.slots.toList()
+        }
+        updateFloatingState()
+    }
+
     private suspend fun runGeneration(
+        task: GenerationTask,
         prompt: String,
         count: Int,
         extraValues: Map<String, String>
     ) {
         // 第一级：单次批量请求 n 张（智谱等忽略 n 的服务只会返回 1 张，按实际返回数记账）
-        val batch = runCatching { requestImages(prompt, count, extraValues, 0) }
+        val batch = runCatching { requestImages(prompt, count, extraValues) }
         var completed = 0
         batch.onSuccess { fileNames ->
             fileNames.take(count).forEach { fileName ->
-                emitDone(completed, fileName)
+                acceptImage(task, completed, fileName)
                 completed++
             }
             if (completed in 1 until count) {
-                _notice.value =
-                    "批量请求只返回 $completed 张，剩余 ${count - completed} 张改为并发请求"
+                postNotice(task, "批量请求只返回 $completed 张，剩余 ${count - completed} 张改为并发请求")
             }
         }.onFailure { throwable ->
             if (throwable is CancellationException) throw throwable
-            _notice.value = "单次批量生成失败，已改为并发请求：${throwable.message}"
+            postNotice(task, "单次批量生成失败，已改为并发请求：${throwable.message}")
         }
         // 第二级：剩余槽位直接并发请求（每批 IMAGE_CONCURRENCY 路，不带重试）
         val failedIndexes = mutableListOf<Int>()
@@ -220,7 +253,7 @@ object AiCreationImageTaskHolder {
                 chunk.map { index ->
                     async {
                         index to runCatching {
-                            requestImages(prompt, 1, extraValues, index, retryEnabled = false)
+                            requestImages(prompt, 1, extraValues, retryEnabled = false)
                         }
                     }
                 }.awaitAll()
@@ -230,7 +263,7 @@ object AiCreationImageTaskHolder {
                     if (fileNames.isEmpty()) {
                         failedIndexes.add(index)
                     } else {
-                        emitDone(index, fileNames.first())
+                        acceptImage(task, index, fileNames.first())
                     }
                 }.onFailure { throwable ->
                     if (throwable is CancellationException) throw throwable
@@ -239,20 +272,20 @@ object AiCreationImageTaskHolder {
             }
         }
         if (failedIndexes.isNotEmpty()) {
-            _notice.value = "并发请求仍有 ${failedIndexes.size} 张失败，改为串行重试"
+            postNotice(task, "并发请求仍有 ${failedIndexes.size} 张失败，改为串行重试")
         }
         // 第三级：仍失败的槽位串行逐张重试（带完整重试与退避）
         for (index in failedIndexes) {
-            val single = runCatching { requestImages(prompt, 1, extraValues, index) }
+            val single = runCatching { requestImages(prompt, 1, extraValues) }
             single.onSuccess { fileNames ->
                 if (fileNames.isEmpty()) {
-                    failSlot(index, "服务未返回图片")
+                    failSlot(task, index, "服务未返回图片")
                 } else {
-                    emitDone(index, fileNames.first())
+                    acceptImage(task, index, fileNames.first())
                 }
             }.onFailure { throwable ->
                 if (throwable is CancellationException) throw throwable
-                failSlot(index, throwable.message ?: "生成失败")
+                failSlot(task, index, throwable.message ?: "生成失败")
             }
         }
     }
@@ -261,7 +294,6 @@ object AiCreationImageTaskHolder {
         prompt: String,
         n: Int,
         extraValues: Map<String, String>,
-        seq: Int,
         retryEnabled: Boolean = true
     ): List<String> {
         val url = AiCreationConfig.imageUrl
@@ -271,7 +303,7 @@ object AiCreationImageTaskHolder {
         val attempts = if (retryEnabled) retry + 1 else 1
         repeat(attempts) { attempt ->
             try {
-                return fetchImages(url, body, seq, attempt)
+                return fetchImages(url, body)
             } catch (throwable: Throwable) {
                 if (throwable is CancellationException) throw throwable
                 lastError = throwable
@@ -283,9 +315,7 @@ object AiCreationImageTaskHolder {
 
     private suspend fun fetchImages(
         url: String,
-        body: String,
-        seq: Int,
-        batchSeq: Int
+        body: String
     ): List<String> = withContext(Dispatchers.IO) {
         val response = okHttpClient.newCallResponse {
             url(url)
@@ -312,31 +342,25 @@ object AiCreationImageTaskHolder {
                 val b64 = item.optString("b64_json")
                 if (b64.isNotBlank()) {
                     return@mapNotNull AiCreationImageFile.saveBytes(
-                        Base64.decode(b64, Base64.DEFAULT),
-                        seq * 100 + batchSeq * 10 + index
+                        Base64.decode(b64, Base64.DEFAULT)
                     )
                 }
                 val imageUrl = item.optString("url")
                 if (imageUrl.isNotBlank()) {
-                    return@mapNotNull downloadImage(imageUrl, seq, batchSeq, index)
+                    return@mapNotNull downloadImage(imageUrl)
                 }
                 null
             }
         }
     }
 
-    private suspend fun downloadImage(
-        url: String,
-        seq: Int,
-        batchSeq: Int,
-        index: Int
-    ): String = withContext(Dispatchers.IO) {
+    private suspend fun downloadImage(url: String): String = withContext(Dispatchers.IO) {
         val response = okHttpClient.newCallResponse { url(url) }
         response.use { rawResponse ->
             require(rawResponse.isSuccessful) { "图片下载失败 HTTP ${rawResponse.code}" }
             val bytes = rawResponse.body?.bytes()
                 ?: throw IllegalStateException("图片下载内容为空")
-            AiCreationImageFile.saveBytes(bytes, seq * 100 + batchSeq * 10 + index)
+            AiCreationImageFile.saveBytes(bytes)
         }
     }
 
@@ -409,24 +433,25 @@ object AiCreationImageTaskHolder {
         }
     }
 
-    private suspend fun emitDone(index: Int, fileName: String) {
+    private suspend fun acceptImage(task: GenerationTask, index: Int, fileName: String) {
+        //返回来的图一律接受：不管该任务是否已被更新的请求接管展示，都落库可查
         val resultId = appDb.creationResultDao.insert(
             CreationResult(fileName = fileName)
         )
-        updateSlot(index) { it.copy(state = AiCreationImageSlotState.DONE, fileName = fileName, resultId = resultId) }
-    }
-
-    private fun failSlot(index: Int, error: String) {
-        updateSlot(index) {
-            it.copy(state = AiCreationImageSlotState.FAILED, error = error)
+        publishSlots(task) { slots ->
+            val current = slots.getOrNull(index) ?: return@publishSlots
+            slots[index] = current.copy(
+                state = AiCreationImageSlotState.DONE,
+                fileName = fileName,
+                resultId = resultId
+            )
         }
     }
 
-    private fun updateSlot(index: Int, transform: (AiCreationImageSlot) -> AiCreationImageSlot) {
-        val current = _slots.value.toMutableList()
-        val target = current.getOrNull(index) ?: return
-        current[index] = transform(target)
-        _slots.value = current
-        updateFloatingState()
+    private fun failSlot(task: GenerationTask, index: Int, error: String) {
+        publishSlots(task) { slots ->
+            val current = slots.getOrNull(index) ?: return@publishSlots
+            slots[index] = current.copy(state = AiCreationImageSlotState.FAILED, error = error)
+        }
     }
 }
