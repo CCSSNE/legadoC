@@ -14,11 +14,16 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -119,6 +124,9 @@ data class AiCreationFloatingState(
 
 object AiCreationImageTaskHolder {
 
+    // 智谱等生图服务的实测并发上限：3 路稳定，4 路会触发 429 限流
+    private const val IMAGE_CONCURRENCY = 3
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val _slots = MutableStateFlow<List<AiCreationImageSlot>>(emptyList())
@@ -188,6 +196,7 @@ object AiCreationImageTaskHolder {
         count: Int,
         extraValues: Map<String, String>
     ) {
+        // 第一级：单次批量请求 n 张（智谱等忽略 n 的服务只会返回 1 张，按实际返回数记账）
         val batch = runCatching { requestImages(prompt, count, extraValues, 0) }
         var completed = 0
         batch.onSuccess { fileNames ->
@@ -195,16 +204,45 @@ object AiCreationImageTaskHolder {
                 emitDone(completed, fileName)
                 completed++
             }
-            if (completed < count) {
+            if (completed in 1 until count) {
                 _notice.value =
-                    "批量请求只返回 $completed 张，剩余 ${count - completed} 张改为逐张请求"
+                    "批量请求只返回 $completed 张，剩余 ${count - completed} 张改为并发请求"
             }
         }.onFailure { throwable ->
             if (throwable is CancellationException) throw throwable
-            _notice.value = "单次批量生成失败，已改为逐张请求：${throwable.message}"
+            _notice.value = "单次批量生成失败，已改为并发请求：${throwable.message}"
         }
-        while (completed < count) {
-            val index = completed
+        // 第二级：剩余槽位直接并发请求（每批 IMAGE_CONCURRENCY 路，不带重试）
+        val failedIndexes = mutableListOf<Int>()
+        val remaining = (completed until count).toList()
+        for (chunk in remaining.chunked(IMAGE_CONCURRENCY)) {
+            val results = coroutineScope {
+                chunk.map { index ->
+                    async {
+                        index to runCatching {
+                            requestImages(prompt, 1, extraValues, index, retryEnabled = false)
+                        }
+                    }
+                }.awaitAll()
+            }
+            for ((index, single) in results) {
+                single.onSuccess { fileNames ->
+                    if (fileNames.isEmpty()) {
+                        failedIndexes.add(index)
+                    } else {
+                        emitDone(index, fileNames.first())
+                    }
+                }.onFailure { throwable ->
+                    if (throwable is CancellationException) throw throwable
+                    failedIndexes.add(index)
+                }
+            }
+        }
+        if (failedIndexes.isNotEmpty()) {
+            _notice.value = "并发请求仍有 ${failedIndexes.size} 张失败，改为串行重试"
+        }
+        // 第三级：仍失败的槽位串行逐张重试（带完整重试与退避）
+        for (index in failedIndexes) {
             val single = runCatching { requestImages(prompt, 1, extraValues, index) }
             single.onSuccess { fileNames ->
                 if (fileNames.isEmpty()) {
@@ -216,7 +254,6 @@ object AiCreationImageTaskHolder {
                 if (throwable is CancellationException) throw throwable
                 failSlot(index, throwable.message ?: "生成失败")
             }
-            completed++
         }
     }
 
@@ -224,19 +261,21 @@ object AiCreationImageTaskHolder {
         prompt: String,
         n: Int,
         extraValues: Map<String, String>,
-        seq: Int
+        seq: Int,
+        retryEnabled: Boolean = true
     ): List<String> {
         val url = AiCreationConfig.imageUrl
         val retry = AiCreationConfig.imageRetryCount
         val body = renderImageRequestBody(prompt, n, extraValues)
         var lastError: Throwable? = null
-        repeat(retry + 1) { attempt ->
+        val attempts = if (retryEnabled) retry + 1 else 1
+        repeat(attempts) { attempt ->
             try {
                 return fetchImages(url, body, seq, attempt)
             } catch (throwable: Throwable) {
                 if (throwable is CancellationException) throw throwable
                 lastError = throwable
-                if (attempt < retry) delay(800)
+                if (attempt < attempts - 1) delay(800)
             }
         }
         throw lastError ?: IllegalStateException("生成失败")
