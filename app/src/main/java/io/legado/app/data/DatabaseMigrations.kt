@@ -30,7 +30,66 @@ object DatabaseMigrations {
             migration_106_107,
             migration_107_108,
             migration_108_109,
+            migration_109_110,
         )
+    }
+
+    private val migration_109_110 = object : Migration(109, 110) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `book_roles` (
+                    `roleId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `workKey` TEXT NOT NULL,
+                    `name` TEXT NOT NULL,
+                    `aliasesJson` TEXT NOT NULL,
+                    `gender` TEXT NOT NULL,
+                    `enabled` INTEGER NOT NULL,
+                    `updatedAt` INTEGER NOT NULL
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_book_roles_workKey` ON `book_roles` (`workKey`)"
+            )
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `book_tts_cast_roles` (
+                    `castRoleId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `workKey` TEXT NOT NULL,
+                    `name` TEXT NOT NULL,
+                    `aliasesJson` TEXT NOT NULL,
+                    `gender` TEXT NOT NULL,
+                    `identityState` TEXT NOT NULL,
+                    `occurrenceCount` INTEGER NOT NULL,
+                    `firstChapterIndex` INTEGER NOT NULL,
+                    `lastChapterIndex` INTEGER NOT NULL,
+                    `samplesJson` TEXT NOT NULL,
+                    `evidence` TEXT NOT NULL,
+                    `ignored` INTEGER NOT NULL,
+                    `linkedRoleId` INTEGER NOT NULL,
+                    `updatedAt` INTEGER NOT NULL
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_book_tts_cast_roles_workKey` " +
+                    "ON `book_tts_cast_roles` (`workKey`)"
+            )
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `book_tts_voice_bindings` (
+                    `workKey` TEXT NOT NULL,
+                    `targetType` TEXT NOT NULL,
+                    `targetId` INTEGER NOT NULL,
+                    `speakerId` TEXT NOT NULL,
+                    `bindingMode` TEXT NOT NULL,
+                    `updatedAt` INTEGER NOT NULL,
+                    PRIMARY KEY(`workKey`, `targetType`, `targetId`)
+                )
+                """.trimIndent()
+            )
+        }
     }
 
     private val migration_108_109 = object : Migration(108, 109) {
