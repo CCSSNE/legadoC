@@ -14,8 +14,11 @@ import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import splitties.init.appCtx
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * AI 听书分镜（1号AI）：章节文本 → 每个候选片段的说话人归因。
@@ -150,6 +153,9 @@ object AiTtsStoryboardHelper {
 
     // ===================== 对外入口 =====================
 
+    /** 同章并发去重：同一缓存键的生成串行化，避免播放现场/预生成/批量分析双花 AI 调用与缓存写竞争。 */
+    private val keyMutexes = ConcurrentHashMap<String, Mutex>()
+
     suspend fun getOrGenerate(
         book: Book,
         chapterIndex: Int,
@@ -162,9 +168,13 @@ object AiTtsStoryboardHelper {
             book.bookUrl, chapterIndex, chapterTitle, contentHash, provider.id, modelId
         )
         withContext(Dispatchers.IO) { StoryboardCacheStore.load(key) }?.let { return it }
-        val storyboard = generate(book, chapterIndex, chapterTitle, content, contentHash, provider, modelId)
-        withContext(Dispatchers.IO) { StoryboardCacheStore.save(key, storyboard) }
-        return storyboard
+        val mutex = keyMutexes.computeIfAbsent(key) { Mutex() }
+        mutex.withLock {
+            withContext(Dispatchers.IO) { StoryboardCacheStore.load(key) }?.let { return it }
+            val storyboard = generate(book, chapterIndex, chapterTitle, content, contentHash, provider, modelId)
+            withContext(Dispatchers.IO) { StoryboardCacheStore.save(key, storyboard) }
+            return storyboard
+        }
     }
 
     fun loadCached(
@@ -193,10 +203,15 @@ object AiTtsStoryboardHelper {
         val key = StoryboardCacheStore.cacheKey(
             book.bookUrl, chapterIndex, chapterTitle, contentHash, provider.id, modelId
         )
-        StoryboardCacheStore.delete(key)
-        val storyboard = generate(book, chapterIndex, chapterTitle, content, contentHash, provider, modelId)
-        StoryboardCacheStore.save(key, storyboard)
-        return storyboard
+        val mutex = keyMutexes.computeIfAbsent(key) { Mutex() }
+        return mutex.withLock {
+            withContext(Dispatchers.IO) {
+                StoryboardCacheStore.delete(key)
+                val storyboard = generate(book, chapterIndex, chapterTitle, content, contentHash, provider, modelId)
+                StoryboardCacheStore.save(key, storyboard)
+                storyboard
+            }
+        }
     }
 
     private suspend fun generate(
@@ -222,6 +237,7 @@ object AiTtsStoryboardHelper {
             knownCastRoles = knownCastRoles
         )
         val segments = buildSegments(paragraphs, units, assignments)
+        val identityLinks = identityLinksFromAssignments(assignments, knownCharacters, knownCastRoles)
         return ChapterStoryboard(
             bookUrl = book.bookUrl,
             bookName = book.name,
@@ -238,13 +254,16 @@ object AiTtsStoryboardHelper {
                     endParagraphIndex = paragraphs.lastOrNull()?.paragraphIndex ?: 0,
                     segments = segments
                 )
-            )
+            ),
+            identityLinks = identityLinks
         )
     }
 
     private fun loadKnownCharacters(book: Book): List<KnownCharacter> {
         val workKey = BookTtsAutomationConfig.workKeyOf(book.name, book.author)
-        return appDb.bookRoleDao.getRoles(workKey).map { role ->
+        return appDb.bookRoleDao.getRoles(workKey)
+            .filter { it.name.isNotBlank() }
+            .map { role ->
             KnownCharacter(
                 characterId = role.roleId,
                 name = role.name,
@@ -279,6 +298,59 @@ object AiTtsStoryboardHelper {
         return runCatching {
             GSON.fromJsonArray<String>(json).getOrNull().orEmpty()
         }.getOrDefault(emptyList())
+    }
+
+    /**
+     * 从归因结果生成别名链接：模型以别名（网名/昵称/外号）显示但绑定到已有身份时，
+     * 产出 aliasName → 身份 链接，由 Coordinator 落库为该身份的持久别名。
+     * 对应上游阅读 NG identityLinksFromAssignments 的基础模式子集。
+     */
+    private fun identityLinksFromAssignments(
+        assignments: List<ModelUnitResult>,
+        knownCharacters: List<KnownCharacter>,
+        knownCastRoles: List<KnownCastRole>
+    ): List<StoryboardIdentityLink> {
+        val characterById = knownCharacters.associateBy { it.characterId }
+        val castRoleById = knownCastRoles.associateBy { it.castRoleId }
+        return buildList {
+            assignments.forEach { unit ->
+                if (unit.status != "assigned") return@forEach
+                val displayName = unit.characterName.trim()
+                if (displayName.isBlank()) return@forEach
+                if (unit.characterId > 0L) {
+                    val known = characterById[unit.characterId]
+                    if (known != null &&
+                        BookTtsCastingCoordinator.normalizeIdentityName(displayName) !=
+                        BookTtsCastingCoordinator.normalizeIdentityName(known.name)
+                    ) {
+                        add(
+                            StoryboardIdentityLink(
+                                aliasName = displayName,
+                                characterId = unit.characterId,
+                                evidence = unit.evidence
+                            )
+                        )
+                    }
+                } else if (unit.castRoleId > 0L) {
+                    val known = castRoleById[unit.castRoleId]
+                    if (known != null &&
+                        BookTtsCastingCoordinator.normalizeIdentityName(displayName) !=
+                        BookTtsCastingCoordinator.normalizeIdentityName(known.name)
+                    ) {
+                        add(
+                            StoryboardIdentityLink(
+                                aliasName = displayName,
+                                castRoleId = unit.castRoleId,
+                                evidence = unit.evidence
+                            )
+                        )
+                    }
+                }
+            }
+        }.distinctBy {
+            BookTtsCastingCoordinator.normalizeIdentityName(it.aliasName) to
+                (it.characterId to it.castRoleId)
+        }
     }
 
     // ===================== AI 请求与重试 =====================
@@ -345,24 +417,36 @@ object AiTtsStoryboardHelper {
     // ===================== 输出解析与校验 =====================
 
     private fun normalizeModelOutput(text: String): String {
-        return text
-            .trim()
-            .removePrefix("```json")
-            .removePrefix("```")
-            .removeSuffix("```")
-            .trim()
+        var output = text.trim()
+        if (output.startsWith("```")) {
+            output = output.lines()
+                .drop(1)
+                .dropLastWhile { it.trim() == "```" }
+                .joinToString("\n")
+                .trim()
+        }
+        return output
     }
+
+    /** AI 输出中不允许出现的正文字段键（与上游阅读 NG 对齐）。 */
+    private val textLeakKeys = setOf(
+        "text", "input", "content", "sourceText", "source_text", "output", "ranges", "start", "end"
+    )
 
     private fun findTextLeaks(element: com.google.gson.JsonElement, path: String = "root"): List<String> {
         val leaks = mutableListOf<String>()
-        if (element is JsonObject) {
-            element.entrySet().forEach { (key, value) ->
-                if (key in setOf("text", "input", "content", "sourceText", "source_text")) {
+        if (element.isJsonObject) {
+            element.asJsonObject.entrySet().forEach { (key, value) ->
+                if (key in textLeakKeys) {
                     leaks += "$path.$key"
                 }
                 if (value.isJsonObject || value.isJsonArray) {
                     leaks += findTextLeaks(value, "$path.$key")
                 }
+            }
+        } else if (element.isJsonArray) {
+            element.asJsonArray.forEachIndexed { index, item ->
+                leaks += findTextLeaks(item, "$path[$index]")
             }
         }
         return leaks
@@ -374,11 +458,9 @@ object AiTtsStoryboardHelper {
         knownCharacters: List<KnownCharacter>,
         knownCastRoles: List<KnownCastRole>
     ): List<ModelUnitResult> {
-        val json = normalizeModelOutput(raw)
-        val start = json.indexOf('{')
-        val end = json.lastIndexOf('}')
-        check(start >= 0 && end >= start) { "AI 未返回 JSON 对象" }
-        val element = JsonParser.parseString(json.substring(start, end + 1))
+        val json = normalizeModelOutput(raw).extractJsonObjectCandidate()
+        check(json.isNotBlank()) { "AI 未返回 JSON 对象" }
+        val element = JsonParser.parseString(json)
         check(element.isJsonObject) { "AI 返回根节点不是 JSON 对象" }
         val root = element.asJsonObject
         val rootExtraKeys = root.keySet() - rootKeys
@@ -397,6 +479,8 @@ object AiTtsStoryboardHelper {
         for (item in unitArray) {
             check(item.isJsonObject) { "AI 返回 unit 不是对象" }
             val obj = item.asJsonObject
+            val extraKeys = obj.keySet() - baseUnitKeys
+            check(extraKeys.isEmpty()) { "AI 返回 unit 额外字段：${extraKeys.joinToString()}" }
             output += GSON.fromJson(obj, ModelUnitResult::class.java)
                 ?: throw IllegalStateException("AI 返回 unit 无法解析")
         }
@@ -409,13 +493,6 @@ object AiTtsStoryboardHelper {
         check(unknown.isEmpty()) { "AI 返回未知 unit：${unknown.take(3).joinToString()}" }
         val knownIndex = knownSpeakerIndex(knownCharacters, knownCastRoles)
         return output.map { unit ->
-            val obj = unitArray.firstOrNull {
-                it.isJsonObject && it.asJsonObject.get("unitId")?.asString == unit.unitId
-            }?.asJsonObject
-            if (obj != null) {
-                val extraKeys = obj.keySet() - baseUnitKeys
-                check(extraKeys.isEmpty()) { "AI 返回 unit 额外字段：${extraKeys.joinToString()}" }
-            }
             check(unit.roleType in roleTypes) { "AI 返回非法 roleType：${unit.roleType}" }
             check(unit.status in statuses) { "AI 返回非法 status：${unit.status}" }
             check(unit.speakerGender in speakerGenders) { "AI 返回非法 speakerGender：${unit.speakerGender}" }
@@ -440,7 +517,7 @@ object AiTtsStoryboardHelper {
         val charactersByName = buildMap {
             knownCharacters.forEach { character ->
                 (listOf(character.name) + character.aliases).forEach { name ->
-                    val key = normalizeIdentityName(name)
+                    val key = BookTtsCastingCoordinator.normalizeIdentityName(name)
                     if (key.isNotBlank()) put(key, character)
                 }
             }
@@ -449,18 +526,12 @@ object AiTtsStoryboardHelper {
         val castRolesByName = buildMap {
             knownCastRoles.forEach { role ->
                 (listOf(role.name) + role.aliases).forEach { name ->
-                    val key = normalizeIdentityName(name)
+                    val key = BookTtsCastingCoordinator.normalizeIdentityName(name)
                     if (key.isNotBlank()) put(key, role)
                 }
             }
         }
         return KnownSpeakerIndex(charactersById, charactersByName, castRolesById, castRolesByName)
-    }
-
-    internal fun normalizeIdentityName(name: String): String {
-        return name.trim()
-            .replace(Regex("[\\s·・]"), "")
-            .lowercase()
     }
 
     private fun normalizeModelUnit(
@@ -482,7 +553,7 @@ object AiTtsStoryboardHelper {
             )
         }
         val modelDisplayName = unit.characterName.trim()
-        val normalizedDisplayName = normalizeIdentityName(modelDisplayName)
+        val normalizedDisplayName = BookTtsCastingCoordinator.normalizeIdentityName(modelDisplayName)
         val knownCharacter = knownIndex.charactersById[unit.characterId]
             ?: normalizedDisplayName.takeIf { it.isNotBlank() }?.let { knownIndex.charactersByName[it] }
         if (knownCharacter != null) {
@@ -490,7 +561,7 @@ object AiTtsStoryboardHelper {
                 unit.identityEvidence == StoryboardSegment.Evidence.EXPLICIT &&
                 unit.confidence >= 0.85f &&
                 normalizedDisplayName.isNotBlank() &&
-                normalizedDisplayName != normalizeIdentityName(knownCharacter.name)
+                normalizedDisplayName != BookTtsCastingCoordinator.normalizeIdentityName(knownCharacter.name)
             return unit.copy(
                 characterName = modelDisplayName.takeIf { explicitAlias } ?: knownCharacter.name,
                 characterId = knownCharacter.characterId,
@@ -515,8 +586,12 @@ object AiTtsStoryboardHelper {
                 } else null
         }
         if (knownCastRole != null) {
+            // own 的临时角色表未存性别证据等级，采用保守策略：
+            // 库内已知 male/female 时仅 explicit 级证据可推翻，弱证据不得反复翻覆；
+            // 库内性别未知时沿用模型结论。上游阅读 NG 为证据等级逐级比较。
             val incomingGenderIsStronger =
-                evidenceRank(unit.genderEvidence) > evidenceRank(knownCastRole.gender)
+                knownCastRole.gender !in setOf("male", "female") ||
+                    unit.genderEvidence == StoryboardSegment.Evidence.EXPLICIT
             val resolvedGender = unit.speakerGender.takeIf {
                 incomingGenderIsStronger && it in speakerGenders && it != "unknown"
             } ?: knownCastRole.gender.takeIf { it in speakerGenders && it != "unknown" }
@@ -576,13 +651,6 @@ object AiTtsStoryboardHelper {
             identityType == StoryboardSegment.IdentityType.GUEST
     }
 
-    private fun evidenceRank(value: String): Int = when (value) {
-        StoryboardSegment.Evidence.EXPLICIT -> 3
-        StoryboardSegment.Evidence.CONTEXTUAL -> 2
-        StoryboardSegment.Evidence.INFERRED -> 1
-        else -> 0
-    }
-
     private fun routedRoleType(roleHint: String, modelRoleType: String): String {
         return if (roleHint == "narrator") "narrator" else modelRoleType
     }
@@ -624,8 +692,8 @@ object AiTtsStoryboardHelper {
     private fun sameSpeakerIdentity(first: ModelUnitResult, second: ModelUnitResult): Boolean {
         if (first.characterId > 0L && first.characterId == second.characterId) return true
         if (first.castRoleId > 0L && first.castRoleId == second.castRoleId) return true
-        val firstName = normalizeIdentityName(first.characterName)
-        val secondName = normalizeIdentityName(second.characterName)
+        val firstName = BookTtsCastingCoordinator.normalizeIdentityName(first.characterName)
+        val secondName = BookTtsCastingCoordinator.normalizeIdentityName(second.characterName)
         return firstName.isNotBlank() && firstName == secondName
     }
 
@@ -932,7 +1000,12 @@ object AiTtsStoryboardHelper {
                         type != StoryboardSegmentType.NARRATION -> "AI归因：${assignment.evidence}"
                     else -> "旁白"
                 },
-                confidence = assignment?.confidence ?: 0f
+                confidence = assignment?.confidence ?: 0f,
+                mergeCastRoleIds = if (type == StoryboardSegmentType.NARRATION) {
+                    emptyList()
+                } else {
+                    assignment?.mergeCastRoleIds.orEmpty()
+                }
             )
             cursor = range.end
         }
