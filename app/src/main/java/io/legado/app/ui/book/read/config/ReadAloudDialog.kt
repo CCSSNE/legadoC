@@ -14,7 +14,6 @@ import androidx.core.view.doOnLayout
 import io.legado.app.R
 import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
-import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.databinding.DialogReadAloudBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.selector
@@ -342,8 +341,7 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
             return appDb.httpTTSDao.getName(ttsEngine.toLong())
                 ?: getString(R.string.http_tts_missing, ttsEngine)
         }
-        return GSON.fromJsonObject<SelectItem<String>>(ttsEngine).getOrNull()?.title
-            ?: getString(R.string.system_tts)
+        return ReadAloud.selectedEngineLabel() ?: getString(R.string.system_tts)
     }
 
     private fun upTtsSpeechRateEnabled(enabled: Boolean) {

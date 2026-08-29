@@ -135,6 +135,23 @@ object ReadAloud {
             }
         }
 
+    /**
+     * 引擎选择值的界面显示名：内置插件引擎返回插件标签（运行依赖未就绪时附原因），
+     * 系统引擎 JSON 选择值返回其标题；无法解析返回 null，由调用方回退系统 TTS 文案。
+     */
+    fun selectedEngineLabel(): String? {
+        val selected = ttsEngine ?: return null
+        ReadAloudEngines.byId(selected)?.let { plugin ->
+            val unavailableReason = plugin.unavailableReason
+            return if (unavailableReason != null) {
+                "${plugin.engineLabel}（$unavailableReason）"
+            } else {
+                plugin.engineLabel
+            }
+        }
+        return GSON.fromJsonObject<SelectItem<String>>(selected).getOrNull()?.title
+    }
+
     private fun getReadAloudClass(): Class<out BaseReadAloudService>? {
         val book = ReadBook.book
         if (ttsEngine == SOURCE_AUDIO_ENGINE_ID) {

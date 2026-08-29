@@ -29,6 +29,7 @@ import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.help.book.isAudio
 import io.legado.app.plugin.ReadAloudEngines
+import io.legado.app.plugin.ReadAloudEnginePlugin
 import io.legado.app.ui.association.ImportHttpTtsDialog
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.login.SourceLoginActivity
@@ -63,6 +64,9 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
     private val adapter by lazy { Adapter(requireContext()) }
     private var ttsEngine: String? = ReadAloud.ttsEngine
     private val sysTtsViews = arrayListOf<RadioButton>()
+
+    /** 插件引擎行（行视图, 插件）：语音包等运行依赖变化后由 [refreshPluginRows] 重算显示状态。 */
+    private val pluginRows = arrayListOf<Pair<RadioButton, ReadAloudEnginePlugin>>()
     private val callBack: CallBack? get() = parentFragment as? CallBack
     private val importDocResult = registerForActivityResult(HandleFileContract()) {
         it.uri?.let { uri ->
@@ -73,6 +77,29 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
     override fun onStart() {
         super.onStart()
         setLayout(ViewGroup.LayoutParams.MATCH_PARENT, 0.9f)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // 覆盖"长按进入管理页导入语音包后返回"的场景：按最新就绪状态重算插件行
+        refreshPluginRows()
+    }
+
+    /**
+     * 插件引擎行状态刷新：语音包导入状态变化后重新计算可选性显示——
+     * 未就绪置灰、标签附原因、不勾选；就绪后恢复可选。
+     */
+    private fun refreshPluginRows() {
+        pluginRows.forEach { (row, plugin) ->
+            val unavailable = plugin.unavailableReason
+            row.text = if (unavailable != null) {
+                "${plugin.engineLabel}（$unavailable）"
+            } else {
+                plugin.engineLabel
+            }
+            row.isChecked = unavailable == null && ttsEngine == plugin.engineId
+            row.alpha = if (unavailable == null) 1f else 0.45f
+        }
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
@@ -106,20 +133,34 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
             }
         }
         // 内置引擎插件（如百度的"本地百度 TTS"）：由各构建的插件注册表提供，
-        // 开源构建注册表为空，此处不渲染任何行；长按进入插件自己的管理页。
+        // 开源构建注册表为空，此处不渲染任何行。
+        // 状态规则：运行依赖未就绪（如未导入语音包）时不可选——置灰、标签附原因、
+        // 点击拦截提示；长按仍进入插件管理页（这是语音包导入的唯一入口）。
         ReadAloudEngines.all.forEach { plugin ->
             adapter.addHeaderView {
                 ItemHttpTtsBinding.inflate(layoutInflater, recyclerView, false).apply {
                     root.applyUiBodyTypefaceDeep(requireContext().uiTypeface())
                     sysTtsViews.add(cbName)
+                    pluginRows.add(cbName to plugin)
                     ivEdit.gone()
                     ivMenuDelete.gone()
                     labelSys.visible()
-                    cbName.text = plugin.engineLabel
                     cbName.tag = plugin.engineId
-                    cbName.isChecked = ttsEngine == plugin.engineId
+                    val unavailable = plugin.unavailableReason
+                    cbName.text = if (unavailable != null) {
+                        "${plugin.engineLabel}（$unavailable）"
+                    } else {
+                        plugin.engineLabel
+                    }
+                    cbName.isChecked = unavailable == null && ttsEngine == plugin.engineId
+                    cbName.alpha = if (unavailable == null) 1f else 0.45f
                     cbName.setOnClickListener {
-                        upTts(plugin.engineId)
+                        val reason = plugin.unavailableReason
+                        if (reason == null) {
+                            upTts(plugin.engineId)
+                        } else {
+                            toastOnUi("${plugin.engineLabel}：$reason")
+                        }
                     }
                     cbName.setOnLongClickListener {
                         val manageActivity = plugin.manageActivityClass
