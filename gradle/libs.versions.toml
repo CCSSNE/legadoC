@@ -18,6 +18,7 @@ soraEditor = "0.24.4"
 glide = "5.0.5"
 gson = "2.13.2"
 jsonPath = "2.10.0"
+snakeyaml = "2.2"
 jsoupxpath = "2.5.3"
 coroutines = "1.10.2"
 liveeventbus = "1.8.14"
@@ -176,6 +177,7 @@ desugar = { group = "com.android.tools", name = "desugar_jdk_libs_nio", version.
 flexbox = { module = "com.google.android.flexbox:flexbox", version.ref = "flexbox" }
 gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
 json-path = { module = "com.jayway.jsonpath:json-path", version.ref = "jsonPath" }
+snakeyaml = { module = "org.yaml:snakeyaml", version.ref = "snakeyaml" }
 jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
 jsoupxpath = { module = "cn.wanghaomiao:JsoupXpath", version.ref = "jsoupxpath" }
 junit = { module = "junit:junit", version = "4.13.2" }

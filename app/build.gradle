@@ -249,6 +249,9 @@ dependencies {
     implementation(libs.gson)
     implementation(libs.lottie)
 
+    //baidu offline tts
+    implementation(libs.snakeyaml)
+
     //lifecycle
     implementation(libs.lifecycle.common.java8)
     implementation(libs.lifecycle.service)
