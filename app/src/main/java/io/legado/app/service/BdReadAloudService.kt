@@ -7,6 +7,7 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import io.legado.app.constant.AppLog
 import io.legado.app.help.bdtts.BdEngineAdapter
+import io.legado.app.help.bdtts.BdMultiVoice
 import io.legado.app.help.bdtts.BdSpeakerRecord
 import io.legado.app.help.bdtts.BdSpeakerStore
 import io.legado.app.help.bdtts.BdSynthCallback
@@ -43,7 +44,7 @@ class BdReadAloudService : BaseReadAloudService() {
     private val playerListener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
             if (playbackState == Player.STATE_ENDED) {
-                onSegmentFinished()
+                advanceSegment()
             }
         }
     }
@@ -71,6 +72,9 @@ class BdReadAloudService : BaseReadAloudService() {
         synthesizeCurrent()
     }
 
+    private var segmentQueue: List<BdMultiVoice.Segment> = emptyList()
+    private var segmentIndex = 0
+
     private fun synthesizeCurrent() {
         val record = selectedSpeaker()
         if (record == null) {
@@ -94,24 +98,39 @@ class BdReadAloudService : BaseReadAloudService() {
             return
         }
         playingIndex = nowSpeak
+        segmentQueue = BdMultiVoice.expand(text, record)
+        segmentIndex = 0
+        synthesizeNextSegment()
+    }
+
+    private fun synthesizeNextSegment() {
+        if (segmentIndex >= segmentQueue.size) {
+            if (!moveToNextParagraph()) {
+                nextChapter()
+            } else {
+                synthesizeCurrent()
+            }
+            return
+        }
+        val segment = segmentQueue[segmentIndex]
         val speed = (AppConfig.ttsSpeechRate + 5) / 10f
-        val engine = obtainAdapter(record)
+        val engine = obtainAdapter(segment.speaker)
         val pcmBuffer = mutableListOf<ByteArray>()
         synthFuture?.cancel(true)
         synthFuture = synthExecutor.submit {
             try {
                 upTtsProgress(0)
-                engine.synthesize(speed, 1.0f, text, object : BdSynthCallback {
+                engine.synthesize(speed, 1.0f, segment.text, object : BdSynthCallback {
                     override fun onStart() = Unit
                     override fun onError(message: String) {
                         AppLog.putDebug("[朗读][百度] 合成失败：$message")
-                        runOnUiThread { onSegmentFinished(skipError = true) }
+                        runOnUiThread { advanceSegment(skipError = true) }
                     }
 
                     override fun onDone(message: String) {
-                        val wav = pcmToWav(pcmBuffer, record.sampleRate)
+                        val wav = pcmToWav(pcmBuffer, segment.speaker.sampleRate)
                         runOnUiThread {
-                            if (wav != null) playWav(wav) else onSegmentFinished(skipError = true)
+                            if (wav != null) playWav(wav) else advanceSegment(skipError = true)
                         }
                     }
 
@@ -123,25 +142,23 @@ class BdReadAloudService : BaseReadAloudService() {
                 })
             } catch (e: Exception) {
                 AppLog.putDebug("[朗读][百度] 合成异常：${e.message}")
-                runOnUiThread { onSegmentFinished(skipError = true) }
+                runOnUiThread { advanceSegment(skipError = true) }
             }
         }
+    }
+
+    /** 当前子段播完：推进子段队列；队列耗尽后推进段落。 */
+    private fun advanceSegment(skipError: Boolean = false) {
+        if (!isRun || pause) return
+        if (!skipError && playingIndex != nowSpeak) return
+        segmentIndex++
+        synthesizeNextSegment()
     }
 
     private var cancelled = false
 
     private fun runOnUiThread(action: () -> Unit) {
         android.os.Handler(android.os.Looper.getMainLooper()).post(action)
-    }
-
-    private fun onSegmentFinished(skipError: Boolean = false) {
-        if (!isRun || pause) return
-        if (!skipError && playingIndex != nowSpeak) return
-        if (!moveToNextParagraph()) {
-            nextChapter()
-            return
-        }
-        synthesizeCurrent()
     }
 
     private fun moveToNextParagraph(): Boolean {
