@@ -13,6 +13,7 @@ import io.legado.app.databinding.DialogAiRoleEditBinding
 import io.legado.app.help.tts.BookTtsAutomationConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.model.ReadBook
+import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers

@@ -1,6 +1,7 @@
 package io.legado.app.service
 
 import android.app.PendingIntent
+import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -140,7 +141,7 @@ class BdReadAloudService : BaseReadAloudService() {
             return
         }
         val workKey = BookTtsAutomationConfig.workKeyOf(book.name, book.author)
-        if (storyboardChapterIndex == chapter.index && storyboard != null) {
+        if (storyboardChapterIndex == chapter.chapter.index && storyboard != null) {
             startStoryboardSegments(record, workKey)
             return
         }
@@ -151,7 +152,7 @@ class BdReadAloudService : BaseReadAloudService() {
             val chapterContent = loadChapterContent()
             val generated = if (chapterContent != null) {
                 runCatching {
-                    AiTtsStoryboardHelper.getOrGenerate(book, chapter.index, chapterTitle, chapterContent)
+                    AiTtsStoryboardHelper.getOrGenerate(book, chapter.chapter.index, chapterTitle, chapterContent)
                 }.onFailure { error ->
                     if (error is CancellationException) return@launch
                     AppLog.put("[百度TTS][AI分镜] 生成失败，本章回退旁白/对白池\n${error.localizedMessage}")
@@ -161,12 +162,12 @@ class BdReadAloudService : BaseReadAloudService() {
             }
             if (generated != null) {
                 AppLog.putDebug(
-                    "[百度TTS][AI分镜] 分镜就绪：第${chapter.index + 1}章 ${chapterTitle}，" +
+                    "[百度TTS][AI分镜] 分镜就绪：第${chapter.chapter.index + 1}章 ${chapterTitle}，" +
                         "段落 ${generated.paragraphs.size} 段"
                 )
-                val synced = BookTtsCastingCoordinator.syncCastRoles(workKey, chapter.index, generated)
+                val synced = BookTtsCastingCoordinator.syncCastRoles(workKey, chapter.chapter.index, generated)
                 storyboard = synced
-                storyboardChapterIndex = chapter.index
+                storyboardChapterIndex = chapter.chapter.index
                 val automation = BookTtsAutomationConfig.get(workKey)
                 if (automation.autoAssignVoices) {
                     runCatching { BookTtsCastingCoordinator.assignMissingVoices(workKey) }
@@ -178,7 +179,7 @@ class BdReadAloudService : BaseReadAloudService() {
             if (!isRun || pause || playingIndex != nowSpeak) return@launch
             if (storyboard != null) {
                 startStoryboardSegments(record, workKey)
-                scheduleStoryboardPreload(book, chapter.index)
+                scheduleStoryboardPreload(book, chapter.chapter.index)
             } else {
                 segmentQueue = BdMultiVoice.expand(text, record)
                 segmentIndex = 0

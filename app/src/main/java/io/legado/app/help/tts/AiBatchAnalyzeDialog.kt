@@ -10,6 +10,7 @@ import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.data.appDb
 import io.legado.app.databinding.DialogAiBatchAnalyzeBinding
+import io.legado.app.help.ai.AiStoryboardConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.model.ReadBook
 import io.legado.app.utils.setLayout

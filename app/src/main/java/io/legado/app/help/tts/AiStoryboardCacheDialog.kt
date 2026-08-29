@@ -12,6 +12,7 @@ import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.databinding.DialogAiStoryboardCacheBinding
 import io.legado.app.databinding.ItemAiStoryboardCacheBinding
+import io.legado.app.help.ai.AiStoryboardConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.widget.recycler.VerticalDivider
