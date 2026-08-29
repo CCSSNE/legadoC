@@ -161,13 +161,22 @@ object ReadAloud {
         }
         ReadAloudEngines.byId(selected)?.let { plugin ->
             httpTTS = null
+            val unavailableReason = plugin.unavailableReason
+            if (unavailableReason != null) {
+                // 内置引擎运行依赖未就绪（如百度引擎未导入语音包）：明示后回退系统 TTS，不静默失效。
+                reportUnavailableEngine(
+                    selected,
+                    "朗读引擎「${plugin.engineLabel}」不可用：$unavailableReason，已回退系统 TTS"
+                )
+                return TTSReadAloudService::class.java
+            }
             return plugin.serviceClass
         }
         httpTTS = null
         // 非 SelectItem JSON 的裸引擎 id 且未被任何插件注册：本构建未内置的引擎
         // （如从别的版本备份恢复的 bdtts 配置），明示后回退系统 TTS，不静默失效。
         if (GSON.fromJsonObject<SelectItem<String>>(selected).getOrNull() == null) {
-            reportUnavailableEngine(selected)
+            reportUnavailableEngine(selected, "朗读引擎「$selected」未内置在本版本，已回退系统 TTS")
         }
         return TTSReadAloudService::class.java
     }
@@ -248,12 +257,11 @@ object ReadAloud {
         appCtx.toastOnUi(message)
     }
 
-    /** 已提示过的缺失引擎 id：同一 id 只提示一次，避免逐段朗读刷 toast。 */
+    /** 已提示过的不可用引擎 id：同一 id 只提示一次，避免逐段朗读刷 toast。 */
     @Volatile
     private var lastUnavailableEngineReported: String? = null
 
-    private fun reportUnavailableEngine(engineId: String) {
-        val message = "朗读引擎「$engineId」未内置在本版本，已回退系统 TTS"
+    private fun reportUnavailableEngine(engineId: String, message: String) {
         AppLog.put(message)
         if (lastUnavailableEngineReported != engineId) {
             lastUnavailableEngineReported = engineId

@@ -662,9 +662,34 @@ class TTSReadAloudService : BaseReadAloudService() {
             retryParagraphKey = null
             retryingTtsInit = false
             activeUtteranceId = null
+            reportInitFailure()
             toastOnUi(R.string.tts_init_failed)
             pauseReadAloud(false)
         }
+    }
+
+    /**
+     * 初始化失败原因暴露：默认引擎包名 + 本机已装 TTS 引擎清单。
+     * 典型死因：系统默认引擎指向已卸载的应用（如上游宿主 MultiTTS 残留
+     * tts_default_synth 设置），或整机未安装任何 TTS 引擎——
+     * 只报"TTS 初始化失败"无法定位。
+     */
+    private fun reportInitFailure() {
+        val tts = textToSpeech
+        val detail = if (tts == null) {
+            "TTS 实例未创建"
+        } else {
+            runCatching {
+                val engines = tts.engines.map { it.name }
+                val defaultEngine = tts.defaultEngine?.takeIf { it.isNotBlank() } ?: "未设置"
+                "默认引擎：$defaultEngine；" +
+                    if (engines.isEmpty()) "系统未安装任何 TTS 引擎" else "已安装：${engines.joinToString("、")}"
+            }.getOrElse { "诊断信息获取失败：${it.localizedMessage}" }
+        }
+        AppLog.put(
+            "${getString(R.string.tts_init_failed)}\n$detail",
+            module = LogModule.READ_ALOUD,
+        )
     }
 
     private fun restoreOrRememberVoice(tts: TextToSpeech) {

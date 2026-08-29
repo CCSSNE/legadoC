@@ -23,4 +23,10 @@ interface ReadAloudEnginePlugin {
 
     /** 引擎管理页（长按引擎行进入）；null 表示无管理页。 */
     val manageActivityClass: Class<out Activity>?
+
+    /**
+     * 引擎运行时依赖就绪自检：null = 可路由到本引擎；非空 = 不可用原因说明。
+     * 主路由据此明示原因并回退系统 TTS（如百度引擎未导入语音包），不静默失效。
+     */
+    val unavailableReason: String? get() = null
 }
