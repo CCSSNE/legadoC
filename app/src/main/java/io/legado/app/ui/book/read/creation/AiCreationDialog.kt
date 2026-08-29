@@ -131,7 +131,14 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
             AiCreationVariables.parse(AiCreationVariables.defaultJson)
         }
         variableGroups = definition.groups.filter { it.variables.isNotEmpty() }
-        session.params[AI_CREATION_MODE_KEY] = variableGroups.firstOrNull()?.key.orEmpty()
+        //参数有记忆：模式恢复到上次选中的分组，无效或首次使用才回落到第一组
+        val savedMode = session.paramValue(AI_CREATION_MODE_KEY)
+        val initialIndex = variableGroups.indexOfFirst { it.key == savedMode }
+            .takeIf { it >= 0 } ?: 0
+        session.setParam(
+            AI_CREATION_MODE_KEY,
+            variableGroups.getOrNull(initialIndex)?.key.orEmpty()
+        )
         binding.ivClose.setOnClickListener {
             destroyEphemeralCards()
             dismissAllowingStateLoss()
@@ -201,7 +208,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
             override fun onTabSelected(tab: TabLayout.Tab) {
                 val index = binding.tabLayout.selectedTabPosition
                 variableGroups.getOrNull(index)?.let { group ->
-                    session.params[AI_CREATION_MODE_KEY] = group.key
+                    session.setParam(AI_CREATION_MODE_KEY, group.key)
                     buildVariableControls(group)
                 }
             }
@@ -210,7 +217,12 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
 
             override fun onTabReselected(tab: TabLayout.Tab) = Unit
         })
-        variableGroups.firstOrNull()?.let { buildVariableControls(it) }
+        variableGroups.getOrNull(initialIndex)?.let { group ->
+            buildVariableControls(group)
+            if (binding.tabLayout.selectedTabPosition != initialIndex) {
+                binding.tabLayout.getTabAt(initialIndex)?.select()
+            }
+        }
         if (requireArguments().getBoolean(ARG_JUMP_PREVIEW)) {
             showPage(3)
         } else {
@@ -238,7 +250,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
     }
 
     private fun isVideoMode(): Boolean {
-        val mode = session.params[AI_CREATION_MODE_KEY].orEmpty()
+        val mode = session.paramValue(AI_CREATION_MODE_KEY).orEmpty()
         return mode == AiCreationVariables.GROUP_VIDEO
     }
 
@@ -298,7 +310,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
     }
 
     private fun currentParamValue(variable: AiCreationVariable): String {
-        return session.params[variable.key] ?: variable.defaultValue
+        return session.paramValue(variable.key) ?: variable.defaultValue
     }
 
     private fun buildVariableControls(group: AiCreationVariableGroup) {
@@ -331,7 +343,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
             line.addView(
                 chipView(option, option == current).apply {
                     setOnClickListener {
-                        session.params[variable.key] = option
+                        session.setParam(variable.key, option)
                         buildVariableControls(
                             currentGroup()
                                 ?: variableGroups.firstOrNull() ?: return@setOnClickListener
@@ -349,7 +361,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
         binding.llVariables.addView(
             chipView(current, true).apply {
                 setOnClickListener {
-                    session.params[variable.key] = next
+                    session.setParam(variable.key, next)
                     buildVariableControls(
                         currentGroup() ?: variableGroups.firstOrNull() ?: return@setOnClickListener
                     )
@@ -374,8 +386,10 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
         alert(title = variable.label) {
             customView { editBinding.root }
             okButton {
-                session.params[variable.key] =
+                session.setParam(
+                    variable.key,
                     editBinding.editView.text?.toString()?.trim().orEmpty()
+                )
                 buildVariableControls(
                     currentGroup() ?: variableGroups.firstOrNull() ?: return@okButton
                 )
@@ -828,8 +842,10 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
                         appDb.creationCardDao.deleteByBookName(AI_CREATION_EPHEMERAL_BOOK)
                     }
                     session.clear()
-                    session.params[AI_CREATION_MODE_KEY] =
+                    session.setParam(
+                        AI_CREATION_MODE_KEY,
                         variableGroups.firstOrNull()?.key.orEmpty()
+                    )
                     variableGroups.firstOrNull()?.let { buildVariableControls(it) }
                     binding.tabLayout.getTabAt(0)?.select()
                     showPage(0)

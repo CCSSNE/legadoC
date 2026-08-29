@@ -202,7 +202,11 @@ class AiCreationSession {
 
     var bookName: String = ""
 
-    val params = linkedMapOf<String, String>()
+    /**
+     * 第一页参数记忆：构造时载入上次持久化的参数值，
+     * 写入必须经 [setParam] 单一入口实时落盘，读经 [paramValue]。
+     */
+    private val params = AiCreationConfig.loadCreationParams()
 
     val sectionItems = linkedMapOf<String, MutableList<CreationSectionItem>>()
 
@@ -212,6 +216,14 @@ class AiCreationSession {
     var pendingLink: String? = null
 
     var prompt: String = ""
+
+    fun paramValue(key: String): String? = params[key]
+
+    /** 参数唯一写入口：写内存的同时持久化，应用重启后仍保留上次值 */
+    fun setParam(key: String, value: String) {
+        params[key] = value
+        AiCreationConfig.saveCreationParams(params)
+    }
 
     fun itemsOf(section: String): MutableList<CreationSectionItem> =
         sectionItems.getOrPut(section) { mutableListOf() }
@@ -258,6 +270,8 @@ class AiCreationSession {
         linkGroups.clear()
         pendingLink = null
         prompt = ""
+        //清空即恢复出厂参数记忆，持久层一并清掉
+        AiCreationConfig.saveCreationParams(emptyMap())
     }
 
     fun sectionLabel(section: String): String = when (section) {

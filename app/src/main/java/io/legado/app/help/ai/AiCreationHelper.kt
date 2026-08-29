@@ -48,9 +48,9 @@ object AiCreationHelper {
         variables: List<AiCreationVariable>
     ): Map<String, String> {
         val values = linkedMapOf<String, String>()
-        values[AI_CREATION_MODE_KEY] = session.params[AI_CREATION_MODE_KEY].orEmpty()
+        values[AI_CREATION_MODE_KEY] = session.paramValue(AI_CREATION_MODE_KEY).orEmpty()
         variables.forEach { variable ->
-            values[variable.key] = session.params[variable.key] ?: variable.defaultValue
+            values[variable.key] = session.paramValue(variable.key) ?: variable.defaultValue
         }
         AiCreationConfig.sectionOrder.forEach { section ->
             values[session.sectionLabel(section)] = sectionText(session, section, cardsById)

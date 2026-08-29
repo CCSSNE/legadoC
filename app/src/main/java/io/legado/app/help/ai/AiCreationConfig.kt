@@ -345,6 +345,30 @@ object AiCreationConfig {
         }
     }
 
+    /**
+     * 创作界面第一页参数记忆的唯一持久化入口：
+     * 变量值（含 mode 保留键）整体存为一个 JSON 对象，会话写参数时实时落盘，
+     * 应用重启后由 AiCreationSession 初始化载入，实现"上次是啥下次还是啥"。
+     */
+    fun loadCreationParams(): LinkedHashMap<String, String> {
+        val json = appCtx.getPrefString(PreferKey.aiCreationParams).orEmpty()
+        if (json.isBlank()) return linkedMapOf()
+        val obj = JSONObject(json)
+        val result = linkedMapOf<String, String>()
+        for (key in obj.keys()) {
+            result[key] = obj.optString(key)
+        }
+        return result
+    }
+
+    fun saveCreationParams(params: Map<String, String>) {
+        val obj = JSONObject()
+        for ((key, value) in params) {
+            obj.put(key, value)
+        }
+        appCtx.putPrefString(PreferKey.aiCreationParams, obj.toString())
+    }
+
     fun defaultScopeOf(section: String): String = when (section) {
         SECTION_NOTE -> SCOPE_SESSION
         // 选中文本卡片默认一次性：随创作界面关闭或清空动作销毁，长按条暂存可连续累积多张
