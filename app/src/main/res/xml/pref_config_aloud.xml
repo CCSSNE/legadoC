@@ -74,7 +74,7 @@
              与上面的强制追页正交：强制追页决定“翻到哪页读哪页”，
              页首按段决定“这一页的页首落在哪”。 -->
         <io.legado.app.lib.prefs.SwitchPreference
-            android:defaultValue="true"
+            android:defaultValue="false"
             android:key="readAloudPageStartAtParagraph"
             android:summary="@string/read_aloud_page_start_at_paragraph_summary"
             android:title="@string/read_aloud_page_start_at_paragraph"
