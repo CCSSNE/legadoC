@@ -50,8 +50,7 @@ import java.io.FileOutputStream
 class BdEngineManageActivity : BaseActivity<BdEngineManageActivity.ContentBinding>() {
 
     class ContentBinding(private val contentView: View) : ViewBinding {
-        override val root: View
-            get() = contentView
+        override fun getRoot(): View = contentView
     }
 
     override val binding: ContentBinding by lazy { ContentBinding(buildContentView()) }
