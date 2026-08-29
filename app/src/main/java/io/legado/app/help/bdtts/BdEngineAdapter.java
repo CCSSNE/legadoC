@@ -36,7 +36,6 @@ public class BdEngineAdapter implements BdTtsEngine, OnNewDataListener {
     private final String speakerCode;
     private final BdSpeakerParam param;
 
-    private final String resPrefix;
     private final String licenceDatPath;
     private String textDatPath;
     private String speechDatPath;
@@ -176,8 +175,6 @@ public class BdEngineAdapter implements BdTtsEngine, OnNewDataListener {
             } else {
                 cb.onError("synth ret=" + err.getRet() + " " + err.getMessage());
             }
-        } catch (InterruptedException e) {
-            cb.onDone("Task Interrupted.");
         }
     }
 
