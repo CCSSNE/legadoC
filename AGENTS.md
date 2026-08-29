@@ -197,6 +197,13 @@ $versionName = '3.26.<MMddHH>' # <MMddHH> uses UTC; appC automatically appends c
 - 仅当用户明确点名"开源编译/发布编译/oss 编译"时，才执行 `assembleOssRelease`：同样传 `-PVERSION_CODE`/`-PVERSION_NAME`（版本名不带 `c`，oss flavor 无后缀），产物在 `app\build\outputs\apk\oss\release\`；验证用同一套 `aapt`/`apksigner` 流程，但身份预期不同——包名 `io.legado.app.refgd`、中文名"阅读"（繁中"閱讀"）、版本名无后缀。不得把 ossRelease 当作阅读C 的交付物，也不得用 appC 冒充开源发布包。
 - 用户明确要求"双编译"时，两个构建都执行：先自用 `assembleAppC`，再开源 `assembleOssRelease`，各自完整走一遍版本传参与产物验证；两包包名不同，同版本号互不影响覆盖安装。
 
+开源源码发布（上传屏蔽）：
+
+- 源码可以公开上传：专有/自用代码 100% 集中在 `app/src/app`（百度引擎源码、com.baidu SDK、jniLibs so、flavor manifest、插件引导实现），主代码仅剩注释与日志关键词文本，无代码级泄露；`gradle.properties` 无密钥（签名全靠构建时传参）。
+- **严禁把 `own` 分支直接 push 到公开仓库**：历史提交含 `app/src/app` 与 so，push 分支即泄露全部历史版本。
+- 发布统一走仓库根 `publish-oss-source.ps1`：导出 HEAD 已跟踪文件 → 删除排除清单（`app/src/app`、`AGENTS.md`、`docs`、`tools`）→ 向 `app/src/app` 注入 `src/oss` 的空壳 AppPlugins（同 FQCN no-op，保证公开树全部变体可编译）→ 单提交"同步开源版源码（own @ 短SHA）"推到公开仓库分支。公开仓库历史永不含专有内容；协作者 PR 提到公开仓库，由自己评审后人工搬回 own。
+- 排除清单改动必须同步脚本头部注释与本节；新增专有功能若不放在 `app/src/app`，必须先更新排除清单再发布。assets 里的"百度汉语"词典规则与默认 HTTP TTS 源属于上游 legado 公开内容，不算专有代码，照常发布。
+
 ### 产物验证
 
 ```powershell
