@@ -383,12 +383,10 @@
     <string name="ai_creation_empty_section">No cards</string>
     <string name="ai_creation_linked">Linked</string>
     <string name="ai_creation_linking">Linking…</string>
-    <string name="ai_creation_link">Link</string>
     <string name="ai_creation_unlink">Unlink</string>
     <string name="ai_creation_remove">Remove</string>
-    <string name="ai_creation_linking_hint">Tap a card in another section to link</string>
-    <string name="ai_creation_link_same_section">Only cards in different sections can be linked</string>
-    <string name="ai_creation_link_done">Cards linked</string>
+    <string name="ai_creation_linking_hint">Tap or long-press another section name to link</string>
+    <string name="ai_creation_link_done">Sections linked</string>
     <string name="ai_creation_link_removed">Link removed</string>
     <string name="ai_creation_select_card_first">Add at least one material card</string>
     <string name="ai_creation_new_card">New card</string>

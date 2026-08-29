@@ -382,12 +382,10 @@
     <string name="ai_creation_empty_section">暂无卡片</string>
     <string name="ai_creation_linked">已连线</string>
     <string name="ai_creation_linking">连线中</string>
-    <string name="ai_creation_link">连线</string>
     <string name="ai_creation_unlink">取消连线</string>
     <string name="ai_creation_remove">移除</string>
-    <string name="ai_creation_linking_hint">请点击另一分区中的卡片完成连线</string>
-    <string name="ai_creation_link_same_section">只能连线不同分区的卡片</string>
-    <string name="ai_creation_link_done">已连线</string>
+    <string name="ai_creation_linking_hint">请点击或长按另一分区的名称完成连线</string>
+    <string name="ai_creation_link_done">分区已连线</string>
     <string name="ai_creation_link_removed">已取消连线</string>
     <string name="ai_creation_select_card_first">请先添加素材卡片</string>
     <string name="ai_creation_new_card">新建卡片</string>

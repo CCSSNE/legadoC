@@ -433,7 +433,21 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
             AccentTextView(requireContext(), null).apply {
                 text = label
                 textSize = 15f
-                layoutParams = LinearLayout.LayoutParams(0, dp(24), 1f)
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, dp(24)
+                )
+                //分区名即连线按钮：长按发起连线，再点另一分区名完成连线
+                setOnClickListener { onSectionLabelClick(section) }
+                setOnLongClickListener {
+                    onSectionLabelLongClick(section)
+                    true
+                }
+            }
+        )
+        header.addView(linkStateView(section))
+        header.addView(
+            View(requireContext()).apply {
+                layoutParams = LinearLayout.LayoutParams(0, 1, 1f)
             }
         )
         header.addView(
@@ -460,6 +474,61 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
         binding.llSections.addView(flow)
     }
 
+    private fun linkStateView(section: String): TextView {
+        val pending = session.pendingLink
+        val text = when {
+            pending == section -> getString(R.string.ai_creation_linking)
+            session.isSectionLinked(section) -> getString(R.string.ai_creation_linked)
+            else -> ""
+        }
+        return TextView(requireContext()).apply {
+            this.text = text
+            textSize = 9f
+            setTextColor(context.accentColor)
+            setPadding(dp(6), 0, 0, 0)
+            visibility = if (text.isEmpty()) View.GONE else View.VISIBLE
+        }
+    }
+
+    private fun onSectionLabelClick(section: String) {
+        val pending = session.pendingLink ?: return
+        if (pending == section) {
+            session.pendingLink = null
+        } else {
+            val linked = session.toggleLink(pending, section)
+            toastOnUi(
+                getString(
+                    if (linked) R.string.ai_creation_link_done
+                    else R.string.ai_creation_link_removed
+                )
+            )
+            session.pendingLink = null
+        }
+        rebuildSections()
+    }
+
+    private fun onSectionLabelLongClick(section: String) {
+        if (session.pendingLink != null) {
+            onSectionLabelClick(section)
+            return
+        }
+        if (session.isSectionLinked(section)) {
+            requireContext().selector(
+                AiCreationSessionHolder.session.sectionLabel(section),
+                listOf(getString(R.string.ai_creation_unlink))
+            ) { _, _, _ ->
+                session.linkGroups.removeAll { group ->
+                    group.sections.contains(section)
+                }
+                rebuildSections()
+            }
+        } else {
+            session.pendingLink = section
+            toastOnUi(R.string.ai_creation_linking_hint)
+            rebuildSections()
+        }
+    }
+
     private fun hintView(text: String): TextView {
         return TextView(requireContext()).apply {
             this.text = text
@@ -470,10 +539,6 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
     }
 
     private fun cardTile(item: CreationSectionItem): View {
-        val pending = session.pendingLink
-        val isPendingTarget = pending != null &&
-            pending.cardId == item.cardId && pending.section == item.section
-        val linked = session.isLinked(item.section, item.cardId)
         val tile = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -484,11 +549,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
             background = GradientDrawable().apply {
                 cornerRadius = dp(8).toFloat()
                 setColor(context.backgroundColor)
-                when {
-                    isPendingTarget -> setStroke(dp(2), context.accentColor)
-                    linked -> setStroke(dp(2), Color.parseColor("#66808080"))
-                    else -> setStroke(dp(1), Color.parseColor("#33808080"))
-                }
+                setStroke(dp(1), Color.parseColor("#33808080"))
             }
         }
         val nameView = TextView(requireContext()).apply {
@@ -504,22 +565,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
             }
         }
         tile.addView(nameView)
-        if (linked || isPendingTarget) {
-            tile.addView(
-                TextView(requireContext()).apply {
-                    text = getString(
-                        if (isPendingTarget) {
-                            R.string.ai_creation_linking
-                        } else {
-                            R.string.ai_creation_linked
-                        }
-                    )
-                    textSize = 9f
-                    setTextColor(context.accentColor)
-                }
-            )
-        }
-        tile.setOnClickListener { onTileClick(item) }
+        tile.setOnClickListener { openCardEditor(item.cardId) }
         tile.setOnLongClickListener {
             showTileMenu(item)
             true
@@ -527,32 +573,9 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
         return tile
     }
 
-    private fun onTileClick(item: CreationSectionItem) {
-        val pending = session.pendingLink
-        if (pending != null && (pending.cardId != item.cardId || pending.section != item.section)) {
-            if (pending.section == item.section) {
-                toastOnUi(R.string.ai_creation_link_same_section)
-                session.pendingLink = null
-            } else {
-                val linked = session.toggleLink(pending, item)
-                toastOnUi(
-                    getString(
-                        if (linked) R.string.ai_creation_link_done else R.string.ai_creation_link_removed
-                    )
-                )
-            }
-            rebuildSections()
-            return
-        }
-        session.pendingLink = null
-        openCardEditor(item.cardId)
-    }
-
     private fun showTileMenu(item: CreationSectionItem) {
-        val linked = session.isLinked(item.section, item.cardId)
         val actions = listOf(
             getString(R.string.edit),
-            getString(if (linked) R.string.ai_creation_unlink else R.string.ai_creation_link),
             getString(R.string.ai_creation_remove)
         )
         requireContext().selector(
@@ -562,18 +585,6 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
             when (action) {
                 0 -> openCardEditor(item.cardId)
                 1 -> {
-                    if (linked) {
-                        session.linkGroups.removeAll { group ->
-                            group.refs.contains(item)
-                        }
-                        rebuildSections()
-                    } else {
-                        session.pendingLink = item
-                        toastOnUi(R.string.ai_creation_linking_hint)
-                        rebuildSections()
-                    }
-                }
-                2 -> {
                     session.removeCard(item.section, item.cardId)
                     rebuildSections()
                 }

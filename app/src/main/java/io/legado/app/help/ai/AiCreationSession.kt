@@ -190,8 +190,12 @@ data class CreationSectionItem(
     val section: String
 )
 
+/**
+ * 连线的对象是分区（素材类型），不是分区里的卡片：
+ * 被连到一起的分区，其全部卡片在生成素材时合并为一条「背景加场景」式的条目。
+ */
 data class CreationLinkGroup(
-    val refs: List<CreationSectionItem>
+    val sections: List<String>
 )
 
 class AiCreationSession {
@@ -204,7 +208,8 @@ class AiCreationSession {
 
     val linkGroups = mutableListOf<CreationLinkGroup>()
 
-    var pendingLink: CreationSectionItem? = null
+    /** 待连线的分区（长按分区名进入连线状态后记录） */
+    var pendingLink: String? = null
 
     var prompt: String = ""
 
@@ -220,33 +225,32 @@ class AiCreationSession {
 
     fun removeCard(section: String, cardId: Long) {
         itemsOf(section).removeAll { it.cardId == cardId }
-        linkGroups.removeAll { group ->
-            group.refs.any { it.section == section && it.cardId == cardId }
-        }
-        if (pendingLink?.cardId == cardId && pendingLink?.section == section) {
-            pendingLink = null
-        }
     }
 
-    fun toggleLink(source: CreationSectionItem, target: CreationSectionItem): Boolean {
+    fun isSectionLinked(section: String): Boolean =
+        linkGroups.any { group -> group.sections.contains(section) }
+
+    /**
+     * 连线/取消连线两个分区：已直接相连则断开；否则合并两者所在的链接组
+     * （各自已在别的组里则把两组并成一组），都不在组里则新建一组。
+     */
+    fun toggleLink(sourceSection: String, targetSection: String): Boolean {
         val existing = linkGroups.indexOfFirst { group ->
-            group.refs.contains(source) && group.refs.contains(target)
+            group.sections.contains(sourceSection) && group.sections.contains(targetSection)
         }
         if (existing >= 0) {
             linkGroups.removeAt(existing)
             return false
         }
-        linkGroups.removeAll { group ->
-            group.refs.contains(source) || group.refs.contains(target)
-        }
-        linkGroups.add(CreationLinkGroup(listOf(source, target)))
+        val sourceGroup = linkGroups.firstOrNull { it.sections.contains(sourceSection) }
+        val targetGroup = linkGroups.firstOrNull { it.sections.contains(targetSection) }
+        linkGroups.removeAll { group -> group === sourceGroup || group === targetGroup }
+        val merged = ((sourceGroup?.sections ?: emptyList()) +
+            (targetGroup?.sections ?: emptyList()) +
+            listOf(sourceSection, targetSection)).distinct()
+        linkGroups.add(CreationLinkGroup(merged))
         return true
     }
-
-    fun isLinked(section: String, cardId: Long): Boolean =
-        linkGroups.any { group ->
-            group.refs.contains(CreationSectionItem(cardId, section))
-        }
 
     fun clear() {
         params.clear()
@@ -267,38 +271,43 @@ class AiCreationSession {
 
     fun buildMaterialText(cardsById: Map<Long, CreationCard>): String {
         val builder = StringBuilder()
-        val emittedGroups = mutableSetOf<Int>()
+        val emittedSections = mutableSetOf<String>()
         AiCreationConfig.sectionOrder.forEach { section ->
-            val items = sectionItems[section].orEmpty()
-            val plain = mutableListOf<CreationSectionItem>()
-            items.forEach { item ->
-                val groupIndex = linkGroups.indexOfFirst { it.refs.contains(item) }
-                if (groupIndex >= 0) {
-                    if (emittedGroups.add(groupIndex)) {
-                        val group = linkGroups[groupIndex]
-                        val label = group.refs.distinctBy { it.section }
-                            .joinToString("加") { sectionLabel(it.section) }
-                        val contents = group.refs.mapNotNull { cardsById[it.cardId] }
-                            .distinctBy { it.cardId }
-                            .map { it.content.trim() }
-                            .filter { it.isNotEmpty() }
-                            .distinct()
-                        if (contents.isNotEmpty()) {
-                            appendEntry(builder, label, contents)
-                        }
-                    }
-                } else {
-                    plain.add(item)
-                }
+            if (!emittedSections.add(section)) {
+                return@forEach
             }
-            val plainContents = plain.mapNotNull { cardsById[it.cardId] }
-                .map { it.content.trim() }
-                .filter { it.isNotEmpty() }
-            if (plainContents.isNotEmpty()) {
-                appendEntry(builder, sectionLabel(section), plainContents)
+            val items = sectionItems[section].orEmpty()
+            if (items.isEmpty()) {
+                return@forEach
+            }
+            val group = linkGroups.firstOrNull { it.sections.contains(section) }
+            if (group == null) {
+                appendSectionContents(builder, listOf(section), cardsById)
+            } else {
+                //连线组：把组内所有分区的卡片合并为一条「背景加场景」式条目
+                val sections = AiCreationConfig.sectionOrder.filter { group.sections.contains(it) }
+                emittedSections.addAll(sections)
+                appendSectionContents(builder, sections, cardsById)
             }
         }
         return builder.toString().trim()
+    }
+
+    private fun appendSectionContents(
+        builder: StringBuilder,
+        sections: List<String>,
+        cardsById: Map<Long, CreationCard>
+    ) {
+        val label = sections.joinToString("加") { sectionLabel(it) }
+        val contents = sections.flatMap { sectionItems[it].orEmpty() }
+            .mapNotNull { cardsById[it.cardId] }
+            .distinctBy { it.cardId }
+            .map { it.content.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+        if (contents.isNotEmpty()) {
+            appendEntry(builder, label, contents)
+        }
     }
 
     private fun appendEntry(builder: StringBuilder, label: String, contents: List<String>) {
