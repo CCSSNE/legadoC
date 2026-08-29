@@ -19,6 +19,7 @@ import io.legado.app.data.dao.BookIllustrationDao
 import io.legado.app.data.dao.BookSourceDao
 import io.legado.app.data.dao.BookShortcutDao
 import io.legado.app.data.dao.CreationCardDao
+import io.legado.app.data.dao.CreationResultDao
 import io.legado.app.data.dao.BookmarkDao
 import io.legado.app.data.dao.CacheDao
 import io.legado.app.data.dao.CookieDao
@@ -50,6 +51,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.BookShortcut
 import io.legado.app.data.entities.CreationCard
+import io.legado.app.data.entities.CreationResult
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.data.entities.Cache
 import io.legado.app.data.entities.Cookie
@@ -84,7 +86,7 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 108,
+    version = 109,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
         BookCollection::class, BookCollectionItem::class, BookCollectionChild::class,
@@ -94,7 +96,7 @@ val appDb by lazy {
         HttpTTS::class, Cache::class, BookIllustration::class,
         RuleSub::class, DictRule::class, KeyboardAssist::class, Server::class,
         ReadRecentBook::class, AiChapterPurifyRecord::class, BookShortcut::class,
-        CreationCard::class],
+        CreationCard::class, CreationResult::class],
     views = [BookSourcePart::class],
     autoMigrations = [
         AutoMigration(from = 43, to = 44),
@@ -152,6 +154,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract val bookCollectionDao: BookCollectionDao
     abstract val bookShortcutDao: BookShortcutDao
     abstract val creationCardDao: CreationCardDao
+    abstract val creationResultDao: CreationResultDao
     abstract val bookGroupDao: BookGroupDao
     abstract val bookIllustrationDao: BookIllustrationDao
     abstract val bookSourceDao: BookSourceDao

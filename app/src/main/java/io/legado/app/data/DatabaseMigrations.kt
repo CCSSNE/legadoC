@@ -29,7 +29,22 @@ object DatabaseMigrations {
             migration_105_106,
             migration_106_107,
             migration_107_108,
+            migration_108_109,
         )
+    }
+
+    private val migration_108_109 = object : Migration(108, 109) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `creation_results` (
+                    `resultId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `fileName` TEXT NOT NULL,
+                    `createdAt` INTEGER NOT NULL
+                )
+                """.trimIndent()
+            )
+        }
     }
 
     private val migration_107_108 = object : Migration(107, 108) {
