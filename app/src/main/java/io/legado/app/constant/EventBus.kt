@@ -59,4 +59,5 @@ object EventBus {
     const val BOOKMARK_CHANGED = "bookmarkChanged"
     const val UP_VIDEO_INFO = "upVideoInfo"
     const val AI_LOGS_CHANGED = "aiLogsChanged"
+    const val CONTENT_SELECT_MENU_CONFIG_CHANGED = "contentSelectMenuConfigChanged"
 }
