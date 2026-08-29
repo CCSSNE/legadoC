@@ -327,7 +327,8 @@ object AiCreationConfig {
 
     fun defaultScopeOf(section: String): String = when (section) {
         SECTION_NOTE -> SCOPE_SESSION
-        SECTION_SELECTED_TEXT -> SCOPE_BOOK
+        // 选中文本卡片默认一次性：随 AI 创作清空销毁，长按条暂存可连续累积多张
+        SECTION_SELECTED_TEXT -> SCOPE_SESSION
         else -> SCOPE_GLOBAL
     }
 }
