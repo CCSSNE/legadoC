@@ -28,7 +28,7 @@ class ContentSelectMenuConfigDialog : BaseDialogFragment(R.layout.dialog_content
 
     companion object {
         private const val DEFAULT_ACTIONS =
-            "replace,copy,bookmark,paragraph_bookmark,aloud,dict,ask_ai,ai_create"
+            "replace,copy,bookmark,paragraph_bookmark,aloud,ai_create"
         private val defaultOpenValues = listOf("", "dict", "ask_ai")
         private val removedActionIds = setOf("generate_image")
     }
