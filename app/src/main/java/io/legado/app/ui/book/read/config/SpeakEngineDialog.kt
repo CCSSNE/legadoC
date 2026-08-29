@@ -111,6 +111,30 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
                 ivEdit.gone()
                 ivMenuDelete.gone()
                 labelSys.visible()
+                cbName.text = "本地百度 TTS"
+                cbName.tag = ReadAloud.BAIDU_ENGINE_ID
+                cbName.isChecked = ttsEngine == ReadAloud.BAIDU_ENGINE_ID
+                cbName.setOnClickListener {
+                    upTts(ReadAloud.BAIDU_ENGINE_ID)
+                }
+                cbName.setOnLongClickListener {
+                    startActivity(
+                        android.content.Intent(
+                            requireContext(),
+                            io.legado.app.ui.book.read.config.BdEngineManageActivity::class.java
+                        )
+                    )
+                    true
+                }
+            }
+        }
+        adapter.addHeaderView {
+            ItemHttpTtsBinding.inflate(layoutInflater, recyclerView, false).apply {
+                root.applyUiBodyTypefaceDeep(requireContext().uiTypeface())
+                sysTtsViews.add(cbName)
+                ivEdit.gone()
+                ivMenuDelete.gone()
+                labelSys.visible()
                 cbName.text = "系统默认"
                 cbName.tag = ""
                 cbName.isChecked = ttsEngine == null || ttsEngine!!.isJsonObject()
