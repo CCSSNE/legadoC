@@ -57,12 +57,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     const val DEFAULT_AI_PROVIDER_NAME = "opencode-zen"
     const val DEFAULT_AI_PROVIDER_BASE_URL = "https://opencode.ai/zen/v1"
     const val DEFAULT_AI_PROVIDER_API_KEY = "public"
-    const val DEFAULT_AI_PROVIDER_HEADERS =
-        "已移除\n" +
-            "已移除\n" +
-            "已移除\n" +
-            "已移除\n" +
-            "已移除"
     const val DEFAULT_AI_MODEL_ID = "big-pickle"
 
     val isCronet = appCtx.getPrefBoolean(PreferKey.cronet)
@@ -1066,8 +1060,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             val provider = AiProviderConfig(
                 name = DEFAULT_AI_PROVIDER_NAME,
                 baseUrl = DEFAULT_AI_PROVIDER_BASE_URL,
-                apiKey = DEFAULT_AI_PROVIDER_API_KEY,
-                headers = DEFAULT_AI_PROVIDER_HEADERS
+                apiKey = DEFAULT_AI_PROVIDER_API_KEY
             )
             val model = AiModelConfig(providerId = provider.id, modelId = DEFAULT_AI_MODEL_ID)
             persistAiProviders(listOf(provider))
