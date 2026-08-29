@@ -2,6 +2,7 @@ package io.legado.app.ui.book.read.creation
 
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.content.DialogInterface
 import android.content.Intent
 import android.os.Bundle
 import android.text.InputType
@@ -108,6 +109,12 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
         AiCreationImageTaskHolder.setUiVisible(false)
     }
 
+    override fun onCancel(dialog: DialogInterface) {
+        super.onCancel(dialog)
+        //系统返回键或触屏外部关闭创作界面，同样视作会话结束
+        destroyEphemeralCards()
+    }
+
     override fun onResume() {
         super.onResume()
         if (currentPage == 1) {
@@ -125,7 +132,10 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
         }
         variableGroups = definition.groups.filter { it.variables.isNotEmpty() }
         session.params[AI_CREATION_MODE_KEY] = variableGroups.firstOrNull()?.key.orEmpty()
-        binding.ivClose.setOnClickListener { dismissAllowingStateLoss() }
+        binding.ivClose.setOnClickListener {
+            destroyEphemeralCards()
+            dismissAllowingStateLoss()
+        }
         binding.ivBack.setOnClickListener { onBack() }
         binding.tvAction.setOnClickListener { onAction() }
         binding.tvClear.setOnClickListener {
@@ -210,6 +220,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
 
     private fun onBack() {
         if (currentPage >= 3) {
+            destroyEphemeralCards()
             dismissAllowingStateLoss()
             return
         }
@@ -814,6 +825,30 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
                 }
             }
             cancelButton()
+        }
+    }
+
+    /**
+     * 「一次性」素材的生命周期锚点：创作界面关闭即销毁临时分区全部卡片，
+     * 并把删除的卡片从当前会话摘除（分区条目、链接组、待链接引用一并清理）。
+     * 先取 ID 快照再按 ID 删除，避免误删关闭动作之后才重新暂存的新卡片；
+     * 销毁协程挂在宿主 Activity 上，防止界面销毁把协程一并取消。
+     */
+    private fun destroyEphemeralCards() {
+        requireActivity().lifecycleScope.launch {
+            val cardIds = withContext(IO) {
+                appDb.creationCardDao.getIdsByBookName(AI_CREATION_EPHEMERAL_BOOK)
+            }
+            if (cardIds.isNotEmpty()) {
+                withContext(IO) {
+                    cardIds.forEach { appDb.creationCardDao.deleteById(it) }
+                }
+            }
+            cardIds.forEach { cardId ->
+                AiCreationConfig.sectionOrder.forEach { section ->
+                    session.removeCard(section, cardId)
+                }
+            }
         }
     }
 

@@ -36,6 +36,9 @@ interface CreationCardDao {
     @Query("delete from creation_cards where bookName = :bookName")
     fun deleteByBookName(bookName: String)
 
+    @Query("select cardId from creation_cards where bookName = :bookName")
+    fun getIdsByBookName(bookName: String): List<Long>
+
     @Query(
         "select * from creation_cards " +
             "where section = :section and bookName in ('', :bookName) " +

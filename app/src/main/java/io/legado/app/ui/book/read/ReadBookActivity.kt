@@ -1343,7 +1343,7 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     /**
      * 暂存：只把选中文本落成选中文本卡片挂入会话，不进入 AI 创作界面，
-     * 因此不触发任何销毁流程；销毁仍只发生在 AI 创作界面的清空动作
+     * 因此不触发任何销毁流程；销毁发生在 AI 创作界面关闭或其清空动作
      */
     private fun stageSelectedText() {
         val text = selectedText.trim()

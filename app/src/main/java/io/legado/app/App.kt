@@ -37,6 +37,7 @@ import io.legado.app.help.DefaultData
 import io.legado.app.help.DispatchersMonitor
 import io.legado.app.help.LifecycleHelp
 import io.legado.app.help.RuleBigDataHelp
+import io.legado.app.help.ai.AI_CREATION_EPHEMERAL_BOOK
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
@@ -105,6 +106,9 @@ class App : Application() {
             BookCover.toString()
             //清除过期数据
             appDb.cacheDao.clearDeadline(System.currentTimeMillis())
+            //「一次性」创作素材不跨进程存活：清掉上次进程遗留的临时分区卡片
+            //（正常关闭创作界面时已销毁，这里兜底进程被直接杀死的场景）
+            appDb.creationCardDao.deleteByBookName(AI_CREATION_EPHEMERAL_BOOK)
             if (getPrefBoolean(PreferKey.autoClearExpired, true)) {
                 val clearTime = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(1)
                 appDb.searchBookDao.clearExpired(clearTime)
