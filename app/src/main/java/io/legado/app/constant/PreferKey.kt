@@ -81,6 +81,7 @@ object PreferKey {
     const val aiAssistantEnabled = "aiAssistantEnabled"
     const val aiProviderList = "aiProviderList"
     const val aiCurrentProviderId = "aiCurrentProviderId"
+    const val aiDefaultConfigSeeded = "aiDefaultConfigSeeded"
     const val aiModelConfigList = "aiModelConfigList"
     const val aiCurrentModelId = "aiCurrentModelId"
     const val aiMcpServerList = "aiMcpServerList"
