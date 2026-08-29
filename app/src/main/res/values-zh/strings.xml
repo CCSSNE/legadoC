@@ -436,6 +436,7 @@
     <string name="ai_creation_image_api_key">图片 API Key</string>
     <string name="ai_creation_image_api_key_summary">配置生图 API 密钥</string>
     <string name="ai_creation_image_api_key_summary_ready">已配置</string>
+    <string name="ai_creation_image_api_key_guide">获取智谱 API Key（免费生图api）</string>
     <string name="ai_creation_image_model">图片模型</string>
     <string name="ai_creation_image_model_hint">如 dall-e-3</string>
     <string name="ai_creation_image_request_template">图片请求模板</string>

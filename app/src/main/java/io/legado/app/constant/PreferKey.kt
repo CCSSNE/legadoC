@@ -132,6 +132,7 @@ object PreferKey {
     const val aiCreationScopeCharacter = "aiCreationScopeCharacter"
     const val aiCreationScopeNote = "aiCreationScopeNote"
     const val aiCreationImageUrl = "aiCreationImageUrl"
+    const val aiCreationImageApiKeyGuide = "aiCreationImageApiKeyGuide"
     const val aiCreationImageApiKey = "aiCreationImageApiKey"
     const val aiCreationImageModel = "aiCreationImageModel"
     const val aiCreationImageRequestTemplate = "aiCreationImageRequestTemplate"

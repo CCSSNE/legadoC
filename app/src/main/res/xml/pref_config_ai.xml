@@ -265,6 +265,11 @@
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
+            android:key="aiCreationImageApiKeyGuide"
+            android:title="@string/ai_creation_image_api_key_guide"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
             android:key="aiCreationImageModel"
             android:title="@string/ai_creation_image_model"
             app:iconSpaceReserved="false" />

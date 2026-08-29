@@ -437,6 +437,7 @@
     <string name="ai_creation_image_api_key">Image API key</string>
     <string name="ai_creation_image_api_key_summary">Configure the API key for image generation</string>
     <string name="ai_creation_image_api_key_summary_ready">Configured</string>
+    <string name="ai_creation_image_api_key_guide">Get Zhipu API key (free image generation API)</string>
     <string name="ai_creation_image_model">Image model</string>
     <string name="ai_creation_image_model_hint">e.g. dall-e-3</string>
     <string name="ai_creation_image_request_template">Image request template</string>

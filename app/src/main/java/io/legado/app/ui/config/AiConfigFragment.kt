@@ -45,6 +45,7 @@ import io.legado.app.ui.about.AiLogDialog
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.setEdgeEffectColor
+import io.legado.app.utils.openUrl
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
@@ -191,6 +192,8 @@ class AiConfigFragment : PreferenceFragment(),
             )
             PreferKey.aiCreationImageUrl -> showCreationImageUrlDialog()
             PreferKey.aiCreationImageApiKey -> showCreationImageApiKeyDialog()
+            PreferKey.aiCreationImageApiKeyGuide ->
+                openUrl("https://bigmodel.cn/apikey/platform")
             PreferKey.aiCreationImageModel -> showCreationImageModelDialog()
             PreferKey.aiCreationImageRequestTemplate -> showCreationImageRequestDialog()
             PreferKey.aiCreationImageRetryCount -> showCreationImageRetryDialog()
