@@ -19,6 +19,7 @@ import io.legado.app.databinding.DialogAiMcpServerEditBinding
 import io.legado.app.databinding.DialogAiProviderEditBinding
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.ai.AiChapterPurifyConfig
+import io.legado.app.help.ai.AiStoryboardConfig
 import io.legado.app.help.ai.AiChatService
 import io.legado.app.help.ai.AiCreationConfig
 import io.legado.app.help.ai.AiCreationVariables
@@ -192,6 +193,9 @@ class AiConfigFragment : PreferenceFragment(),
             PreferKey.aiCreationImageModel -> showCreationImageModelDialog()
             PreferKey.aiCreationImageRequestTemplate -> showCreationImageRequestDialog()
             PreferKey.aiCreationImageRetryCount -> showCreationImageRetryDialog()
+            PreferKey.aiStoryboardProviderId -> showSelectStoryboardProviderDialog()
+            PreferKey.aiStoryboardModelId -> showSelectStoryboardModelDialog()
+            PreferKey.aiStoryboardPreloadCount -> showStoryboardPreloadCountDialog()
         }
         return super.onPreferenceTreeClick(preference)
     }
@@ -383,6 +387,53 @@ class AiConfigFragment : PreferenceFragment(),
             models.map { it.modelId }
         ) { _, _, index ->
             AiCreationConfig.independentModelId = models[index].id
+            refreshUi()
+        }
+    }
+
+    private fun showSelectStoryboardProviderDialog() {
+        val providers = AppConfig.aiProviderList
+        if (providers.isEmpty()) {
+            toastOnUi(R.string.ai_no_providers)
+            return
+        }
+        context?.selector(
+            getString(R.string.ai_storyboard_provider),
+            providers.map { it.name }
+        ) { _, _, index ->
+            AiStoryboardConfig.providerId = providers[index].id
+            AiStoryboardConfig.modelConfigId = ""
+            refreshUi()
+        }
+    }
+
+    private fun showSelectStoryboardModelDialog() {
+        val provider = AiStoryboardConfig.provider
+        if (provider == null) {
+            toastOnUi(R.string.ai_chapter_purify_select_provider_first)
+            return
+        }
+        val models = AppConfig.aiModelConfigList.filter { it.providerId == provider.id }
+        if (models.isEmpty()) {
+            toastOnUi(R.string.ai_chapter_purify_provider_no_models)
+            return
+        }
+        context?.selector(
+            getString(R.string.ai_storyboard_model),
+            models.map { it.modelId }
+        ) { _, _, index ->
+            AiStoryboardConfig.modelConfigId = models[index].id
+            refreshUi()
+        }
+    }
+
+    private fun showStoryboardPreloadCountDialog() {
+        showIntegerInputDialog(
+            title = R.string.ai_storyboard_preload_count,
+            currentValue = AiStoryboardConfig.preloadCount,
+            validRange = 0..10
+        ) { value ->
+            AiStoryboardConfig.preloadCount = value
             refreshUi()
         }
     }
@@ -1826,6 +1877,26 @@ class AiConfigFragment : PreferenceFragment(),
             getString(R.string.ai_creation_request_template_summary)
         findPreference<Preference>("aiCreationTestConnection")?.isVisible =
             !creationReuseCurrentModel
+        findPreference<Preference>(PreferKey.aiStoryboardProviderId)?.apply {
+            val provider = AiStoryboardConfig.provider
+            summary = when {
+                provider != null -> provider.name
+                AiStoryboardConfig.providerId.isNotBlank() ->
+                    getString(R.string.ai_chapter_purify_reference_missing)
+                else -> getString(R.string.ai_storyboard_provider_summary_empty)
+            }
+        }
+        findPreference<Preference>(PreferKey.aiStoryboardModelId)?.apply {
+            val model = AiStoryboardConfig.model
+            summary = when {
+                model != null -> model.modelId
+                AiStoryboardConfig.modelConfigId.isNotBlank() ->
+                    getString(R.string.ai_chapter_purify_reference_missing)
+                else -> getString(R.string.ai_storyboard_model_summary_empty)
+            }
+        }
+        findPreference<Preference>(PreferKey.aiStoryboardPreloadCount)?.summary =
+            getString(R.string.ai_storyboard_preload_count_summary, AiStoryboardConfig.preloadCount)
         mapOf(
             PreferKey.aiCreationScopeSelectedText to AiCreationConfig.SECTION_SELECTED_TEXT,
             PreferKey.aiCreationScopeBackground to AiCreationConfig.SECTION_BACKGROUND,
