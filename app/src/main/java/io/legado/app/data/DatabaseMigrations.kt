@@ -28,7 +28,33 @@ object DatabaseMigrations {
             migration_104_105,
             migration_105_106,
             migration_106_107,
+            migration_107_108,
         )
+    }
+
+    private val migration_107_108 = object : Migration(107, 108) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `creation_cards` (
+                    `cardId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `section` TEXT NOT NULL,
+                    `name` TEXT NOT NULL,
+                    `content` TEXT NOT NULL,
+                    `bookName` TEXT NOT NULL,
+                    `updateTime` INTEGER NOT NULL
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_creation_cards_section` " +
+                    "ON `creation_cards` (`section`)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_creation_cards_bookName` " +
+                    "ON `creation_cards` (`bookName`)"
+            )
+        }
     }
 
     private val migration_106_107 = object : Migration(106, 107) {
