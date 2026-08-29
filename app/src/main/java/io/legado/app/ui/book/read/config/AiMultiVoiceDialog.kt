@@ -30,6 +30,8 @@ import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.applyUiTabTypeface
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.widget.recycler.VerticalDivider
+import io.legado.app.utils.GSON
+import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.putPrefString
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.toastOnUi
@@ -400,6 +402,23 @@ class AiMultiVoiceDialog : BaseDialogFragment(R.layout.dialog_ai_multi_voice) {
                     updatedAt = System.currentTimeMillis()
                 )
             )
+            if (existing != null) {
+                // 命中已有正式角色：把临时角色的名称与别名并入，避免别名证据链断裂后重建重复角色。
+                val mergedAliases = buildList {
+                    addAll(parseAliasesJson(existing.aliasesJson))
+                    add(castRole.name)
+                    addAll(parseAliasesJson(castRole.aliasesJson))
+                }.filter {
+                    it.isNotBlank() && BookTtsCastingCoordinator.normalizeIdentityName(it) !=
+                        BookTtsCastingCoordinator.normalizeIdentityName(existing.name)
+                }.distinctBy { BookTtsCastingCoordinator.normalizeIdentityName(it) }
+                dao.updateRole(
+                    existing.copy(
+                        aliasesJson = GSON.toJson(mergedAliases),
+                        updatedAt = System.currentTimeMillis()
+                    )
+                )
+            }
             dao.updateCastRole(
                 castRole.copy(
                     ignored = false,
@@ -438,7 +457,20 @@ class AiMultiVoiceDialog : BaseDialogFragment(R.layout.dialog_ai_multi_voice) {
             val dao = appDb.bookRoleDao
             dao.getRole(roleId)?.let { dao.deleteRole(it) }
             dao.deleteBinding(workKey, BookTtsVoiceBinding.TargetType.CHARACTER, roleId)
+            // 解除指向该正式角色的临时角色链接，避免留下永远无法自动配音的"幽灵"临时角色。
+            dao.getCastRoles(workKey).filter { it.linkedRoleId == roleId }.forEach { castRole ->
+                dao.updateCastRole(
+                    castRole.copy(linkedRoleId = 0L, updatedAt = System.currentTimeMillis())
+                )
+            }
             withContext(Dispatchers.Main) { loadRoles() }
         }
+    }
+
+    private fun parseAliasesJson(json: String): List<String> {
+        if (json.isBlank()) return emptyList()
+        return runCatching {
+            GSON.fromJsonArray<String>(json).getOrNull().orEmpty()
+        }.getOrDefault(emptyList())
     }
 }

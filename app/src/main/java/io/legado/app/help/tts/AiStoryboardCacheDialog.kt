@@ -24,7 +24,7 @@ import kotlinx.coroutines.withContext
 
 /**
  * 分镜缓存管理：按书列出各章缓存（说话人数、角色名单），
- * 支持单章重新生成与删除，全部清空。
+ * 支持单章重新生成与删除，按书清空（无书上下文时清空全部）。
  */
 class AiStoryboardCacheDialog : BaseDialogFragment(R.layout.dialog_ai_storyboard_cache) {
 
@@ -52,10 +52,20 @@ class AiStoryboardCacheDialog : BaseDialogFragment(R.layout.dialog_ai_storyboard
         binding.recyclerCache.addItemDecoration(VerticalDivider(requireContext()))
         binding.recyclerCache.adapter = cacheAdapter
         binding.btnClearCache.setOnClickListener {
+            val bookUrl = ReadBook.book?.bookUrl
+            val messageRes = if (bookUrl != null) {
+                R.string.ai_clear_storyboard_book_message
+            } else {
+                R.string.ai_clear_storyboard_cache_message
+            }
             alert(titleResource = R.string.ai_clear_storyboard_cache) {
-                setMessage(getString(R.string.ai_clear_storyboard_cache_message))
+                setMessage(getString(messageRes))
                 positiveButton(R.string.ok) { dialog ->
-                    StoryboardCacheStore.clear()
+                    if (bookUrl != null) {
+                        StoryboardCacheStore.clearBook(bookUrl)
+                    } else {
+                        StoryboardCacheStore.clear()
+                    }
                     loadCaches()
                     dialog.dismiss()
                 }
@@ -67,12 +77,12 @@ class AiStoryboardCacheDialog : BaseDialogFragment(R.layout.dialog_ai_storyboard
 
     private fun loadCaches() {
         lifecycleScope.launch(Dispatchers.IO) {
-            val bookName = ReadBook.book?.name
+            val bookUrl = ReadBook.book?.bookUrl
             val all = StoryboardCacheStore.list()
-            val caches = if (bookName.isNullOrBlank()) {
+            val caches = if (bookUrl.isNullOrBlank()) {
                 all
             } else {
-                all.filter { it.second.bookName == bookName }
+                all.filter { it.second.bookUrl == bookUrl }
             }
             val entries = caches.map { (key, storyboard) ->
                 CacheEntry(key, storyboard)

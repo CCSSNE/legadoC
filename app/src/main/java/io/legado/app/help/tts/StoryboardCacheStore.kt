@@ -72,4 +72,13 @@ object StoryboardCacheStore {
     fun clear() {
         cacheDirectory().deleteRecursively()
     }
+
+    /** 删除指定书的分镜缓存：缓存 JSON 自带 bookUrl，按其精确匹配，不影响其他书。 */
+    fun clearBook(bookUrl: String) {
+        list().forEach { (key, storyboard) ->
+            if (storyboard.bookUrl == bookUrl) {
+                delete(key)
+            }
+        }
+    }
 }

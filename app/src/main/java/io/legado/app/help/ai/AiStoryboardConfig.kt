@@ -24,7 +24,7 @@ object AiStoryboardConfig {
         set(value) = appCtx.putPrefString(PreferKey.aiStoryboardModelId, value.trim())
 
     var preloadCount: Int
-        get() = appCtx.getPrefInt(PreferKey.aiStoryboardPreloadCount, 2)
+        get() = appCtx.getPrefInt(PreferKey.aiStoryboardPreloadCount, 2).coerceIn(0, 10)
         set(value) = appCtx.putPrefInt(PreferKey.aiStoryboardPreloadCount, value)
 
     val provider: AiProviderConfig?

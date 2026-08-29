@@ -337,6 +337,7 @@
     <string name="ai_storyboard_regenerating">正在重新生成…</string>
     <string name="ai_clear_storyboard_cache">清空缓存</string>
     <string name="ai_clear_storyboard_cache_message">确定删除全部分镜缓存？</string>
+    <string name="ai_clear_storyboard_book_message">确定删除本书的全部分镜缓存？</string>
     <string name="ai_roles_formal">正式角色</string>
     <string name="ai_roles_temporary">临时角色</string>
     <string name="ai_add_role">新增角色</string>

@@ -338,6 +338,7 @@
     <string name="ai_storyboard_regenerating">Regenerating…</string>
     <string name="ai_clear_storyboard_cache">Clear Cache</string>
     <string name="ai_clear_storyboard_cache_message">Delete all chapter storyboard caches?</string>
+    <string name="ai_clear_storyboard_book_message">Delete all storyboard caches of this book?</string>
     <string name="ai_roles_formal">Formal Roles</string>
     <string name="ai_roles_temporary">Temporary Roles</string>
     <string name="ai_add_role">Add Role</string>
