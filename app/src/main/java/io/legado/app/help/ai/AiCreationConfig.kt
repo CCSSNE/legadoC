@@ -97,7 +97,7 @@ object AiCreationConfig {
                         defaultTemplateBody(
                             "本次按连环画分镜脚本生成提示词：将素材拆分为连续分镜，" +
                                 "每格包含画面描述、构图与镜头调度。\n\n素材：\n\${素材}\n\n" +
-                                "风格：\${style}；比例：\${ratio}；画质：\${quality}"
+                                "风格：\${style}"
                         )
                     )
             )
@@ -109,7 +109,7 @@ object AiCreationConfig {
                         defaultTemplateBody(
                             "本次生成单场景精绘提示词：一个完整画面，" +
                                 "涵盖主体、环境、光影与构图。\n\n素材：\n\${素材}\n\n" +
-                                "风格：\${style}；比例：\${ratio}；画质：\${quality}"
+                                "风格：\${style}"
                         )
                     )
             )
@@ -119,8 +119,8 @@ object AiCreationConfig {
                     .put(
                         "body",
                         defaultTemplateBody(
-                            "本次生成视频提示词：\${shot}，分辨率 \${resolution}，" +
-                                "时长 \${duration}。\n\n素材：\n\${素材}"
+                            "本次生成视频提示词：分辨率 \${video_size}，" +
+                                "帧率 \${video_fps}，时长 \${video_duration} 秒。\n\n素材：\n\${素材}"
                         )
                     )
             )
@@ -234,7 +234,9 @@ object AiCreationConfig {
           "model": "{{model}}",
           "prompt": "{{prompt}}",
           "n": {{n}},
-          "size": "1024x1024"
+          "size": "{{size}}",
+          "quality": "{{quality}}",
+          "watermark_enabled": {{watermark_enabled}}
         }
     """.trimIndent()
 
@@ -289,7 +291,8 @@ object AiCreationConfig {
         val normalized = json.trim()
         require(normalized.isNotEmpty()) { "图片请求模板不能为空" }
         try {
-            JSONObject(normalized.replace("{{n}}", "1"))
+            //校验时把所有占位符换成字面 1，裸占位符（布尔/数字值位置）与带引号占位符都能通过解析
+            JSONObject(normalized.replace(Regex("\\{\\{[^}]*\\}\\}"), "1"))
         } catch (throwable: Throwable) {
             throw IllegalStateException(
                 "图片请求模板 JSON 无效：${throwable.message}",

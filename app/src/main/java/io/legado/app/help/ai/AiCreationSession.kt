@@ -14,13 +14,39 @@ data class AiCreationVariable(
     val format: String = AiCreationVariable.FORMAT_OPTIONS,
     val options: List<String> = emptyList(),
     val defaultValue: String = "",
-    val group: String = AiCreationVariables.GROUP_IMAGE
+    val group: String = AiCreationVariables.GROUP_IMAGE,
+    val values: List<String> = emptyList(),
+    val onValue: String = "true",
+    val offValue: String = "false"
 ) {
     companion object {
         const val FORMAT_SWITCH = "switch"
         const val FORMAT_OPTIONS = "options"
         const val FORMAT_INPUT = "input"
         val formats = listOf(FORMAT_SWITCH, FORMAT_OPTIONS, FORMAT_INPUT)
+    }
+
+    /**
+     * 选项式变量的实际取值：values 与 options 一一对应时用 values（纯 API 值），
+     * 否则选项显示与取值同体（options）。
+     */
+    fun effectiveValues(): List<String> =
+        if (values.isNotEmpty() && values.size == options.size) values else options
+
+    /** 值是否属于变量当前定义的合法取值（input 格式不设限） */
+    fun accepts(value: String): Boolean = when (format) {
+        FORMAT_SWITCH -> value == onValue || value == offValue
+        FORMAT_OPTIONS -> effectiveValues().contains(value)
+        else -> true
+    }
+
+    /**
+     * 参数读取的统一清洗入口：持久层里的旧值/无效值（变量定义变更后）回退到默认值，
+     * 避免把已废弃的取值发进提示词或请求体。
+     */
+    fun effectiveValue(stored: String?): String {
+        if (stored == null) return defaultValue
+        return if (accepts(stored)) stored else defaultValue
     }
 }
 
@@ -57,6 +83,7 @@ object AiCreationVariables {
                 key = GROUP_IMAGE,
                 label = "图片",
                 variables = listOf(
+                    //style 控制提示词走向（路由到连环画/单场景请求模板），保留
                     AiCreationVariable(
                         key = "style",
                         label = "画面风格",
@@ -65,20 +92,50 @@ object AiCreationVariables {
                         defaultValue = "连环画",
                         group = GROUP_IMAGE
                     ),
+                    //智谱 CogView 官方 size 枚举：选项带比例与横竖标注，values 存纯 API 值
                     AiCreationVariable(
-                        key = "ratio",
-                        label = "画面比例",
+                        key = "size",
+                        label = "尺寸",
                         format = AiCreationVariable.FORMAT_OPTIONS,
-                        options = listOf("1:1", "4:3", "3:4", "16:9", "9:16"),
-                        defaultValue = "16:9",
+                        options = listOf(
+                            "1024x1024（1:1，方）",
+                            "768x1344（4:7，竖）",
+                            "864x1152（3:4，竖）",
+                            "1344x768（7:4，横）",
+                            "1152x864（4:3，横）",
+                            "1440x720（2:1，横）",
+                            "720x1440（1:2，竖）"
+                        ),
+                        values = listOf(
+                            "1024x1024",
+                            "768x1344",
+                            "864x1152",
+                            "1344x768",
+                            "1152x864",
+                            "1440x720",
+                            "720x1440"
+                        ),
+                        defaultValue = "1024x1024",
                         group = GROUP_IMAGE
                     ),
+                    //智谱 CogView 官方 quality：standard/hd，两值做成开关
                     AiCreationVariable(
                         key = "quality",
                         label = "画质",
-                        format = AiCreationVariable.FORMAT_OPTIONS,
-                        options = listOf("标准", "高清", "超清"),
-                        defaultValue = "高清",
+                        format = AiCreationVariable.FORMAT_SWITCH,
+                        defaultValue = "standard",
+                        onValue = "hd",
+                        offValue = "standard",
+                        group = GROUP_IMAGE
+                    ),
+                    //智谱 CogView 官方水印开关
+                    AiCreationVariable(
+                        key = "watermark_enabled",
+                        label = "水印",
+                        format = AiCreationVariable.FORMAT_SWITCH,
+                        defaultValue = "false",
+                        onValue = "true",
+                        offValue = "false",
                         group = GROUP_IMAGE
                     )
                 )
@@ -87,27 +144,66 @@ object AiCreationVariables {
                 key = GROUP_VIDEO,
                 label = "视频",
                 variables = listOf(
+                    //视频组按智谱 CogVideoX 官方参数定义；key 统一加 video_ 前缀保证全局唯一
                     AiCreationVariable(
-                        key = "shot",
-                        label = "镜头",
-                        format = AiCreationVariable.FORMAT_OPTIONS,
-                        options = listOf("多镜头", "单镜头"),
-                        defaultValue = "单镜头",
+                        key = "video_quality",
+                        label = "输出模式",
+                        format = AiCreationVariable.FORMAT_SWITCH,
+                        defaultValue = "speed",
+                        onValue = "quality",
+                        offValue = "speed",
                         group = GROUP_VIDEO
                     ),
                     AiCreationVariable(
-                        key = "resolution",
+                        key = "video_with_audio",
+                        label = "AI音效",
+                        format = AiCreationVariable.FORMAT_SWITCH,
+                        defaultValue = "false",
+                        onValue = "true",
+                        offValue = "false",
+                        group = GROUP_VIDEO
+                    ),
+                    AiCreationVariable(
+                        key = "video_size",
                         label = "分辨率",
                         format = AiCreationVariable.FORMAT_OPTIONS,
-                        options = listOf("720p", "1080p", "4K"),
-                        defaultValue = "1080p",
+                        options = listOf(
+                            "1280x720（16:9，横）",
+                            "720x1280（9:16，竖）",
+                            "1024x1024（1:1，方）",
+                            "1920x1080（16:9，横）",
+                            "1080x1920（9:16，竖）",
+                            "2048x1080（256:135，横）",
+                            "3840x2160（16:9，横）"
+                        ),
+                        values = listOf(
+                            "1280x720",
+                            "720x1280",
+                            "1024x1024",
+                            "1920x1080",
+                            "1080x1920",
+                            "2048x1080",
+                            "3840x2160"
+                        ),
+                        defaultValue = "1920x1080",
                         group = GROUP_VIDEO
                     ),
                     AiCreationVariable(
-                        key = "duration",
-                        label = "时长",
-                        format = AiCreationVariable.FORMAT_INPUT,
-                        defaultValue = "5秒",
+                        key = "video_fps",
+                        label = "帧率",
+                        format = AiCreationVariable.FORMAT_SWITCH,
+                        defaultValue = "30",
+                        onValue = "60",
+                        offValue = "30",
+                        group = GROUP_VIDEO
+                    ),
+                    AiCreationVariable(
+                        key = "video_duration",
+                        label = "时长（秒）",
+                        format = AiCreationVariable.FORMAT_SWITCH,
+                        defaultValue = "5",
+                        onValue = "10",
+                        offValue = "5",
                         group = GROUP_VIDEO
                     )
                 )
@@ -147,22 +243,47 @@ object AiCreationVariables {
                 } else {
                     variable
                 }
-                require(withGroup.key.isNotBlank()) {
-                    "AI 创作变量 key 不能为空：${withGroup.label}"
+                //GSON 反射解析对缺失字段不应用 Kotlin 默认值，这里统一归一到安全默认
+                val normalized = withGroup.copy(
+                    values = withGroup.values.orEmpty(),
+                    onValue = withGroup.onValue.orEmpty().ifBlank { "true" },
+                    offValue = withGroup.offValue.orEmpty().ifBlank { "false" }
+                )
+                require(normalized.key.isNotBlank()) {
+                    "AI 创作变量 key 不能为空：${normalized.label}"
                 }
-                require(withGroup.key != AI_CREATION_MODE_KEY) {
+                require(normalized.key != AI_CREATION_MODE_KEY) {
                     "AI 创作变量 key 不能使用保留字：$AI_CREATION_MODE_KEY"
                 }
-                require(withGroup.format in AiCreationVariable.formats) {
-                    "AI 创作变量 ${withGroup.key} 的 format 无效：${withGroup.format}"
+                require(normalized.format in AiCreationVariable.formats) {
+                    "AI 创作变量 ${normalized.key} 的 format 无效：${normalized.format}"
                 }
-                if (withGroup.format == AiCreationVariable.FORMAT_OPTIONS) {
-                    require(withGroup.options.isNotEmpty()) {
-                        "AI 创作变量 ${withGroup.key} 为选项式但没有选项"
+                if (normalized.format == AiCreationVariable.FORMAT_OPTIONS) {
+                    require(normalized.options.isNotEmpty()) {
+                        "AI 创作变量 ${normalized.key} 为选项式但没有选项"
+                    }
+                    if (normalized.values.isNotEmpty()) {
+                        require(normalized.values.size == normalized.options.size) {
+                            "AI 创作变量 ${normalized.key} 的 values 与 options 数量不一致"
+                        }
+                    }
+                    //空默认值表示不预选，允许；非空默认值必须命中已定义选项
+                    if (normalized.defaultValue.isNotEmpty()) {
+                        require(normalized.accepts(normalized.defaultValue)) {
+                            "AI 创作变量 ${normalized.key} 的默认值无效：${normalized.defaultValue}"
+                        }
                     }
                 }
-                require(keys.add(withGroup.key)) { "AI 创作变量 key 重复：${withGroup.key}" }
-                variables.add(withGroup)
+                if (normalized.format == AiCreationVariable.FORMAT_SWITCH) {
+                    require(normalized.onValue != normalized.offValue) {
+                        "AI 创作变量 ${normalized.key} 的 onValue 与 offValue 不能相同"
+                    }
+                    require(normalized.accepts(normalized.defaultValue)) {
+                        "AI 创作变量 ${normalized.key} 的默认值无效：${normalized.defaultValue}"
+                    }
+                }
+                require(keys.add(normalized.key)) { "AI 创作变量 key 重复：${normalized.key}" }
+                variables.add(normalized)
             }
         }
         require(variables.isNotEmpty()) { "AI 创作变量定义不能为空" }

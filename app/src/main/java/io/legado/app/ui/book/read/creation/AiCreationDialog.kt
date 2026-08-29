@@ -315,7 +315,8 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
     }
 
     private fun currentParamValue(variable: AiCreationVariable): String {
-        return session.paramValue(variable.key) ?: variable.defaultValue
+        //经 effectiveValue 清洗：变量定义变更后，持久层旧值/无效值回落默认值
+        return variable.effectiveValue(session.paramValue(variable.key))
     }
 
     private fun buildVariableControls(group: AiCreationVariableGroup) {
@@ -344,11 +345,14 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
         }
         row.addView(line)
         val current = currentParamValue(variable)
-        variable.options.forEach { option ->
+        //options 为显示文案（可带比例/横竖标注），effectiveValues 为实际存储与下发的纯值
+        val optionValues = variable.effectiveValues()
+        variable.options.forEachIndexed { index, option ->
+            val value = optionValues.getOrNull(index) ?: option
             line.addView(
-                chipView(option, option == current).apply {
+                chipView(option, value == current).apply {
                     setOnClickListener {
-                        session.setParam(variable.key, option)
+                        session.setParam(variable.key, value)
                         buildVariableControls(
                             currentGroup()
                                 ?: variableGroups.firstOrNull() ?: return@setOnClickListener
@@ -362,11 +366,11 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
 
     private fun addSwitchControl(variable: AiCreationVariable) {
         val current = currentParamValue(variable)
-        val next = if (current == "关") "开" else "关"
+        val isOn = current == variable.onValue
         binding.llVariables.addView(
             chipView(current, true).apply {
                 setOnClickListener {
-                    session.setParam(variable.key, next)
+                    session.setParam(variable.key, if (isOn) variable.offValue else variable.onValue)
                     buildVariableControls(
                         currentGroup() ?: variableGroups.firstOrNull() ?: return@setOnClickListener
                     )

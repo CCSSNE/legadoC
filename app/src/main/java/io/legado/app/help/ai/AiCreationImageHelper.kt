@@ -346,23 +346,39 @@ object AiCreationImageTaskHolder {
         extraValues: Map<String, String>
     ): String {
         val template = AiCreationConfig.imageRequestTemplate
-        val withCount = template.replace("{{n}}", n.toString())
-        val root = try {
-            JSONObject(withCount)
-        } catch (throwable: Throwable) {
-            throw IllegalStateException(
-                "图片请求模板 JSON 无效：${throwable.message}",
-                throwable
-            )
-        }
         val tokens = buildMap {
             put("model", AiCreationConfig.imageModel)
             put("prompt", prompt)
             put("n", n.toString())
             putAll(extraValues)
         }
+        //裸占位符（值位置不带引号，如 {{n}}、{{watermark_enabled}}）按 JSON 字面量替换，
+        //布尔/数字参数不再被包成字符串；带引号与字符串内嵌的 {{key}} / ${key}
+        //由解析后的字符串替换（replaceTokens）处理，保持原语义。
+        var withLiterals = template
+        tokens.forEach { (key, value) ->
+            val tokenRegex = Regex("([:\\[,]\\s*)" + Regex.escape("{{$key}}") + "(\\s*[,}\\]])")
+            withLiterals = tokenRegex.replace(withLiterals) { match ->
+                "${match.groupValues[1]}${jsonLiteralOf(value)}${match.groupValues[2]}"
+            }
+        }
+        val root = try {
+            JSONObject(withLiterals)
+        } catch (throwable: Throwable) {
+            throw IllegalStateException(
+                "图片请求模板 JSON 无效：${throwable.message}",
+                throwable
+            )
+        }
         replaceTokens(root, tokens)
         return root.toString()
+    }
+
+    /** 占位符替换为 JSON 字面量：布尔保持 true/false，整数不加引号，其余按 JSON 字符串转义 */
+    private fun jsonLiteralOf(value: String): String = when {
+        value == "true" || value == "false" -> value
+        value.matches(Regex("-?\\d+")) -> value
+        else -> JSONObject.quote(value)
     }
 
     private fun replaceTokens(json: JSONObject, tokens: Map<String, String>) {

@@ -50,7 +50,8 @@ object AiCreationHelper {
         val values = linkedMapOf<String, String>()
         values[AI_CREATION_MODE_KEY] = session.paramValue(AI_CREATION_MODE_KEY).orEmpty()
         variables.forEach { variable ->
-            values[variable.key] = session.paramValue(variable.key) ?: variable.defaultValue
+            //经 effectiveValue 清洗：变量定义变更后，持久层旧值/无效值回退默认值
+            values[variable.key] = variable.effectiveValue(session.paramValue(variable.key))
         }
         AiCreationConfig.sectionOrder.forEach { section ->
             values[session.sectionLabel(section)] = sectionText(session, section, cardsById)
