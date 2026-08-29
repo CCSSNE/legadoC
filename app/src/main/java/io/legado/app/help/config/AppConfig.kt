@@ -1863,7 +1863,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
      * false 表示传统 speak() 直播模式（引擎自己发声，句长靠滚动校准估算）。
      */
     val ttsWavMode
-        get() = appCtx.getPrefBoolean(PreferKey.ttsWavMode, true)
+        get() = appCtx.getPrefBoolean(PreferKey.ttsWavMode, false)
 
     /**
      * TTS 实时缓存：true 表示播放当前段时预合成其后若干段并写入 TTS 缓存。
