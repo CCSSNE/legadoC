@@ -14,21 +14,29 @@ import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.widget.addTextChangedListener
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.tabs.TabLayout
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.data.appDb
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.databinding.DialogAiCreationBinding
+import io.legado.app.databinding.ItemAiPreviewBinding
 import io.legado.app.help.ai.AI_CREATION_EPHEMERAL_BOOK
 import io.legado.app.help.ai.AI_CREATION_MODE_KEY
 import io.legado.app.help.ai.AiCreationConfig
 import io.legado.app.help.ai.AiCreationHelper
+import io.legado.app.help.ai.AiCreationImageFile
+import io.legado.app.help.ai.AiCreationImageSlot
+import io.legado.app.help.ai.AiCreationImageSlotState
+import io.legado.app.help.ai.AiCreationImageTaskHolder
 import io.legado.app.help.ai.AiCreationSessionHolder
 import io.legado.app.help.ai.AiCreationVariable
 import io.legado.app.help.ai.AiCreationVariableGroup
 import io.legado.app.help.ai.AiCreationVariables
 import io.legado.app.help.ai.CreationSectionItem
+import io.legado.app.help.glide.ImageLoader
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.accentColor
@@ -36,10 +44,12 @@ import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.code.CodeEditActivity
 import io.legado.app.ui.widget.text.AccentTextView
+import io.legado.app.utils.gone
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import io.legado.app.utils.visible
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -48,11 +58,13 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
 
     companion object {
         const val ARG_BOOK_NAME = "bookName"
+        const val ARG_JUMP_PREVIEW = "jumpToPreview"
 
-        fun newInstance(bookName: String): AiCreationDialog {
+        fun newInstance(bookName: String, jumpToPreview: Boolean = false): AiCreationDialog {
             return AiCreationDialog().apply {
                 arguments = Bundle().apply {
                     putString(ARG_BOOK_NAME, bookName)
+                    putBoolean(ARG_JUMP_PREVIEW, jumpToPreview)
                 }
             }
         }
@@ -65,6 +77,10 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
     private var currentPage = 0
     private var generating = false
     private var suppressPromptWatcher = false
+    private var pendingImageAfterPrompt = false
+    private var previewPageSize = 2
+    private var previewPage = 0
+    private val previewAdapter = PreviewAdapter()
 
     private val cardEditLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -84,6 +100,12 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
     override fun onStart() {
         super.onStart()
         setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        AiCreationImageTaskHolder.setUiVisible(true)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        AiCreationImageTaskHolder.setUiVisible(false)
     }
 
     override fun onResume() {
@@ -106,7 +128,53 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
         binding.ivClose.setOnClickListener { dismissAllowingStateLoss() }
         binding.ivBack.setOnClickListener { onBack() }
         binding.tvAction.setOnClickListener { onAction() }
-        binding.tvClear.setOnClickListener { confirmClear() }
+        binding.tvClear.setOnClickListener {
+            if (currentPage == 2) {
+                copyPrompt()
+            } else {
+                confirmClear()
+            }
+        }
+        binding.btnGenerateImage.setOnClickListener { onGenerateImageClicked() }
+        binding.tvGridTwo.setOnClickListener {
+            previewPageSize = 2
+            previewPage = 0
+            renderPreview()
+        }
+        binding.tvGridFour.setOnClickListener {
+            previewPageSize = 4
+            previewPage = 0
+            renderPreview()
+        }
+        binding.tvPrevPage.setOnClickListener {
+            if (previewPage > 0) {
+                previewPage--
+                renderPreview()
+            }
+        }
+        binding.tvNextPage.setOnClickListener {
+            if (previewPage < previewPageCount() - 1) {
+                previewPage++
+                renderPreview()
+            }
+        }
+        binding.rvPreview.adapter = previewAdapter
+        binding.rvPreview.layoutManager = GridLayoutManager(requireContext(), 1)
+        viewLifecycleOwner.lifecycleScope.launch {
+            AiCreationImageTaskHolder.slots.collect {
+                if (currentPage == 3) {
+                    renderPreview()
+                }
+            }
+        }
+        viewLifecycleOwner.lifecycleScope.launch {
+            AiCreationImageTaskHolder.notice.collect { message ->
+                if (message != null) {
+                    AiCreationImageTaskHolder.consumeNotice()
+                    toastOnUi(message)
+                }
+            }
+        }
         binding.etPrompt.addTextChangedListener { text ->
             if (!suppressPromptWatcher) {
                 session.prompt = text?.toString().orEmpty()
@@ -133,10 +201,18 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
             override fun onTabReselected(tab: TabLayout.Tab) = Unit
         })
         variableGroups.firstOrNull()?.let { buildVariableControls(it) }
-        showPage(0)
+        if (requireArguments().getBoolean(ARG_JUMP_PREVIEW)) {
+            showPage(3)
+        } else {
+            showPage(0)
+        }
     }
 
     private fun onBack() {
+        if (currentPage >= 3) {
+            dismissAllowingStateLoss()
+            return
+        }
         if (currentPage > 0) {
             showPage(currentPage - 1)
         }
@@ -146,8 +222,13 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
         when (currentPage) {
             0 -> showPage(1)
             1 -> generatePrompt()
-            2 -> copyPrompt()
+            2 -> generatePrompt()
         }
+    }
+
+    private fun isVideoMode(): Boolean {
+        val mode = session.params[AI_CREATION_MODE_KEY].orEmpty()
+        return mode == AiCreationVariables.GROUP_VIDEO
     }
 
     private fun showPage(page: Int) {
@@ -155,19 +236,34 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
         binding.llModePage.visibility = if (page == 0) View.VISIBLE else View.GONE
         binding.svComposePage.visibility = if (page == 1) View.VISIBLE else View.GONE
         binding.llPromptPage.visibility = if (page == 2) View.VISIBLE else View.GONE
+        binding.llPreviewPage.visibility = if (page == 3) View.VISIBLE else View.GONE
+        binding.bottomBar.visibility = if (page == 3) View.GONE else View.VISIBLE
         binding.ivBack.visibility = if (page > 0) View.VISIBLE else View.GONE
-        binding.tvClear.visibility = if (page == 1) View.VISIBLE else View.GONE
         binding.tvTitle.setText(
             when (page) {
                 1 -> R.string.ai_creation_compose
                 2 -> R.string.ai_creation_prompt_title
+                3 -> R.string.ai_creation_preview_title
                 else -> R.string.ai_creation
             }
         )
+        val isVideo = isVideoMode()
+        binding.etImageCount.visibility =
+            if (page == 2 && !isVideo) View.VISIBLE else View.GONE
+        binding.btnGenerateImage.visibility =
+            if (page == 2 && !isVideo) View.VISIBLE else View.GONE
+        binding.tvClear.setText(
+            if (page == 2) R.string.ai_creation_copy_prompt else R.string.ai_creation_clear
+        )
+        binding.tvClear.visibility = when {
+            page == 1 -> View.VISIBLE
+            page == 2 && !isVideo -> View.VISIBLE
+            else -> View.GONE
+        }
         binding.tvAction.setText(
             when (page) {
                 1 -> R.string.ai_creation_generate_prompt
-                2 -> R.string.ai_creation_copy_prompt
+                2 -> R.string.ai_creation_generate_prompt
                 else -> R.string.ai_creation_next
             }
         )
@@ -178,6 +274,15 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
             suppressPromptWatcher = true
             binding.etPrompt.setText(session.prompt)
             suppressPromptWatcher = false
+        }
+        if (page == 3) {
+            previewPage = 0
+            renderPreview()
+            binding.rvPreview.post {
+                if (currentPage == 3) {
+                    renderPreview()
+                }
+            }
         }
     }
 
@@ -508,19 +613,175 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
             }
             generating = false
             binding.rotateLoading.inVisible()
-            binding.tvAction.setText(R.string.ai_creation_copy_prompt)
+            binding.tvAction.setText(R.string.ai_creation_generate_prompt)
             result.onSuccess { prompt ->
                 session.prompt = prompt
-                showPage(2)
+                if (pendingImageAfterPrompt) {
+                    pendingImageAfterPrompt = false
+                    startImageGeneration(prompt)
+                } else {
+                    showPage(2)
+                }
             }.onFailure { throwable ->
-                binding.tvAction.setText(
-                    if (currentPage == 1) {
-                        R.string.ai_creation_generate_prompt
-                    } else {
-                        R.string.ai_creation_copy_prompt
-                    }
-                )
+                pendingImageAfterPrompt = false
+                binding.tvAction.setText(R.string.ai_creation_generate_prompt)
                 toastOnUi(throwable.message ?: throwable.javaClass.simpleName)
+            }
+        }
+    }
+
+    private fun onGenerateImageClicked() {
+        val prompt = binding.etPrompt.text?.toString()?.trim().orEmpty()
+        if (prompt.isEmpty()) {
+            pendingImageAfterPrompt = true
+            generatePrompt()
+            return
+        }
+        startImageGeneration(prompt)
+    }
+
+    private fun startImageGeneration(prompt: String) {
+        if (AiCreationImageTaskHolder.running) {
+            toastOnUi(R.string.ai_creation_task_running)
+            return
+        }
+        val count = binding.etImageCount.text?.toString()?.toIntOrNull()
+            ?.coerceIn(1, 10) ?: 1
+        val cardIds = AiCreationConfig.sectionOrder
+            .flatMap { session.itemsOf(it) }
+            .map { it.cardId }
+            .distinct()
+        viewLifecycleOwner.lifecycleScope.launch {
+            val result = runCatching {
+                val definition = AiCreationConfig.definition
+                val cardsById = withContext(IO) {
+                    cardIds.mapNotNull { appDb.creationCardDao.getById(it) }
+                        .associateBy { it.cardId }
+                }
+                val values = withContext(IO) {
+                    AiCreationHelper.buildValues(session, cardsById, definition.variables)
+                }
+                AiCreationConfig.requireImageApiReady()
+                AiCreationImageTaskHolder.start(prompt, count, values)
+            }
+            result.onSuccess { started ->
+                if (started) {
+                    showPage(3)
+                }
+            }.onFailure { throwable ->
+                toastOnUi(throwable.message ?: throwable.javaClass.simpleName)
+            }
+        }
+    }
+
+    private fun previewPageCount(): Int {
+        val total = AiCreationImageTaskHolder.slots.value.size
+        return maxOf(1, (total + previewPageSize - 1) / previewPageSize)
+    }
+
+    private fun renderPreview() {
+        val slots = AiCreationImageTaskHolder.slots.value
+        val pageCount = previewPageCount()
+        previewPage = previewPage.coerceIn(0, pageCount - 1)
+        binding.tvPageInfo.text = getString(
+            R.string.ai_creation_page_info,
+            previewPage + 1,
+            pageCount
+        )
+        val from = previewPage * previewPageSize
+        val to = minOf(slots.size, from + previewPageSize)
+        previewAdapter.slots = if (from < to) slots.subList(from, to) else emptyList()
+        previewAdapter.itemHeightPx = previewItemHeight()
+        previewAdapter.notifyDataSetChanged()
+        val span = if (previewPageSize == 4) 2 else 1
+        (binding.rvPreview.layoutManager as? GridLayoutManager)?.spanCount = span
+        binding.tvGridTwo.setTextColor(if (previewPageSize == 2) accentColor else primaryTextColor)
+        binding.tvGridFour.setTextColor(if (previewPageSize == 4) accentColor else primaryTextColor)
+    }
+
+    private fun previewItemHeight(): Int {
+        val available = binding.rvPreview.height.takeIf { it > 0 }
+            ?: (resources.displayMetrics.heightPixels * 2 / 3)
+        return available / 2 - dp(8)
+    }
+
+    private inner class PreviewAdapter : RecyclerView.Adapter<PreviewViewHolder>() {
+
+        var slots: List<AiCreationImageSlot> = emptyList()
+
+        var itemHeightPx: Int = 0
+
+        override fun getItemCount(): Int = slots.size
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PreviewViewHolder {
+            val binding = ItemAiPreviewBinding.inflate(layoutInflater, parent, false)
+            return PreviewViewHolder(binding)
+        }
+
+        override fun onBindViewHolder(holder: PreviewViewHolder, position: Int) {
+            val slot = slots.getOrNull(position) ?: return
+            holder.itemView.layoutParams = holder.itemView.layoutParams?.apply {
+                height = itemHeightPx
+            } ?: ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                itemHeightPx
+            )
+            holder.bind(slot)
+        }
+
+        override fun onBindViewHolder(
+            holder: PreviewViewHolder,
+            position: Int,
+            payloads: MutableList<Any>
+        ) {
+            onBindViewHolder(holder, position)
+        }
+    }
+
+    private inner class PreviewViewHolder(
+        private val itemBinding: ItemAiPreviewBinding
+    ) : RecyclerView.ViewHolder(itemBinding.root) {
+
+        fun bind(slot: AiCreationImageSlot) = itemBinding.run {
+            when (slot.state) {
+                AiCreationImageSlotState.LOADING -> {
+                    rotateLoading.visible()
+                    ivPhoto.gone()
+                    tvFailed.gone()
+                }
+
+                AiCreationImageSlotState.DONE -> {
+                    rotateLoading.gone()
+                    tvFailed.gone()
+                    ivPhoto.visible()
+                    ImageLoader.load(itemView.context, AiCreationImageFile.fileOf(slot.fileName))
+                        .dontTransform()
+                        .into(ivPhoto)
+                    ivPhoto.setOnClickListener {
+                        val doneFiles = slots
+                            .filter { it.state == AiCreationImageSlotState.DONE }
+                            .map { it.fileName }
+                        val position = doneFiles.indexOf(slot.fileName)
+                        AiCreationPhotoDialog.newInstance(doneFiles, position)
+                            .show(childFragmentManager, "creationPhoto")
+                    }
+                    ivPhoto.setOnLongClickListener {
+                        val ok = AiCreationImageFile.saveToAlbum(requireContext(), slot.fileName)
+                        toastOnUi(
+                            if (ok) R.string.illustration_saved_to_album
+                            else R.string.illustration_save_failed
+                        )
+                        true
+                    }
+                }
+
+                AiCreationImageSlotState.FAILED -> {
+                    rotateLoading.gone()
+                    ivPhoto.gone()
+                    tvFailed.visible()
+                    tvFailed.text = getString(R.string.ai_creation_slot_failed, slot.error)
+                    tvFailed.setOnClickListener(null)
+                }
             }
         }
     }
