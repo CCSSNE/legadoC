@@ -52,7 +52,7 @@ import io.legado.app.help.ai.AiChapterPurifyException
 import io.legado.app.help.ai.AiChapterPurifyConfig
 import io.legado.app.help.ai.AiChapterPurifyProgress
 import io.legado.app.help.ai.AiChapterPurifyService
-import io.legado.app.help.ai.AI_CREATION_EPHEMERAL_BOOK
+import io.legado.app.help.ai.AiCreationConfig.AI_CREATION_EPHEMERAL_BOOK
 import io.legado.app.help.ai.AiCreationConfig
 import io.legado.app.help.ai.AiCreationSessionHolder
 import io.legado.app.help.book.BookHelp

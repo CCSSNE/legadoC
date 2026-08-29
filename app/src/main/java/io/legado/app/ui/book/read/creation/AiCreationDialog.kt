@@ -20,7 +20,7 @@ import io.legado.app.base.BaseDialogFragment
 import io.legado.app.data.appDb
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.databinding.DialogAiCreationBinding
-import io.legado.app.help.ai.AI_CREATION_EPHEMERAL_BOOK
+import io.legado.app.help.ai.AiCreationConfig.AI_CREATION_EPHEMERAL_BOOK
 import io.legado.app.help.ai.AiCreationConfig
 import io.legado.app.help.ai.AiCreationHelper
 import io.legado.app.help.ai.AiCreationSessionHolder
