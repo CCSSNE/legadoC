@@ -199,10 +199,10 @@ $versionName = '3.26.<MMddHH>' # <MMddHH> uses UTC; appC automatically appends c
 
 开源源码发布（历史清洗镜像）：
 
-- 远程 `origin`（CCSSNE/legadoC）是公开仓库（默认分支 `own`）。`origin/own` = 本地完整历史剥离专有路径后的清洗镜像；本地 `own` = 完整私有历史，是专有代码唯一副本（建议尽快另建私有远程备份仓库）。
+- 远程 `origin`（CCSSNE/legadoC）是公开仓库（默认分支 `own`）。`origin/own` = 本地完整历史剥离专有路径后的清洗镜像；本地 `own` = 完整私有历史，同步推送私有备份仓 `private`（CCSSNE/legadoC-private，已验证 `private:true`）。
 - 专有/自用代码 100% 集中在剥离清单所列路径（现行 `app/src/app` + 五个迁移前旧路径），主代码仅剩注释与日志关键词文本；`gradle.properties` 无密钥（签名全靠构建时传参）。`AGENTS.md`、`docs`、`tools` 不在剥离范围，随历史公开（8 月中旬起已公开，用户知情）；assets 的"百度汉语"词典与默认 HTTP TTS 源属上游 legado 公开内容，照常保留。
-- **严禁把本地 `own` 直接 `git push` 到 `origin/own`**：两边历史不同，非快进必被拒（这是防泄露保护，不得绕过）；强推会把专有历史重新公开。
-- 发布统一走仓库根 `publish-oss-source.ps1`：临时克隆 → `git filter-repo --invert-paths` 按剥离清单改写全历史 → 全历史校验剥离路径零命中 → 末尾注入确定性"空壳插件引导"提交（固定时间戳，保证公开树 app/oss 两 flavor 均可编译）→ 从主仓库 `--force` 推 `refs/heads/own`。清洗是确定性的：未受污染的旧提交哈希不变，后续同步通常为快进，仅本地历史重排时才真正强推。
+- **严禁把本地 `own` 直接 `git push` 到 `origin/own`**：两边历史不同，非快进必被拒（这是防泄露保护，不得绕过）；强推会把专有历史重新公开。（私有备份仓 `private` 收的就是完整历史，直接 `git push private own` 快进属正常操作，不在禁止之列。）
+- 发布统一走仓库根 `publish-oss-source.ps1`：临时克隆 → `git filter-repo --invert-paths` 按剥离清单改写全历史 → 全历史校验剥离路径零命中 → 末尾注入确定性"空壳插件引导"提交（固定时间戳，保证公开树 app/oss 两 flavor 均可编译）→ 从临时克隆 `--force` 推 `refs/heads/own` → 把本地完整历史快进推送到私有备份仓 `private`（CCSSNE/legadoC-private）。清洗是确定性的：未受污染的旧提交哈希不变，后续同步通常为快进，仅本地历史重排时才真正强推。
 - 已有 fork 与 GitHub 服务端缓存可能仍留存清洗前的旧对象；需要彻底清除时联系 GitHub Support（remove sensitive data）。
 - 剥离清单改动必须同步脚本头部注释与本节；新增专有功能若不放进剥离清单所列路径（新专有功能一律放 `app/src/app`），必须先更新剥离清单再发布。
 

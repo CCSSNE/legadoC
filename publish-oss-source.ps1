@@ -10,6 +10,7 @@ publish-oss-source.ps1 — 开源发布：把本地 own 完整历史剥离专有
   - 严禁绕过本脚本直接 `git push origin own`：本地与远程历史不同，非快进会被拒（防泄露保护），
     强推则会把专有历史重新公开。
   - 剥离清单改动必须与 AGENTS.md 同节同步。
+  - 推送成功后自动把本地完整私有历史推送到私有备份仓 private（CCSSNE/legadoC-private，快进）。
 
 剥离清单（相对仓库根）:
   app/src/app                                                  专有插件源码（百度TTS引擎/so/flavor manifest/引导实现）
@@ -30,6 +31,7 @@ $OutputEncoding = [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 $own = $PSScriptRoot
 $remoteName = 'origin'
 $branch = 'own'
+$privateRemote = 'private'
 
 $stripPaths = @(
   'app/src/app',
@@ -102,6 +104,16 @@ try {
     git -C $own fetch $remoteName --quiet
     Write-Output "已强推公开镜像：origin/$branch = $cleanSha"
     git -C $own log "refs/remotes/$remoteName/$branch" --oneline -5
+
+    # 6) 私有备份仓同步（完整私有历史含专有代码；正常为快进）
+    git -C $own remote get-url $privateRemote *> $null
+    if ($LASTEXITCODE -ne 0) {
+      Write-Output "[警告] 未配置私有备份 remote '$privateRemote'，跳过备份推送"
+    } else {
+      git -C $own push $privateRemote ("{0}:refs/heads/{1}" -f $localSha, $branch)
+      if ($LASTEXITCODE -ne 0) { throw '私有备份推送失败' }
+      Write-Output "已同步私有备份：private/own = $localSha（完整历史）"
+    }
   } finally { Pop-Location }
 } finally {
   if (Test-Path $tmp) { Remove-Item -Recurse -Force $tmp }
