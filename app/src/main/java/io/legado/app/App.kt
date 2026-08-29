@@ -54,6 +54,7 @@ import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.storage.Backup
 import io.legado.app.help.storage.RestoreJournal
 import io.legado.app.model.BookCover
+import io.legado.app.plugin.AppPlugins
 import io.legado.app.utils.ChineseUtils
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.defaultSharedPreferences
@@ -80,6 +81,8 @@ class App : Application() {
         oldConfig = Configuration(resources.configuration)
         installDefaultBackgrounds(this)
         applyDayNightInit(this)
+        // 内置插件引导：自有构建注册百度TTS等专有插件，开源构建为空注册表
+        AppPlugins.init(this)
         registerActivityLifecycleCallbacks(LifecycleHelp)
         defaultSharedPreferences.registerOnSharedPreferenceChangeListener(AppConfig)
         Coroutine.async {
