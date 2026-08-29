@@ -5,6 +5,7 @@ import android.content.Intent
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import androidx.activity.result.contract.ActivityResultContracts
@@ -19,6 +20,7 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.CreationCard
 import io.legado.app.databinding.DialogAiCreationLibraryBinding
 import io.legado.app.databinding.ItemAiCreationCardBinding
+import io.legado.app.help.ai.AiCreationConfig
 import io.legado.app.help.ai.AiCreationSessionHolder
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
@@ -52,19 +54,13 @@ class AiCreationLibraryDialog : BaseDialogFragment(R.layout.dialog_ai_creation_l
     private val section: String by lazy { requireArguments().getString(ARG_SECTION).orEmpty() }
     private val bookName: String by lazy { requireArguments().getString(ARG_BOOK_NAME).orEmpty() }
     private val selectedIds = linkedSetOf<Long>()
+    private var selectionMode = false
     private var cards: List<CreationCard> = emptyList()
     private val cardAdapter: CardAdapter by lazy { CardAdapter() }
 
     private val cardEditLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        val deleted = result.data?.getBooleanExtra("creationCardDeleted", false) ?: false
-        val cardId = result.data?.getLongExtra("creationCardId", -1L) ?: -1L
-        if (deleted && cardId > 0) {
-            selectedIds.remove(cardId)
-        } else if (cardId > 0) {
-            selectedIds.add(cardId)
-        }
+    ) { _ ->
         refreshCards()
     }
 
@@ -76,20 +72,101 @@ class AiCreationLibraryDialog : BaseDialogFragment(R.layout.dialog_ai_creation_l
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.tvSection.text = AiCreationSessionHolder.session.sectionLabel(section)
         binding.ivClose.setOnClickListener { dismissAllowingStateLoss() }
-        binding.tvCancel.setOnClickListener { dismissAllowingStateLoss() }
+        binding.tvCancel.setOnClickListener {
+            if (selectionMode) exitSelectionMode() else dismissAllowingStateLoss()
+        }
         binding.tvOk.setOnClickListener {
             selectedIds.forEach { cardId ->
                 AiCreationSessionHolder.session.addCard(section, cardId)
             }
             dismissAllowingStateLoss()
         }
+        binding.tvSelectAll.setOnClickListener { selectAllToggle() }
+        binding.tvDelete.setOnClickListener { deleteSelected() }
         binding.btnAddCard.setOnClickListener { createNewCard() }
         binding.etSearch.addTextChangedListener { text ->
             refreshCards(text?.toString().orEmpty())
         }
         binding.rvCards.adapter = cardAdapter
         binding.rvCards.layoutManager = GridLayoutManager(requireContext(), 4)
+        dialog?.setOnKeyListener { _, keyCode, event ->
+            if (keyCode == KeyEvent.KEYCODE_BACK &&
+                event.action == KeyEvent.ACTION_UP &&
+                selectionMode
+            ) {
+                exitSelectionMode()
+                true
+            } else {
+                false
+            }
+        }
+        upChrome()
         refreshCards()
+    }
+
+    private fun enterSelectionMode(initialCardId: Long) {
+        selectionMode = true
+        selectedIds.add(initialCardId)
+        cardAdapter.notifyDataSetChanged()
+        upChrome()
+    }
+
+    private fun exitSelectionMode() {
+        selectionMode = false
+        selectedIds.clear()
+        cardAdapter.notifyDataSetChanged()
+        upChrome()
+    }
+
+    private fun toggleSelect(cardId: Long) {
+        if (cardId in selectedIds) {
+            selectedIds.remove(cardId)
+        } else {
+            selectedIds.add(cardId)
+        }
+        cardAdapter.notifyDataSetChanged()
+        upChrome()
+    }
+
+    /** 全选开关：未选满则全选，已选满则全部取消 */
+    private fun selectAllToggle() {
+        if (cards.isNotEmpty() && selectedIds.size >= cards.size) {
+            selectedIds.clear()
+        } else {
+            cards.forEach { selectedIds.add(it.cardId) }
+        }
+        cardAdapter.notifyDataSetChanged()
+        upChrome()
+    }
+
+    /** 立刻删除所选卡片；会话内各分区的引用、链接组与待链接一并摘除 */
+    private fun deleteSelected() {
+        if (selectedIds.isEmpty()) return
+        val ids = selectedIds.toList()
+        viewLifecycleOwner.lifecycleScope.launch {
+            withContext(IO) {
+                ids.forEach { appDb.creationCardDao.deleteById(it) }
+            }
+            ids.forEach { cardId ->
+                AiCreationConfig.sectionOrder.forEach { sec ->
+                    session.removeCard(sec, cardId)
+                }
+            }
+            selectedIds.removeAll(ids.toSet())
+            refreshCards()
+        }
+    }
+
+    private fun upChrome() {
+        binding.llBottomBar.visibility = if (selectionMode) View.VISIBLE else View.GONE
+        if (selectionMode) {
+            val full = cards.isNotEmpty() && selectedIds.size >= cards.size
+            binding.tvSelectAll.text = getString(
+                if (full) R.string.select_cancel_count else R.string.select_all_count,
+                selectedIds.size,
+                cards.size
+            )
+        }
     }
 
     private fun refreshCards(keyword: String = binding.etSearch.text?.toString().orEmpty()) {
@@ -102,6 +179,7 @@ class AiCreationLibraryDialog : BaseDialogFragment(R.layout.dialog_ai_creation_l
                 }
             }
             cardAdapter.setItems(cards)
+            upChrome()
         }
     }
 
@@ -124,7 +202,6 @@ class AiCreationLibraryDialog : BaseDialogFragment(R.layout.dialog_ai_creation_l
                     )
                 )
             }
-            selectedIds.add(cardId)
             openCardEditor(cardId)
         }
     }
@@ -164,17 +241,20 @@ class AiCreationLibraryDialog : BaseDialogFragment(R.layout.dialog_ai_creation_l
         override fun registerListener(holder: ItemViewHolder, binding: ItemAiCreationCardBinding) {
             holder.itemView.setOnClickListener {
                 getItem(holder.layoutPosition)?.let { card ->
-                    if (card.cardId in selectedIds) {
-                        selectedIds.remove(card.cardId)
+                    if (selectionMode) {
+                        toggleSelect(card.cardId)
                     } else {
-                        selectedIds.add(card.cardId)
+                        openCardEditor(card.cardId)
                     }
-                    notifyItemChanged(holder.layoutPosition)
                 }
             }
             holder.itemView.setOnLongClickListener {
                 getItem(holder.layoutPosition)?.let { card ->
-                    openCardEditor(card.cardId)
+                    if (selectionMode) {
+                        toggleSelect(card.cardId)
+                    } else {
+                        enterSelectionMode(card.cardId)
+                    }
                 }
                 true
             }

@@ -72,6 +72,7 @@
         app:spanCount="4" />
 
     <LinearLayout
+        android:id="@+id/ll_bottom_bar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="end"
@@ -87,6 +88,22 @@
             android:padding="12dp"
             android:text="@string/cancel"
             android:textColor="@color/secondaryText"
+            tools:ignore="RtlHardcoded" />
+
+        <io.legado.app.ui.widget.text.AccentTextView
+            android:id="@+id/tv_select_all"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:padding="12dp"
+            android:text="@string/select_all_count"
+            tools:ignore="RtlHardcoded" />
+
+        <io.legado.app.ui.widget.text.AccentTextView
+            android:id="@+id/tv_delete"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:padding="12dp"
+            android:text="@string/delete"
             tools:ignore="RtlHardcoded" />
 
         <io.legado.app.ui.widget.text.AccentTextView
