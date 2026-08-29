@@ -303,6 +303,7 @@
     <string name="default_dict">Dictionary</string>
     <string name="default_ask_ai">Ask AI</string>
     <string name="ai_create">AI Create</string>
+    <string name="stage_text">Stage</string>
     <string name="ai_creation">AI Creation</string>
     <string name="ai_creation_back">Back</string>
     <string name="ai_creation_next">Next</string>
@@ -310,6 +311,7 @@
     <string name="ai_creation_generating">Generating…</string>
     <string name="ai_creation_copy_prompt">Copy Prompt</string>
     <string name="ai_creation_copied">Copied</string>
+    <string name="ai_creation_staged">Staged to AI creation selected text</string>
     <string name="ai_creation_prompt_empty">Prompt is empty</string>
     <string name="ai_creation_compose">Compose</string>
     <string name="ai_creation_prompt_title">Prompt</string>

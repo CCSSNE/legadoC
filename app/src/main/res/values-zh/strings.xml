@@ -302,6 +302,7 @@
     <string name="default_dict">字典</string>
     <string name="default_ask_ai">问AI</string>
     <string name="ai_create">AI 创作</string>
+    <string name="stage_text">暂存</string>
     <string name="ai_creation">AI 创作</string>
     <string name="ai_creation_back">返回</string>
     <string name="ai_creation_next">下一步</string>
@@ -309,6 +310,7 @@
     <string name="ai_creation_generating">生成中…</string>
     <string name="ai_creation_copy_prompt">复制提示词</string>
     <string name="ai_creation_copied">已复制</string>
+    <string name="ai_creation_staged">已暂存到 AI 创作选中文本</string>
     <string name="ai_creation_prompt_empty">提示词为空</string>
     <string name="ai_creation_compose">组合素材</string>
     <string name="ai_creation_prompt_title">提示词</string>
