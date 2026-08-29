@@ -20,6 +20,7 @@ import android.widget.ListView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.viewbinding.ViewBinding
 import io.legado.app.R
 import io.legado.app.base.BaseActivity
 import io.legado.app.constant.AppLog
@@ -30,6 +31,7 @@ import io.legado.app.help.bdtts.BdSpeakerRecord
 import io.legado.app.help.bdtts.BdSpeakerStore
 import io.legado.app.help.bdtts.BdSynthCallback
 import io.legado.app.help.bdtts.BdVoicePackImporter
+import io.legado.app.lib.theme.primaryColor
 import io.legado.app.utils.getPrefStringSet
 import io.legado.app.utils.putPrefStringSet
 import kotlinx.coroutines.CoroutineScope
@@ -45,7 +47,14 @@ import java.io.FileOutputStream
  * 本地百度 TTS 引擎管理：语音包导入、发音人列表、旁白/对白池标记、试听、编辑。
  * 手势：短按=加入/移出旁白池，长按=加入/移出对白池（两池互斥）；"编辑"=编辑发音人；"试听"=合成试听。
  */
-class BdEngineManageActivity : BaseActivity() {
+class BdEngineManageActivity : BaseActivity<BdEngineManageActivity.ContentBinding>() {
+
+    class ContentBinding(private val contentView: View) : ViewBinding {
+        override val root: View
+            get() = contentView
+    }
+
+    override val binding: ContentBinding by lazy { ContentBinding(buildContentView()) }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val records = mutableListOf<BdSpeakerRecord>()
@@ -63,8 +72,6 @@ class BdEngineManageActivity : BaseActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(buildContentView())
-        onActivityCreated(savedInstanceState)
         reload()
     }
 
