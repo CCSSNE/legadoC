@@ -553,7 +553,7 @@ class AiConfigFragment : PreferenceFragment(),
 
     private fun showCreationImageUrlDialog() {
         val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
-            editView.hint = "https://api.openai.com/v1/images/generations"
+            editView.hint = AiCreationConfig.DEFAULT_IMAGE_URL
             editView.inputType = InputType.TYPE_CLASS_TEXT
             editView.setText(AiCreationConfig.imageUrl)
             editView.setSelection(editView.text?.length ?: 0)

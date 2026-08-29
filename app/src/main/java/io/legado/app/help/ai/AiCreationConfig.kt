@@ -31,6 +31,10 @@ object AiCreationConfig {
     const val MIN_IMAGE_RETRY_COUNT = 0
     const val MAX_IMAGE_RETRY_COUNT = 10
 
+    // 默认使用智谱 CogView 生图接口（API Key 仍需用户自行配置）
+    const val DEFAULT_IMAGE_URL = "https://open.bigmodel.cn/api/paas/v4/images/generations"
+    const val DEFAULT_IMAGE_MODEL = "cogview-3-flash"
+
     const val SECTION_SELECTED_TEXT = "selected_text"
     const val SECTION_BACKGROUND = "background"
     const val SECTION_SCENE = "scene"
@@ -235,16 +239,32 @@ object AiCreationConfig {
     """.trimIndent()
 
     var imageUrl: String
-        get() = appCtx.getPrefString(PreferKey.aiCreationImageUrl).orEmpty().trim()
-        set(value) = appCtx.putPrefString(PreferKey.aiCreationImageUrl, value.trim())
+        get() = appCtx.getPrefString(PreferKey.aiCreationImageUrl)
+            ?.takeIf { it.isNotBlank() }
+            ?: DEFAULT_IMAGE_URL
+        set(value) {
+            val normalized = value.trim()
+            appCtx.putPrefString(
+                PreferKey.aiCreationImageUrl,
+                if (normalized == DEFAULT_IMAGE_URL) "" else normalized
+            )
+        }
 
     var imageApiKey: String
         get() = appCtx.getPrefString(PreferKey.aiCreationImageApiKey).orEmpty().trim()
         set(value) = appCtx.putPrefString(PreferKey.aiCreationImageApiKey, value.trim())
 
     var imageModel: String
-        get() = appCtx.getPrefString(PreferKey.aiCreationImageModel).orEmpty().trim()
-        set(value) = appCtx.putPrefString(PreferKey.aiCreationImageModel, value.trim())
+        get() = appCtx.getPrefString(PreferKey.aiCreationImageModel)
+            ?.takeIf { it.isNotBlank() }
+            ?: DEFAULT_IMAGE_MODEL
+        set(value) {
+            val normalized = value.trim()
+            appCtx.putPrefString(
+                PreferKey.aiCreationImageModel,
+                if (normalized == DEFAULT_IMAGE_MODEL) "" else normalized
+            )
+        }
 
     var imageRetryCount: Int
         get() = appCtx.getPrefInt(PreferKey.aiCreationImageRetryCount, DEFAULT_IMAGE_RETRY_COUNT)
