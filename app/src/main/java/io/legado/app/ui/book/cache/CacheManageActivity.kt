@@ -7,9 +7,11 @@ import android.view.MotionEvent
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.activity.addCallback
 import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.SimpleItemAnimator
 import io.legado.app.R
@@ -17,8 +19,10 @@ import io.legado.app.base.VMBaseActivity
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.CreationResult
 import io.legado.app.databinding.ActivityCacheManageBinding
 import io.legado.app.help.AppWebDav
+import io.legado.app.help.ai.AiCreationImageFile
 import io.legado.app.help.cache.CacheCoordinator
 import io.legado.app.help.cache.CacheLifecycle
 import io.legado.app.help.cache.CacheTaskStatus
@@ -30,6 +34,7 @@ import io.legado.app.lib.theme.SegmentedControlStyle
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.ui.book.read.creation.AiCreationPhotoDialog
 import io.legado.app.utils.applyNavigationBarMargin
 import io.legado.app.utils.applyNavigationBarPadding
 import io.legado.app.utils.gone
@@ -38,6 +43,7 @@ import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
+import io.legado.app.utils.compress.ZipUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -49,6 +55,7 @@ import kotlin.math.abs
 class CacheManageActivity :
     VMBaseActivity<ActivityCacheManageBinding, CacheManageViewModel>(),
     CacheManageAdapter.Callback,
+    CreationGridAdapter.Callback,
     CacheChapterDialog.Callback {
 
     companion object {
@@ -60,6 +67,10 @@ class CacheManageActivity :
     override val viewModel by viewModels<CacheManageViewModel>()
 
     private val adapter by lazy { CacheManageAdapter(this, this) }
+    private val creationAdapter by lazy { CreationGridAdapter(this, this) }
+    private var creationItems: List<CreationResult> = emptyList()
+    private val creationSelection = linkedSetOf<Long>()
+    private var showingCreation = false
     private var audioTaskReloadJob: Job? = null
     private var lastMissingTaskReloadAt = 0L
     private val handledTerminalTaskReloads = hashSetOf<String>()
@@ -117,19 +128,28 @@ class CacheManageActivity :
         btnAudio.setOnClickListener { switchMode(CacheManageMode.AUDIO) }
         btnVideo.setOnClickListener { switchMode(CacheManageMode.VIDEO) }
         btnManga.setOnClickListener { switchMode(CacheManageMode.MANGA) }
+        btnCreation.setOnClickListener { showCreation() }
         btnStats.setOnClickListener { showStats() }
         btnUploadAll.setOnClickListener { uploadAll() }
         btnDeleteAll.setOnClickListener { deleteAll() }
+        btnSelectAll.setOnClickListener { toggleSelectAll() }
         batchBar.applyNavigationBarMargin(withInitialMargin = true)
         statsScroll.applyNavigationBarPadding(withInitialPadding = true)
         updateTabs(initialMode)
+        onBackPressedDispatcher.addCallback(this) {
+            if (showingCreation && creationSelection.isNotEmpty()) {
+                exitCreationSelection()
+                return@addCallback
+            }
+            finish()
+        }
     }
 
     private fun observeData() {
         viewModel.itemsLiveData.observe(this) { items ->
             adapter.setItems(items)
             binding.tvEmpty.run {
-                if (!showingStats && items.isEmpty()) {
+                if (!showingStats && !showingCreation && items.isEmpty()) {
                     text = getString(R.string.cache_manage_empty, getString(viewModel.mode.titleRes))
                     visible()
                 } else {
@@ -204,6 +224,9 @@ class CacheManageActivity :
 
     private fun switchMode(mode: CacheManageMode) {
         showingStats = false
+        if (showingCreation) {
+            exitCreationMode()
+        }
         updateTabs(mode)
         binding.recyclerView.visible()
         binding.statsScroll.gone()
@@ -215,6 +238,9 @@ class CacheManageActivity :
 
     private fun showStats() = binding.run {
         showingStats = true
+        if (showingCreation) {
+            exitCreationMode()
+        }
         updateTabs(null)
         recyclerView.gone()
         tvEmpty.gone()
@@ -224,30 +250,163 @@ class CacheManageActivity :
         viewModel.loadStats()
     }
 
-    private fun switchAdjacentTab(offset: Int) {
-        val currentIndex = tabOrder.indexOfFirst { tab ->
-            if (showingStats) tab == null else tab == viewModel.mode
-        }
-        val targetIndex = currentIndex + offset
-        if (targetIndex !in tabOrder.indices) return
-        val target = tabOrder[targetIndex]
-        if (target == null) {
-            showStats()
-        } else {
-            switchMode(target)
+    private fun showCreation() = binding.run {
+        showingStats = false
+        showingCreation = true
+        updateTabs(CREATION_TAB)
+        recyclerView.visible()
+        recyclerView.layoutManager = GridLayoutManager(this@CacheManageActivity, 3)
+        recyclerView.adapter = creationAdapter
+        statsScroll.gone()
+        rotateLoading.gone()
+        batchBar.visible()
+        btnUploadAll.gone()
+        btnDeleteAll.gone()
+        btnSelectAll.visible()
+        tvEmpty.gone()
+        exitCreationSelection()
+        loadCreation()
+    }
+
+    private fun exitCreationMode() {
+        showingCreation = false
+        exitCreationSelection()
+        binding.recyclerView.layoutManager = LinearLayoutManager(this)
+        binding.recyclerView.adapter = adapter
+        binding.btnUploadAll.visible()
+        binding.btnDeleteAll.visible()
+        binding.btnSelectAll.gone()
+    }
+
+    private fun exitCreationSelection() {
+        creationSelection.clear()
+        creationAdapter.selectedIds = emptySet()
+    }
+
+    private fun loadCreation() {
+        lifecycleScope.launch {
+            creationItems = withContext(Dispatchers.IO) {
+                appDb.creationResultDao.getAll()
+            }
+            creationAdapter.setItems(creationItems)
+            if (showingCreation) {
+                if (creationItems.isEmpty()) {
+                    binding.tvEmpty.text =
+                        getString(R.string.cache_manage_empty, getString(R.string.cache_manage_creation))
+                    binding.tvEmpty.visible()
+                } else {
+                    binding.tvEmpty.gone()
+                }
+            }
         }
     }
 
-    private fun updateTabs(mode: CacheManageMode?) = binding.run {
+    private fun toggleSelectAll() {
+        if (creationSelection.size >= creationItems.size && creationItems.isNotEmpty()) {
+            exitCreationSelection()
+        } else {
+            creationSelection.clear()
+            creationSelection.addAll(creationItems.map { it.resultId })
+            creationAdapter.selectedIds = creationSelection.toSet()
+        }
+    }
+
+    private fun uploadCreationSelection() {
+        val files = creationItems
+            .filter { it.resultId in creationSelection }
+            .map { AiCreationImageFile.fileOf(it.fileName) }
+        if (files.isEmpty()) {
+            toastOnUi(R.string.cache_manage_batch_empty)
+            return
+        }
+        lifecycleScope.launch {
+            toastOnUi(R.string.cache_manage_uploading)
+            runCatching {
+                val zipFile = java.io.File(cacheDir, "creation_${System.currentTimeMillis()}.zip")
+                ZipUtils.zipFiles(files, zipFile)
+                withContext(Dispatchers.IO) {
+                    AppWebDav.uploadCachePackage(
+                        zipFile.name.removeSuffix(".zip"),
+                        zipFile
+                    )
+                }
+                zipFile.delete()
+            }.onSuccess {
+                toastOnUi(R.string.cache_manage_upload_success)
+            }.onFailure {
+                toastOnUi(getString(R.string.cache_manage_upload_failed, it.localizedMessage))
+            }
+        }
+    }
+
+    private fun saveCreationSelection() {
+        val selected = creationItems.filter { it.resultId in creationSelection }
+        lifecycleScope.launch {
+            var success = 0
+            selected.forEach { item ->
+                if (AiCreationImageFile.saveToAlbum(this@CacheManageActivity, item.fileName)) {
+                    success++
+                }
+            }
+            toastOnUi(
+                if (success == selected.size && selected.isNotEmpty()) {
+                    R.string.illustration_saved_to_album
+                } else {
+                    R.string.illustration_save_failed
+                }
+            )
+        }
+    }
+
+    private fun deleteCreationSelection() {
+        val count = creationSelection.size
+        if (count == 0) return
+        alert(getString(R.string.delete), getString(R.string.cache_manage_creation_delete_confirm, count)) {
+            yesButton {
+                lifecycleScope.launch {
+                    val targets = creationItems.filter { it.resultId in creationSelection }
+                    withContext(Dispatchers.IO) {
+                        targets.forEach { AiCreationImageFile.delete(it.fileName) }
+                        appDb.creationResultDao.delete(targets)
+                    }
+                    toastOnUi(R.string.delete_success)
+                    exitCreationSelection()
+                    loadCreation()
+                }
+            }
+            noButton()
+        }
+    }
+
+    private fun switchAdjacentTab(offset: Int) {
+        val currentIndex = tabOrder.indexOfFirst { tab ->
+            when {
+                showingStats -> tab == null
+                showingCreation -> tab === CREATION_TAB
+                else -> tab == viewModel.mode
+            }
+        }
+        val targetIndex = currentIndex + offset
+        if (targetIndex !in tabOrder.indices) return
+        when (val target = tabOrder[targetIndex]) {
+            null -> showStats()
+            is CacheManageMode -> switchMode(target)
+            CREATION_TAB -> showCreation()
+        }
+    }
+
+    private fun updateTabs(mode: Any?) = binding.run {
         SegmentedControlStyle.apply(
             track = tabBar,
-            items = listOf(btnBooks, btnAudio, btnVideo, btnManga, btnStats),
+            items = listOf(btnBooks, btnAudio, btnVideo, btnManga, btnCreation, btnStats),
             selectedIndex = when (mode) {
                 CacheManageMode.BOOK -> 0
                 CacheManageMode.AUDIO -> 1
                 CacheManageMode.VIDEO -> 2
                 CacheManageMode.MANGA -> 3
-                null -> 4
+                CREATION_TAB -> 4
+                null -> 5
+                else -> 0
             },
             palette = SegmentedControlStyle.Palette(
                 trackColor = UiCorner.surfaceColor(
@@ -514,6 +673,48 @@ class CacheManageActivity :
         viewModel.load()
     }
 
+    override fun onItemClick(item: CreationResult) {
+        if (creationSelection.isEmpty()) {
+            val files = creationItems.map { it.fileName }
+            val position = creationItems.indexOfFirst { it.resultId == item.resultId }
+            showDialogFragment(AiCreationPhotoDialog.newInstance(files, position))
+            return
+        }
+        if (item.resultId in creationSelection) {
+            creationSelection.remove(item.resultId)
+        } else {
+            creationSelection.add(item.resultId)
+        }
+        creationAdapter.selectedIds = creationSelection.toSet()
+    }
+
+    override fun onItemLongClick(item: CreationResult) {
+        if (creationSelection.isEmpty()) {
+            creationSelection.add(item.resultId)
+            creationAdapter.selectedIds = creationSelection.toSet()
+            return
+        }
+        if (item.resultId !in creationSelection) {
+            creationSelection.add(item.resultId)
+            creationAdapter.selectedIds = creationSelection.toSet()
+            return
+        }
+        selector(
+            AiCreationImageFile.fileOf(item.fileName).name,
+            listOf(
+                getString(R.string.cache_manage_upload),
+                getString(R.string.illustration_save_to_album),
+                getString(R.string.delete)
+            )
+        ) { _, _, index ->
+            when (index) {
+                0 -> uploadCreationSelection()
+                1 -> saveCreationSelection()
+                2 -> deleteCreationSelection()
+            }
+        }
+    }
+
     override fun openCacheChapter(book: Book, chapter: BookChapter) {
         val target = book.apply {
             durChapterIndex = chapter.index
@@ -541,11 +742,14 @@ private const val MISSING_TASK_RELOAD_DELAY_MS = 250L
 private const val TERMINAL_TASK_RELOAD_DELAY_MS = 600L
 private const val SWIPE_TAB_DISTANCE_DP = 72
 
-private val tabOrder = listOf(
+private val CREATION_TAB = Any()
+
+private val tabOrder = listOf<Any?>(
     CacheManageMode.BOOK,
     CacheManageMode.AUDIO,
     CacheManageMode.VIDEO,
     CacheManageMode.MANGA,
+    CREATION_TAB,
     null
 )
 
