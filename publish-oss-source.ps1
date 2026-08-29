@@ -32,6 +32,7 @@ $own = $PSScriptRoot
 $remoteName = 'origin'
 $branch = 'own'
 $privateRemote = 'private'
+$backupForkUrl = 'https://github.com/legado-backup/legado-c.git'
 
 $stripPaths = @(
   'app/src/app',
@@ -114,6 +115,11 @@ try {
       if ($LASTEXITCODE -ne 0) { throw '私有备份推送失败' }
       Write-Output "已同步私有备份：private/own = $localSha（完整历史）"
     }
+
+    # 7) 公开备份fork同步（legado-backup/legado-c，与公开镜像同一条清洗历史）
+    git push --force $backupForkUrl ("{0}:refs/heads/{1}" -f $cleanSha, $branch)
+    if ($LASTEXITCODE -ne 0) { throw '公开备份fork推送失败' }
+    Write-Output "已同步公开备份fork：legado-backup/legado-c own = $cleanSha"
   } finally { Pop-Location }
 } finally {
   if (Test-Path $tmp) { Remove-Item -Recurse -Force $tmp }
