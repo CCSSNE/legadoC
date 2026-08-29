@@ -168,6 +168,7 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
             ivTtsSpeechAdd.setColorFilter(textColor)
             ivCatalog.setColorFilter(textColor)
             tvCatalog.setTextColor(textColor)
+            tvCatalogValue.setTextColor(textColor)
             ivTtsCache.setColorFilter(textColor)
             tvTtsCache.setTextColor(textColor)
             ivMainMenu.setColorFilter(textColor)
@@ -328,10 +329,7 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
     }
 
     override fun upSpeakEngineSummary() {
-        binding.tvCatalog.text = getString(
-            R.string.current_tts_engine_summary,
-            speakEngineSummary()
-        )
+        binding.tvCatalogValue.text = speakEngineSummary()
         bindSpeechRateControls()
     }
 

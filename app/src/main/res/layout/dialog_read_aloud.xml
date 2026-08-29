@@ -313,7 +313,7 @@
         android:paddingEnd="8dp"
         android:paddingBottom="4dp">
 
-        <!--目录按钮（当前引擎，文字较长，稍宽）-->
+        <!--当前引擎按钮（标签+引擎名各一行，单行省略，不换行）-->
         <LinearLayout
             android:id="@+id/ll_catalog"
             android:layout_width="0dp"
@@ -321,12 +321,11 @@
             android:layout_weight="1.2"
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:clickable="true"
-            android:contentDescription="@string/speak_engine"
+            android:contentDescription="@string/speak_engine_current"
             android:focusable="true"
             android:gravity="center_vertical"
             android:minHeight="54dp"
             android:orientation="vertical"
-            android:paddingEnd="6dp"
             android:paddingBottom="7dp">
 
             <androidx.appcompat.widget.AppCompatImageView
@@ -343,13 +342,24 @@
 
             <TextView
                 android:id="@+id/tv_catalog"
-                android:layout_width="match_parent"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
+                android:layout_gravity="center_horizontal"
                 android:layout_marginTop="3dp"
-                android:gravity="center_vertical"
-                android:maxLines="4"
-                android:text="@string/speak_engine"
+                android:ellipsize="middle"
+                android:singleLine="true"
+                android:text="@string/speak_engine_current"
+                android:textColor="@color/primaryText"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/tv_catalog_value"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:ellipsize="middle"
+                android:singleLine="true"
+                android:text="@string/system_tts"
                 android:textColor="@color/primaryText"
                 android:textSize="12sp" />
         </LinearLayout>
