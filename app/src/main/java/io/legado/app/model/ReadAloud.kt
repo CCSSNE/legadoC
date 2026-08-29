@@ -121,7 +121,7 @@ object ReadAloud {
             SourceAudioReadAloudService::class.java -> ReadAloudEngineType.SOURCE_AUDIO
             HttpReadAloudService::class.java -> ReadAloudEngineType.HTTP_TTS
             TTSReadAloudService::class.java -> ReadAloudEngineType.SYSTEM_TTS
-            else -> ReadAloudEngines.byServiceClass(running)?.engineType ?: selectedEngineType
+            else -> running?.let { ReadAloudEngines.byServiceClass(it) }?.engineType ?: selectedEngineType
         }
 
     val selectedEngineType: ReadAloudEngineType
