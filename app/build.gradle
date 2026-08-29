@@ -141,6 +141,14 @@ android {
             dimension "mode"
             manifestPlaceholders.put("APP_CHANNEL_VALUE", "app")
         }
+        // 开源路线（oss flavor）：剥离 app/src/app 下的全部专有插件（百度TTS 等），
+        // 插件源码/so/自身manifest 完全不参与编译与打包。编译命令：
+        //   gradlew :app:assembleOssRelease
+        // 包名随 release buildType 后缀（io.legado.app.refgd）、应用名见 src/oss/res、版本无后缀。
+        oss {
+            dimension "mode"
+            manifestPlaceholders.put("APP_CHANNEL_VALUE", "oss")
+        }
     }
 
     android.applicationVariants.configureEach { variant ->
@@ -249,8 +257,8 @@ dependencies {
     implementation(libs.gson)
     implementation(libs.lottie)
 
-    //baidu offline tts
-    implementation(libs.snakeyaml)
+    //baidu offline tts（语音包 config.yaml 解析；仅自有构建 app flavor 需要）
+    appImplementation(libs.snakeyaml)
 
     //lifecycle
     implementation(libs.lifecycle.common.java8)
