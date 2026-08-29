@@ -126,6 +126,10 @@ class ReadView(context: Context, attrs: AttributeSet) :
     private var crossPageInCorner = false
     private val crossPageTimeout = 500L
     private val crossPageRepeatTimeout = 1000L
+    // 跨页复制：翻页前各页已选文本的累计缓冲（按翻页顺序追加）。
+    // 每次跨页翻页时，翻页前的本页选区文本先入缓冲再取消选区；
+    // 最终复制文本 = 缓冲（已翻过的页）+ 当前页选区。选区取消或重新开始时清空。
+    private val crossPageTextBuffer = StringBuilder()
     private val crossPageRunnable = Runnable {
         if (crossPageArmed) {
             crossPageFlipped = true
@@ -167,6 +171,8 @@ class ReadView(context: Context, attrs: AttributeSet) :
         if (!isTextSelected) return
         val delegate = pageDelegate ?: return
         if (!delegate.hasNext()) return
+        // 真正的跨页：翻页前本页已选文本先入缓冲，不能随 cancelSelect 丢弃
+        crossPageTextBuffer.append(curPage.selectedText)
         curPage.cancelSelect()
         isTextSelected = false
         fillPage(PageDirection.NEXT)
@@ -309,6 +315,7 @@ class ReadView(context: Context, attrs: AttributeSet) :
                 val wasTextSelected = isTextSelected
                 if (isTextSelected) {
                     curPage.cancelSelect()
+                    crossPageTextBuffer.clear()
                     isTextSelected = false
                     pressOnTextSelected = true
                 } else {
@@ -517,6 +524,7 @@ class ReadView(context: Context, attrs: AttributeSet) :
         crossPageFlipped = false
         crossPageInCorner = false
         removeCallbacks(crossPageRunnable)
+        crossPageTextBuffer.clear()
         if (isTextSelected) {
             dismissSelectionMagnifier()
             curPage.cancelSelect(clearSearchResult)
@@ -824,6 +832,7 @@ class ReadView(context: Context, attrs: AttributeSet) :
         cancelPendingSingleTap()
         pageDelegate?.onDestroy()
         curPage.cancelSelect()
+        crossPageTextBuffer.clear()
         invalidateTextPage()
     }
 
@@ -1034,7 +1043,11 @@ class ReadView(context: Context, attrs: AttributeSet) :
      * @return 选择的文本
      */
     fun getSelectText(): String {
-        return curPage.selectedText
+        val current = curPage.selectedText
+        if (crossPageTextBuffer.isEmpty()) return current
+        // 跨页复制：已翻过的页 + 当前页选区；页间不加分隔（段落分隔符由
+        // getSelectedText 按 isParagraphEnd 自带，页界拆段处保持原文连续）
+        return crossPageTextBuffer.toString() + current
     }
 
     fun getCurVisiblePage(): TextPage {
