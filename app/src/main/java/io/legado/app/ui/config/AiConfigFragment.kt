@@ -193,7 +193,7 @@ class AiConfigFragment : PreferenceFragment(),
             PreferKey.aiCreationImageUrl -> showCreationImageUrlDialog()
             PreferKey.aiCreationImageApiKey -> showCreationImageApiKeyDialog()
             PreferKey.aiCreationImageApiKeyGuide ->
-                openUrl("https://bigmodel.cn/apikey/platform")
+                requireContext().openUrl("https://bigmodel.cn/apikey/platform")
             PreferKey.aiCreationImageModel -> showCreationImageModelDialog()
             PreferKey.aiCreationImageRequestTemplate -> showCreationImageRequestDialog()
             PreferKey.aiCreationImageRetryCount -> showCreationImageRetryDialog()

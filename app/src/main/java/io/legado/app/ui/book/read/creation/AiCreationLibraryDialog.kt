@@ -149,7 +149,7 @@ class AiCreationLibraryDialog : BaseDialogFragment(R.layout.dialog_ai_creation_l
             }
             ids.forEach { cardId ->
                 AiCreationConfig.sectionOrder.forEach { sec ->
-                    session.removeCard(sec, cardId)
+                    AiCreationSessionHolder.session.removeCard(sec, cardId)
                 }
             }
             selectedIds.removeAll(ids.toSet())
