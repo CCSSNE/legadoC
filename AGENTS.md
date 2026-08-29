@@ -197,12 +197,14 @@ $versionName = '3.26.<MMddHH>' # <MMddHH> uses UTC; appC automatically appends c
 - 仅当用户明确点名"开源编译/发布编译/oss 编译"时，才执行 `assembleOssRelease`：同样传 `-PVERSION_CODE`/`-PVERSION_NAME`（版本名不带 `c`，oss flavor 无后缀），产物在 `app\build\outputs\apk\oss\release\`；验证用同一套 `aapt`/`apksigner` 流程，但身份预期不同——包名 `io.legado.app.refgd`、中文名"阅读"（繁中"閱讀"）、版本名无后缀。不得把 ossRelease 当作阅读C 的交付物，也不得用 appC 冒充开源发布包。
 - 用户明确要求"双编译"时，两个构建都执行：先自用 `assembleAppC`，再开源 `assembleOssRelease`，各自完整走一遍版本传参与产物验证；两包包名不同，同版本号互不影响覆盖安装。
 
-开源源码发布（上传屏蔽）：
+开源源码发布（历史清洗镜像）：
 
-- 源码可以公开上传：专有/自用代码 100% 集中在 `app/src/app`（百度引擎源码、com.baidu SDK、jniLibs so、flavor manifest、插件引导实现），主代码仅剩注释与日志关键词文本，无代码级泄露；`gradle.properties` 无密钥（签名全靠构建时传参）。
-- **严禁把 `own` 分支直接 push 到公开仓库**：历史提交含 `app/src/app` 与 so，push 分支即泄露全部历史版本。
-- 发布统一走仓库根 `publish-oss-source.ps1`：导出 HEAD 已跟踪文件 → 删除排除清单（`app/src/app`、`AGENTS.md`、`docs`、`tools`）→ 向 `app/src/app` 注入 `src/oss` 的空壳 AppPlugins（同 FQCN no-op，保证公开树全部变体可编译）→ 单提交"同步开源版源码（own @ 短SHA）"推到公开仓库分支。公开仓库历史永不含专有内容；协作者 PR 提到公开仓库，由自己评审后人工搬回 own。
-- 排除清单改动必须同步脚本头部注释与本节；新增专有功能若不放在 `app/src/app`，必须先更新排除清单再发布。assets 里的"百度汉语"词典规则与默认 HTTP TTS 源属于上游 legado 公开内容，不算专有代码，照常发布。
+- 远程 `origin`（CCSSNE/legadoC）是公开仓库（默认分支 `own`）。`origin/own` = 本地完整历史剥离专有路径后的清洗镜像；本地 `own` = 完整私有历史，是专有代码唯一副本（建议尽快另建私有远程备份仓库）。
+- 专有/自用代码 100% 集中在剥离清单所列路径（现行 `app/src/app` + 五个迁移前旧路径），主代码仅剩注释与日志关键词文本；`gradle.properties` 无密钥（签名全靠构建时传参）。`AGENTS.md`、`docs`、`tools` 不在剥离范围，随历史公开（8 月中旬起已公开，用户知情）；assets 的"百度汉语"词典与默认 HTTP TTS 源属上游 legado 公开内容，照常保留。
+- **严禁把本地 `own` 直接 `git push` 到 `origin/own`**：两边历史不同，非快进必被拒（这是防泄露保护，不得绕过）；强推会把专有历史重新公开。
+- 发布统一走仓库根 `publish-oss-source.ps1`：临时克隆 → `git filter-repo --invert-paths` 按剥离清单改写全历史 → 全历史校验剥离路径零命中 → 末尾注入确定性"空壳插件引导"提交（固定时间戳，保证公开树 app/oss 两 flavor 均可编译）→ 从主仓库 `--force` 推 `refs/heads/own`。清洗是确定性的：未受污染的旧提交哈希不变，后续同步通常为快进，仅本地历史重排时才真正强推。
+- 已有 fork 与 GitHub 服务端缓存可能仍留存清洗前的旧对象；需要彻底清除时联系 GitHub Support（remove sensitive data）。
+- 剥离清单改动必须同步脚本头部注释与本节；新增专有功能若不放进剥离清单所列路径（新专有功能一律放 `app/src/app`），必须先更新剥离清单再发布。
 
 ### 产物验证
 
@@ -302,7 +304,7 @@ uiautomator2 / ADB
 - 提交信息简洁且准确，遵循现有仓库风格。
 - 项目不使用远程 CI：`.github/workflows` 下全部工作流已于 2026-08-22 移除（unit-test 因 `gradlew` 缺少可执行位从未通过；publish-release-to-telegram 为上游继承、secrets 未配置的死配置），远程 Actions 无存量运行负担。单元测试与编译检查一律在本地执行；不得重新引入或恢复远程 CI 工作流。
 - 每个独立修改完成并通过代码审查后必须立即自动创建一个只包含该修改的 Git 提交，不等待用户另行要求，也不能把多个无关修改堆积后一次提交。正式 APK 编译只能在这些提交完成后开始；正式编译、安装和回归通过后，再提交版本基线与验证记录。发生回归时只允许从这些明确提交边界回退，禁止猜测性撤销工作区文件。
-- **自动推送（顺手就推）**：本地仓库一旦有新提交（含基线记录提交），立即顺手 `git push origin own` 到远程仓库，不等待用户另行要求；自己写的代码自己推。此规则只涵盖代码提交的推送，不含 GitHub Release 的创建/上传——Release 发布仍必须等用户明确指示，不得自动进行。推送后以 `git status -sb` 确认 `own` 与 `origin/own` 已同步。
+- **自动推送（顺手就推）**：本地仓库一旦有新提交（含基线记录提交），立即运行仓库根 `publish-oss-source.ps1` 把清洗镜像同步到 `origin/own`，不等待用户另行要求；自己写的代码自己推。禁止对 `origin/own` 直接 `git push`（own 与 origin/own 历史不同：本地完整私有，远程为剥离专有路径的清洗镜像；详见第 3 节"开源源码发布"）。此规则只涵盖代码提交的推送，不含 GitHub Release 的创建/上传——Release 发布仍必须等用户明确指示，不得自动进行。同步后以发布脚本输出的 `origin/own = <sha>` 确认远程已更新。
 
 ## 6. 当前交付基线
 

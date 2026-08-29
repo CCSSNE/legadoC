@@ -1,95 +1,107 @@
-<#
-publish-oss-source.ps1 — 开源源码发布：把本仓库（own）HEAD 中"已提交"的源码导出为公开仓库快照，单提交同步推送。
+﻿<#
+publish-oss-source.ps1 — 开源发布：把本地 own 完整历史剥离专有路径后，作为公开仓库 origin/own 的清洗镜像强推。
+
+机制（与 AGENTS.md §3「双构建路线 / 开源源码发布」一致）:
+  - 本地 own = 完整私有历史，是专有代码唯一副本；origin/own（公开仓库 CCSSNE/legadoC）= 清洗镜像。
+  - 本脚本在临时克隆上用 git filter-repo --invert-paths 剥离剥离清单（确定性改写：旧提交哈希稳定，
+    后续同步通常为快进；纯专有提交会因变空被剪除），全历史校验为零后，在镜像末尾注入一个
+    确定性时间戳的"空壳插件引导"提交（保证公开树 app/oss 两个 flavor 都可编译），
+    最后从主仓库 --force 推 refs/heads/own。
+  - 严禁绕过本脚本直接 `git push origin own`：本地与远程历史不同，非快进会被拒（防泄露保护），
+    强推则会把专有历史重新公开。
+  - 剥离清单改动必须与 AGENTS.md 同节同步。
+
+剥离清单（相对仓库根）:
+  app/src/app                                                  专有插件源码（百度TTS引擎/so/flavor manifest/引导实现）
+  app/src/main/java/com/baidu                                  百度SDK JNI契约层（迁移前旧路径）
+  app/src/main/java/io/legado/app/help/bdtts                   百度TTS引擎层（迁移前旧路径）
+  app/src/main/jniLibs                                         百度引擎动态库（迁移前旧路径）
+  app/src/main/java/io/legado/app/service/BdReadAloudService.kt        （迁移前旧路径）
+  app/src/main/java/io/legado/app/ui/book/read/config/BdEngineManageActivity.kt （迁移前旧路径）
 
 用法:
-  .\publish-oss-source.ps1 -PublicRepo 'D:\AI\audio\legadoC-oss' [-RemoteName origin] [-Branch main] [-DryRun]
-
-规则（与 AGENTS.md §3「双构建路线 / 开源源码发布」一致）:
-  - 严禁把 own 分支直接 push 到公开仓库：历史提交里含 app/src/app 专有内容与 .so，push 分支 = 泄露全部历史。
-  - 本脚本只导出 HEAD 的已跟踪文件（git archive，天然排除构建产物与本地未跟踪垃圾），
-    删除排除清单中的私有路径后镜像进公开仓库，公开仓库历史因此永不含专有内容。
-  - 排除清单改动必须与 AGENTS.md 同节同步。
-
-排除清单（相对仓库根，目录）:
-  app/src/app    专有插件源码（百度TTS引擎/com.baidu SDK/jniLibs so/flavor manifest/插件引导实现）；
-                 发布树会注入 src/oss 的空壳 AppPlugins（同 FQCN no-op），保证公开树全部变体可编译
-  AGENTS.md      私有项目规则（含本机路径与交付基线）
-  docs           私有文档与截图
-  tools          私有调试工具链（模拟器路径/Frida 探针等）
+  .\publish-oss-source.ps1 [-DryRun]     # DryRun 只做克隆/剥离/校验/预览，不推送
 #>
 param(
-  [Parameter(Mandatory = $true)][string]$PublicRepo,
-  [string]$RemoteName = 'origin',
-  [string]$Branch = 'main',
   [switch]$DryRun
 )
 $ErrorActionPreference = 'Stop'
 $OutputEncoding = [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 $own = $PSScriptRoot
+$remoteName = 'origin'
+$branch = 'own'
 
-$excludeDirs = @('app/src/app', 'AGENTS.md', 'docs', 'tools') # 目录；AGENTS.md 按文件处理
+$stripPaths = @(
+  'app/src/app',
+  'app/src/main/java/com/baidu',
+  'app/src/main/java/io/legado/app/help/bdtts',
+  'app/src/main/jniLibs',
+  'app/src/main/java/io/legado/app/service/BdReadAloudService.kt',
+  'app/src/main/java/io/legado/app/ui/book/read/config/BdEngineManageActivity.kt'
+)
 
-if (-not (Test-Path (Join-Path $PublicRepo '.git'))) {
-  throw "公开仓库不存在或不是 git 仓库：$PublicRepo（先 git init 或 clone）"
-}
+git filter-repo --version *> $null
+if ($LASTEXITCODE -ne 0) { throw 'git filter-repo 不可用：先 pip install git-filter-repo' }
 
-$ownSha = git -C $own rev-parse --short HEAD
-if ($LASTEXITCODE -ne 0) { throw '无法读取 own HEAD' }
+$localSha = git -C $own rev-parse $branch
+if ($LASTEXITCODE -ne 0) { throw "本地分支 $branch 不存在" }
+Write-Output "本地 own（完整私有历史）: $localSha，提交数 $((git -C $own rev-list --count HEAD))"
 
-$dirty = git -C $own status --porcelain
-if ($dirty) { Write-Output "[警告] own 有未提交改动，本次发布仅包含已提交内容（HEAD=$ownSha）" }
-
-# 1) 导出 HEAD 已跟踪文件到临时目录
-$tmp = Join-Path ([IO.Path]::GetTempPath()) ("legado-oss-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
-New-Item -ItemType Directory -Path $tmp | Out-Null
+# 1) 临时克隆（filter-repo 要求新克隆）
+$tmp = Join-Path ([IO.Path]::GetTempPath()) ("legado-clean-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
 try {
-  git -C $own archive --format=tar HEAD | tar -x -C $tmp
-  if ($LASTEXITCODE -ne 0) { throw 'git archive 导出失败' }
+  git clone --quiet $own $tmp
+  if ($LASTEXITCODE -ne 0) { throw '临时克隆失败' }
 
-  foreach ($item in $excludeDirs) {
-    $p = Join-Path $tmp ($item -replace '/', '\')
-    if (Test-Path $p) { Remove-Item -Recurse -Force $p }
-  }
-
-  # 2) 注入 app flavor 空壳 AppPlugins（与 src/oss 同 FQCN 的 no-op）：公开树所有变体均可编译
-  $stubSrc = Join-Path $tmp 'app\src\oss\java\io\legado\app\plugin\AppPlugins.kt'
-  $stubDstDir = Join-Path $tmp 'app\src\app\java\io\legado\app\plugin'
-  if (-not (Test-Path $stubSrc)) { throw '导出树中缺少 src/oss 空壳 AppPlugins，无法注入' }
-  New-Item -ItemType Directory -Path $stubDstDir -Force | Out-Null
-  Copy-Item $stubSrc (Join-Path $stubDstDir 'AppPlugins.kt') -Force
-
-  # 3) 镜像进公开仓库：先清空除 .git 外的全部旧内容，保证"删除"也能同步
-  Push-Location $PublicRepo
+  Push-Location $tmp
   try {
-    if (git rev-parse --verify --quiet ("refs/heads/" + $Branch)) {
-      git checkout $Branch
-    } elseif (git rev-parse --verify --quiet ("refs/remotes/" + $RemoteName + "/" + $Branch)) {
-      git checkout -b $Branch ("-t" + $RemoteName + "/" + $Branch)
-    } else {
-      git checkout -b $Branch
-    }
-    if ($LASTEXITCODE -ne 0) { throw "切换分支 $Branch 失败" }
+    # 2) 剥离专有路径（确定性改写，纯专有提交变空被剪除）
+    $frArgs = @('--force', '--invert-paths')
+    foreach ($p in $stripPaths) { $frArgs += @('--path', $p) }
+    git filter-repo $frArgs
+    if ($LASTEXITCODE -ne 0) { throw 'filter-repo 剥离失败' }
 
-    Get-ChildItem -Force | Where-Object { $_.Name -ne '.git' } | Remove-Item -Recurse -Force
-    Copy-Item -Path (Join-Path $tmp '*') -Destination . -Recurse -Force
+    # 3) 全历史校验：剥离清单必须为零命中
+    foreach ($p in $stripPaths) {
+      $hits = git log --all --oneline -- $p
+      if ($hits) { throw "剥离校验失败：$p 在历史中仍有提交" }
+    }
+
+    # 4) 注入空壳插件引导（复制 src/oss 的 no-op AppPlugins，固定时间戳保证哈希确定）
+    $stubSrc = Join-Path $tmp 'app/src/oss/java/io/legado/app/plugin/AppPlugins.kt'
+    $stubDir = Join-Path $tmp 'app/src/app/java/io/legado/app/plugin'
+    if (-not (Test-Path $stubSrc)) { throw '清洗树中缺少 src/oss 空壳 AppPlugins，无法注入' }
+    New-Item -ItemType Directory -Path $stubDir -Force | Out-Null
+    Copy-Item $stubSrc (Join-Path $stubDir 'AppPlugins.kt') -Force
     git add -A
-    if ($LASTEXITCODE -ne 0) { throw '公开仓库暂存失败' }
+    $env:GIT_AUTHOR_DATE = '2026-08-30T00:00:00+0000'
+    $env:GIT_COMMITTER_DATE = '2026-08-30T00:00:00+0000'
+    git commit -m '开源发布：注入空壳插件引导（发布脚本自动维护，勿手改）'
+    if ($LASTEXITCODE -ne 0) { throw '空壳引导提交失败' }
+    Remove-Item Env:GIT_AUTHOR_DATE -ErrorAction SilentlyContinue
+    Remove-Item Env:GIT_COMMITTER_DATE -ErrorAction SilentlyContinue
+
+    $cleanSha = git rev-parse HEAD
+    $cleanCount = git rev-list --count HEAD
+    Write-Output "清洗镜像: $cleanSha，提交数 $cleanCount（纯专有提交已剪除，其余历史原样保留）"
 
     if ($DryRun) {
-      Write-Output '--- DryRun 变更预览（未提交） ---'
-      git status -s | Select-Object -First 50
+      Write-Output '--- DryRun：清洗镜像最近8条 ---'
+      git log --oneline -8
+      Write-Output '--- DryRun：HEAD 顶层内容 ---'
+      git ls-tree --name-only HEAD
       return
     }
 
-    $staged = (git diff --cached --name-only | Measure-Object -Line).Lines
-    if ($staged -eq 0) { Write-Output '公开仓库无变更，跳过提交与推送'; return }
-
-    git commit -m ("同步开源版源码（own @ " + $ownSha + "）")
-    if ($LASTEXITCODE -ne 0) { throw '公开仓库提交失败' }
-    git push -u $RemoteName $Branch
-    if ($LASTEXITCODE -ne 0) { throw '公开仓库推送失败' }
-    Write-Output '--- 公开仓库最近提交 ---'
-    git log --oneline -3
+    # 5) 从临时克隆推送（清洗对象只在临时克隆；远端URL取自主仓库，凭据走全局凭据管理器）
+    $originUrl = git -C $own remote get-url $remoteName
+    git remote add $remoteName $originUrl
+    if ($LASTEXITCODE -ne 0) { throw '临时克隆添加远端失败' }
+    git push --force $remoteName ("{0}:refs/heads/{1}" -f $cleanSha, $branch)
+    if ($LASTEXITCODE -ne 0) { throw '清洗镜像推送失败' }
+    git -C $own fetch $remoteName --quiet
+    Write-Output "已强推公开镜像：origin/$branch = $cleanSha"
+    git -C $own log "refs/remotes/$remoteName/$branch" --oneline -5
   } finally { Pop-Location }
 } finally {
   if (Test-Path $tmp) { Remove-Item -Recurse -Force $tmp }
