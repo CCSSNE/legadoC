@@ -267,6 +267,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     private var backupJob: Job? = null
     private var aiChapterPurifyJob: Job? = null
     private var aiChapterPurifySummarySnackbar: Snackbar? = null
+    private var aiCreationFloatingView: View? = null
     private var aiChapterPurifyLastStreamSnackbarAt = 0L
     private var aiChapterPurifyPendingChapterIndex: Int? = null
     private var aiChapterPurifyPendingForce = false
