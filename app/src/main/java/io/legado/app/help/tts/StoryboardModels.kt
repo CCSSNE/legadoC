@@ -80,6 +80,7 @@ data class ChapterStoryboard(
     val chapterTitle: String,
     val contentHash: String,
     val cacheVersion: Int = CACHE_VERSION,
+    val paragraphs: List<String> = emptyList(),
     val scenes: List<StoryboardScene> = emptyList(),
     val identityLinks: List<StoryboardIdentityLink> = emptyList()
 ) {
