@@ -253,6 +253,33 @@
             android:title="@string/ai_creation_scope_note"
             app:iconSpaceReserved="false" />
 
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiCreationImageUrl"
+            android:title="@string/ai_creation_image_url"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiCreationImageApiKey"
+            android:title="@string/ai_creation_image_api_key"
+            android:summary="@string/ai_creation_image_api_key_summary"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiCreationImageModel"
+            android:title="@string/ai_creation_image_model"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiCreationImageRequestTemplate"
+            android:summary="@string/ai_creation_image_request_template_summary"
+            android:title="@string/ai_creation_image_request_template"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiCreationImageRetryCount"
+            android:title="@string/ai_creation_image_retry_count"
+            app:iconSpaceReserved="false" />
+
     </io.legado.app.lib.prefs.PreferenceCategory>
 
     <io.legado.app.lib.prefs.PreferenceCategory

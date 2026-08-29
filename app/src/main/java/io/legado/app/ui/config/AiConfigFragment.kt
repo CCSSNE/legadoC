@@ -187,6 +187,11 @@ class AiConfigFragment : PreferenceFragment(),
             PreferKey.aiCreationScopeNote -> showCreationScopeDialog(
                 AiCreationConfig.SECTION_NOTE
             )
+            PreferKey.aiCreationImageUrl -> showCreationImageUrlDialog()
+            PreferKey.aiCreationImageApiKey -> showCreationImageApiKeyDialog()
+            PreferKey.aiCreationImageModel -> showCreationImageModelDialog()
+            PreferKey.aiCreationImageRequestTemplate -> showCreationImageRequestDialog()
+            PreferKey.aiCreationImageRetryCount -> showCreationImageRetryDialog()
         }
         return super.onPreferenceTreeClick(preference)
     }
@@ -492,6 +497,100 @@ class AiConfigFragment : PreferenceFragment(),
             return
         }
         testAiConnection(target.provider, target.modelId, body)
+    }
+
+    private fun showCreationImageUrlDialog() {
+        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
+            editView.hint = "https://api.openai.com/v1/images/generations"
+            editView.inputType = InputType.TYPE_CLASS_TEXT
+            editView.setText(AiCreationConfig.imageUrl)
+            editView.setSelection(editView.text?.length ?: 0)
+        }
+        alert(titleResource = R.string.ai_creation_image_url) {
+            customView { binding.root }
+            okButton {
+                AiCreationConfig.imageUrl = binding.editView.text?.toString().orEmpty()
+                refreshUi()
+            }
+            cancelButton()
+        }
+    }
+
+    private fun showCreationImageApiKeyDialog() {
+        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
+            editView.setText(AiCreationConfig.imageApiKey)
+        }
+        applyApiKeyInputPolicy(binding.editView)
+        alert(titleResource = R.string.ai_creation_image_api_key) {
+            customView { binding.root }
+            okButton {
+                AiCreationConfig.imageApiKey = binding.editView.text?.toString().orEmpty()
+                refreshUi()
+            }
+            cancelButton()
+        }
+    }
+
+    private fun showCreationImageModelDialog() {
+        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
+            editView.hint = getString(R.string.ai_creation_image_model_hint)
+            editView.inputType = InputType.TYPE_CLASS_TEXT
+            editView.setText(AiCreationConfig.imageModel)
+            editView.setSelection(editView.text?.length ?: 0)
+        }
+        alert(titleResource = R.string.ai_creation_image_model) {
+            customView { binding.root }
+            okButton {
+                AiCreationConfig.imageModel = binding.editView.text?.toString().orEmpty()
+                refreshUi()
+            }
+            cancelButton()
+        }
+    }
+
+    private fun showCreationImageRequestDialog() {
+        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
+            editView.hint = getString(R.string.ai_creation_image_request_template_hint)
+            editView.inputType = InputType.TYPE_CLASS_TEXT or
+                InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+                InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            editView.minLines = 10
+            editView.setText(AiCreationConfig.imageRequestTemplate)
+            editView.setSelection(editView.text?.length ?: 0)
+        }
+        alert(titleResource = R.string.ai_creation_image_request_template) {
+            customView { binding.root }
+            okButton {
+                val json = binding.editView.text?.toString()?.trim().orEmpty()
+                val error = runCatching {
+                    AiCreationConfig.imageRequestTemplate = json
+                }.exceptionOrNull()
+                if (error != null) {
+                    toastOnUi(
+                        getString(
+                            R.string.ai_creation_request_template_invalid,
+                            error.message.orEmpty()
+                        )
+                    )
+                    return@okButton
+                }
+                refreshUi()
+            }
+            neutralButton(R.string.restore_default) {
+                AiCreationConfig.imageRequestTemplate = AiCreationConfig.defaultImageRequestTemplateJson
+                refreshUi()
+            }
+            cancelButton()
+        }
+    }
+
+    private fun showCreationImageRetryDialog() {
+        showChapterPurifyIntDialog(
+            R.string.ai_creation_image_retry_count,
+            AiCreationConfig.imageRetryCount,
+            AiCreationConfig.MIN_IMAGE_RETRY_COUNT,
+            AiCreationConfig.MAX_IMAGE_RETRY_COUNT
+        ) { AiCreationConfig.imageRetryCount = it }
     }
 
     private fun showCreationScopeDialog(section: String) {
@@ -1742,6 +1841,27 @@ class AiConfigFragment : PreferenceFragment(),
                 }
             )
         }
+        findPreference<Preference>(PreferKey.aiCreationImageUrl)?.summary =
+            AiCreationConfig.imageUrl.ifBlank {
+                getString(R.string.ai_creation_provider_summary_empty)
+            }
+        findPreference<Preference>(PreferKey.aiCreationImageApiKey)?.summary =
+            if (AiCreationConfig.imageApiKey.isBlank()) {
+                getString(R.string.ai_creation_image_api_key_summary)
+            } else {
+                getString(R.string.ai_creation_image_api_key_summary_ready)
+            }
+        findPreference<Preference>(PreferKey.aiCreationImageModel)?.summary =
+            AiCreationConfig.imageModel.ifBlank {
+                getString(R.string.ai_creation_provider_summary_empty)
+            }
+        findPreference<Preference>(PreferKey.aiCreationImageRequestTemplate)?.summary =
+            getString(R.string.ai_creation_image_request_template_summary)
+        findPreference<Preference>(PreferKey.aiCreationImageRetryCount)?.summary =
+            getString(
+                R.string.ai_creation_image_retry_count_summary,
+                AiCreationConfig.imageRetryCount
+            )
         val skills = AppConfig.aiSkillList
         val enabledSkillCount = skills.count { it.enabled }
         findPreference<Preference>(PreferKey.aiSkillPrompt)?.summary =
