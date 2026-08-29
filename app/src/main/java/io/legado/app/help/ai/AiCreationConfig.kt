@@ -169,8 +169,8 @@ object AiCreationConfig {
     }
 
     fun defaultScopeOf(section: String): String = when (section) {
-        SECTION_NOTE -> SCOPE_SESSION
-        SECTION_SELECTED_TEXT -> SCOPE_BOOK
-        else -> SCOPE_GLOBAL
+        SECTION_SELECTED_TEXT -> SCOPE_SESSION
+        SECTION_NOTE -> SCOPE_GLOBAL
+        else -> SCOPE_BOOK
     }
 }
