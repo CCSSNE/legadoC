@@ -1890,6 +1890,16 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         }
 
     /**
+     * 批量 TTS 缓存在线(HTTP)引擎的单元并发合成线程数；仅作用于 TEXT+TTS 下载
+     * 缓存的 HTTP 引擎分支，系统 TTS 引擎串行合成不适用，实时缓存不适用。
+     */
+    var ttsCacheHttpThreadCount: Int
+        get() = appCtx.getPrefInt(PreferKey.ttsCacheHttpThreadCount, 8).coerceIn(1, 32)
+        set(value) {
+            appCtx.putPrefInt(PreferKey.ttsCacheHttpThreadCount, value.coerceIn(1, 32))
+        }
+
+    /**
      * TTS 缓存命中 key 是否包含语速维度。默认包含；
      * 跟随系统语速（ttsFollowSys）时语速感知不到系统内部设置，该维度退化为常量标记。
      */

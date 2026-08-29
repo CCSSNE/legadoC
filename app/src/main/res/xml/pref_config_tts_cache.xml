@@ -41,6 +41,12 @@
             android:title="@string/tts_cache_segment_timeout"
             app:iconSpaceReserved="false" />
 
+        <io.legado.app.lib.prefs.Preference
+            android:key="ttsCacheHttpThreadCount"
+            android:summary="@string/tts_cache_http_thread_count_value"
+            android:title="@string/tts_cache_http_thread_count"
+            app:iconSpaceReserved="false" />
+
     </io.legado.app.lib.prefs.PreferenceCategory>
 
 </androidx.preference.PreferenceScreen>

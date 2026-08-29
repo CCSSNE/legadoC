@@ -106,6 +106,8 @@
     <string name="tts_cache_prefetch_count_value">當前段之後預合成 %1$d 段</string>
     <string name="tts_cache_segment_timeout">單段合成逾時</string>
     <string name="tts_cache_segment_timeout_value">看門狗逾時 %1$d 秒：引擎卡死的段會被清理，不會永久阻塞播放</string>
+    <string name="tts_cache_http_thread_count">線上 TTS 執行緒數</string>
+    <string name="tts_cache_http_thread_count_value">%1$d 執行緒，僅批量快取且引擎為線上(HTTP) TTS 時生效；系統引擎與即時快取不受影響</string>
     <string name="tts_cache_settings">TTS快取設置</string>
     <string name="tts_cache_settings_summary">快取命中維度（引擎+章節+文本固定必選）</string>
     <string name="tts_cache_hit_keys_category">快取命中維度</string>
