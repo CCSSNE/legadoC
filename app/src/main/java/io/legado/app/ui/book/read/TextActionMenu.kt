@@ -77,6 +77,13 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
     private val defaultOpenActionId: String
         get() = context.getPrefString(PreferKey.contentSelectDefaultOpen, "").orEmpty()
 
+    private val actionOrder: List<String>
+        get() = context.getPrefString(PreferKey.contentSelectActionsOrder, "")
+            .orEmpty()
+            .split(",")
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+
     private fun menuItemToActionId(itemId: Int): String? = when (itemId) {
         R.id.menu_replace -> "replace"
         R.id.menu_copy -> "copy"
@@ -142,12 +149,19 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
     }
 
     private fun filteredMenuItems(): List<MenuItemImpl> {
-        return allMenuItems.filter { item ->
+        val filtered = allMenuItems.filter { item ->
             when (item.itemId) {
                 R.id.menu_illustration -> illustrationEnabled
                 R.id.menu_review -> reviewEnabled
                 else -> menuItemToActionId(item.itemId)?.let { configuredActionIds.contains(it) } ?: false
             }
+        }
+        val order = actionOrder
+        if (order.isEmpty()) return filtered
+        return filtered.sortedBy { item ->
+            menuItemToActionId(item.itemId)
+                ?.let { actionId -> order.indexOf(actionId).takeIf { it >= 0 } }
+                ?: Int.MAX_VALUE
         }
     }
 
