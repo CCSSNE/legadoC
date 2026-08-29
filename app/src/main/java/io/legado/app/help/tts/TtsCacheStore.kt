@@ -9,6 +9,7 @@ import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.StringUtils
+import io.legado.app.utils.fromJsonObject
 import java.io.File
 
 /**
