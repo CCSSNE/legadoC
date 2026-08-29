@@ -11,6 +11,7 @@ import io.legado.app.help.ai.AiChatService
 import io.legado.app.help.ai.AiStoryboardConfig
 import io.legado.app.help.ai.AiStructuredRequestTemplate
 import io.legado.app.utils.GSON
+import io.legado.app.utils.fromJsonArray
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext

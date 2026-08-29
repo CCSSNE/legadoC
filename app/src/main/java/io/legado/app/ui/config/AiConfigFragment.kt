@@ -33,6 +33,7 @@ import io.legado.app.help.http.newCallResponse
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
+import io.legado.app.lib.dialogs.showIntegerInputDialog
 import io.legado.app.lib.prefs.SwitchPreference
 import io.legado.app.lib.prefs.fragment.PreferenceFragment
 import io.legado.app.lib.theme.primaryColor

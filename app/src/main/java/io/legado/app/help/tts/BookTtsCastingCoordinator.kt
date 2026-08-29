@@ -1,5 +1,6 @@
 package io.legado.app.help.tts
 
+import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
@@ -12,6 +13,7 @@ import io.legado.app.help.ai.AiStructuredRequestTemplate
 import io.legado.app.help.bdtts.BdSpeakerRecord
 import io.legado.app.help.bdtts.BdSpeakerStore
 import io.legado.app.utils.GSON
+import io.legado.app.utils.fromJsonArray
 import kotlinx.coroutines.CancellationException
 import splitties.init.appCtx
 

@@ -1,5 +1,7 @@
 package io.legado.app.help.tts
 
+import io.legado.app.data.entities.BookRole
+
 /**
  * 分镜数据模型（基础归因版，无演绎能力层）。
  * 段落由客户端预先切分成候选 unit，AI 只负责归因，不返回正文。

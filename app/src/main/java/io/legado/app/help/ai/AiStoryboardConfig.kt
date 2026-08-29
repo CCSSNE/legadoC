@@ -8,6 +8,7 @@ import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.putPrefInt
 import io.legado.app.utils.putPrefString
+import splitties.init.appCtx
 
 /**
  * 听书分镜模型选择：独立供应商+模型，与 AI 创作互不影响。
