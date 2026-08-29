@@ -20,7 +20,8 @@ import io.legado.app.base.BaseDialogFragment
 import io.legado.app.data.appDb
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.databinding.DialogAiCreationBinding
-import io.legado.app.help.ai.AiCreationConfig.AI_CREATION_EPHEMERAL_BOOK
+import io.legado.app.help.ai.AI_CREATION_EPHEMERAL_BOOK
+import io.legado.app.help.ai.AI_CREATION_MODE_KEY
 import io.legado.app.help.ai.AiCreationConfig
 import io.legado.app.help.ai.AiCreationHelper
 import io.legado.app.help.ai.AiCreationSessionHolder
@@ -60,7 +61,6 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
     private val binding by viewBinding(DialogAiCreationBinding::bind)
     private val bookName: String by lazy { requireArguments().getString(ARG_BOOK_NAME).orEmpty() }
     private val session get() = AiCreationSessionHolder.session
-    private var variables: List<AiCreationVariable> = emptyList()
     private var variableGroups: List<AiCreationVariableGroup> = emptyList()
     private var currentPage = 0
     private var generating = false
@@ -95,24 +95,14 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         session.bookName = bookName
-        variables = try {
-            AiCreationConfig.variables
+        val definition = try {
+            AiCreationConfig.definition
         } catch (throwable: Throwable) {
             toastOnUi(throwable.message ?: throwable.javaClass.simpleName)
             AiCreationVariables.parse(AiCreationVariables.defaultJson)
         }
-        variableGroups = variables.map { it.group }.distinct().mapNotNull { groupKey ->
-            val groupVariables = variables.filter { it.group == groupKey }
-            if (groupVariables.isEmpty()) {
-                null
-            } else {
-                AiCreationVariableGroup(
-                    key = groupKey,
-                    label = groupKey,
-                    variables = groupVariables
-                )
-            }
-        }.map { it.copy(label = AiCreationVariables.groupLabelOf(it)) }
+        variableGroups = definition.groups.filter { it.variables.isNotEmpty() }
+        session.params[AI_CREATION_MODE_KEY] = variableGroups.firstOrNull()?.key.orEmpty()
         binding.ivClose.setOnClickListener { dismissAllowingStateLoss() }
         binding.ivBack.setOnClickListener { onBack() }
         binding.tvAction.setOnClickListener { onAction() }
@@ -125,12 +115,17 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
         binding.tabLayout.setBackgroundColor(backgroundColor)
         binding.tabLayout.setSelectedTabIndicatorColor(accentColor)
         variableGroups.forEach { group ->
-            binding.tabLayout.addTab(binding.tabLayout.newTab().setText(group.label))
+            binding.tabLayout.addTab(
+                binding.tabLayout.newTab().setText(group.label.ifBlank { group.key })
+            )
         }
         binding.tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
             override fun onTabSelected(tab: TabLayout.Tab) {
                 val index = binding.tabLayout.selectedTabPosition
-                variableGroups.getOrNull(index)?.let { buildVariableControls(it) }
+                variableGroups.getOrNull(index)?.let { group ->
+                    session.params[AI_CREATION_MODE_KEY] = group.key
+                    buildVariableControls(group)
+                }
             }
 
             override fun onTabUnselected(tab: TabLayout.Tab) = Unit
@@ -550,6 +545,8 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
                         appDb.creationCardDao.deleteByBookName(AI_CREATION_EPHEMERAL_BOOK)
                     }
                     session.clear()
+                    session.params[AI_CREATION_MODE_KEY] =
+                        variableGroups.firstOrNull()?.key.orEmpty()
                     variableGroups.firstOrNull()?.let { buildVariableControls(it) }
                     binding.tabLayout.getTabAt(0)?.select()
                     showPage(0)
