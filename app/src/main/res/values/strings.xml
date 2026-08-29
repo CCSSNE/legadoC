@@ -145,6 +145,8 @@
     <string name="tts_cache_prefetch_count_value">Pre-synthesize %1$d segments after the current one</string>
     <string name="tts_cache_segment_timeout">Per-segment synthesis timeout</string>
     <string name="tts_cache_segment_timeout_value">Watchdog timeout: %1$d s. A stuck engine segment is cleaned up instead of blocking playback forever.</string>
+    <string name="tts_cache_http_thread_count">Online TTS threads</string>
+    <string name="tts_cache_http_thread_count_value">%1$d threads, only for batch caching with an online (HTTP) TTS engine. System engines and realtime cache are not affected.</string>
     <string name="tts_cache_settings">TTS cache settings</string>
     <string name="tts_cache_settings_summary">Cache hit keys (engine + chapter + text always on)</string>
     <string name="tts_cache_hit_keys_category">Cache hit keys</string>

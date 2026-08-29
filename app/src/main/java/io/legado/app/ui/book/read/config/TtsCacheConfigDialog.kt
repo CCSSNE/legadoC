@@ -54,6 +54,7 @@ class TtsCacheConfigDialog : BasePrefDialogFragment() {
             addPreferencesFromResource(R.xml.pref_config_tts_cache)
             upPrefetchCountSummary()
             upSegmentTimeoutSummary()
+            upHttpThreadCountSummary()
         }
 
         override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -67,6 +68,7 @@ class TtsCacheConfigDialog : BasePrefDialogFragment() {
             when (preference.key) {
                 PreferKey.ttsCachePrefetchCount -> showPrefetchCountDialog()
                 PreferKey.ttsCacheSegmentTimeoutSeconds -> showSegmentTimeoutDialog()
+                PreferKey.ttsCacheHttpThreadCount -> showHttpThreadCountDialog()
             }
             return super.onPreferenceTreeClick(preference)
         }
@@ -108,6 +110,26 @@ class TtsCacheConfigDialog : BasePrefDialogFragment() {
                 getString(
                     R.string.tts_cache_segment_timeout_value,
                     AppConfig.ttsCacheSegmentTimeoutSeconds
+                )
+        }
+
+        private fun showHttpThreadCountDialog() {
+            showIntegerInputDialog(
+                title = R.string.tts_cache_http_thread_count,
+                currentValue = AppConfig.ttsCacheHttpThreadCount,
+                validRange = 1..32,
+                defaultValue = 8
+            ) {
+                AppConfig.ttsCacheHttpThreadCount = it
+                upHttpThreadCountSummary()
+            }
+        }
+
+        private fun upHttpThreadCountSummary() {
+            findPreference<Preference>(PreferKey.ttsCacheHttpThreadCount)?.summary =
+                getString(
+                    R.string.tts_cache_http_thread_count_value,
+                    AppConfig.ttsCacheHttpThreadCount
                 )
         }
     }

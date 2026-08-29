@@ -8,7 +8,7 @@ import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.MD5Utils
-import io.legado.app.utils.fromJsonObject
+import io.legado.app.utils.StringUtils
 import java.io.File
 
 /**
@@ -24,7 +24,6 @@ import java.io.File
 object TtsCacheStore {
 
     const val DIR_NAME = "tts_cache"
-    private const val WAV_SUFFIX = ".wav"
 
     /** key 方案版本：key 组成变化时递增，旧文件自然失配等待重合成。 */
     private const val KEY_VERSION = "ttsv1"
@@ -82,7 +81,15 @@ object TtsCacheStore {
     )
 
     fun unitFile(book: Book, key: UnitKey): File =
-        File(File(ttsCacheDir(book), key.chapterStem), MD5Utils.md5Encode16(key.hashInput()) + WAV_SUFFIX)
+        File(File(ttsCacheDir(book), key.chapterStem), MD5Utils.md5Encode16(key.hashInput()) + audioSuffix(key))
+
+    /**
+     * 产物后缀按引擎类型区分：在线(HTTP) TTS 引擎返回的多为 mp3，
+     * 系统引擎 synthesizeToFile 产物为 wav。播放端按内容嗅探不受后缀影响，
+     * 这里只为文件管理器中的可读性诚实。
+     */
+    private fun audioSuffix(key: UnitKey): String =
+        if (StringUtils.isNumeric(key.engineKey)) ".mp3" else ".wav"
 
     fun has(book: Book, key: UnitKey): Boolean {
         val file = unitFile(book, key)

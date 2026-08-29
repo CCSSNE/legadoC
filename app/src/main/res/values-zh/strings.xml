@@ -144,6 +144,8 @@
     <string name="tts_cache_prefetch_count_value">当前段之后预合成 %1$d 段</string>
     <string name="tts_cache_segment_timeout">单段合成超时</string>
     <string name="tts_cache_segment_timeout_value">看门狗超时 %1$d 秒：引擎卡死的段会被清理，不会永久阻塞播放</string>
+    <string name="tts_cache_http_thread_count">在线 TTS 线程数</string>
+    <string name="tts_cache_http_thread_count_value">%1$d 线程，仅批量缓存且引擎为在线(HTTP) TTS 时生效；系统引擎与实时缓存不受影响</string>
     <string name="tts_cache_settings">TTS缓存设置</string>
     <string name="tts_cache_settings_summary">缓存命中维度（引擎+章节+文本固定必选）</string>
     <string name="tts_cache_hit_keys_category">缓存命中维度</string>
