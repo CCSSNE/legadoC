@@ -136,7 +136,7 @@ class CacheManageActivity :
         batchBar.applyNavigationBarMargin(withInitialMargin = true)
         statsScroll.applyNavigationBarPadding(withInitialPadding = true)
         updateTabs(initialMode)
-        onBackPressedDispatcher.addCallback(this) {
+        onBackPressedDispatcher.addCallback(this@CacheManageActivity) {
             if (showingCreation && creationSelection.isNotEmpty()) {
                 exitCreationSelection()
                 return@addCallback
