@@ -758,7 +758,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
                         .dontTransform()
                         .into(ivPhoto)
                     ivPhoto.setOnClickListener {
-                        val doneFiles = slots
+                        val doneFiles = previewAdapter.slots
                             .filter { it.state == AiCreationImageSlotState.DONE }
                             .map { it.fileName }
                         val position = doneFiles.indexOf(slot.fileName)
