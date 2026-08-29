@@ -119,6 +119,25 @@ public class BdEngineAdapter implements BdTtsEngine, OnNewDataListener {
         p.sampleRate = 16000;
         synth.params = p;
 
+        // 关键数据文件存在性：缺失时直接暴露绝对路径，不把 null 数据喂给 JNI
+        StringBuilder missing = new StringBuilder();
+        if (!new File(licenceDatPath).isFile()) {
+            missing.append(licenceDatPath).append(' ');
+        }
+        if (!new File(textDatPath).isFile()) {
+            missing.append(textDatPath).append(' ');
+        }
+        if (!new File(speechDatPath).isFile()) {
+            missing.append(speechDatPath).append(' ');
+        }
+        if (extDatPath != null && !new File(extDatPath).isFile()) {
+            missing.append(extDatPath).append(' ');
+        }
+        if (missing.length() > 0) {
+            initError = "语音包数据文件缺失: " + missing.toString().trim();
+            return;
+        }
+
         // 授权（MultiTTS 经 b2 授权链调用 bdTTSVerifyLicense；离线包以 licence.dat 为凭据）
         try {
             byte[] licence = BdOfflineSynth.readFileBytes(licenceDatPath);
@@ -152,6 +171,11 @@ public class BdEngineAdapter implements BdTtsEngine, OnNewDataListener {
                 }
             }
         }
+    }
+
+    /** 最近一次 init() 的失败原因；null 表示初始化成功或尚未初始化。 */
+    public String getInitError() {
+        return initError;
     }
 
     @Override

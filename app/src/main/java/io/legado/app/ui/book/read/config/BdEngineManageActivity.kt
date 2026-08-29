@@ -229,14 +229,17 @@ class BdEngineManageActivity : BaseActivity<BdEngineManageActivity.ContentBindin
         dialog.show()
     }
 
+    private class Audition(val wav: File? = null, val error: String? = null)
+
     private fun audition(record: BdSpeakerRecord) {
         scope.launch {
             try {
-                val wav = withContext(Dispatchers.IO) {
+                val outcome = withContext(Dispatchers.IO) {
                     auditionInternal(record)
                 }
+                val wav = outcome.wav
                 if (wav == null) {
-                    toastOnUi("试听失败（初始化错误）")
+                    toastOnUi("试听失败：${outcome.error}")
                     return@launch
                 }
                 mediaPlayer?.release()
@@ -258,17 +261,20 @@ class BdEngineManageActivity : BaseActivity<BdEngineManageActivity.ContentBindin
         }
     }
 
-    private fun auditionInternal(record: BdSpeakerRecord): File? {
+    private fun auditionInternal(record: BdSpeakerRecord): Audition {
         auditionAdapter?.release()
         val adapter = BdEngineAdapter(this, record.code, record.param)
         auditionAdapter = adapter
         adapter.init()
+        adapter.initError?.let { return Audition(error = it) }
         val pcm = mutableListOf<ByteArray>()
         var done = false
+        var synthError: String? = null
         adapter.synthesize(1.0f, 1.0f, "你好，这是语音试听。", object : BdSynthCallback {
             override fun onStart() = Unit
             override fun onError(message: String) {
                 AppLog.putDebug("[百度TTS] 试听合成失败：$message")
+                synthError = message
                 done = true
             }
 
@@ -285,7 +291,9 @@ class BdEngineManageActivity : BaseActivity<BdEngineManageActivity.ContentBindin
             Thread.sleep(100)
             waited += 100
         }
-        if (pcm.isEmpty()) return null
+        if (pcm.isEmpty()) {
+            return Audition(error = synthError ?: "合成超时且未收到音频数据（done=$done）")
+        }
         val total = pcm.sumOf { it.size }
         val dir = File(cacheDir, "bdtts_audition").apply { mkdirs() }
         val file = File(dir, "audition.wav")
@@ -293,7 +301,7 @@ class BdEngineManageActivity : BaseActivity<BdEngineManageActivity.ContentBindin
             out.write(wavHeader(total, record.sampleRate))
             for (chunk in pcm) out.write(chunk)
         }
-        return file
+        return Audition(wav = file)
     }
 
     private fun wavHeader(pcmLength: Int, sampleRate: Int): ByteArray {

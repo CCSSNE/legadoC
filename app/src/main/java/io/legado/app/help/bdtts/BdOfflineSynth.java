@@ -12,7 +12,6 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.HashMap;
 
 /**
  * 离线合成器（MultiTTS b2.C + b2.A 合并等价物）：
@@ -20,22 +19,10 @@ import java.util.HashMap;
  */
 public class BdOfflineSynth {
 
-    /** 发音人资源条目（text/speech/ext/tac 路径装配结果）。 */
-    public static class SpeakerResource {
-        public String name;
-        public String type;
-        public String textFile;
-        public String speechFile;
-        public String subganFile;
-        public String tacFile;
-        public String speakerAttrJson;
-    }
-
     public final String speakerCode;
     public final IEmbeddedSynthesizerEngine engine;
     public BdOfflineParams params;
     public long engineHandle = 0L;
-    public final HashMap<String, SpeakerResource> speakerTable = new HashMap<>();
     private String loadedSpeakerName = null;
     private String loadedModelJson = null;
 
@@ -78,8 +65,9 @@ public class BdOfflineSynth {
     }
 
     /**
-     * 模型装配（b2.C.b）：params.modelJson 非空时解析四个路径，
-     * 否则按 speakerTable 查当前 speakerCode。
+     * 模型装配（b2.C）：params.textDatPath 非空时，text/speech/ext/speakerAttr
+     * 已由 BdEngineAdapter 按 param 直接装配完成，此处仅做同 speaker 去重；
+     * 否则解析 params.modelJson 的四个路径。
      *
      * @return 0=无需刷新 1=已刷新 -1=错误
      */
@@ -88,20 +76,6 @@ public class BdOfflineSynth {
         if (p.textDatPath != null) {
             if (TextUtils.equals(this.loadedSpeakerName, p.speakerCode)) {
                 return 0;
-            }
-            SpeakerResource res = this.speakerTable.get(p.speakerCode);
-            if (res == null) {
-                return -1;
-            }
-            p.textDatPath = res.textFile;
-            if ("normal".equals(res.type)) {
-                p.speechDatPath = res.speechFile;
-            } else if ("tacotron".equals(res.type)) {
-                p.speechDatPath = res.tacFile;
-                p.speechExtDatPath = res.subganFile;
-                p.speakerAttr = res.speakerAttrJson;
-            } else {
-                return -1;
             }
             this.loadedSpeakerName = p.speakerCode;
             this.loadedModelJson = null;
