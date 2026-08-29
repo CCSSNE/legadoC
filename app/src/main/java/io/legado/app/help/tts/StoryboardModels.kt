@@ -32,7 +32,9 @@ data class StoryboardSegment(
     val identityType: String = IdentityType.NONE,
     val nameType: String = "unknown",
     val evidence: String = "",
-    val confidence: Float = 0f
+    val confidence: Float = 0f,
+    /** AI 判定"此身份与这些旧临时角色实为同一人"时需要并归的旧 castRoleId（收编方消费）。 */
+    val mergeCastRoleIds: List<Long> = emptyList()
 ) {
     object IdentityType {
         const val NONE = "none"
@@ -97,4 +99,33 @@ data class ChapterStoryboard(
 
     fun segmentsForParagraph(paragraphIndex: Int): List<StoryboardSegment> =
         allSegments().filter { it.paragraphIndex == paragraphIndex }
+}
+
+/**
+ * 从模型返回文本中提取首个完整 JSON 对象：字符串感知的括号深度扫描，
+ * 容忍 JSON 前后的说明文字与含大括号的尾部内容。与上游阅读 NG 同构。
+ */
+internal fun String.extractJsonObjectCandidate(): String {
+    val start = indexOf('{')
+    if (start < 0) return ""
+    val source = substring(start).trim()
+    var inString = false
+    var escaped = false
+    var depth = 0
+    source.forEachIndexed { index, char ->
+        if (escaped) {
+            escaped = false
+            return@forEachIndexed
+        }
+        when {
+            char == '\\' && inString -> escaped = true
+            char == '"' -> inString = !inString
+            !inString && char == '{' -> depth++
+            !inString && char == '}' -> {
+                depth--
+                if (depth == 0) return source.substring(0, index + 1)
+            }
+        }
+    }
+    return source
 }

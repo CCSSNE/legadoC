@@ -19,9 +19,10 @@ import splitties.init.appCtx
 
 /**
  * 演播选角协调：
- * 1. syncCastRoles —— 把 1号AI 发现的陌生人收编进临时角色表，回填 segment 的角色 ID；
+ * 1. syncCastRoles —— 把 1号AI 发现的陌生人收编进临时角色表，消费段上声明的角色并归，
+ *    回填 segment 的角色 ID；autoCreateRoles=false 的书只回链不收编；
  * 2. assignMissingVoices —— 对还没有音色绑定的角色调用 2号AI 选音并落库；
- * 3. resolveSpeaker —— 播放路由：角色绑定 → 性别兜底 → 旁白 → 引擎默认。
+ * 3. resolveSpeaker —— 播放路由：角色绑定 → 临时角色绑定 → 性别兜底（段性别，缺省回查角色档案）→ 旁白 → 引擎默认。
  */
 object BookTtsCastingCoordinator {
 
@@ -50,8 +51,9 @@ object BookTtsCastingCoordinator {
     // ===================== 角色收编 =====================
 
     /**
-     * 把分镜结果中的陌生人写入临时角色表，应用别名链接，
+     * 把分镜结果中的陌生人收编进临时角色表，应用别名链接与段上声明的角色并归，
      * 返回回填了 castRoleId / characterId 的分镜。
+     * autoCreateRoles=false 的书只做并归与回链，不再收编新角色。
      */
     fun syncCastRoles(
         workKey: String,
@@ -60,43 +62,205 @@ object BookTtsCastingCoordinator {
     ): ChapterStoryboard {
         applyIdentityLinks(workKey, storyboard.identityLinks)
         val segments = storyboard.scenes.flatMap { it.segments }
+        val idRemap = mergeDeclaredCastRoles(workKey, segments)
+        if (BookTtsAutomationConfig.get(workKey).autoCreateRoles) {
+            adoptDiscoveredSpeakers(workKey, chapterIndex, segments)
+        }
+        val prepared = storyboard.remapCastRoleIds(idRemap)
+        return relinkStoryboard(workKey, prepared)
+    }
+
+    /** 消费分镜段声明的 mergeCastRoleIds：把误建的旧临时角色并归进规范角色。返回 旧ID→规范ID 映射。 */
+    private fun mergeDeclaredCastRoles(
+        workKey: String,
+        segments: List<StoryboardSegment>
+    ): Map<Long, Long> {
+        val declared = segments
+            .filter {
+                it.type == StoryboardSegmentType.DIALOGUE || it.type == StoryboardSegmentType.THOUGHT
+            }
+            .flatMap { segment ->
+                segment.mergeCastRoleIds.filter { it > 0L }.map { it to segment }
+            }
+        if (declared.isEmpty()) return emptyMap()
+        val dao = appDb.bookRoleDao
+        val remap = LinkedHashMap<Long, Long>()
+        declared.forEach { (staleId, segment) ->
+            if (remap.containsKey(staleId)) return@forEach
+            val loser = dao.getCastRole(staleId) ?: return@forEach
+            val target = resolveMergeTarget(workKey, segment, staleId) ?: return@forEach
+            if (target.castRoleId == loser.castRoleId) return@forEach
+            mergeCastRole(workKey, target, loser)
+            remap[staleId] = target.castRoleId
+            AppLog.put("AI分镜临时角色并归：${loser.name} → ${target.name}")
+        }
+        return remap
+    }
+
+    private fun resolveMergeTarget(
+        workKey: String,
+        segment: StoryboardSegment,
+        staleId: Long
+    ): BookTtsCastRole? {
+        val dao = appDb.bookRoleDao
+        if (segment.castRoleId > 0L && segment.castRoleId != staleId) {
+            dao.getCastRole(segment.castRoleId)?.let { return it }
+        }
+        val normalized = normalizeIdentityName(segment.speakerName.orEmpty())
+        if (normalized.isBlank()) return null
+        return dao.getCastRoles(workKey).firstOrNull { role ->
+            !role.ignored && role.castRoleId != staleId && (
+                normalizeIdentityName(role.name) == normalized ||
+                    parseAliases(role.aliasesJson).any { normalizeIdentityName(it) == normalized }
+                )
+        }
+    }
+
+    /** 把 loser 角色的别名/样本/计数/绑定并入 target 后删除 loser。 */
+    private fun mergeCastRole(workKey: String, target: BookTtsCastRole, loser: BookTtsCastRole) {
+        val dao = appDb.bookRoleDao
+        val mergedAliases = buildList {
+            addAll(parseAliases(target.aliasesJson))
+            add(loser.name)
+            addAll(parseAliases(loser.aliasesJson))
+        }.filter { it.isNotBlank() && normalizeIdentityName(it) != normalizeIdentityName(target.name) }
+            .distinctBy { normalizeIdentityName(it) }
+        val mergedSamples = (parseAliases(target.samplesJson) + parseAliases(loser.samplesJson))
+            .filter { it.isNotBlank() }.distinct().takeLast(3)
+        val now = System.currentTimeMillis()
+        val loserBinding = dao.getBinding(
+            workKey, BookTtsVoiceBinding.TargetType.CAST_ROLE, loser.castRoleId
+        )
+        dao.updateCastRole(
+            target.copy(
+                aliasesJson = GSON.toJson(mergedAliases),
+                samplesJson = GSON.toJson(mergedSamples),
+                occurrenceCount = target.occurrenceCount + loser.occurrenceCount,
+                firstChapterIndex = if (target.firstChapterIndex < 0) {
+                    loser.firstChapterIndex
+                } else {
+                    minOf(target.firstChapterIndex, loser.firstChapterIndex)
+                },
+                lastChapterIndex = maxOf(target.lastChapterIndex, loser.lastChapterIndex),
+                gender = target.gender.takeIf {
+                    it == BookRole.Gender.MALE || it == BookRole.Gender.FEMALE
+                } ?: loser.gender,
+                identityState = if (loser.identityState == BookTtsCastRole.IdentityState.STABLE) {
+                    BookTtsCastRole.IdentityState.STABLE
+                } else {
+                    target.identityState
+                },
+                ignored = target.ignored && loser.ignored,
+                linkedRoleId = if (target.linkedRoleId == 0L) loser.linkedRoleId else target.linkedRoleId,
+                updatedAt = now
+            )
+        )
+        if (loserBinding != null &&
+            dao.getBinding(workKey, BookTtsVoiceBinding.TargetType.CAST_ROLE, target.castRoleId) == null
+        ) {
+            dao.insertBinding(loserBinding.copy(targetId = target.castRoleId, updatedAt = now))
+        }
+        dao.deleteBinding(workKey, BookTtsVoiceBinding.TargetType.CAST_ROLE, loser.castRoleId)
+        dao.deleteCastRole(loser)
+    }
+
+    private fun ChapterStoryboard.remapCastRoleIds(remap: Map<Long, Long>): ChapterStoryboard {
+        if (remap.isEmpty()) return this
+        return copy(
+            scenes = scenes.map { scene ->
+                scene.copy(
+                    segments = scene.segments.map { segment ->
+                        val mapped = segment.castRoleId.takeIf { it > 0L }?.let { remap[it] }
+                        if (mapped != null && mapped != segment.castRoleId) {
+                            segment.copy(castRoleId = mapped)
+                        } else {
+                            segment
+                        }
+                    }
+                )
+            }
+        )
+    }
+
+    /**
+     * 收编本分镜发现的说话人：
+     * 带临时角色 id 的段走按 id 更新（pending 角色的统计/状态也能推进）；
+     * 未绑定 id 的陌生说话人按名收编，guest（一次性泛称）不入池；
+     * 命中正式角色或被忽略临时角色的名称/别名一律拦截；
+     * 同一次收编按最终角色聚合（同角色可能同时出现带 id 与仅名字的段），每角色只更新一次；
+     * 更新分支对同章重复收编（重读/重播）不重复计数。
+     */
+    private fun adoptDiscoveredSpeakers(
+        workKey: String,
+        chapterIndex: Int,
+        segments: List<StoryboardSegment>
+    ) {
+        val blocked = blockedIdentityNames(workKey)
         val discovered = segments
             .filter {
                 it.type == StoryboardSegmentType.DIALOGUE || it.type == StoryboardSegmentType.THOUGHT
             }
-            .filter { it.characterId <= 0L && it.castRoleId <= 0L }
             .mapNotNull { segment ->
                 val name = segment.speakerName?.trim().orEmpty()
                 if (!isStableCastName(name)) return@mapNotNull null
                 val normalized = normalizeIdentityName(name)
-                val roleNames = existingRoleNames(workKey)
-                if (normalized in roleNames) return@mapNotNull null
-                DiscoveredOccurrence(
-                    name = name,
-                    gender = segment.speakerGender,
-                    text = segment.text.trim().take(120),
-                    identityState = segment.identityType,
-                    evidence = segment.evidence
-                )
+                if (normalized in blocked) return@mapNotNull null
+                when {
+                    segment.characterId > 0L -> null
+                    segment.castRoleId > 0L -> DiscoveredOccurrence(
+                        name = name,
+                        gender = segment.speakerGender,
+                        text = segment.text.trim().take(120),
+                        identityState = segment.identityType,
+                        evidence = segment.evidence,
+                        knownCastRoleId = segment.castRoleId
+                    )
+                    segment.identityType != StoryboardSegment.IdentityType.GUEST -> DiscoveredOccurrence(
+                        name = name,
+                        gender = segment.speakerGender,
+                        text = segment.text.trim().take(120),
+                        identityState = segment.identityType,
+                        evidence = segment.evidence,
+                        knownCastRoleId = 0L
+                    )
+                    else -> null
+                }
             }
+        if (discovered.isEmpty()) return
         val dao = appDb.bookRoleDao
-        discovered.groupBy { normalizeIdentityName(it.name) }.forEach { (normalized, occurrences) ->
-            val existing = dao.getCastRoles(workKey).firstOrNull {
-                normalizeIdentityName(it.name) == normalized
-            }
-            val state = occurrences.firstOrNull()?.identityState
-                ?: BookTtsCastRole.IdentityState.STABLE
-            val identityState = if (state == StoryboardSegment.IdentityType.PENDING) {
-                BookTtsCastRole.IdentityState.PENDING
-            } else {
+        // 先按 id/名字分组解析出最终角色，再按角色聚合，保证每角色一次更新。
+        val aggregated = linkedMapOf<String, MutableList<DiscoveredOccurrence>>()
+        discovered.groupBy { occurrence ->
+            occurrence.knownCastRoleId.takeIf { it > 0L }?.let { "id:$it" }
+                ?: "name:${normalizeIdentityName(occurrence.name)}"
+        }.forEach { (_, occurrences) ->
+            val existing = resolveExistingCastRole(workKey, occurrences.first())
+            val key = existing?.castRoleId?.let { "role:$it" }
+                ?: "new:${normalizeIdentityName(occurrences.first().name)}"
+            aggregated.getOrPut(key) { mutableListOf() }.addAll(occurrences)
+        }
+        aggregated.forEach { (_, occurrences) ->
+            val first = occurrences.first()
+            val existing = resolveExistingCastRole(workKey, first)
+            // 有任一 STABLE_CANDIDATE/CAST_ROLE 证据即视为稳定；全部 PENDING 才保持观察。
+            val identityState = if (
+                occurrences.any {
+                    it.identityState == StoryboardSegment.IdentityType.STABLE_CANDIDATE ||
+                        it.identityState == StoryboardSegment.IdentityType.CAST_ROLE
+                }
+            ) {
                 BookTtsCastRole.IdentityState.STABLE
+            } else {
+                BookTtsCastRole.IdentityState.PENDING
             }
             if (existing == null) {
+                // 带 id 的段必然指向在册角色；找不到说明角色已删除，不重建。
+                if (first.knownCastRoleId > 0L) return@forEach
                 dao.insertCastRole(
                     BookTtsCastRole(
                         workKey = workKey,
-                        name = occurrences.first().name,
-                        aliasesJson = GSON.toJson(listOf(occurrences.first().name)),
+                        name = first.name,
+                        aliasesJson = "[]",
                         gender = occurrences.map { it.gender }.firstOrNull {
                             it == BookRole.Gender.MALE || it == BookRole.Gender.FEMALE
                         } ?: BookRole.Gender.UNKNOWN,
@@ -111,17 +275,24 @@ object BookTtsCastingCoordinator {
                     )
                 )
             } else {
+                // 同章重复收编（重读/重播同章）不重复累计，避免 occurrenceCount 双计。
+                val sameChapterSynced = existing.lastChapterIndex == chapterIndex
                 dao.updateCastRole(
                     existing.copy(
-                        occurrenceCount = existing.occurrenceCount + occurrences.size,
+                        occurrenceCount = existing.occurrenceCount +
+                            if (sameChapterSynced) 0 else occurrences.size,
                         firstChapterIndex = existing.firstChapterIndex,
-                        lastChapterIndex = chapterIndex,
+                        lastChapterIndex = maxOf(existing.lastChapterIndex, chapterIndex),
                         identityState = if (existing.identityState == BookTtsCastRole.IdentityState.STABLE) {
                             existing.identityState
                         } else {
                             identityState
                         },
-                        samplesJson = mergeSamples(existing.samplesJson, occurrences.map { it.text }),
+                        samplesJson = if (sameChapterSynced) {
+                            existing.samplesJson
+                        } else {
+                            mergeSamples(existing.samplesJson, occurrences.map { it.text })
+                        },
                         gender = existing.gender.takeIf {
                             it == BookRole.Gender.MALE || it == BookRole.Gender.FEMALE
                         } ?: occurrences.map { it.gender }.firstOrNull {
@@ -132,17 +303,32 @@ object BookTtsCastingCoordinator {
                 )
             }
         }
-        return relinkStoryboard(workKey, storyboard)
     }
 
-    private fun existingRoleNames(workKey: String): Set<String> {
+    private fun resolveExistingCastRole(
+        workKey: String,
+        occurrence: DiscoveredOccurrence
+    ): BookTtsCastRole? {
+        val dao = appDb.bookRoleDao
+        occurrence.knownCastRoleId.takeIf { it > 0L }?.let { return dao.getCastRole(it) }
+        val normalized = normalizeIdentityName(occurrence.name)
+        return dao.getCastRoles(workKey).firstOrNull { role ->
+            !role.ignored && (
+                normalizeIdentityName(role.name) == normalized ||
+                    parseAliases(role.aliasesJson).any { normalizeIdentityName(it) == normalized }
+                )
+        }
+    }
+
+    /** 收编黑名单：全部正式角色（含停用）与被忽略临时角色的名称和别名。 */
+    private fun blockedIdentityNames(workKey: String): Set<String> {
         val dao = appDb.bookRoleDao
         val names = buildSet {
             dao.getAllRoles(workKey).forEach { role ->
                 add(normalizeIdentityName(role.name))
                 parseAliases(role.aliasesJson).forEach { add(normalizeIdentityName(it)) }
             }
-            dao.getCastRoles(workKey).forEach { role ->
+            dao.getCastRoles(workKey).filter { it.ignored }.forEach { role ->
                 add(normalizeIdentityName(role.name))
                 parseAliases(role.aliasesJson).forEach { add(normalizeIdentityName(it)) }
             }
@@ -233,17 +419,22 @@ object BookTtsCastingCoordinator {
         }
     }
 
+    /** 与上游阅读 NG 同构：去边界标点、折叠内部空白为单空格、小写。 */
     internal fun normalizeIdentityName(name: String): String {
-        return name.trim()
-            .replace(Regex("[\\s·・]"), "")
+        val boundaryPunctuation = setOf(
+            '“', '”', '‘', '’', '「', '」', '『', '』', ':', '：', '，', ',', '。', '.', '！', '!', '？', '?'
+        )
+        return name.trim { it.isWhitespace() || it in boundaryPunctuation }
+            .replace(Regex("\\s+"), " ")
             .lowercase()
     }
 
+    /** 与上游阅读 NG 同构：长度 2..16、排除等人/未知/待确认、必须含字母。 */
     internal fun isStableCastName(name: String): Boolean {
-        val value = name.trim()
-        if (value.isBlank() || value.length > 30) return false
-        if (value in reservedNames || value in pronouns) return false
-        return true
+        val value = name.trim().trim('“', '”', '‘', '’', '「', '」', '『', '』', ':', '：')
+        if (value.length !in 2..16 || value in reservedNames || value in pronouns) return false
+        if (value.endsWith("等人") || value.contains("未知") || value.contains("待确认")) return false
+        return value.any { it.isLetter() }
     }
 
     private fun parseAliases(json: String): List<String> {
@@ -266,7 +457,9 @@ object BookTtsCastingCoordinator {
         val gender: String,
         val text: String,
         val identityState: String,
-        val evidence: String
+        val evidence: String,
+        /** 段上已绑定的临时角色 id；0 表示未绑定、需要按名解析。 */
+        val knownCastRoleId: Long = 0L
     )
 
     // ===================== 自动选音（2号AI） =====================
@@ -410,15 +603,9 @@ object BookTtsCastingCoordinator {
     }
 
     private fun parseAssignments(raw: String): List<CastingAssignment> {
-        val normalized = raw.trim()
-            .removePrefix("```json")
-            .removePrefix("```")
-            .removeSuffix("```")
-            .trim()
-        val start = normalized.indexOf('{')
-        val end = normalized.lastIndexOf('}')
-        check(start >= 0 && end >= start) { "AI 自动选音未返回 JSON 对象" }
-        val root = JsonParser.parseString(normalized.substring(start, end + 1)).asJsonObject
+        val json = raw.trim().extractJsonObjectCandidate()
+        check(json.isNotBlank()) { "AI 自动选音未返回 JSON 对象" }
+        val root = JsonParser.parseString(json).asJsonObject
         val assignmentsElement = root.getAsJsonArray("assignments")
         val output = mutableListOf<CastingAssignment>()
         assignmentsElement.forEach { element ->
@@ -439,6 +626,7 @@ object BookTtsCastingCoordinator {
 
     /**
      * 播放路由：角色绑定 → 临时角色绑定 → 对白性别兜底 → 旁白 → 默认发音人。
+     * 性别兜底优先取段的 AI 性别，AI 未给性别时回查角色档案性别。
      */
     fun resolveSpeaker(
         workKey: String,
@@ -464,25 +652,33 @@ object BookTtsCastingCoordinator {
                 val speaker = binding?.let { speakerById(it.speakerId) }
                 if (speaker != null) return speaker
             }
-            val genderTarget = when (segment.speakerGender) {
-                BookRole.Gender.MALE -> BookTtsVoiceBinding.TargetType.DIALOGUE_MALE
-                BookRole.Gender.FEMALE -> BookTtsVoiceBinding.TargetType.DIALOGUE_FEMALE
-                else -> null
-            }
-            if (genderTarget != null) {
-                val speakerId = when (genderTarget) {
-                    BookTtsVoiceBinding.TargetType.DIALOGUE_MALE -> AiMultiVoiceConfig.dialogueMaleSpeakerId
-                    else -> AiMultiVoiceConfig.dialogueFemaleSpeakerId
-                }
-                val speaker = speakerById(speakerId)
-                if (speaker != null) return speaker
-            }
+            resolveGenderSpeaker(segment)?.let { return it }
         }
         if (!isSpoken) {
             val narrator = speakerById(AiMultiVoiceConfig.narratorSpeakerId)
             if (narrator != null) return narrator
         }
         return fallbackSpeaker
+    }
+
+    /** 对白性别兜底发音人：段性别优先，缺省回查角色档案性别，再缺省返回 null 落到默认发音人。 */
+    private fun resolveGenderSpeaker(segment: StoryboardSegment): BdSpeakerRecord? {
+        val gender = segment.speakerGender.takeIf {
+            it == BookRole.Gender.MALE || it == BookRole.Gender.FEMALE
+        } ?: run {
+            val dao = appDb.bookRoleDao
+            when {
+                segment.characterId > 0L -> dao.getRole(segment.characterId)?.gender
+                segment.castRoleId > 0L -> dao.getCastRole(segment.castRoleId)?.gender
+                else -> null
+            }?.takeIf { it == BookRole.Gender.MALE || it == BookRole.Gender.FEMALE }
+        } ?: return null
+        val speakerId = if (gender == BookRole.Gender.MALE) {
+            AiMultiVoiceConfig.dialogueMaleSpeakerId
+        } else {
+            AiMultiVoiceConfig.dialogueFemaleSpeakerId
+        }
+        return speakerById(speakerId)
     }
 
     private fun speakerById(speakerId: String): BdSpeakerRecord? {
