@@ -138,6 +138,7 @@ object PreferKey {
     const val aiCreationImageApiKeyGuide = "aiCreationImageApiKeyGuide"
     const val aiCreationImageApiKey = "aiCreationImageApiKey"
     const val aiCreationImageModel = "aiCreationImageModel"
+    const val aiCreationImageTest = "aiCreationImageTest"
     const val aiCreationImageRequestTemplate = "aiCreationImageRequestTemplate"
     const val aiCreationImageRetryCount = "aiCreationImageRetryCount"
     const val aiEnterToSend = "aiEnterToSend"
