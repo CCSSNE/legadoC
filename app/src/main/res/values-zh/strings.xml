@@ -305,6 +305,8 @@
     <string name="stage_text">暂存</string>
     <string name="ai_creation">AI 创作</string>
     <string name="ai_storyboard_category">AI 分角色</string>
+    <string name="ai_storyboard_reuse_current_model">复用当前 AI 模型</string>
+    <string name="ai_storyboard_reuse_current_model_summary">分镜生成使用当前 AI 提供商与模型</string>
     <string name="ai_storyboard_provider">分镜供应商</string>
     <string name="ai_storyboard_provider_summary_empty">未选择</string>
     <string name="ai_storyboard_model">分镜模型</string>

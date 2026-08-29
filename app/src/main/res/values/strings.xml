@@ -306,6 +306,8 @@
     <string name="stage_text">Stage</string>
     <string name="ai_creation">AI Creation</string>
     <string name="ai_storyboard_category">AI Role Voices</string>
+    <string name="ai_storyboard_reuse_current_model">Reuse current AI model</string>
+    <string name="ai_storyboard_reuse_current_model_summary">Use the current AI provider and model for storyboard generation</string>
     <string name="ai_storyboard_provider">Storyboard Provider</string>
     <string name="ai_storyboard_provider_summary_empty">Not selected</string>
     <string name="ai_storyboard_model">Storyboard Model</string>

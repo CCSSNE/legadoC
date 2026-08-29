@@ -68,6 +68,7 @@ object PreferKey {
     const val aiNarratorSpeakerId = "aiNarratorSpeakerId"
     const val aiDialogueMaleSpeakerId = "aiDialogueMaleSpeakerId"
     const val aiDialogueFemaleSpeakerId = "aiDialogueFemaleSpeakerId"
+    const val aiStoryboardReuseCurrentModel = "aiStoryboardReuseCurrentModel"
     const val aiStoryboardProviderId = "aiStoryboardProviderId"
     const val aiStoryboardModelId = "aiStoryboardModelId"
     const val aiStoryboardPreloadCount = "aiStoryboardPreloadCount"

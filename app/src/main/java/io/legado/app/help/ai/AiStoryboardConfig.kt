@@ -11,9 +11,13 @@ import io.legado.app.utils.putPrefString
 import splitties.init.appCtx
 
 /**
- * 听书分镜模型选择：独立供应商+模型，与 AI 创作互不影响。
+ * 听书分镜模型选择：默认复用当前 AI 提供商与模型，可关闭后选择独立供应商+模型，与 AI 创作互不影响。
  */
 object AiStoryboardConfig {
+
+    var reuseCurrentModel: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.aiStoryboardReuseCurrentModel, true)
+        set(value) = appCtx.putPrefBoolean(PreferKey.aiStoryboardReuseCurrentModel, value)
 
     var providerId: String
         get() = appCtx.getPrefString(PreferKey.aiStoryboardProviderId).orEmpty().trim()
@@ -35,12 +39,23 @@ object AiStoryboardConfig {
             it.id == modelConfigId && it.providerId == providerId
         }
 
-    fun isConfigured(): Boolean = provider != null && model != null
+    fun isConfigured(): Boolean = runCatching { requireModelTarget() }.isSuccess
 
     fun requireModelTarget(): Pair<AiProviderConfig, String> {
-        val provider = provider ?: error("请先在 AI 设置中选择听书分镜供应商")
-        val model = model ?: error("请先在 AI 设置中选择听书分镜模型")
-        check(provider.baseUrl.isNotBlank()) { "听书分镜所选供应商的 API 地址不能为空" }
-        return provider to model.modelId
+        if (reuseCurrentModel) {
+            val provider = AppConfig.aiCurrentProvider
+                ?: error("请先配置当前 AI 提供商，或关闭“复用当前 AI 模型”后选择听书分镜模型")
+            val model = AppConfig.aiCurrentModelConfig?.modelId.orEmpty()
+            check(model.isNotBlank()) {
+                "请先配置当前 AI 模型，或关闭“复用当前 AI 模型”后选择听书分镜模型"
+            }
+            return provider to model
+        }
+        val independentProvider = provider
+            ?: error("请先在 AI 设置中选择听书分镜供应商（或开启“复用当前 AI 模型”）")
+        check(independentProvider.baseUrl.isNotBlank()) { "听书分镜所选供应商的 API 地址不能为空" }
+        val independentModel = model
+            ?: error("请先在 AI 设置中选择听书分镜模型（或开启“复用当前 AI 模型”）")
+        return independentProvider to independentModel.modelId
     }
 }

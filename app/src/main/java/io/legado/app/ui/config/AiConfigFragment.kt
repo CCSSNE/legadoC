@@ -196,6 +196,7 @@ class AiConfigFragment : PreferenceFragment(),
             key == PreferKey.aiChapterPurifyReuseCurrentModel ||
             key == PreferKey.aiChapterPurifyRequestTemplate ||
             key == PreferKey.aiCreationReuseCurrentModel ||
+            key == PreferKey.aiStoryboardReuseCurrentModel ||
             key == PreferKey.aiSseIdleTimeoutSeconds ||
             key == PreferKey.aiGenerationTimeoutSeconds ||
             key == PreferKey.aiThinkingInterruptSeconds ||
@@ -1892,7 +1893,11 @@ class AiConfigFragment : PreferenceFragment(),
             getString(R.string.ai_creation_request_template_summary)
         findPreference<Preference>("aiCreationTestConnection")?.isVisible =
             !creationReuseCurrentModel
+        val storyboardReuseCurrentModel = AiStoryboardConfig.reuseCurrentModel
+        findPreference<SwitchPreference>(PreferKey.aiStoryboardReuseCurrentModel)?.isChecked =
+            storyboardReuseCurrentModel
         findPreference<Preference>(PreferKey.aiStoryboardProviderId)?.apply {
+            isVisible = !storyboardReuseCurrentModel
             val provider = AiStoryboardConfig.provider
             summary = when {
                 provider != null -> provider.name
@@ -1902,6 +1907,7 @@ class AiConfigFragment : PreferenceFragment(),
             }
         }
         findPreference<Preference>(PreferKey.aiStoryboardModelId)?.apply {
+            isVisible = !storyboardReuseCurrentModel
             val model = AiStoryboardConfig.model
             summary = when {
                 model != null -> model.modelId
