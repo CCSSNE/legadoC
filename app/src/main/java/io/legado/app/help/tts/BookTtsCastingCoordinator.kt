@@ -573,7 +573,7 @@ object BookTtsCastingCoordinator {
                             "id" to it.id,
                             "name" to it.name,
                             "desc" to it.desc.orEmpty(),
-                            "gender" to it.gender,
+                            "gender" to BdSpeakerRecord.genderTag(it.gender),
                             "locale" to it.locale
                         )
                     }
