@@ -60,6 +60,10 @@ object PreferKey {
     // 缓存包是否包含 TTS 缓存（默认不包含：wav 体积大且可由文本重新合成）
     const val ttsCacheIncludeInPackage = "ttsCacheIncludeInPackage"
     const val ttsEngine = "appTtsEngine"
+    const val bdSelectedSpeaker = "bdSelectedSpeaker"
+    const val bdMultiVoice = "bdMultiVoice"
+    const val bdNarrationVoices = "bdNarrationVoices"
+    const val bdDialogueVoices = "bdDialogueVoices"
     const val ttsFollowSys = "ttsFollowSys"
     const val ttsSpeechRate = "ttsSpeechRate"
     const val prevKeys = "prevKeyCodes"

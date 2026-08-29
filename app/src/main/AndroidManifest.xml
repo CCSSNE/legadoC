@@ -547,6 +547,9 @@
             android:name=".service.TTSReadAloudService"
             android:foregroundServiceType="mediaPlayback" />
         <service
+            android:name=".service.BdReadAloudService"
+            android:foregroundServiceType="mediaPlayback" />
+        <service
             android:name=".service.HttpReadAloudService"
             android:foregroundServiceType="mediaPlayback" />
         <service

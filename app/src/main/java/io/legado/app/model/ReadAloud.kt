@@ -13,6 +13,7 @@ import io.legado.app.data.entities.HttpTTS
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.config.AppConfig
 import io.legado.app.service.BaseReadAloudService
+import io.legado.app.service.BdReadAloudService
 import io.legado.app.service.HttpReadAloudService
 import io.legado.app.service.ReadAloudEngineType
 import io.legado.app.service.ReadAloudProgress
@@ -44,6 +45,8 @@ data class ReadAloudPositionUpdate(
 
 object ReadAloud {
     const val SOURCE_AUDIO_ENGINE_ID = "sourceAudio"
+    const val BAIDU_ENGINE_ID = "bdtts"
+    const val BAIDU_ENGINE_ID = "bdtts"
 
     @Volatile
     var aloudPosition: ReadAloudPosition? = null
@@ -117,6 +120,7 @@ object ReadAloud {
             SourceAudioReadAloudService::class.java -> ReadAloudEngineType.SOURCE_AUDIO
             HttpReadAloudService::class.java -> ReadAloudEngineType.HTTP_TTS
             TTSReadAloudService::class.java -> ReadAloudEngineType.SYSTEM_TTS
+            BdReadAloudService::class.java -> ReadAloudEngineType.BAIDU_TTS
             else -> selectedEngineType
         }
 
@@ -125,6 +129,7 @@ object ReadAloud {
             val selected = ttsEngine
             return when {
                 selected == SOURCE_AUDIO_ENGINE_ID -> ReadAloudEngineType.SOURCE_AUDIO
+                selected == BAIDU_ENGINE_ID -> ReadAloudEngineType.BAIDU_TTS
                 selected != null && StringUtils.isNumeric(selected) -> ReadAloudEngineType.HTTP_TTS
                 else -> ReadAloudEngineType.SYSTEM_TTS
             }
@@ -153,6 +158,10 @@ object ReadAloud {
                 return null
             }
             return HttpReadAloudService::class.java
+        }
+        if (selected == BAIDU_ENGINE_ID) {
+            httpTTS = null
+            return BdReadAloudService::class.java
         }
         httpTTS = null
         return TTSReadAloudService::class.java
