@@ -49,7 +49,7 @@
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.SwitchPreference
-            android:defaultValue="true"
+            android:defaultValue="false"
             android:title="@string/read_aloud_tts_wav_mode"
             android:summary="@string/read_aloud_tts_wav_mode_summary"
             android:key="ttsWavMode"
