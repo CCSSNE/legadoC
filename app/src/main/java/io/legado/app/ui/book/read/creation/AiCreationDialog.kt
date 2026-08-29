@@ -79,7 +79,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
     private var generating = false
     private var suppressPromptWatcher = false
     private var pendingImageAfterPrompt = false
-    private var previewPageSize = 2
+    private var previewPageSize = 1
     private var previewPage = 0
     private val previewAdapter = PreviewAdapter()
 
@@ -153,6 +153,11 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
             }
         }
         binding.btnGenerateImage.setOnClickListener { onGenerateImageClicked() }
+        binding.tvGridOne.setOnClickListener {
+            previewPageSize = 1
+            previewPage = 0
+            renderPreview()
+        }
         binding.tvGridTwo.setOnClickListener {
             previewPageSize = 2
             previewPage = 0
@@ -731,6 +736,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
         previewAdapter.notifyDataSetChanged()
         val span = if (previewPageSize == 4) 2 else 1
         (binding.rvPreview.layoutManager as? GridLayoutManager)?.spanCount = span
+        binding.tvGridOne.setTextColor(if (previewPageSize == 1) accentColor else primaryTextColor)
         binding.tvGridTwo.setTextColor(if (previewPageSize == 2) accentColor else primaryTextColor)
         binding.tvGridFour.setTextColor(if (previewPageSize == 4) accentColor else primaryTextColor)
     }
@@ -738,7 +744,8 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
     private fun previewItemHeight(): Int {
         val available = binding.rvPreview.height.takeIf { it > 0 }
             ?: (resources.displayMetrics.heightPixels * 2 / 3)
-        return available / 2 - dp(8)
+        //一宫格一页一图独占整页，2/4宫格按两行等分
+        return if (previewPageSize == 1) available - dp(8) else available / 2 - dp(8)
     }
 
     private inner class PreviewAdapter : RecyclerView.Adapter<PreviewViewHolder>() {

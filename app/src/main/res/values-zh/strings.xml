@@ -424,6 +424,7 @@
     <string name="ai_creation_image_count_hint">张数</string>
     <string name="ai_creation_task_running">已有图片生成任务进行中</string>
     <string name="ai_creation_preview_title">预览</string>
+    <string name="ai_creation_grid_one">1宫格</string>
     <string name="ai_creation_grid_two">2宫格</string>
     <string name="ai_creation_grid_four">4宫格</string>
     <string name="ai_creation_prev_page">‹</string>

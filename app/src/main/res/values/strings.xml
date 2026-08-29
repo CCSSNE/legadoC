@@ -425,6 +425,7 @@
     <string name="ai_creation_image_count_hint">N</string>
     <string name="ai_creation_task_running">An image generation task is already running</string>
     <string name="ai_creation_preview_title">Preview</string>
+    <string name="ai_creation_grid_one">1-grid</string>
     <string name="ai_creation_grid_two">2-grid</string>
     <string name="ai_creation_grid_four">4-grid</string>
     <string name="ai_creation_prev_page">‹</string>
