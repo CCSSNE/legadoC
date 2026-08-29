@@ -166,15 +166,13 @@ public class BdEngineAdapter implements BdTtsEngine, OnNewDataListener {
         p.speed = speed * 0.14f;
         p.pitch = volume * 0.15f;
         cb.onStart();
-        try {
-            ETtsError err = synth.synthesize(text);
-            if (err == null || err.getRet() == 0 || err.getRet() == 530 || err.getRet() == 531) {
-                cb.onDone("Task done.");
-            } else if (err.getRet() == 9) {
-                cb.onError("synth ret=9 " + err.getMessage());
-            } else {
-                cb.onError("synth ret=" + err.getRet() + " " + err.getMessage());
-            }
+        ETtsError err = synth.synthesize(text);
+        if (err == null || err.getRet() == 0 || err.getRet() == 530 || err.getRet() == 531) {
+            cb.onDone("Task done.");
+        } else if (err.getRet() == 9) {
+            cb.onError("synth ret=9 " + err.getMessage());
+        } else {
+            cb.onError("synth ret=" + err.getRet() + " " + err.getMessage());
         }
     }
 
