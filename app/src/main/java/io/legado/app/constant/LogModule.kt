@@ -10,6 +10,7 @@ import io.legado.app.R
 enum class LogModule(val labelRes: Int) {
     GENERAL(R.string.log_module_general),
     READ_ALOUD(R.string.log_module_read_aloud),
+    BAIDU_TTS(R.string.log_module_baidu_tts),
     TTS_CACHE(R.string.log_module_tts_cache),
     DOWNLOAD_CACHE(R.string.log_module_download_cache),
     READING(R.string.log_module_reading),
@@ -23,6 +24,7 @@ enum class LogModule(val labelRes: Int) {
         val selectable: List<LogModule>
             get() = listOf(
                 READ_ALOUD,
+                BAIDU_TTS,
                 TTS_CACHE,
                 DOWNLOAD_CACHE,
                 READING,
@@ -52,6 +54,15 @@ enum class LogModule(val labelRes: Int) {
 
                 // 必须先于 "tts"（READ_ALOUD）判定：TtsCache* 系列类名都含 tts
                 containsAny(name, "ttscache") -> TTS_CACHE
+
+                // 必须先于 READ_ALOUD 判定：BdReadAloudService 含 readaloud，
+                // help.bdtts 包与 *BdEngine* 类名按 bdtts/bdengine/bdreadaloud 归百度 TTS
+                containsAny(
+                    name,
+                    "bdtts",
+                    "bdengine",
+                    "bdreadaloud",
+                ) -> BAIDU_TTS
 
                 containsAny(
                     name,
