@@ -25,6 +25,7 @@ import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.model.ReadAloudUiState
+import io.legado.app.plugin.TtsVoiceDirectories
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.service.ReadAloudDialogFloatingPresentation
 import io.legado.app.service.ReadAloudEngineType
@@ -199,6 +200,9 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
         llCatalog.setOnClickListener {
             SpeakEngineDialog().show(childFragmentManager, "speakEngineDialog")
         }
+        // AI分角色入口：仅当本构建注册了发音人目录（自有构建）时显示；
+        // 开源构建无内置引擎与发音人，入口一并隐藏，目录随插件注册自动出现。
+        llAiRole.visible(TtsVoiceDirectories.active != null)
         llAiRole.setOnClickListener {
             AiMultiVoiceDialog.show(childFragmentManager)
         }

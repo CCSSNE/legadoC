@@ -11,8 +11,8 @@ import io.legado.app.data.entities.BookTtsVoiceBinding
 import io.legado.app.help.ai.AiChatService
 import io.legado.app.help.ai.AiStoryboardConfig
 import io.legado.app.help.ai.AiStructuredRequestTemplate
-import io.legado.app.help.bdtts.BdSpeakerRecord
-import io.legado.app.help.bdtts.BdSpeakerStore
+import io.legado.app.plugin.TtsVoiceDirectories
+import io.legado.app.plugin.TtsVoiceInfo
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
 import kotlinx.coroutines.CancellationException
@@ -34,16 +34,16 @@ object BookTtsCastingCoordinator {
     private val pronouns = setOf("我", "你", "他", "她", "它", "他们", "她们", "对方", "某人", "那人", "这人")
 
     @Volatile
-    private var speakerCache: List<BdSpeakerRecord> = emptyList()
+    private var speakerCache: List<TtsVoiceInfo> = emptyList()
 
     @Volatile
     private var speakerCacheAt = 0L
 
-    /** 发音人列表短缓存：播放路由高频调用，避免每段读一次语音包 JSON 文件。 */
-    private fun cachedSpeakers(): List<BdSpeakerRecord> {
+    /** 发音人列表短缓存：播放路由高频调用，避免每段读一次引擎的发音人目录。 */
+    private fun cachedSpeakers(): List<TtsVoiceInfo> {
         val now = System.currentTimeMillis()
         if (now - speakerCacheAt > SPEAKER_CACHE_TTL || speakerCache.isEmpty()) {
-            speakerCache = BdSpeakerStore.load()
+            speakerCache = TtsVoiceDirectories.active?.listVoices().orEmpty()
             speakerCacheAt = now
         }
         return speakerCache
@@ -562,7 +562,7 @@ object BookTtsCastingCoordinator {
     private suspend fun requestAssignments(
         provider: io.legado.app.ui.main.ai.AiProviderConfig,
         modelId: String,
-        speakers: List<BdSpeakerRecord>,
+        speakers: List<TtsVoiceInfo>,
         targets: List<CastingTarget>
     ): List<CastingAssignment> {
         val payload = JsonObject().apply {
@@ -574,7 +574,7 @@ object BookTtsCastingCoordinator {
                             "id" to it.id,
                             "name" to it.name,
                             "desc" to it.desc.orEmpty(),
-                            "gender" to BdSpeakerRecord.genderTag(it.gender),
+                            "gender" to it.gender,
                             "locale" to it.locale
                         )
                     }
@@ -628,12 +628,13 @@ object BookTtsCastingCoordinator {
     /**
      * 播放路由：角色绑定 → 临时角色绑定 → 对白性别兜底 → 旁白 → 默认发音人。
      * 性别兜底优先取段的 AI 性别，AI 未给性别时回查角色档案性别。
+     * 发音人目录缺失（开源构建）时只回退 [fallbackSpeaker]，绑定路由全部落空。
      */
     fun resolveSpeaker(
         workKey: String,
         segment: StoryboardSegment?,
-        fallbackSpeaker: BdSpeakerRecord
-    ): BdSpeakerRecord {
+        fallbackSpeaker: TtsVoiceInfo
+    ): TtsVoiceInfo {
         val dao = appDb.bookRoleDao
         val bindings = dao.getBindings(workKey).associateBy { it.targetType to it.targetId }
         val isSpoken = segment?.type == StoryboardSegmentType.DIALOGUE ||
@@ -663,7 +664,7 @@ object BookTtsCastingCoordinator {
     }
 
     /** 对白性别兜底发音人：段性别优先，缺省回查角色档案性别，再缺省返回 null 落到默认发音人。 */
-    private fun resolveGenderSpeaker(segment: StoryboardSegment): BdSpeakerRecord? {
+    private fun resolveGenderSpeaker(segment: StoryboardSegment): TtsVoiceInfo? {
         val gender = segment.speakerGender.takeIf {
             it == BookRole.Gender.MALE || it == BookRole.Gender.FEMALE
         } ?: run {
@@ -682,7 +683,7 @@ object BookTtsCastingCoordinator {
         return speakerById(speakerId)
     }
 
-    private fun speakerById(speakerId: String): BdSpeakerRecord? {
+    private fun speakerById(speakerId: String): TtsVoiceInfo? {
         if (speakerId.isBlank()) return null
         return cachedSpeakers().firstOrNull { it.id == speakerId }
     }

@@ -3,7 +3,7 @@ package io.legado.app.data.entities
 import androidx.room.Entity
 
 /**
- * 音色绑定：目标 → 发音人（BdSpeakerRecord.id）。
+ * 音色绑定：目标 → 发音人（发音人目录条目 id，如百度TTS语音包的发音人 id）。
  * 绑定一次长期生效；bindingMode=manual 时自动选音不得覆盖。
  * narrator / dialogue_male / dialogue_female 的 targetId 固定为 0。
  */

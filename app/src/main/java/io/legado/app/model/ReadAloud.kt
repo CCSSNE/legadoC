@@ -12,8 +12,9 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.config.AppConfig
+import io.legado.app.lib.dialogs.SelectItem
+import io.legado.app.plugin.ReadAloudEngines
 import io.legado.app.service.BaseReadAloudService
-import io.legado.app.service.BdReadAloudService
 import io.legado.app.service.HttpReadAloudService
 import io.legado.app.service.ReadAloudEngineType
 import io.legado.app.service.ReadAloudProgress
@@ -21,8 +22,10 @@ import io.legado.app.service.SourceAudioReadAloudService
 import io.legado.app.service.TTSReadAloudService
 import io.legado.app.ui.book.audio.AudioPlayActivity
 import io.legado.app.ui.book.read.ReadBookActivity
+import io.legado.app.utils.GSON
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.StringUtils
+import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.startForegroundServiceCompat
 import io.legado.app.utils.toastOnUi
@@ -45,7 +48,6 @@ data class ReadAloudPositionUpdate(
 
 object ReadAloud {
     const val SOURCE_AUDIO_ENGINE_ID = "sourceAudio"
-    const val BAIDU_ENGINE_ID = "bdtts"
 
     @Volatile
     var aloudPosition: ReadAloudPosition? = null
@@ -115,20 +117,19 @@ object ReadAloud {
         private set
 
     val engineType: ReadAloudEngineType
-        get() = when (BaseReadAloudService.runningClass) {
+        get() = when (val running = BaseReadAloudService.runningClass) {
             SourceAudioReadAloudService::class.java -> ReadAloudEngineType.SOURCE_AUDIO
             HttpReadAloudService::class.java -> ReadAloudEngineType.HTTP_TTS
             TTSReadAloudService::class.java -> ReadAloudEngineType.SYSTEM_TTS
-            BdReadAloudService::class.java -> ReadAloudEngineType.BAIDU_TTS
-            else -> selectedEngineType
+            else -> ReadAloudEngines.byServiceClass(running)?.engineType ?: selectedEngineType
         }
 
     val selectedEngineType: ReadAloudEngineType
         get() {
             val selected = ttsEngine
+            ReadAloudEngines.byId(selected)?.let { return it.engineType }
             return when {
                 selected == SOURCE_AUDIO_ENGINE_ID -> ReadAloudEngineType.SOURCE_AUDIO
-                selected == BAIDU_ENGINE_ID -> ReadAloudEngineType.BAIDU_TTS
                 selected != null && StringUtils.isNumeric(selected) -> ReadAloudEngineType.HTTP_TTS
                 else -> ReadAloudEngineType.SYSTEM_TTS
             }
@@ -158,11 +159,16 @@ object ReadAloud {
             }
             return HttpReadAloudService::class.java
         }
-        if (selected == BAIDU_ENGINE_ID) {
+        ReadAloudEngines.byId(selected)?.let { plugin ->
             httpTTS = null
-            return BdReadAloudService::class.java
+            return plugin.serviceClass
         }
         httpTTS = null
+        // 非 SelectItem JSON 的裸引擎 id 且未被任何插件注册：本构建未内置的引擎
+        // （如从别的版本备份恢复的 bdtts 配置），明示后回退系统 TTS，不静默失效。
+        if (GSON.fromJsonObject<SelectItem<String>>(selected).getOrNull() == null) {
+            reportUnavailableEngine(selected)
+        }
         return TTSReadAloudService::class.java
     }
 
@@ -240,6 +246,19 @@ object ReadAloud {
     private fun reportEngineError(message: String) {
         AppLog.put(message)
         appCtx.toastOnUi(message)
+    }
+
+    /** 已提示过的缺失引擎 id：同一 id 只提示一次，避免逐段朗读刷 toast。 */
+    @Volatile
+    private var lastUnavailableEngineReported: String? = null
+
+    private fun reportUnavailableEngine(engineId: String) {
+        val message = "朗读引擎「$engineId」未内置在本版本，已回退系统 TTS"
+        AppLog.put(message)
+        if (lastUnavailableEngineReported != engineId) {
+            lastUnavailableEngineReported = engineId
+            appCtx.toastOnUi(message)
+        }
     }
 
     fun play(

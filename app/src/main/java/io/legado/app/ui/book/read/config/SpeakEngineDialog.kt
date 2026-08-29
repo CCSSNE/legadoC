@@ -28,6 +28,7 @@ import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.help.book.isAudio
+import io.legado.app.plugin.ReadAloudEngines
 import io.legado.app.ui.association.ImportHttpTtsDialog
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.login.SourceLoginActivity
@@ -104,27 +105,28 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
                 }
             }
         }
-        adapter.addHeaderView {
-            ItemHttpTtsBinding.inflate(layoutInflater, recyclerView, false).apply {
-                root.applyUiBodyTypefaceDeep(requireContext().uiTypeface())
-                sysTtsViews.add(cbName)
-                ivEdit.gone()
-                ivMenuDelete.gone()
-                labelSys.visible()
-                cbName.text = "本地百度 TTS"
-                cbName.tag = ReadAloud.BAIDU_ENGINE_ID
-                cbName.isChecked = ttsEngine == ReadAloud.BAIDU_ENGINE_ID
-                cbName.setOnClickListener {
-                    upTts(ReadAloud.BAIDU_ENGINE_ID)
-                }
-                cbName.setOnLongClickListener {
-                    startActivity(
-                        android.content.Intent(
-                            requireContext(),
-                            io.legado.app.ui.book.read.config.BdEngineManageActivity::class.java
-                        )
-                    )
-                    true
+        // 内置引擎插件（如百度的"本地百度 TTS"）：由各构建的插件注册表提供，
+        // 开源构建注册表为空，此处不渲染任何行；长按进入插件自己的管理页。
+        ReadAloudEngines.all.forEach { plugin ->
+            adapter.addHeaderView {
+                ItemHttpTtsBinding.inflate(layoutInflater, recyclerView, false).apply {
+                    root.applyUiBodyTypefaceDeep(requireContext().uiTypeface())
+                    sysTtsViews.add(cbName)
+                    ivEdit.gone()
+                    ivMenuDelete.gone()
+                    labelSys.visible()
+                    cbName.text = plugin.engineLabel
+                    cbName.tag = plugin.engineId
+                    cbName.isChecked = ttsEngine == plugin.engineId
+                    cbName.setOnClickListener {
+                        upTts(plugin.engineId)
+                    }
+                    cbName.setOnLongClickListener {
+                        val manageActivity = plugin.manageActivityClass
+                            ?: return@setOnLongClickListener false
+                        startActivity(android.content.Intent(requireContext(), manageActivity))
+                        true
+                    }
                 }
             }
         }
@@ -237,10 +239,10 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
     private fun upTts(tts: String) {
         ttsEngine = tts
         sysTtsViews.forEach {
-            val isChecked = if (ttsEngine == ReadAloud.SOURCE_AUDIO_ENGINE_ID) {
-                it.tag == ReadAloud.SOURCE_AUDIO_ENGINE_ID
-            } else {
-                GSON.fromJsonObject<SelectItem<String>>(ttsEngine)
+            val isChecked = when {
+                ttsEngine == ReadAloud.SOURCE_AUDIO_ENGINE_ID -> it.tag == ReadAloud.SOURCE_AUDIO_ENGINE_ID
+                ReadAloudEngines.byId(ttsEngine) != null -> it.tag == ttsEngine
+                else -> GSON.fromJsonObject<SelectItem<String>>(ttsEngine)
                     .getOrNull()?.value == it.tag
             }
             it.isChecked = isChecked

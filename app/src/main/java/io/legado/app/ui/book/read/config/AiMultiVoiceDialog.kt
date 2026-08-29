@@ -19,7 +19,7 @@ import io.legado.app.data.entities.BookTtsCastRole
 import io.legado.app.data.entities.BookTtsVoiceBinding
 import io.legado.app.databinding.DialogAiMultiVoiceBinding
 import io.legado.app.databinding.ItemAiRoleBinding
-import io.legado.app.help.bdtts.BdSpeakerStore
+import io.legado.app.plugin.TtsVoiceDirectories
 import io.legado.app.help.tts.AiBatchAnalyzeDialog
 import io.legado.app.help.tts.AiMultiVoiceConfig
 import io.legado.app.help.tts.AiStoryboardCacheDialog
@@ -148,7 +148,7 @@ class AiMultiVoiceDialog : BaseDialogFragment(R.layout.dialog_ai_multi_voice) {
     }
 
     private fun refreshSpeakerValues() {
-        val speakers = BdSpeakerStore.load()
+        val speakers = TtsVoiceDirectories.active?.listVoices().orEmpty()
         fun nameOf(id: String): String =
             speakers.firstOrNull { it.id == id }?.name ?: getString(R.string.ai_speaker_unset)
         binding.tvNarratorValue.text = nameOf(AiMultiVoiceConfig.narratorSpeakerId)
@@ -157,7 +157,7 @@ class AiMultiVoiceDialog : BaseDialogFragment(R.layout.dialog_ai_multi_voice) {
     }
 
     private fun pickSpeaker(prefKey: String, currentId: String) {
-        val speakers = BdSpeakerStore.load()
+        val speakers = TtsVoiceDirectories.active?.listVoices().orEmpty()
         if (speakers.isEmpty()) {
             toastOnUi(R.string.ai_speaker_empty)
             return
@@ -216,7 +216,7 @@ class AiMultiVoiceDialog : BaseDialogFragment(R.layout.dialog_ai_multi_voice) {
         }
         lifecycleScope.launch(Dispatchers.IO) {
             val dao = appDb.bookRoleDao
-            val speakers = BdSpeakerStore.load()
+            val speakers = TtsVoiceDirectories.active?.listVoices().orEmpty()
             fun speakerName(id: String?): String {
                 if (id.isNullOrBlank()) return ""
                 return speakers.firstOrNull { it.id == id }?.name ?: ""
@@ -343,7 +343,7 @@ class AiMultiVoiceDialog : BaseDialogFragment(R.layout.dialog_ai_multi_voice) {
     }
 
     private fun showSpeakerPickerFor(row: RoleRow) {
-        val speakers = BdSpeakerStore.load()
+        val speakers = TtsVoiceDirectories.active?.listVoices().orEmpty()
         if (speakers.isEmpty()) {
             toastOnUi(R.string.ai_speaker_empty)
             return
