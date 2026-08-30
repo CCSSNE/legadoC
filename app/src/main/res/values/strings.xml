@@ -2571,6 +2571,7 @@ Selected text or question:
     <string name="ai_creation_scope_item">%1$s: %2$s</string>
 
     <string name="tts_engine_v2_manage">TTS engine V2</string>
+    <string name="tts_engine_script_detail">Script engine details</string>
     <string name="menu_tts_engine_v2">TTS engine V2</string>
     <string name="tts_engine_v2_summary_format">%1$s · voices %2$d · %3$s</string>
     <string name="tts_engine_v2_state_active">active read-aloud engine</string>

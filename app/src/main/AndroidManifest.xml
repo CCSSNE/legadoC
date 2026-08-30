@@ -359,7 +359,7 @@
             android:name=".ui.about.ReadRecordActivity"
             android:configChanges="orientation|screenSize"
             android:hardwareAccelerated="true" />
-        <!-- TTS 引擎 V2 管理 -->
+        <!-- 脚本引擎详情（从朗读引擎选择弹窗长按进入） -->
         <activity
             android:name=".ui.config.TtsEngineManageActivity"
             android:configChanges="orientation|screenSize"

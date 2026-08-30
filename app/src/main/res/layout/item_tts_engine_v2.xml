@@ -10,17 +10,9 @@
     android:paddingTop="10dp"
     android:paddingBottom="10dp">
 
-    <io.legado.app.lib.theme.view.ThemeRadioButton
-        android:id="@+id/rb_active"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:clickable="false"
-        android:focusable="false" />
-
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginStart="8dp"
         android:layout_weight="1"
         android:orientation="vertical">
 
@@ -38,15 +30,5 @@
             android:layout_marginTop="2dp"
             android:textColor="@color/secondaryText"
             android:textSize="12sp" />
-
-        <TextView
-            android:id="@+id/tv_note"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:text="@string/tts_engine_v2_facade_note"
-            android:textColor="@color/secondaryText"
-            android:textSize="12sp"
-            android:visibility="gone" />
     </LinearLayout>
 </LinearLayout>

@@ -2424,6 +2424,7 @@
     <string name="ai_creation_scope_summary">配置选中文本、背景、场景、人设和描述与备注的作用域</string>
     <string name="ai_creation_scope_item">%1$s：%2$s</string>
     <string name="tts_engine_v2_manage">TTS 引擎 V2</string>
+    <string name="tts_engine_script_detail">脚本引擎详情</string>
     <string name="menu_tts_engine_v2">TTS引擎V2管理</string>
     <string name="tts_engine_v2_summary_format">%1$s · 发音人 %2$d · %3$s</string>
     <string name="tts_engine_v2_state_active">当前朗读引擎</string>

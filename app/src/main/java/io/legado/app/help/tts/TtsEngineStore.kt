@@ -7,11 +7,13 @@ import android.speech.tts.TextToSpeech
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.TtsEngineRuntimeEntity
 import io.legado.app.data.entities.TtsVoiceEntity
 import io.legado.app.help.config.AppConfig
+import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.model.ReadAloud
 import io.legado.app.plugin.TtsVoiceDirectories
 import io.legado.app.utils.GSON
@@ -37,8 +39,8 @@ import java.util.concurrent.ConcurrentHashMap
  *   resolveFirstUseTtsRoleDefaults、applyFirstUseRoleDefaults）；
  * - 移除 NG 专属首选发音人分支（preferredVoiceId）；
  * - 多角色选角门控沿用本项目 AiMultiVoiceConfig.enabled（NG 为 AppConfig.readAloudMultiRole）；
- * - ReadAloud 集成面（updatePreparedTtsEngine / httpTtsEngineV2 / refreshReadAloudClass /
- *   refreshTtsRoute / upTtsSpeechRate）与 NG 一致。
+ * - ReadAloud 集成面以经典 ttsEngine 为唯一选择值；脚本运行参数经 refreshTtsRoute
+ *   由服务实时重取。
  */
 enum class TtsEngineImportConflictAction {
     ASK,
@@ -176,6 +178,8 @@ internal object TtsEngineOrderResolver {
 object TtsEngineStore {
 
     const val SYSTEM_DEFAULT_ID = "system_default"
+    private const val LEGACY_ACTIVE_ENGINE_PREFERENCE = "ttsEngineV2ActiveId"
+    private const val SCRIPT_SELECTION_PREFIX = "script:"
 
     /**
      * 内置语音包引擎外观 id：把插件注册的发音人目录（百度等）映射为 V2 引擎条目，
@@ -245,25 +249,6 @@ object TtsEngineStore {
         return ordered.map { it.withRuntimeState() }
     }
 
-    fun activeEngineId(): String {
-        return resolveActiveEngine(engines())?.id.orEmpty()
-    }
-
-    fun activeEngine(): TtsEngineSetting {
-        return resolveActiveEngine(engines())
-            ?: builtInEngines().first()
-    }
-
-    private fun resolveActiveEngine(engines: List<TtsEngineSetting>): TtsEngineSetting? {
-        val saved = appCtx.getPrefString(PreferKey.ttsEngineV2ActiveId)
-        return saved?.let { id -> engines.firstOrNull { it.id == id && it.enabled } }
-            ?: engines.firstOrNull { it.enabled }
-    }
-
-    fun hasEnabledEngine(): Boolean {
-        return engines().any { it.enabled }
-    }
-
     fun isDeletableEngine(engine: TtsEngineSetting): Boolean {
         return engine.type != TtsEngineType.SYSTEM
     }
@@ -271,6 +256,65 @@ object TtsEngineStore {
     fun engine(id: String?): TtsEngineSetting? {
         if (id.isNullOrBlank()) return null
         return engines().firstOrNull { it.id == id }
+    }
+
+    /** 经典 ttsEngine 中脚本引擎选择的唯一编码，避免与数字 HTTP ID 和插件 ID 冲突。 */
+    fun scriptEngineSelection(engineId: String): String = SCRIPT_SELECTION_PREFIX + engineId
+
+    /** 脚本引擎的原始 id 解析。只有带统一前缀的选择值才会路由为脚本引擎。 */
+    fun scriptEngineIdFromSelection(selection: String?): String? {
+        return selection
+            ?.takeIf { it.startsWith(SCRIPT_SELECTION_PREFIX) }
+            ?.removePrefix(SCRIPT_SELECTION_PREFIX)
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    /** 按脚本引擎原始 id 查找；禁用状态仍保留给详情页显示与错误报告。 */
+    fun scriptEngineById(engineId: String?): TtsEngineSetting? {
+        return engine(engineId)?.takeIf {
+            it.type == TtsEngineType.SCRIPT && it.script.isNotBlank()
+        }
+    }
+
+    /** 由经典 ttsEngine 选择值解析脚本引擎。 */
+    fun scriptEngineForSelection(selection: String?): TtsEngineSetting? {
+        return scriptEngineIdFromSelection(selection)?.let(::scriptEngineById)
+    }
+
+    /** 当前书/全局选择实际可合成的脚本引擎。 */
+    fun enabledScriptEngineForSelection(selection: String?): TtsEngineSetting? {
+        return scriptEngineForSelection(selection)?.takeIf { it.enabled }
+    }
+
+    /**
+     * 一次性迁移旧版 V2 活动引擎。迁移目标只有经典全局 ttsEngine，迁移后立即清空
+     * 旧键，后续不再存在能绕过按书/全局选择的覆盖状态。
+     */
+    @Synchronized
+    fun migrateLegacyActiveEngineSelection() {
+        val legacyId = appCtx.getPrefString(LEGACY_ACTIVE_ENGINE_PREFERENCE)
+            ?.takeIf { it.isNotBlank() }
+            ?: return
+        val legacy = engine(legacyId)
+        when {
+            legacy == null -> AppLog.put(
+                "朗读引擎迁移失败：旧活动引擎「$legacyId」不存在，保留现有经典选择"
+            )
+            !legacy.enabled -> AppLog.put(
+                "朗读引擎迁移失败：旧活动引擎「${legacy.name}」已禁用，保留现有经典选择"
+            )
+            legacy.type == TtsEngineType.SCRIPT -> {
+                AppConfig.ttsEngine = scriptEngineSelection(legacy.id)
+                AppLog.putDebug("朗读引擎迁移：脚本引擎「${legacy.name}」已写入经典全局选择")
+            }
+            legacy.type == TtsEngineType.SYSTEM -> {
+                AppConfig.ttsEngine = GSON.toJson(
+                    SelectItem(legacy.name, legacy.enginePackage.orEmpty())
+                )
+                AppLog.putDebug("朗读引擎迁移：系统引擎「${legacy.name}」已写入经典全局选择")
+            }
+        }
+        appCtx.putPrefString(LEGACY_ACTIVE_ENGINE_PREFERENCE, "")
     }
 
     /**
@@ -308,7 +352,8 @@ object TtsEngineStore {
 
     @Synchronized
     fun saveEngine(engine: TtsEngineSetting, restartReadAloud: Boolean = true) {
-        val wasActive = activeEngineId() == engine.id
+        val affectsCurrentScriptSelection =
+            ReadAloud.ttsEngine == scriptEngineSelection(engine.id)
         val previous = engine(engine.id)
         val currentEngines = engines()
         val exists = currentEngines.any { it.id == engine.id }
@@ -321,19 +366,8 @@ object TtsEngineStore {
         if (previous?.shouldClearVoiceCacheFor(engine) == true) {
             appDb.ttsVoiceDao.deleteByEngine(engine.id)
         }
-        val effectiveEngine = TtsEngineStore.engine(engine.id) ?: engine
-        if (wasActive) {
-            ReadAloud.updatePreparedTtsEngine(effectiveEngine)
-        }
-        if (wasActive && restartReadAloud) {
-            if (effectiveEngine.enabled) {
-                ReadAloud.httpTtsEngineV2 = effectiveEngine.takeIf {
-                    it.type == TtsEngineType.SCRIPT
-                }
-                ReadAloud.upReadAloudClass()
-            } else {
-                selectFirstEnabledEngine()
-            }
+        if (affectsCurrentScriptSelection && restartReadAloud) {
+            ReadAloud.upReadAloudClass()
         }
     }
 
@@ -411,10 +445,7 @@ object TtsEngineStore {
         if (!isDeletableEngine(engine)) {
             return false
         }
-        val wasActive = activeEngineId() == id
-        if (wasActive) {
-            appCtx.putPrefString(PreferKey.ttsEngineV2ActiveId, "")
-        }
+        val affectsCurrentScriptSelection = ReadAloud.ttsEngine == scriptEngineSelection(id)
         if (engine.builtIn || id in defaultScriptIds()) {
             saveDeletedEngineIds(deletedEngineIds() + id)
         }
@@ -422,25 +453,10 @@ object TtsEngineStore {
         appDb.ttsVoiceDao.deleteByEngine(id)
         appDb.ttsEngineRuntimeDao.deleteByEngine(id)
         voiceCatalogMutexes.remove(id)
-        if (wasActive) {
-            selectFirstEnabledEngine()
+        if (affectsCurrentScriptSelection) {
+            ReadAloud.upReadAloudClass()
         }
         return true
-    }
-
-    fun selectEngine(id: String) {
-        val engine = engine(id)
-        if (engine?.enabled != true) {
-            return
-        }
-        appCtx.putPrefString(PreferKey.ttsEngineV2ActiveId, id)
-        ReadAloud.upReadAloudClass()
-    }
-
-    /** 恢复经典引擎选择：清空 V2 活动引擎，朗读路由回到既有引擎选择路径。 */
-    fun clearActiveEngine() {
-        appCtx.putPrefString(PreferKey.ttsEngineV2ActiveId, "")
-        ReadAloud.upReadAloudClass()
     }
 
     @Synchronized
@@ -452,7 +468,6 @@ object TtsEngineStore {
         if (voiceId != null && selectedVoiceId == null) {
             return null
         }
-        appCtx.putPrefString(PreferKey.ttsEngineV2ActiveId, engineId)
         val updated = engine.copy(activeVoiceId = selectedVoiceId)
         saveEngines(engines().map { if (it.id == engineId) updated else it })
         ReadAloud.refreshReadAloudClass()
@@ -584,6 +599,11 @@ object TtsEngineStore {
         throw IllegalArgumentException("不支持的朗读引擎格式")
     }
 
+    /** 本地导入入口据此识别脚本 JSON / JS；未识别的内容交还经典 HTTP 导入流程原样处理。 */
+    fun isScriptEngineImport(text: String): Boolean {
+        return runCatching { parseImportEngineText(text.trim()) }.isSuccess
+    }
+
     private fun parseEngineFromJsonObject(jsonObject: JsonObject): TtsEngineSetting? {
         val parsed = runCatching {
             GSON.fromJson(jsonObject, TtsEngineSetting::class.java)
@@ -609,21 +629,11 @@ object TtsEngineStore {
             )
         )
         val updated = engine(engineId)
-        val isActiveEngine = activeEngineId() == engineId
-        if (isActiveEngine) {
-            updated?.let { engine ->
-                ReadAloud.updatePreparedTtsEngine(engine)
-                ReadAloud.httpTtsEngineV2 = engine.takeIf {
-                    it.type == TtsEngineType.SCRIPT
-                }
-            }
-        }
+        val affectsCurrentScriptSelection =
+            ReadAloud.ttsEngine == scriptEngineSelection(engineId)
         when {
-            updated?.type == TtsEngineType.SYSTEM && isActiveEngine -> {
-                ReadAloud.upTtsSpeechRate(appCtx)
-            }
             updated?.type == TtsEngineType.SCRIPT && (
-                isActiveEngine ||
+                affectsCurrentScriptSelection ||
                     AiMultiVoiceConfig.enabled && AppConfig.multiRoleTtsEngineId == engineId
                 ) -> {
                 ReadAloud.refreshTtsRoute(appCtx)
@@ -1099,12 +1109,6 @@ object TtsEngineStore {
                 defaultPitch = 50
             )
         }.distinctBy { it.id }
-    }
-
-    private fun selectFirstEnabledEngine() {
-        val nextId = engines().firstOrNull { it.enabled }?.id.orEmpty()
-        appCtx.putPrefString(PreferKey.ttsEngineV2ActiveId, nextId)
-        ReadAloud.upReadAloudClass()
     }
 
     private fun deletedEngineIds(): Set<String> {

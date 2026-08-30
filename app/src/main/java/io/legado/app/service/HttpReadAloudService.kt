@@ -139,15 +139,15 @@ class HttpReadAloudService : BaseReadAloudService(),
         exoPlayer.stop()
         if (!requestFocus()) return
         httpTtsSnapshot = ReadAloud.httpTTS
-        if (ReadAloud.currentTtsEngineV2() != null) {
-            // V2 数据驱动引擎接管：脚本引擎合成走文件缓存 + 顺序播放管线
+        if (ReadAloud.currentScriptTtsEngine() != null) {
+            // 脚本引擎合成走文件缓存 + 顺序播放管线。
             if (contentList.isEmpty()) {
                 AppLog.putDebug("朗读列表为空")
                 nextChapter()
             } else {
                 super.play()
                 upReadAloudLoading(true)
-                downloadAndPlayAudiosV2()
+                downloadAndPlayScriptAudios()
             }
             return
         }
@@ -256,19 +256,19 @@ class HttpReadAloudService : BaseReadAloudService(),
     }
 
     /**
-     * V2 数据驱动引擎（脚本引擎）合成管线：与旧 HttpTTS 路径同构的文件缓存 +
+     * 脚本引擎合成管线：与旧 HttpTTS 路径同构的文件缓存 +
      * 顺序播放，逐段经 [TtsScriptEngineClient.getSynthesisStream] 获取音频流。
      * 音色/语速/音量/音调取引擎当前运行时状态；参数变更经 refreshTtsRoute 热刷新。
      */
-    private fun downloadAndPlayAudiosV2() {
+    private fun downloadAndPlayScriptAudios() {
         exoPlayer.clearMediaItems()
         downloadTask?.cancel()
         renewHttpRequestJob()
         downloadTask = execute {
             downloadTaskActiveLock.withLock {
                 ensureActive()
-                val engineV2 = ReadAloud.currentTtsEngineV2()
-                    ?: throw NoStackTraceException("朗读引擎V2为空")
+                val scriptEngine = ReadAloud.currentScriptTtsEngine()
+                    ?: throw NoStackTraceException("朗读脚本引擎为空")
                 val firstMediaItems = arrayListOf<MediaItem>()
                 var firstMediaLength = 0
                 var firstMediaItemsAdded = false
@@ -276,7 +276,7 @@ class HttpReadAloudService : BaseReadAloudService(),
                     ensureActive()
                     if (index < nowSpeak) return@forEachIndexed
                     val prepared = runCatching {
-                        prepareMediaItemV2(engineV2, index, content)
+                        prepareScriptMediaItem(scriptEngine, index, content)
                     }.onFailure {
                         if (it !is CancellationException) pauseReadAloud()
                         return@execute
@@ -311,13 +311,13 @@ class HttpReadAloudService : BaseReadAloudService(),
         }
     }
 
-    private suspend fun prepareMediaItemV2(
+    private suspend fun prepareScriptMediaItem(
         engine: TtsEngineSetting,
         index: Int,
         content: String
     ): PreparedMediaItem {
         val text = getSpeakContent(index, content)
-        val fileName = md5SpeakFileNameV2(engine, text)
+        val fileName = md5SpeakFileNameForScript(engine, text)
         val speakText = text.replace(AppPattern.notReadAloudRegex, "")
         if (speakText.isEmpty()) {
             AppLog.put("阅读段落内容为空，使用无声音频代替。\n朗读文本：$text")
@@ -337,7 +337,7 @@ class HttpReadAloudService : BaseReadAloudService(),
         return PreparedMediaItem(text.length, MediaItem.fromUri(Uri.fromFile(file)))
     }
 
-    private fun md5SpeakFileNameV2(
+    private fun md5SpeakFileNameForScript(
         engine: TtsEngineSetting,
         content: String,
         textChapter: TextChapter? = this.textChapter
@@ -348,7 +348,7 @@ class HttpReadAloudService : BaseReadAloudService(),
     }
 
     override fun refreshTtsRoute() {
-        if (ReadAloud.currentTtsEngineV2() == null) return
+        if (ReadAloud.currentScriptTtsEngine() == null) return
         // 运行时参数或选角路由变更：中断当前下载/播放，从当前段落按新参数重新合成
         playIndexJob?.cancel()
         downloadTask?.cancel()
@@ -356,7 +356,7 @@ class HttpReadAloudService : BaseReadAloudService(),
         if (!pause) {
             postEvent(EventBus.ALOUD_STATE, Status.LOADING)
         }
-        downloadAndPlayAudiosV2()
+        downloadAndPlayScriptAudios()
     }
 
     private suspend fun preDownloadAudios(httpTts: HttpTTS) {

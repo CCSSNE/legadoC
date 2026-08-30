@@ -61,7 +61,6 @@ object PreferKey {
     const val ttsCacheIncludeInPackage = "ttsCacheIncludeInPackage"
     const val ttsEngine = "appTtsEngine"
     // 对齐 legado_NG：数据驱动 TTS 引擎层（TtsEngineStore）存储键
-    const val ttsEngineV2ActiveId = "ttsEngineV2ActiveId"
     const val ttsEngineV2SettingsJson = "ttsEngineV2SettingsJson"
     const val ttsEngineV2DeletedIds = "ttsEngineV2DeletedIds"
     const val ttsEngineV2SystemDisabledApplied = "ttsEngineV2SystemDisabledApplied"

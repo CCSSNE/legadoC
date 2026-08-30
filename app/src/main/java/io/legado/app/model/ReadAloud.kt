@@ -14,7 +14,6 @@ import io.legado.app.help.book.isAudio
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.tts.TtsEngineSetting
 import io.legado.app.help.tts.TtsEngineStore
-import io.legado.app.help.tts.TtsEngineType
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.plugin.ReadAloudEngines
 import io.legado.app.service.BaseReadAloudService
@@ -33,7 +32,6 @@ import io.legado.app.utils.postEvent
 import io.legado.app.utils.startForegroundServiceCompat
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.getPrefBoolean
-import io.legado.app.utils.getPrefString
 import splitties.init.appCtx
 
 /** Absolute text position shared by every read-aloud engine and the reader UI. */
@@ -125,13 +123,16 @@ object ReadAloud {
     }
 
     val ttsEngine: String?
-        get() = ReadBook.book?.let { book ->
-            book.getTtsEngine() ?: if (book.isAudio) {
-                SOURCE_AUDIO_ENGINE_ID
-            } else {
-                AppConfig.ttsEngine
-            }
-        } ?: AppConfig.ttsEngine
+        get() {
+            TtsEngineStore.migrateLegacyActiveEngineSelection()
+            return ReadBook.book?.let { book ->
+                book.getTtsEngine() ?: if (book.isAudio) {
+                    SOURCE_AUDIO_ENGINE_ID
+                } else {
+                    AppConfig.ttsEngine
+                }
+            } ?: AppConfig.ttsEngine
+        }
 
     var httpTTS: HttpTTS? = null
         private set
@@ -139,7 +140,10 @@ object ReadAloud {
     val engineType: ReadAloudEngineType
         get() = when (val running = BaseReadAloudService.runningClass) {
             SourceAudioReadAloudService::class.java -> ReadAloudEngineType.SOURCE_AUDIO
-            HttpReadAloudService::class.java -> ReadAloudEngineType.HTTP_TTS
+            HttpReadAloudService::class.java -> when (selectedEngineType) {
+                ReadAloudEngineType.SCRIPT_TTS -> ReadAloudEngineType.SCRIPT_TTS
+                else -> ReadAloudEngineType.HTTP_TTS
+            }
             TTSReadAloudService::class.java -> ReadAloudEngineType.SYSTEM_TTS
             else -> running?.let { ReadAloudEngines.byServiceClass(it) }?.engineType ?: selectedEngineType
         }
@@ -151,6 +155,7 @@ object ReadAloud {
             return when {
                 selected == SOURCE_AUDIO_ENGINE_ID -> ReadAloudEngineType.SOURCE_AUDIO
                 selected != null && StringUtils.isNumeric(selected) -> ReadAloudEngineType.HTTP_TTS
+                TtsEngineStore.scriptEngineForSelection(selected) != null -> ReadAloudEngineType.SCRIPT_TTS
                 else -> ReadAloudEngineType.SYSTEM_TTS
             }
         }
@@ -169,38 +174,24 @@ object ReadAloud {
                 plugin.engineLabel
             }
         }
+        TtsEngineStore.scriptEngineForSelection(selected)?.let { return it.name }
         return GSON.fromJsonObject<SelectItem<String>>(selected).getOrNull()?.title
     }
 
     /**
-     * V2 数据驱动引擎层是否接管朗读路由：仅当用户在 V2 引擎列表里显式选择了
-     * 启用的引擎（内置语音包引擎外观不可被选为活动引擎）时接管；
-     * 未选择时保持既有引擎选择（系统/HTTP源/插件引擎）完全不变。
-     * SCRIPT 引擎经 HttpReadAloudService 合成；SYSTEM 引擎经 TTSReadAloudService
-     * 并按引擎声明的 enginePackage 绑定系统 TTS 实现。
+     * 当前经典选择值解析出的脚本引擎。脚本引擎和 HTTP 源一样经
+     * [HttpReadAloudService] 合成；是否按书生效完全由 [ttsEngine] 决定。
      */
-    private fun resolveActiveTtsEngineV2(): TtsEngineSetting? {
-        val savedId = appCtx.getPrefString(PreferKey.ttsEngineV2ActiveId)
-        if (savedId.isNullOrBlank()) return null
-        return TtsEngineStore.engine(savedId)?.takeIf { it.enabled }
-    }
-
-    /** 当前生效的 V2 引擎：以引擎存储实时解析为准，并同步共享快照供服务侧读取。 */
-    fun currentTtsEngineV2(): TtsEngineSetting? {
-        return resolveActiveTtsEngineV2()?.also { httpTtsEngineV2 = it }
+    fun currentScriptTtsEngine(): TtsEngineSetting? {
+        return TtsEngineStore.enabledScriptEngineForSelection(ttsEngine)
     }
 
     private fun getReadAloudClass(): Class<out BaseReadAloudService>? {
-        val engineV2 = currentTtsEngineV2()
-        if (engineV2 != null) {
+        val scriptEngine = currentScriptTtsEngine()
+        if (scriptEngine != null) {
             httpTTS = null
-            httpTtsEngineV2 = engineV2.takeIf { it.type == TtsEngineType.SCRIPT }
-            return when (engineV2.type) {
-                TtsEngineType.SCRIPT -> HttpReadAloudService::class.java
-                TtsEngineType.SYSTEM -> TTSReadAloudService::class.java
-            }
+            return HttpReadAloudService::class.java
         }
-        httpTtsEngineV2 = null
         val book = ReadBook.book
         if (ttsEngine == SOURCE_AUDIO_ENGINE_ID) {
             httpTTS = null
@@ -223,6 +214,14 @@ object ReadAloud {
                 return null
             }
             return HttpReadAloudService::class.java
+        }
+        TtsEngineStore.scriptEngineForSelection(selected)?.let { script ->
+            httpTTS = null
+            reportUnavailableEngine(
+                selected,
+                "朗读脚本引擎「${script.name}」已禁用，已回退系统 TTS"
+            )
+            return TTSReadAloudService::class.java
         }
         ReadAloudEngines.byId(selected)?.let { plugin ->
             httpTTS = null
@@ -251,28 +250,10 @@ object ReadAloud {
         stop(appCtx)
     }
 
-    // ===== TTS 引擎 V2（数据驱动引擎层，移植自 legado_NG）集成面 =====
-
-    /** 当前生效的 SCRIPT 类 V2 引擎快照：SCRIPT 引擎经 HttpReadAloudService 合成时与服务侧共享的引擎状态。 */
-    @Volatile
-    var httpTtsEngineV2: TtsEngineSetting? = null
-
-    /** 已为播放准备好的 V2 引擎快照；仅同 id 的更新会被接受，避免过期快照覆盖新选择的引擎。 */
-    @Volatile
-    private var preparedActiveEngine: TtsEngineSetting? = null
-
-    fun updatePreparedTtsEngine(engine: TtsEngineSetting) {
-        if (preparedActiveEngine?.id != engine.id) return
-        preparedActiveEngine = engine
-        if (httpTtsEngineV2?.id == engine.id) {
-            httpTtsEngineV2 = engine
-        }
-    }
-
     /**
      * 重算引擎路由但不打断朗读。NG 中此函数重算存储的 aloudClass 字段；
      * 我们的引擎路由是每次播放时的派生值（无存储字段），等效动作是
-     * 刷新 V2 引擎快照（音色/运行时参数可能已变）并广播引擎变化 +
+     * 让运行中脚本服务重取最新引擎参数并广播引擎变化 +
      * 通知运行中服务刷新路由参数。与 [upReadAloudClass] 的区别是不停止当前朗读。
      * 注意：本函数会被 TtsEngineStore 的锁内调用（selectVoice 等），
      * 不得加 ReadAloud 对象监视器锁，也不得在持锁状态下反查引擎存储。

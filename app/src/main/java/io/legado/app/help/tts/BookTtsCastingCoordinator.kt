@@ -496,7 +496,7 @@ object BookTtsCastingCoordinator {
      * 支持返回 null；不支持返回带当前引擎名的明确原因。必须报错暴露，禁止静默回退内置语音包。
      */
     fun multiRoleUnsupportedReason(): String? {
-        ReadAloud.currentTtsEngineV2()?.let { engine ->
+        ReadAloud.currentScriptTtsEngine()?.let { engine ->
             return unsupportedEngineReason(engine.name)
         }
         val engineId = ReadAloud.ttsEngine

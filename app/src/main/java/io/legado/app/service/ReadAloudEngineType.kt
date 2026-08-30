@@ -4,5 +4,6 @@ enum class ReadAloudEngineType {
     SOURCE_AUDIO,
     SYSTEM_TTS,
     HTTP_TTS,
+    SCRIPT_TTS,
     BAIDU_TTS,
 }

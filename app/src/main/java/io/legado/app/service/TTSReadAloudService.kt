@@ -25,7 +25,6 @@ import io.legado.app.help.MediaHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.tts.TtsCacheLog
 import io.legado.app.help.tts.TtsCacheStore
-import io.legado.app.help.tts.TtsEngineType
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
@@ -142,12 +141,8 @@ class TTSReadAloudService : BaseReadAloudService() {
     private fun initTts() {
         ttsInitFinish = false
         val initGeneration = ++ttsInitGeneration
-        // V2 SYSTEM 引擎显式接管时按其声明的 enginePackage 绑定系统 TTS 实现；
-        // 否则沿用经典引擎选择（SelectItem JSON 中的包名）。
-        val engine = ReadAloud.currentTtsEngineV2()
-            ?.takeIf { it.type == TtsEngineType.SYSTEM }
-            ?.enginePackage
-            ?: GSON.fromJsonObject<SelectItem<String>>(ReadAloud.ttsEngine).getOrNull()?.value
+        // 系统 TTS 只由经典引擎选择中的 SelectItem 包名决定。
+        val engine = GSON.fromJsonObject<SelectItem<String>>(ReadAloud.ttsEngine).getOrNull()?.value
         LogUtils.d(TAG, "initTts engine:$engine")
         textToSpeech = if (engine.isNullOrBlank()) {
             TextToSpeech(this) { status -> onTtsInit(initGeneration, status) }

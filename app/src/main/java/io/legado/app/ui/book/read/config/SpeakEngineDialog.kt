@@ -6,6 +6,8 @@ import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.RadioButton
+import android.widget.TextView
+import androidx.core.content.ContextCompat
 import androidx.appcompat.widget.Toolbar
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
@@ -21,6 +23,10 @@ import io.legado.app.databinding.DialogRecyclerViewBinding
 import io.legado.app.databinding.ItemHttpTtsBinding
 import io.legado.app.help.IntentHelp
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.tts.TtsEngineImportConflictAction
+import io.legado.app.help.tts.TtsEngineImportConflictException
+import io.legado.app.help.tts.TtsEngineStore
+import io.legado.app.help.tts.TtsEngineType
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
@@ -49,10 +55,12 @@ import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
 import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.Dispatchers.Main
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
@@ -69,12 +77,20 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
 
     /** 插件引擎行（行视图, 插件）：语音包等运行依赖变化后由 [refreshPluginRows] 重算显示状态。 */
     private val pluginRows = arrayListOf<Pair<RadioButton, ReadAloudEnginePlugin>>()
+    private val scriptEngineRows = arrayListOf<ScriptEngineRow>()
+    private val scriptEngineIds = hashSetOf<String>()
     private val callBack: CallBack? get() = parentFragment as? CallBack
     private val importDocResult = registerForActivityResult(HandleFileContract()) {
         it.uri?.let { uri ->
-            showDialogFragment(ImportHttpTtsDialog(uri.toString()))
+            importLocalTtsFile(uri)
         }
     }
+
+    private data class ScriptEngineRow(
+        val engineId: String,
+        val radioButton: RadioButton,
+        val badge: TextView
+    )
 
     override fun onStart() {
         super.onStart()
@@ -85,6 +101,7 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
         super.onResume()
         // 覆盖"长按进入管理页导入语音包后返回"的场景：按最新就绪状态重算插件行
         refreshPluginRows()
+        refreshScriptEngineRows()
     }
 
     /**
@@ -101,6 +118,20 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
             }
             row.isChecked = unavailable == null && ttsEngine == plugin.engineId
             row.alpha = if (unavailable == null) 1f else 0.45f
+        }
+    }
+
+    private fun refreshScriptEngineRows() {
+        scriptEngineRows.forEach { row ->
+            val engine = TtsEngineStore.scriptEngineById(row.engineId)
+            row.radioButton.visible(engine != null)
+            row.badge.visible(engine != null)
+            if (engine == null) return@forEach
+            row.radioButton.text = engine.name
+            row.radioButton.isChecked = engine.enabled &&
+                    ttsEngine == TtsEngineStore.scriptEngineSelection(engine.id)
+            row.radioButton.alpha = if (engine.enabled) 1f else 0.45f
+            row.badge.alpha = row.radioButton.alpha
         }
     }
 
@@ -124,7 +155,7 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
                     sysTtsViews.add(cbName)
                     ivEdit.gone()
                     ivMenuDelete.gone()
-                    labelSys.visible()
+                    showBadge(tvBadge, "SYS")
                     cbName.setText(R.string.source_audio_engine)
                     cbName.tag = ReadAloud.SOURCE_AUDIO_ENGINE_ID
                     cbName.isChecked = ttsEngine == ReadAloud.SOURCE_AUDIO_ENGINE_ID
@@ -146,7 +177,7 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
                     pluginRows.add(cbName to plugin)
                     ivEdit.gone()
                     ivMenuDelete.gone()
-                    labelSys.visible()
+                    showBadge(tvBadge, "SYS")
                     cbName.tag = plugin.engineId
                     val unavailable = plugin.unavailableReason
                     cbName.text = if (unavailable != null) {
@@ -179,7 +210,7 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
                 sysTtsViews.add(cbName)
                 ivEdit.gone()
                 ivMenuDelete.gone()
-                labelSys.visible()
+                showBadge(tvBadge, "SYS")
                 cbName.text = "系统默认"
                 cbName.tag = ""
                 cbName.isChecked = ttsEngine == null || ttsEngine!!.isJsonObject()
@@ -202,7 +233,7 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
                     sysTtsViews.add(cbName)
                     ivEdit.gone()
                     ivMenuDelete.gone()
-                    labelSys.visible()
+                    showBadge(tvBadge, "SYS")
                     cbName.text = engine.label
                     cbName.tag = engine.name
                     cbName.isChecked = GSON.fromJsonObject<SelectItem<String>>(ttsEngine)
@@ -213,6 +244,9 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
                 }
             }
         }
+        TtsEngineStore.engines()
+            .filter { it.type == TtsEngineType.SCRIPT && it.script.isNotBlank() }
+            .forEach { addScriptEngineRow(it.id) }
         tvFooterLeft.setText(R.string.book)
         tvFooterLeft.typeface = requireContext().uiTypeface()
         tvFooterLeft.visible()
@@ -260,6 +294,114 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
         }
     }
 
+    /**
+     * 脚本行放在 HTTP 源实际列表之后，避免再以独立管理页制造第二个选择面。
+     * footer 的构建回调只捕获 id，始终从存储读取最新快照，避免导入覆盖后的旧对象复活。
+     */
+    private fun addScriptEngineRow(engineId: String) {
+        if (!scriptEngineIds.add(engineId)) return
+        adapter.addFooterView {
+            ItemHttpTtsBinding.inflate(layoutInflater, binding.recyclerView, false).apply {
+                root.applyUiBodyTypefaceDeep(requireContext().uiTypeface())
+                sysTtsViews.add(cbName)
+                showBadge(tvBadge, "V2")
+                ivEdit.gone()
+                ivMenuDelete.gone()
+                cbName.tag = TtsEngineStore.scriptEngineSelection(engineId)
+                scriptEngineRows += ScriptEngineRow(engineId, cbName, tvBadge)
+                refreshScriptEngineRows()
+                cbName.setOnClickListener {
+                    val engine = TtsEngineStore.scriptEngineById(engineId)
+                        ?: return@setOnClickListener
+                    if (engine.enabled) {
+                        upTts(TtsEngineStore.scriptEngineSelection(engine.id))
+                    } else {
+                        toastOnUi("${engine.name}：${getString(R.string.tts_engine_v2_state_disabled)}")
+                    }
+                }
+                cbName.setOnLongClickListener {
+                    val engine = TtsEngineStore.scriptEngineById(engineId)
+                        ?: return@setOnLongClickListener false
+                    startActivity(TtsEngineManageActivity.intent(requireContext(), engine.id))
+                    true
+                }
+            }
+        }
+    }
+
+    private fun importLocalTtsFile(uri: android.net.Uri) {
+        lifecycleScope.launch {
+            val source = withContext(IO) {
+                runCatching {
+                    requireContext().contentResolver.openInputStream(uri)
+                        ?.bufferedReader()
+                        ?.use { it.readText() }
+                }.getOrNull()
+            }
+            if (source.isNullOrBlank()) {
+                toastOnUi(R.string.tts_engine_v2_import_empty)
+                return@launch
+            }
+            if (TtsEngineStore.isScriptEngineImport(source)) {
+                importScriptEngineText(source, TtsEngineImportConflictAction.ASK)
+            } else {
+                // HTTP 源不经过脚本解析或重序列化，保留既有社区格式及选择流程。
+                showDialogFragment(ImportHttpTtsDialog(uri.toString()))
+            }
+        }
+    }
+
+    private fun importScriptEngineText(
+        text: String,
+        action: TtsEngineImportConflictAction
+    ) {
+        lifecycleScope.launch(IO) {
+            runCatching {
+                TtsEngineStore.importEngineText(text, action).getOrThrow()
+            }.onSuccess { imported ->
+                withContext(Main) {
+                    imported.forEach { addScriptEngineRow(it.id) }
+                    refreshScriptEngineRows()
+                    toastOnUi(getString(R.string.tts_engine_v2_import_success, imported.size))
+                }
+            }.onFailure { error ->
+                if (error is TtsEngineImportConflictException) {
+                    val names = error.conflicts.joinToString("\n") {
+                        "${it.importedName}（已有：${it.existingName}）"
+                    }
+                    withContext(Main) {
+                        alert(
+                            title = getString(R.string.tts_engine_v2_import_conflict_title),
+                            message = getString(R.string.tts_engine_v2_import_conflict_msg, names)
+                        ) {
+                            positiveButton(R.string.tts_engine_v2_import_overwrite) {
+                                importScriptEngineText(text, TtsEngineImportConflictAction.OVERWRITE)
+                            }
+                            negativeButton(R.string.tts_engine_v2_import_keep_both) {
+                                importScriptEngineText(text, TtsEngineImportConflictAction.KEEP_BOTH)
+                            }
+                        }
+                    }
+                } else {
+                    AppLog.put("导入脚本朗读引擎失败\n${error.localizedMessage}", error)
+                    withContext(Main) { toastOnUi(error.localizedMessage) }
+                }
+            }
+        }
+    }
+
+    private fun showBadge(badge: TextView, label: String, isHttp: Boolean = false) {
+        badge.text = label
+        badge.setBackgroundColor(
+            if (isHttp) {
+                ContextCompat.getColor(requireContext(), R.color.error)
+            } else {
+                primaryColor
+            }
+        )
+        badge.visible()
+    }
+
     override fun onMenuItemClick(item: MenuItem?): Boolean {
         when (item?.itemId) {
             R.id.menu_clear -> clearCache()
@@ -267,9 +409,8 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
             R.id.menu_default -> viewModel.importDefault()
             R.id.menu_import_local -> importDocResult.launch {
                 mode = HandleFileContract.FILE
-                allowExtensions = arrayOf("txt", "json")
+                allowExtensions = arrayOf("txt", "json", "js")
             }
-            R.id.menu_tts_engine_v2 -> startActivity<TtsEngineManageActivity>()
         }
         return true
     }
@@ -291,6 +432,7 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
             val isChecked = when {
                 ttsEngine == ReadAloud.SOURCE_AUDIO_ENGINE_ID -> it.tag == ReadAloud.SOURCE_AUDIO_ENGINE_ID
                 ReadAloudEngines.byId(ttsEngine) != null -> it.tag == ttsEngine
+                TtsEngineStore.scriptEngineForSelection(ttsEngine) != null -> it.tag == ttsEngine
                 else -> GSON.fromJsonObject<SelectItem<String>>(ttsEngine)
                     .getOrNull()?.value == it.tag
             }
@@ -324,6 +466,7 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
                 cbName.typeface = context.uiTypeface()
                 val isChecked = item.id.toString() == ttsEngine
                 cbName.isChecked = isChecked
+                showBadge(tvBadge, "HTTP", isHttp = true)
             }
         }
 
