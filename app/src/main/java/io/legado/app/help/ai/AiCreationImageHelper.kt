@@ -168,12 +168,6 @@ data class AiCreationImageSlot(
     val error: String = ""
 )
 
-/**
- * 生成任务悬浮窗状态：任务存在即应用内所有非预览界面可见（看书页、创作对话框非预览页），
- * 预览页不显示；[taskRunning] 只反映最新任务。
- * [uiVisible] 表示创作对话框在前台：此时看书页宿主不挂载（[shouldShow] 为 false），
- * 由对话框宿主把悬浮窗挂载到自己窗口最顶层。
- */
 data class AiCreationFloatingState(
     val hasTask: Boolean = false,
     val taskRunning: Boolean = false,

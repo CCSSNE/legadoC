@@ -9,7 +9,6 @@ import android.text.InputType
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -83,7 +82,6 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
     private var previewPageSize = 1
     private var previewPage = 0
     private val previewAdapter = PreviewAdapter()
-    private var inDialogFloatingHost: AiCreationFloatingHost? = null
 
     private val cardEditLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -213,28 +211,6 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
                 }
             }
         }
-        //对话框前台时悬浮窗由对话框宿主挂载在窗口最顶层；预览页不显示
-        inDialogFloatingHost = (dialog?.window?.decorView as? ViewGroup)?.let { decor ->
-            AiCreationFloatingHost(
-                container = decor,
-                layoutParams = {
-                    FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    ).apply {
-                        gravity = Gravity.END or Gravity.BOTTOM
-                        marginEnd = dp(16)
-                        bottomMargin = dp(64)
-                    }
-                },
-                onOpen = { showPage(3) }
-            )
-        }
-        viewLifecycleOwner.lifecycleScope.launch {
-            AiCreationImageTaskHolder.floatingState.collect {
-                upInDialogFloating()
-            }
-        }
         binding.etPrompt.addTextChangedListener { text ->
             if (!suppressPromptWatcher) {
                 session.prompt = text?.toString().orEmpty()
@@ -352,16 +328,6 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
                 }
             }
         }
-        upInDialogFloating()
-    }
-
-    private fun upInDialogFloating() {
-        val host = inDialogFloatingHost ?: return
-        val state = AiCreationImageTaskHolder.floatingState.value
-        host.update(
-            show = state.hasTask && !state.dismissed && currentPage != 3,
-            taskRunning = state.taskRunning
-        )
     }
 
     private fun currentParamValue(variable: AiCreationVariable): String {

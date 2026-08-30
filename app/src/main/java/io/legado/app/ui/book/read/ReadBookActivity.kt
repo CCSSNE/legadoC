@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.Rect
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
 import android.os.Looper
@@ -104,7 +105,6 @@ import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.read.config.IllustrationEditDialog
 import io.legado.app.ui.book.read.config.AutoReadDialog
 import io.legado.app.ui.book.read.creation.AiCreationDialog
-import io.legado.app.ui.book.read.creation.AiCreationFloatingHost
 import io.legado.app.ui.book.read.config.BgTextConfigDialog.Companion.BG_COLOR
 import io.legado.app.ui.book.read.config.BgTextConfigDialog.Companion.READ_MENU_BG_COLOR
 import io.legado.app.ui.book.read.config.BgTextConfigDialog.Companion.TEXT_ACCENT_COLOR
@@ -267,29 +267,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     private var backupJob: Job? = null
     private var aiChapterPurifyJob: Job? = null
     private var aiChapterPurifySummarySnackbar: Snackbar? = null
-    private val aiCreationFloatingHost by lazy {
-        AiCreationFloatingHost(
-            container = binding.root,
-            layoutParams = {
-                FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    gravity = Gravity.END or Gravity.BOTTOM
-                    marginEnd = 16.dpToPx()
-                    bottomMargin = 120.dpToPx()
-                }
-            },
-            onOpen = {
-                showDialogFragment(
-                    AiCreationDialog.newInstance(
-                        ReadBook.book?.name.orEmpty(),
-                        jumpToPreview = true
-                    )
-                )
-            }
-        )
-    }
+    private var aiCreationFloatingView: View? = null
     private var aiChapterPurifyLastStreamSnackbarAt = 0L
     private var aiChapterPurifyPendingChapterIndex: Int? = null
     private var aiChapterPurifyPendingForce = false
@@ -1385,7 +1363,49 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     private fun upAiCreationFloating(state: AiCreationFloatingState) {
-        aiCreationFloatingHost.update(state.shouldShow, state.taskRunning)
+        val container = binding.root as? ViewGroup ?: return
+        if (!state.shouldShow) {
+            aiCreationFloatingView?.let { floating ->
+                container.removeView(floating)
+                aiCreationFloatingView = null
+            }
+            return
+        }
+        val floating = aiCreationFloatingView ?: run {
+            val view = layoutInflater.inflate(
+                R.layout.floating_ai_creation, container, false
+            )
+            view.background = GradientDrawable().apply {
+                cornerRadius = 22.dpToPx().toFloat()
+                setColor(Color.parseColor("#CC222222"))
+            }
+            val layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = Gravity.END or Gravity.BOTTOM
+                marginEnd = 16.dpToPx()
+                bottomMargin = 120.dpToPx()
+            }
+            container.addView(view, layoutParams)
+            view.setOnClickListener {
+                showDialogFragment(
+                    AiCreationDialog.newInstance(
+                        ReadBook.book?.name.orEmpty(),
+                        jumpToPreview = true
+                    )
+                )
+            }
+            view.findViewById<View>(R.id.iv_floating_close).setOnClickListener {
+                AiCreationImageTaskHolder.dismissFloating()
+            }
+            aiCreationFloatingView = view
+            view
+        }
+        floating.findViewById<View>(R.id.rotate_loading).visibility =
+            if (state.taskRunning) View.VISIBLE else View.GONE
+        floating.findViewById<View>(R.id.tv_floating_done).visibility =
+            if (state.taskRunning) View.GONE else View.VISIBLE
     }
 
     private fun askAiBySelection() {
