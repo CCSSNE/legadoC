@@ -23,7 +23,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
 import org.json.JSONObject
 import splitties.init.appCtx
 import java.io.File
@@ -176,7 +175,7 @@ object AiCreationImageTaskHolder {
     }
 
     fun start(prompt: String, count: Int, extraValues: Map<String, String>) {
-        AiCreationConfig.requireImageApiReady()
+        val target = AiCreationProviderStore.requireImageTarget()
         val task = GenerationTask((0 until count).map { index -> AiCreationImageSlot(index = index) })
         synchronized(displayLock) {
             //直接以新的为准：展示与提示立即切到新任务，老任务不取消不阻塞
@@ -189,7 +188,7 @@ object AiCreationImageTaskHolder {
         updateFloatingState()
         scope.launch {
             try {
-                runGeneration(task, prompt, count, extraValues)
+                runGeneration(task, target, prompt, count, extraValues)
             } finally {
                 runningTasks.decrementAndGet()
                 updateFloatingState()
@@ -226,12 +225,13 @@ object AiCreationImageTaskHolder {
 
     private suspend fun runGeneration(
         task: GenerationTask,
+        target: AiCreationProviderTarget,
         prompt: String,
         count: Int,
         extraValues: Map<String, String>
     ) {
         // 第一级：单次批量请求 n 张（智谱等忽略 n 的服务只会返回 1 张，按实际返回数记账）
-        val batch = runCatching { requestImages(prompt, count, extraValues) }
+        val batch = runCatching { requestImages(target, prompt, count, extraValues) }
         var completed = 0
         batch.onSuccess { fileNames ->
             fileNames.take(count).forEach { fileName ->
@@ -253,7 +253,7 @@ object AiCreationImageTaskHolder {
                 chunk.map { index ->
                     async {
                         index to runCatching {
-                            requestImages(prompt, 1, extraValues, retryEnabled = false)
+                            requestImages(target, prompt, 1, extraValues, retryEnabled = false)
                         }
                     }
                 }.awaitAll()
@@ -276,7 +276,7 @@ object AiCreationImageTaskHolder {
         }
         // 第三级：仍失败的槽位串行逐张重试（带完整重试与退避）
         for (index in failedIndexes) {
-            val single = runCatching { requestImages(prompt, 1, extraValues) }
+            val single = runCatching { requestImages(target, prompt, 1, extraValues) }
             single.onSuccess { fileNames ->
                 if (fileNames.isEmpty()) {
                     failSlot(task, index, "服务未返回图片")
@@ -291,19 +291,19 @@ object AiCreationImageTaskHolder {
     }
 
     private suspend fun requestImages(
+        target: AiCreationProviderTarget,
         prompt: String,
         n: Int,
         extraValues: Map<String, String>,
         retryEnabled: Boolean = true
     ): List<String> {
-        val url = AiCreationConfig.imageUrl
         val retry = AiCreationConfig.imageRetryCount
-        val body = renderImageRequestBody(prompt, n, extraValues)
+        val body = renderImageRequestBody(target, prompt, n, extraValues)
         var lastError: Throwable? = null
         val attempts = if (retryEnabled) retry + 1 else 1
         repeat(attempts) { attempt ->
             try {
-                return fetchImages(url, body)
+                return fetchImages(target.provider, body)
             } catch (throwable: Throwable) {
                 if (throwable is CancellationException) throw throwable
                 lastError = throwable
@@ -314,15 +314,19 @@ object AiCreationImageTaskHolder {
     }
 
     private suspend fun fetchImages(
-        url: String,
+        provider: AiCreationProviderConfig,
         body: String
     ): List<String> = withContext(Dispatchers.IO) {
         val response = okHttpClient.newCallResponse {
-            url(url)
+            url(provider.baseUrl)
             addHeader("Accept", "application/json")
             addHeader("Content-Type", "application/json")
-            AiCreationConfig.imageApiKey.trim().takeIf { it.isNotBlank() }?.let {
+            provider.apiKey.trim().takeIf { it.isNotBlank() }?.let {
                 addHeader("Authorization", "Bearer $it")
+            }
+            AiCreationProviderStore.parseCustomHeaders(provider.headers).forEach { (key, value) ->
+                //header() 覆盖同名默认头，自定义 Authorization 等以供应商配置为准
+                header(key, value)
             }
             postJson(body)
         }
@@ -365,72 +369,48 @@ object AiCreationImageTaskHolder {
     }
 
     private fun renderImageRequestBody(
+        target: AiCreationProviderTarget,
         prompt: String,
         n: Int,
         extraValues: Map<String, String>
     ): String {
-        val template = AiCreationConfig.imageRequestTemplate
         val tokens = buildMap {
-            put("model", AiCreationConfig.imageModel)
+            put("model", target.modelId)
             put("prompt", prompt)
             put("n", n.toString())
             putAll(extraValues)
         }
-        //裸占位符（值位置不带引号，如 {{n}}、{{watermark_enabled}}）按 JSON 字面量替换，
-        //布尔/数字参数不再被包成字符串；带引号与字符串内嵌的 {{key}} / ${key}
-        //由解析后的字符串替换（replaceTokens）处理，保持原语义。
-        var withLiterals = template
-        tokens.forEach { (key, value) ->
-            val tokenRegex = Regex("([:\\[,]\\s*)" + Regex.escape("{{$key}}") + "(\\s*[,}\\]])")
-            withLiterals = tokenRegex.replace(withLiterals) { match ->
-                "${match.groupValues[1]}${jsonLiteralOf(value)}${match.groupValues[2]}"
+        return AiCreationProviderStore.renderRequestTemplate(target.provider.requestTemplate, tokens)
+    }
+
+    /**
+     * 图片测试连接：用当前供应商全部配置真实请求一次（变量取默认值，出 1 张），
+     * 图片落盘并计入创作缓存，返回文件名。
+     */
+    suspend fun testConnection(
+        provider: AiCreationProviderConfig,
+        modelId: String
+    ): String = withContext(Dispatchers.IO) {
+        check(provider.requestTemplate.isNotBlank()) { "当前图片供应商「${provider.name}」的图片请求模板为空" }
+        val variables = if (provider.variablesJson.isNotBlank()) {
+            AiCreationVariables.parse(provider.variablesJson).variables
+        } else {
+            emptyList()
+        }
+        val tokens = buildMap {
+            put("model", modelId)
+            put("prompt", AiCreationProviderStore.IMAGE_TEST_PROMPT)
+            put("n", "1")
+            variables.forEach { variable ->
+                put(variable.key, variable.effectiveValue(null))
             }
         }
-        val root = try {
-            JSONObject(withLiterals)
-        } catch (throwable: Throwable) {
-            throw IllegalStateException(
-                "图片请求模板 JSON 无效：${throwable.message}",
-                throwable
-            )
-        }
-        replaceTokens(root, tokens)
-        return root.toString()
-    }
-
-    /** 占位符替换为 JSON 字面量：布尔保持 true/false，整数不加引号，其余按 JSON 字符串转义 */
-    private fun jsonLiteralOf(value: String): String = when {
-        value == "true" || value == "false" -> value
-        value.matches(Regex("-?\\d+")) -> value
-        else -> JSONObject.quote(value)
-    }
-
-    private fun replaceTokens(json: JSONObject, tokens: Map<String, String>) {
-        val keys = json.keys()
-        while (keys.hasNext()) {
-            val key = keys.next()
-            when (val value = json.opt(key)) {
-                is JSONObject -> replaceTokens(value, tokens)
-                is JSONArray -> replaceTokens(value, tokens)
-                is String -> json.put(key, replaceTokensInString(value, tokens))
-            }
-        }
-    }
-
-    private fun replaceTokens(array: JSONArray, tokens: Map<String, String>) {
-        for (index in 0 until array.length()) {
-            when (val value = array.opt(index)) {
-                is JSONObject -> replaceTokens(value, tokens)
-                is JSONArray -> replaceTokens(value, tokens)
-                is String -> array.put(index, replaceTokensInString(value, tokens))
-            }
-        }
-    }
-
-    private fun replaceTokensInString(value: String, tokens: Map<String, String>): String {
-        return tokens.entries.fold(value) { acc, (key, replacement) ->
-            acc.replace("{{$key}}", replacement).replace("\${$key}", replacement)
-        }
+        val body = AiCreationProviderStore.renderRequestTemplate(provider.requestTemplate, tokens)
+        val fileNames = fetchImages(provider, body)
+        val fileName = fileNames.firstOrNull()
+            ?: throw IllegalStateException("服务未返回图片")
+        appDb.creationResultDao.insert(CreationResult(fileName = fileName))
+        fileName
     }
 
     private suspend fun acceptImage(task: GenerationTask, index: Int, fileName: String) {

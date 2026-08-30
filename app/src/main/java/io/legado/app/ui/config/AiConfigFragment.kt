@@ -15,6 +15,7 @@ import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
+import io.legado.app.databinding.DialogAiCreationProviderEditBinding
 import io.legado.app.databinding.DialogAiMcpServerEditBinding
 import io.legado.app.databinding.DialogAiProviderEditBinding
 import io.legado.app.databinding.DialogEditTextBinding
@@ -22,7 +23,12 @@ import io.legado.app.help.ai.AiChapterPurifyConfig
 import io.legado.app.help.ai.AiStoryboardConfig
 import io.legado.app.help.ai.AiChatService
 import io.legado.app.help.ai.AiCreationConfig
+import io.legado.app.help.ai.AiCreationImageHelper
+import io.legado.app.help.ai.AiCreationProviderConfig
+import io.legado.app.help.ai.AiCreationProviderModel
+import io.legado.app.help.ai.AiCreationProviderStore
 import io.legado.app.help.ai.AiCreationVariables
+import io.legado.app.help.ai.AiCreationVideoHelper
 import io.legado.app.help.ai.AiLogExporter
 import io.legado.app.help.ai.AiLogConfig
 import io.legado.app.help.ai.AiRequestTimeoutConfig
@@ -176,12 +182,17 @@ class AiConfigFragment : PreferenceFragment(),
             PreferKey.aiCreationRequestTemplate -> showCreationRequestDialog()
             "aiCreationTestConnection" -> testCreationConnection()
             PreferKey.aiCreationScope -> showCreationScopeSettingsDialog()
-            PreferKey.aiCreationImageUrl -> showCreationImageUrlDialog()
-            PreferKey.aiCreationImageApiKey -> showCreationImageApiKeyDialog()
-            PreferKey.aiCreationImageApiKeyGuide ->
-                requireContext().openUrl("https://bigmodel.cn/apikey/platform")
-            PreferKey.aiCreationImageModel -> showCreationImageModelDialog()
-            PreferKey.aiCreationImageRequestTemplate -> showCreationImageRequestDialog()
+            "aiCreationImageAddProvider" -> showCreationProviderEditDialog(null, isVideo = false)
+            "aiCreationImageManageProviders" -> showCreationManageProvidersDialog(isVideo = false)
+            "aiCreationImageApiKeyJump" -> openCreationApiKeyJump()
+            "aiCreationImageAddModel" -> showCreationAddModelDialog(isVideo = false)
+            "aiCreationImageManageModels" -> showCreationManageModelsDialog(isVideo = false)
+            "aiCreationImageTestConnection" -> testCreationImageConnection()
+            "aiCreationVideoAddProvider" -> showCreationProviderEditDialog(null, isVideo = true)
+            "aiCreationVideoManageProviders" -> showCreationManageProvidersDialog(isVideo = true)
+            "aiCreationVideoAddModel" -> showCreationAddModelDialog(isVideo = true)
+            "aiCreationVideoManageModels" -> showCreationManageModelsDialog(isVideo = true)
+            "aiCreationVideoTestConnection" -> testCreationVideoConnection()
             PreferKey.aiCreationImageRetryCount -> showCreationImageRetryDialog()
             PreferKey.aiStoryboardProviderId -> showSelectStoryboardProviderDialog()
             PreferKey.aiStoryboardModelId -> showSelectStoryboardModelDialog()
@@ -196,6 +207,7 @@ class AiConfigFragment : PreferenceFragment(),
             key == PreferKey.aiChapterPurifyReuseCurrentModel ||
             key == PreferKey.aiChapterPurifyRequestTemplate ||
             key == PreferKey.aiCreationReuseCurrentModel ||
+            key == PreferKey.aiCreationVideoReuseImage ||
             key == PreferKey.aiStoryboardReuseCurrentModel ||
             key == PreferKey.aiSseIdleTimeoutSeconds ||
             key == PreferKey.aiGenerationTimeoutSeconds ||
@@ -490,13 +502,17 @@ class AiConfigFragment : PreferenceFragment(),
     }
 
     private fun showCreationVariablesDialog() {
+        val provider = AiCreationProviderStore.imageCurrentProvider ?: run {
+            toastOnUi(R.string.ai_creation_provider_required)
+            return
+        }
         val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
             editView.hint = getString(R.string.ai_creation_variables_hint)
             editView.inputType = InputType.TYPE_CLASS_TEXT or
                 InputType.TYPE_TEXT_FLAG_MULTI_LINE or
                 InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             editView.minLines = 16
-            editView.setText(AiCreationConfig.variablesJson)
+            editView.setText(provider.variablesJson)
             editView.setSelection(editView.text?.length ?: 0)
         }
         alert(titleResource = R.string.ai_creation_variables) {
@@ -504,8 +520,7 @@ class AiConfigFragment : PreferenceFragment(),
             okButton {
                 val json = binding.editView.text?.toString()?.trim().orEmpty()
                 val error = runCatching {
-                    AiCreationConfig.variablesJson = json
-                    AiCreationConfig.definition
+                    AiCreationVariables.parse(json)
                 }.exceptionOrNull()
                 if (error != null) {
                     toastOnUi(
@@ -516,11 +531,22 @@ class AiConfigFragment : PreferenceFragment(),
                     )
                     return@okButton
                 }
+                updateCreationProvider(provider.id, isVideo = false) {
+                    it.copy(variablesJson = json)
+                }
                 refreshUi()
             }
-            neutralButton(R.string.restore_default) {
-                AiCreationConfig.variablesJson = AiCreationVariables.defaultJson
-                refreshUi()
+            //恢复默认仅对内置供应商有意义（有出厂变量定义可还原）
+            if (AiCreationProviderStore.defaultVariablesJsonOf(provider) != null) {
+                neutralButton(R.string.restore_default) {
+                    updateCreationProvider(provider.id, isVideo = false) {
+                        it.copy(
+                            variablesJson = AiCreationProviderStore.defaultVariablesJsonOf(it)
+                                .orEmpty()
+                        )
+                    }
+                    refreshUi()
+                }
             }
             cancelButton()
         }
@@ -541,91 +567,6 @@ class AiConfigFragment : PreferenceFragment(),
         testAiConnection(target.provider, target.modelId, body)
     }
 
-    private fun showCreationImageUrlDialog() {
-        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
-            editView.hint = AiCreationConfig.DEFAULT_IMAGE_URL
-            editView.inputType = InputType.TYPE_CLASS_TEXT
-            editView.setText(AiCreationConfig.imageUrl)
-            editView.setSelection(editView.text?.length ?: 0)
-        }
-        alert(titleResource = R.string.ai_creation_image_url) {
-            customView { binding.root }
-            okButton {
-                AiCreationConfig.imageUrl = binding.editView.text?.toString().orEmpty()
-                refreshUi()
-            }
-            cancelButton()
-        }
-    }
-
-    private fun showCreationImageApiKeyDialog() {
-        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
-            editView.setText(AiCreationConfig.imageApiKey)
-        }
-        applyApiKeyInputPolicy(binding.editView)
-        alert(titleResource = R.string.ai_creation_image_api_key) {
-            customView { binding.root }
-            okButton {
-                AiCreationConfig.imageApiKey = binding.editView.text?.toString().orEmpty()
-                refreshUi()
-            }
-            cancelButton()
-        }
-    }
-
-    private fun showCreationImageModelDialog() {
-        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
-            editView.hint = getString(R.string.ai_creation_image_model_hint)
-            editView.inputType = InputType.TYPE_CLASS_TEXT
-            editView.setText(AiCreationConfig.imageModel)
-            editView.setSelection(editView.text?.length ?: 0)
-        }
-        alert(titleResource = R.string.ai_creation_image_model) {
-            customView { binding.root }
-            okButton {
-                AiCreationConfig.imageModel = binding.editView.text?.toString().orEmpty()
-                refreshUi()
-            }
-            cancelButton()
-        }
-    }
-
-    private fun showCreationImageRequestDialog() {
-        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
-            editView.hint = getString(R.string.ai_creation_image_request_template_hint)
-            editView.inputType = InputType.TYPE_CLASS_TEXT or
-                InputType.TYPE_TEXT_FLAG_MULTI_LINE or
-                InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-            editView.minLines = 10
-            editView.setText(AiCreationConfig.imageRequestTemplate)
-            editView.setSelection(editView.text?.length ?: 0)
-        }
-        alert(titleResource = R.string.ai_creation_image_request_template) {
-            customView { binding.root }
-            okButton {
-                val json = binding.editView.text?.toString()?.trim().orEmpty()
-                val error = runCatching {
-                    AiCreationConfig.imageRequestTemplate = json
-                }.exceptionOrNull()
-                if (error != null) {
-                    toastOnUi(
-                        getString(
-                            R.string.ai_creation_request_template_invalid,
-                            error.message.orEmpty()
-                        )
-                    )
-                    return@okButton
-                }
-                refreshUi()
-            }
-            neutralButton(R.string.restore_default) {
-                AiCreationConfig.imageRequestTemplate = AiCreationConfig.defaultImageRequestTemplateJson
-                refreshUi()
-            }
-            cancelButton()
-        }
-    }
-
     private fun showCreationImageRetryDialog() {
         showChapterPurifyIntDialog(
             R.string.ai_creation_image_retry_count,
@@ -633,6 +574,453 @@ class AiConfigFragment : PreferenceFragment(),
             AiCreationConfig.MIN_IMAGE_RETRY_COUNT,
             AiCreationConfig.MAX_IMAGE_RETRY_COUNT
         ) { AiCreationConfig.imageRetryCount = it }
+    }
+
+    // ———— AI 创作图片/视频供应商管理（参考 LLM 供应商管理：管理内设当前） ————
+
+    private fun creationProviders(isVideo: Boolean): List<AiCreationProviderConfig> =
+        if (isVideo) AiCreationProviderStore.videoProviderList
+        else AiCreationProviderStore.imageProviderList
+
+    private fun saveCreationProviders(
+        isVideo: Boolean,
+        providers: List<AiCreationProviderConfig>
+    ) {
+        if (isVideo) AiCreationProviderStore.videoProviderList = providers
+        else AiCreationProviderStore.imageProviderList = providers
+    }
+
+    private fun creationModels(isVideo: Boolean): List<AiCreationProviderModel> =
+        if (isVideo) AiCreationProviderStore.videoModelList
+        else AiCreationProviderStore.imageModelList
+
+    private fun saveCreationModels(isVideo: Boolean, models: List<AiCreationProviderModel>) {
+        if (isVideo) AiCreationProviderStore.videoModelList = models
+        else AiCreationProviderStore.imageModelList = models
+    }
+
+    private fun creationCurrentProvider(isVideo: Boolean): AiCreationProviderConfig? =
+        if (isVideo) AiCreationProviderStore.videoCurrentProvider
+        else AiCreationProviderStore.imageCurrentProvider
+
+    private fun setCreationCurrentProviderId(isVideo: Boolean, id: String?) {
+        if (isVideo) AiCreationProviderStore.videoCurrentProviderId = id
+        else AiCreationProviderStore.imageCurrentProviderId = id
+    }
+
+    private fun setCreationCurrentModelRowId(isVideo: Boolean, id: String?) {
+        if (isVideo) AiCreationProviderStore.videoCurrentModelRowId = id
+        else AiCreationProviderStore.imageCurrentModelRowId = id
+    }
+
+    private fun updateCreationProvider(
+        providerId: String,
+        isVideo: Boolean,
+        transform: (AiCreationProviderConfig) -> AiCreationProviderConfig
+    ) {
+        val providers = creationProviders(isVideo).toMutableList()
+        val index = providers.indexOfFirst { it.id == providerId }
+        if (index < 0) return
+        providers[index] = transform(providers[index])
+        saveCreationProviders(isVideo, providers)
+    }
+
+    private fun summarizeJsonText(json: String): String {
+        val compact = json.replace(Regex("\\s+"), " ").trim()
+        return if (compact.length > 40) compact.take(40) + "…" else compact.ifBlank { "—" }
+    }
+
+    private fun showCreationProviderEditDialog(
+        provider: AiCreationProviderConfig?,
+        isVideo: Boolean
+    ) {
+        //变量定义与请求模板经行内点击弹窗编辑，保存到临时状态，随外层确认一并写入
+        var variablesJson = provider?.variablesJson.orEmpty()
+        var requestTemplate = provider?.requestTemplate.orEmpty()
+        val binding = DialogAiCreationProviderEditBinding.inflate(layoutInflater).apply {
+            editProviderName.setText(provider?.name.orEmpty())
+            editProviderBaseUrl.setText(provider?.baseUrl.orEmpty())
+            editProviderApiKey.setText(provider?.apiKey.orEmpty())
+            editProviderHeaders.setText(provider?.headers.orEmpty())
+            tvProviderVariablesLabel.setText(
+                if (isVideo) R.string.ai_creation_video_variables
+                else R.string.ai_creation_image_variables
+            )
+            tvProviderTemplateLabel.setText(
+                if (isVideo) R.string.ai_creation_video_request_template
+                else R.string.ai_creation_image_request_template
+            )
+            tvProviderVariables.text = summarizeJsonText(variablesJson)
+            tvProviderTemplate.text = summarizeJsonText(requestTemplate)
+            editProviderVariablesRow.setOnClickListener {
+                showCreationTemplateEditorDialog(
+                    title = if (isVideo) R.string.ai_creation_video_variables
+                    else R.string.ai_creation_image_variables,
+                    content = variablesJson,
+                    validate = { AiCreationVariables.parse(it) }
+                ) { json ->
+                    variablesJson = json
+                    tvProviderVariables.text = summarizeJsonText(json)
+                }
+            }
+            editProviderTemplateRow.setOnClickListener {
+                showCreationTemplateEditorDialog(
+                    title = if (isVideo) R.string.ai_creation_video_request_template
+                    else R.string.ai_creation_image_request_template,
+                    content = requestTemplate,
+                    validate = { AiCreationProviderStore.parseRequestTemplateJson(it) }
+                ) { json ->
+                    requestTemplate = json
+                    tvProviderTemplate.text = summarizeJsonText(json)
+                }
+            }
+        }
+        applyApiKeyInputPolicy(binding.editProviderApiKey)
+        alert(
+            title = getString(
+                when {
+                    provider == null && isVideo -> R.string.ai_creation_video_add_provider
+                    provider == null -> R.string.ai_creation_image_add_provider
+                    isVideo -> R.string.ai_creation_video_edit_provider
+                    else -> R.string.ai_creation_image_edit_provider
+                }
+            )
+        ) {
+            customView { binding.root }
+            okButton {
+                val name = binding.editProviderName.text?.toString()?.trim().orEmpty()
+                val baseUrl = binding.editProviderBaseUrl.text?.toString()?.trim().orEmpty()
+                val apiKey = binding.editProviderApiKey.text?.toString()?.trim().orEmpty()
+                val headers = binding.editProviderHeaders.text?.toString()?.trim().orEmpty()
+                when {
+                    name.isEmpty() -> {
+                        toastOnUi(R.string.ai_provider_name_required)
+                        return@okButton
+                    }
+
+                    baseUrl.isEmpty() -> {
+                        toastOnUi(R.string.ai_provider_url_required)
+                        return@okButton
+                    }
+
+                    variablesJson.isBlank() -> {
+                        toastOnUi(
+                            getString(
+                                R.string.ai_creation_variables_invalid,
+                                "变量定义为空，请先编辑变量定义"
+                            )
+                        )
+                        return@okButton
+                    }
+
+                    requestTemplate.isBlank() -> {
+                        toastOnUi(
+                            getString(
+                                R.string.ai_creation_request_template_invalid,
+                                "请求模板为空，请先编辑请求模板"
+                            )
+                        )
+                        return@okButton
+                    }
+                }
+                val updated = (provider ?: AiCreationProviderConfig(name = name, baseUrl = baseUrl)).copy(
+                    name = name,
+                    baseUrl = baseUrl,
+                    apiKey = apiKey,
+                    headers = headers,
+                    variablesJson = variablesJson,
+                    requestTemplate = requestTemplate
+                )
+                val providers = creationProviders(isVideo).toMutableList()
+                val targetIndex = providers.indexOfFirst { it.id == updated.id }
+                if (targetIndex >= 0) {
+                    providers[targetIndex] = updated
+                } else {
+                    providers.add(updated)
+                }
+                saveCreationProviders(isVideo, providers)
+                setCreationCurrentProviderId(isVideo, updated.id)
+                refreshUi()
+                toastOnUi(R.string.ai_provider_saved)
+            }
+            cancelButton()
+        }
+    }
+
+    private fun showCreationTemplateEditorDialog(
+        title: Int,
+        content: String,
+        validate: (String) -> Any?,
+        onSaved: (String) -> Unit
+    ) {
+        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
+            editView.inputType = InputType.TYPE_CLASS_TEXT or
+                InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+                InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            editView.minLines = 12
+            editView.setText(content)
+            editView.setSelection(editView.text?.length ?: 0)
+        }
+        alert(titleResource = title) {
+            customView { binding.root }
+            okButton {
+                val json = binding.editView.text?.toString()?.trim().orEmpty()
+                val error = runCatching { validate(json) }.exceptionOrNull()
+                if (error != null) {
+                    toastOnUi(error.message ?: error.javaClass.simpleName)
+                    return@okButton
+                }
+                onSaved(json)
+            }
+            cancelButton()
+        }
+    }
+
+    private fun showCreationManageProvidersDialog(isVideo: Boolean) {
+        val providers = creationProviders(isVideo)
+        if (providers.isEmpty()) {
+            toastOnUi(R.string.ai_no_providers)
+            return
+        }
+        context?.selector(
+            getString(
+                if (isVideo) R.string.ai_creation_video_manage_providers
+                else R.string.ai_creation_image_manage_providers
+            ),
+            providers.map { it.name }
+        ) { _, _, index ->
+            val provider = providers[index]
+            val actions = buildList {
+                add(getString(R.string.ai_set_current_provider))
+                add(getString(R.string.ai_edit_provider))
+                if (!provider.builtIn) {
+                    add(getString(R.string.ai_remove_provider))
+                }
+            }
+            context?.selector(provider.name, actions) { _, action ->
+                when {
+                    action == 0 -> {
+                        setCreationCurrentProviderId(isVideo, provider.id)
+                        refreshUi()
+                    }
+
+                    action == 1 -> showCreationProviderEditDialog(provider, isVideo)
+                    else -> confirmRemoveCreationProvider(provider, isVideo)
+                }
+            }
+        }
+    }
+
+    private fun confirmRemoveCreationProvider(
+        provider: AiCreationProviderConfig,
+        isVideo: Boolean
+    ) {
+        if (provider.builtIn) {
+            toastOnUi(R.string.ai_creation_provider_builtin)
+            return
+        }
+        val relatedModelCount = creationModels(isVideo).count { it.providerId == provider.id }
+        alert(
+            title = provider.name,
+            message = getString(
+                if (relatedModelCount > 0) {
+                    R.string.ai_remove_provider_confirm_with_models
+                } else {
+                    R.string.ai_remove_provider_confirm
+                },
+                relatedModelCount
+            )
+        ) {
+            okButton {
+                saveCreationProviders(
+                    isVideo,
+                    creationProviders(isVideo).filterNot { it.id == provider.id }
+                )
+                refreshUi()
+                toastOnUi(R.string.ai_provider_removed)
+            }
+            cancelButton()
+        }
+    }
+
+    private fun showCreationAddModelDialog(isVideo: Boolean) {
+        val provider = creationCurrentProvider(isVideo) ?: run {
+            toastOnUi(R.string.ai_creation_provider_required)
+            return
+        }
+        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
+            editView.hint = getString(R.string.ai_model_input_hint)
+            editView.inputType = InputType.TYPE_CLASS_TEXT
+        }
+        alert(
+            title = getString(
+                if (isVideo) R.string.ai_creation_video_add_model
+                else R.string.ai_creation_image_add_model
+            )
+        ) {
+            customView { binding.root }
+            okButton {
+                val modelId = binding.editView.text?.toString()?.trim().orEmpty()
+                if (modelId.isEmpty()) {
+                    return@okButton
+                }
+                val models = creationModels(isVideo)
+                if (models.any { it.providerId == provider.id && it.modelId == modelId }) {
+                    toastOnUi(R.string.ai_model_exists)
+                    return@okButton
+                }
+                val model = AiCreationProviderModel(providerId = provider.id, modelId = modelId)
+                saveCreationModels(isVideo, models + model)
+                setCreationCurrentModelRowId(isVideo, model.id)
+                refreshUi()
+                toastOnUi(R.string.ai_model_added)
+            }
+            cancelButton()
+        }
+    }
+
+    private fun showCreationManageModelsDialog(isVideo: Boolean) {
+        val provider = creationCurrentProvider(isVideo) ?: run {
+            toastOnUi(R.string.ai_creation_provider_required)
+            return
+        }
+        val models = creationModels(isVideo).filter { it.providerId == provider.id }
+        if (models.isEmpty()) {
+            toastOnUi(R.string.ai_no_models)
+            return
+        }
+        context?.selector(
+            getString(
+                if (isVideo) R.string.ai_creation_video_manage_models
+                else R.string.ai_creation_image_manage_models
+            ),
+            models.map { it.modelId }
+        ) { _, _, index ->
+            val model = models[index]
+            context?.selector(
+                model.modelId,
+                listOf(
+                    getString(R.string.ai_set_current),
+                    getString(R.string.ai_edit_model),
+                    getString(R.string.ai_remove_model)
+                )
+            ) { _, action ->
+                when (action) {
+                    0 -> {
+                        setCreationCurrentModelRowId(isVideo, model.id)
+                        refreshUi()
+                    }
+
+                    1 -> showCreationEditModelDialog(model, isVideo)
+                    else -> {
+                        saveCreationModels(
+                            isVideo,
+                            creationModels(isVideo).filterNot { it.id == model.id }
+                        )
+                        refreshUi()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun showCreationEditModelDialog(model: AiCreationProviderModel, isVideo: Boolean) {
+        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
+            editView.hint = getString(R.string.ai_model_input_hint)
+            editView.inputType = InputType.TYPE_CLASS_TEXT
+            editView.setText(model.modelId)
+            editView.setSelection(editView.text?.length ?: 0)
+        }
+        alert(title = getString(R.string.ai_edit_model)) {
+            customView { binding.root }
+            okButton {
+                val modelId = binding.editView.text?.toString()?.trim().orEmpty()
+                if (modelId.isEmpty()) {
+                    return@okButton
+                }
+                val models = creationModels(isVideo).toMutableList()
+                if (models.any {
+                        it.providerId == model.providerId && it.modelId == modelId && it.id != model.id
+                    }
+                ) {
+                    toastOnUi(R.string.ai_model_exists)
+                    return@okButton
+                }
+                val index = models.indexOfFirst { it.id == model.id }
+                if (index >= 0) {
+                    models[index] = model.copy(modelId = modelId)
+                }
+                saveCreationModels(isVideo, models)
+                refreshUi()
+                toastOnUi(R.string.ai_model_saved)
+            }
+            cancelButton()
+        }
+    }
+
+    private fun openCreationApiKeyJump() {
+        val url = AiCreationProviderStore.imageCurrentProvider?.apiKeyUrl.orEmpty()
+        if (url.isBlank()) {
+            toastOnUi(R.string.ai_creation_provider_required)
+            return
+        }
+        requireContext().openUrl(url)
+    }
+
+    private fun testCreationImageConnection() {
+        val target = runCatching { AiCreationProviderStore.requireImageTarget() }.getOrElse {
+            toastOnUi(it.message ?: it.javaClass.simpleName)
+            return
+        }
+        toastOnUi(R.string.ai_creation_image_test_running)
+        lifecycleScope.launch {
+            val result = withContext(IO) {
+                runCatching { AiCreationImageHelper.testConnection(target.provider, target.modelId) }
+            }
+            result.onSuccess {
+                toastOnUi(R.string.ai_creation_image_test_success)
+            }.onFailure { throwable ->
+                AppLog.put(
+                    "AI 创作图片测试连接失败，供应商《${target.provider.name}》，模型《${target.modelId}》\n" +
+                        "${throwable.message}",
+                    throwable
+                )
+                toastOnUi(
+                    getString(
+                        R.string.ai_creation_connection_test_failed,
+                        throwable.message ?: throwable.javaClass.simpleName
+                    )
+                )
+            }
+        }
+    }
+
+    private fun testCreationVideoConnection() {
+        val target = runCatching { AiCreationProviderStore.requireVideoTarget() }.getOrElse {
+            toastOnUi(it.message ?: it.javaClass.simpleName)
+            return
+        }
+        toastOnUi(R.string.ai_creation_video_test_running)
+        lifecycleScope.launch {
+            val result = withContext(IO) {
+                runCatching { AiCreationVideoHelper.testConnection(target.provider, target.modelId) }
+            }
+            result.onSuccess {
+                toastOnUi(R.string.ai_creation_video_test_success)
+            }.onFailure { throwable ->
+                AppLog.put(
+                    "AI 创作视频测试连接失败，供应商《${target.provider.name}》，模型《${target.modelId}》\n" +
+                        "${throwable.message}",
+                    throwable
+                )
+                toastOnUi(
+                    getString(
+                        R.string.ai_creation_connection_test_failed,
+                        throwable.message ?: throwable.javaClass.simpleName
+                    )
+                )
+            }
+        }
     }
 
     private fun showCreationScopeDialog(section: String) {
@@ -1920,22 +2308,41 @@ class AiConfigFragment : PreferenceFragment(),
             getString(R.string.ai_storyboard_preload_count_summary, AiStoryboardConfig.preloadCount)
         findPreference<Preference>(PreferKey.aiCreationScope)?.summary =
             getString(R.string.ai_creation_scope_summary)
-        findPreference<Preference>(PreferKey.aiCreationImageUrl)?.summary =
-            AiCreationConfig.imageUrl.ifBlank {
-                getString(R.string.ai_creation_provider_summary_empty)
+        // —— 图片供应商 ——
+        val creationImageProvider = AiCreationProviderStore.imageCurrentProvider
+        findPreference<Preference>("aiCreationImageApiKeyJump")?.apply {
+            val url = creationImageProvider?.apiKeyUrl.orEmpty()
+            //跳转按钮只在当前为内置供应商（有申请地址）时出现，自定义供应商隐藏
+            isVisible = creationImageProvider?.builtIn == true && url.isNotBlank()
+            summary = url
+        }
+        findPreference<Preference>("aiCreationImageManageProviders")?.summary =
+            creationImageProvider?.name
+                ?: getString(R.string.ai_creation_current_provider_empty)
+        findPreference<Preference>("aiCreationImageManageModels")?.summary =
+            AiCreationProviderStore.imageCurrentModelId.ifBlank {
+                getString(R.string.ai_creation_current_model_empty)
             }
-        findPreference<Preference>(PreferKey.aiCreationImageApiKey)?.summary =
-            if (AiCreationConfig.imageApiKey.isBlank()) {
-                getString(R.string.ai_creation_image_api_key_summary)
-            } else {
-                getString(R.string.ai_creation_image_api_key_summary_ready)
+        // —— 视频供应商（复用图片时隐藏子项） ——
+        val creationVideoReuseImage = AiCreationProviderStore.videoReuseImage
+        findPreference<SwitchPreference>(PreferKey.aiCreationVideoReuseImage)?.isChecked =
+            creationVideoReuseImage
+        listOf(
+            "aiCreationVideoAddProvider",
+            "aiCreationVideoManageProviders",
+            "aiCreationVideoAddModel",
+            "aiCreationVideoManageModels",
+            "aiCreationVideoTestConnection"
+        ).forEach { key ->
+            findPreference<Preference>(key)?.isVisible = !creationVideoReuseImage
+        }
+        findPreference<Preference>("aiCreationVideoManageProviders")?.summary =
+            AiCreationProviderStore.videoCurrentProvider?.name
+                ?: getString(R.string.ai_creation_current_provider_empty)
+        findPreference<Preference>("aiCreationVideoManageModels")?.summary =
+            AiCreationProviderStore.videoCurrentModelId.ifBlank {
+                getString(R.string.ai_creation_current_model_empty)
             }
-        findPreference<Preference>(PreferKey.aiCreationImageModel)?.summary =
-            AiCreationConfig.imageModel.ifBlank {
-                getString(R.string.ai_creation_provider_summary_empty)
-            }
-        findPreference<Preference>(PreferKey.aiCreationImageRequestTemplate)?.summary =
-            getString(R.string.ai_creation_image_request_template_summary)
         findPreference<Preference>(PreferKey.aiCreationImageRetryCount)?.summary =
             getString(
                 R.string.ai_creation_image_retry_count_summary,

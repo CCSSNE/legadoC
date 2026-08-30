@@ -31,10 +31,6 @@ object AiCreationConfig {
     const val MIN_IMAGE_RETRY_COUNT = 0
     const val MAX_IMAGE_RETRY_COUNT = 10
 
-    // 默认使用智谱 CogView 生图接口（API Key 仍需用户自行配置）
-    const val DEFAULT_IMAGE_URL = "https://open.bigmodel.cn/api/paas/v4/images/generations"
-    const val DEFAULT_IMAGE_MODEL = "cogview-3-flash"
-
     const val SECTION_SELECTED_TEXT = "selected_text"
     const val SECTION_BACKGROUND = "background"
     const val SECTION_SCENE = "scene"
@@ -159,20 +155,11 @@ object AiCreationConfig {
             )
         }
 
-    var variablesJson: String
-        get() = appCtx.getPrefString(PreferKey.aiCreationVariables)
-            ?.takeIf { it.isNotBlank() }
-            ?: AiCreationVariables.defaultJson
-        set(value) {
-            val normalized = value.trim()
-            appCtx.putPrefString(
-                PreferKey.aiCreationVariables,
-                if (normalized == AiCreationVariables.defaultJson) "" else normalized
-            )
-        }
-
+    /**
+     * 创作界面与提示词生成使用的变量定义：来自当前图片供应商的「图片变量定义」。
+     */
     val definition: AiCreationDefinition
-        get() = AiCreationVariables.parse(variablesJson)
+        get() = AiCreationVariables.parse(AiCreationProviderStore.requireImageVariablesJson())
 
     var requestTemplatesJson: String
         get() = appCtx.getPrefString(PreferKey.aiCreationRequestTemplate)
@@ -229,44 +216,12 @@ object AiCreationConfig {
             ?: throw IllegalStateException("路由指向的请求模板不存在：$name")
     }
 
-    val defaultImageRequestTemplateJson: String = """
-        {
-          "model": "{{model}}",
-          "prompt": "{{prompt}}",
-          "n": {{n}},
-          "size": "{{size}}",
-          "quality": "{{quality}}",
-          "watermark_enabled": {{watermark_enabled}}
-        }
-    """.trimIndent()
-
-    var imageUrl: String
-        get() = appCtx.getPrefString(PreferKey.aiCreationImageUrl)
-            ?.takeIf { it.isNotBlank() }
-            ?: DEFAULT_IMAGE_URL
-        set(value) {
-            val normalized = value.trim()
-            appCtx.putPrefString(
-                PreferKey.aiCreationImageUrl,
-                if (normalized == DEFAULT_IMAGE_URL) "" else normalized
-            )
-        }
-
-    var imageApiKey: String
-        get() = appCtx.getPrefString(PreferKey.aiCreationImageApiKey).orEmpty().trim()
-        set(value) = appCtx.putPrefString(PreferKey.aiCreationImageApiKey, value.trim())
-
-    var imageModel: String
-        get() = appCtx.getPrefString(PreferKey.aiCreationImageModel)
-            ?.takeIf { it.isNotBlank() }
-            ?: DEFAULT_IMAGE_MODEL
-        set(value) {
-            val normalized = value.trim()
-            appCtx.putPrefString(
-                PreferKey.aiCreationImageModel,
-                if (normalized == DEFAULT_IMAGE_MODEL) "" else normalized
-            )
-        }
+    /**
+     * 图片请求链路的就绪校验：当前图片供应商与模型必须已就绪（连接信息全部来自供应商配置）。
+     */
+    fun requireImageApiReady() {
+        AiCreationProviderStore.requireImageTarget()
+    }
 
     var imageRetryCount: Int
         get() = appCtx.getPrefInt(PreferKey.aiCreationImageRetryCount, DEFAULT_IMAGE_RETRY_COUNT)
@@ -275,37 +230,6 @@ object AiCreationConfig {
             PreferKey.aiCreationImageRetryCount,
             value.coerceIn(MIN_IMAGE_RETRY_COUNT, MAX_IMAGE_RETRY_COUNT)
         )
-
-    var imageRequestTemplate: String
-        get() = appCtx.getPrefString(PreferKey.aiCreationImageRequestTemplate)
-            ?.takeIf { it.isNotBlank() }
-            ?: defaultImageRequestTemplateJson
-        set(value) {
-            appCtx.putPrefString(
-                PreferKey.aiCreationImageRequestTemplate,
-                parseImageRequestTemplate(value)
-            )
-        }
-
-    fun parseImageRequestTemplate(json: String): String {
-        val normalized = json.trim()
-        require(normalized.isNotEmpty()) { "图片请求模板不能为空" }
-        try {
-            //校验时把所有占位符换成字面 1，裸占位符（布尔/数字值位置）与带引号占位符都能通过解析
-            JSONObject(normalized.replace(Regex("\\{\\{[^}]*\\}\\}"), "1"))
-        } catch (throwable: Throwable) {
-            throw IllegalStateException(
-                "图片请求模板 JSON 无效：${throwable.message}",
-                throwable
-            )
-        }
-        return normalized
-    }
-
-    fun requireImageApiReady() {
-        require(imageUrl.isNotBlank()) { "请先在 AI 设置中配置图片 API 地址" }
-        require(imageModel.isNotBlank()) { "请先在 AI 设置中配置图片模型" }
-    }
 
     fun requireModelTarget(): AiCreationModelTarget {        if (reuseCurrentModel) {
             val provider = AppConfig.aiCurrentProvider

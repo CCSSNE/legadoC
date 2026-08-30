@@ -77,155 +77,291 @@ object AiCreationVariables {
     const val GROUP_IMAGE = "image"
     const val GROUP_VIDEO = "video"
 
-    private val defaultDoc = AiCreationVariableDoc(
-        groups = listOf(
-            AiCreationVariableGroup(
-                key = GROUP_IMAGE,
-                label = "图片",
-                variables = listOf(
-                    //style 控制提示词走向（路由到连环画/单场景请求模板），保留
-                    AiCreationVariable(
-                        key = "style",
-                        label = "画面风格",
-                        format = AiCreationVariable.FORMAT_OPTIONS,
-                        options = listOf("连环画", "单场景"),
-                        defaultValue = "连环画",
-                        group = GROUP_IMAGE
-                    ),
-                    //智谱 CogView 官方 size 枚举：选项带比例与横竖标注，values 存纯 API 值
-                    AiCreationVariable(
-                        key = "size",
-                        label = "尺寸",
-                        format = AiCreationVariable.FORMAT_OPTIONS,
-                        options = listOf(
-                            "1024x1024（1:1，方）",
-                            "768x1344（4:7，竖）",
-                            "864x1152（3:4，竖）",
-                            "1344x768（7:4，横）",
-                            "1152x864（4:3，横）",
-                            "1440x720（2:1，横）",
-                            "720x1440（1:2，竖）"
-                        ),
-                        values = listOf(
-                            "1024x1024",
-                            "768x1344",
-                            "864x1152",
-                            "1344x768",
-                            "1152x864",
-                            "1440x720",
-                            "720x1440"
-                        ),
-                        defaultValue = "1024x1024",
-                        group = GROUP_IMAGE
-                    ),
-                    //智谱 CogView 官方 quality：standard/hd，两值做成开关
-                    AiCreationVariable(
-                        key = "quality",
-                        label = "画质",
-                        format = AiCreationVariable.FORMAT_SWITCH,
-                        defaultValue = "standard",
-                        onValue = "hd",
-                        offValue = "standard",
-                        group = GROUP_IMAGE
-                    ),
-                    //智谱 CogView 官方水印开关
-                    AiCreationVariable(
-                        key = "watermark_enabled",
-                        label = "水印",
-                        format = AiCreationVariable.FORMAT_SWITCH,
-                        defaultValue = "false",
-                        onValue = "true",
-                        offValue = "false",
-                        group = GROUP_IMAGE
-                    )
-                )
-            ),
-            AiCreationVariableGroup(
-                key = GROUP_VIDEO,
-                label = "视频",
-                variables = listOf(
-                    //视频组按智谱 CogVideoX 官方参数定义；key 统一加 video_ 前缀保证全局唯一
-                    AiCreationVariable(
-                        key = "video_quality",
-                        label = "输出模式",
-                        format = AiCreationVariable.FORMAT_SWITCH,
-                        defaultValue = "speed",
-                        onValue = "quality",
-                        offValue = "speed",
-                        group = GROUP_VIDEO
-                    ),
-                    AiCreationVariable(
-                        key = "video_with_audio",
-                        label = "AI音效",
-                        format = AiCreationVariable.FORMAT_SWITCH,
-                        defaultValue = "false",
-                        onValue = "true",
-                        offValue = "false",
-                        group = GROUP_VIDEO
-                    ),
-                    AiCreationVariable(
-                        key = "video_size",
-                        label = "分辨率",
-                        format = AiCreationVariable.FORMAT_OPTIONS,
-                        options = listOf(
-                            "1280x720（16:9，横）",
-                            "720x1280（9:16，竖）",
-                            "1024x1024（1:1，方）",
-                            "1920x1080（16:9，横）",
-                            "1080x1920（9:16，竖）",
-                            "2048x1080（256:135，横）",
-                            "3840x2160（16:9，横）"
-                        ),
-                        values = listOf(
-                            "1280x720",
-                            "720x1280",
-                            "1024x1024",
-                            "1920x1080",
-                            "1080x1920",
-                            "2048x1080",
-                            "3840x2160"
-                        ),
-                        defaultValue = "1920x1080",
-                        group = GROUP_VIDEO
-                    ),
-                    AiCreationVariable(
-                        key = "video_fps",
-                        label = "帧率",
-                        format = AiCreationVariable.FORMAT_SWITCH,
-                        defaultValue = "30",
-                        onValue = "60",
-                        offValue = "30",
-                        group = GROUP_VIDEO
-                    ),
-                    AiCreationVariable(
-                        key = "video_duration",
-                        label = "时长（秒）",
-                        format = AiCreationVariable.FORMAT_SWITCH,
-                        defaultValue = "5",
-                        onValue = "10",
-                        offValue = "5",
-                        group = GROUP_VIDEO
-                    )
-                )
-            )
+    //style 控制提示词走向（路由到连环画/单场景请求模板），保留
+    private val styleVariable = AiCreationVariable(
+        key = "style",
+        label = "画面风格",
+        format = AiCreationVariable.FORMAT_OPTIONS,
+        options = listOf("连环画", "单场景"),
+        defaultValue = "连环画",
+        group = GROUP_IMAGE
+    )
+
+    //智谱 CogView 官方 size 枚举：选项带比例与横竖标注，values 存纯 API 值
+    private val cogViewSizeVariable = AiCreationVariable(
+        key = "size",
+        label = "尺寸",
+        format = AiCreationVariable.FORMAT_OPTIONS,
+        options = listOf(
+            "1024x1024（1:1，方）",
+            "768x1344（4:7，竖）",
+            "864x1152（3:4，竖）",
+            "1344x768（7:4，横）",
+            "1152x864（4:3，横）",
+            "1440x720（2:1，横）",
+            "720x1440（1:2，竖）"
         ),
-        routes = listOf(
-            AiCreationRoute(
-                conditions = mapOf(AI_CREATION_MODE_KEY to GROUP_IMAGE, "style" to "连环画"),
-                template = "连环画"
+        values = listOf(
+            "1024x1024",
+            "768x1344",
+            "864x1152",
+            "1344x768",
+            "1152x864",
+            "1440x720",
+            "720x1440"
+        ),
+        defaultValue = "1024x1024",
+        group = GROUP_IMAGE
+    )
+
+    //智谱 CogView 官方 quality：standard/hd，两值做成开关
+    private val cogViewQualityVariable = AiCreationVariable(
+        key = "quality",
+        label = "画质",
+        format = AiCreationVariable.FORMAT_SWITCH,
+        defaultValue = "standard",
+        onValue = "hd",
+        offValue = "standard",
+        group = GROUP_IMAGE
+    )
+
+    //智谱 CogView 官方水印开关
+    private val cogViewWatermarkVariable = AiCreationVariable(
+        key = "watermark_enabled",
+        label = "水印",
+        format = AiCreationVariable.FORMAT_SWITCH,
+        defaultValue = "false",
+        onValue = "true",
+        offValue = "false",
+        group = GROUP_IMAGE
+    )
+
+    private val cogViewImageVariables = listOf(
+        styleVariable,
+        cogViewSizeVariable,
+        cogViewQualityVariable,
+        cogViewWatermarkVariable
+    )
+
+    //硅基流动 Kolors 官方 image_size 枚举（实测 5 档）
+    private val kolorsImageSizeVariable = AiCreationVariable(
+        key = "image_size",
+        label = "尺寸",
+        format = AiCreationVariable.FORMAT_OPTIONS,
+        options = listOf(
+            "1024x1024（1:1，方）",
+            "960x1280（3:4，竖）",
+            "768x1024（3:4，竖）",
+            "720x1440（1:2，竖）",
+            "720x1280（9:16，竖）"
+        ),
+        values = listOf(
+            "1024x1024",
+            "960x1280",
+            "768x1024",
+            "720x1440",
+            "720x1280"
+        ),
+        defaultValue = "1024x1024",
+        group = GROUP_IMAGE
+    )
+
+    private val kolorsNegativePromptVariable = AiCreationVariable(
+        key = "negative_prompt",
+        label = "负面提示",
+        format = AiCreationVariable.FORMAT_INPUT,
+        defaultValue = "",
+        group = GROUP_IMAGE
+    )
+
+    private val kolorsStepsVariable = AiCreationVariable(
+        key = "num_inference_steps",
+        label = "推理步数",
+        format = AiCreationVariable.FORMAT_INPUT,
+        defaultValue = "20",
+        group = GROUP_IMAGE
+    )
+
+    private val kolorsGuidanceVariable = AiCreationVariable(
+        key = "guidance_scale",
+        label = "引导系数",
+        format = AiCreationVariable.FORMAT_INPUT,
+        defaultValue = "7.5",
+        group = GROUP_IMAGE
+    )
+
+    /** 硅基流动 Kolors 版图片组（供内置硅基流动供应商组装变量定义） */
+    val kolorsImageVariables = listOf(
+        styleVariable,
+        kolorsImageSizeVariable,
+        kolorsNegativePromptVariable,
+        kolorsStepsVariable,
+        kolorsGuidanceVariable
+    )
+
+    //视频组按智谱 CogVideoX 官方参数定义；key 统一加 video_ 前缀保证全局唯一
+    private val defaultVideoVariables = listOf(
+        AiCreationVariable(
+            key = "video_quality",
+            label = "输出模式",
+            format = AiCreationVariable.FORMAT_SWITCH,
+            defaultValue = "speed",
+            onValue = "quality",
+            offValue = "speed",
+            group = GROUP_VIDEO
+        ),
+        AiCreationVariable(
+            key = "video_with_audio",
+            label = "AI音效",
+            format = AiCreationVariable.FORMAT_SWITCH,
+            defaultValue = "false",
+            onValue = "true",
+            offValue = "false",
+            group = GROUP_VIDEO
+        ),
+        AiCreationVariable(
+            key = "video_size",
+            label = "分辨率",
+            format = AiCreationVariable.FORMAT_OPTIONS,
+            options = listOf(
+                "1280x720（16:9，横）",
+                "720x1280（9:16，竖）",
+                "1024x1024（1:1，方）",
+                "1920x1080（16:9，横）",
+                "1080x1920（9:16，竖）",
+                "2048x1080（256:135，横）",
+                "3840x2160（16:9，横）"
             ),
-            AiCreationRoute(
-                conditions = mapOf(AI_CREATION_MODE_KEY to GROUP_IMAGE, "style" to "单场景"),
-                template = "单场景"
+            values = listOf(
+                "1280x720",
+                "720x1280",
+                "1024x1024",
+                "1920x1080",
+                "1080x1920",
+                "2048x1080",
+                "3840x2160"
             ),
-            AiCreationRoute(
-                conditions = mapOf(AI_CREATION_MODE_KEY to GROUP_VIDEO),
-                template = "视频"
-            )
+            defaultValue = "1920x1080",
+            group = GROUP_VIDEO
+        ),
+        AiCreationVariable(
+            key = "video_fps",
+            label = "帧率",
+            format = AiCreationVariable.FORMAT_SWITCH,
+            defaultValue = "30",
+            onValue = "60",
+            offValue = "30",
+            group = GROUP_VIDEO
+        ),
+        AiCreationVariable(
+            key = "video_duration",
+            label = "时长（秒）",
+            format = AiCreationVariable.FORMAT_SWITCH,
+            defaultValue = "5",
+            onValue = "10",
+            offValue = "5",
+            group = GROUP_VIDEO
         )
     )
 
-    val defaultJson: String by lazy { GSON.toJson(defaultDoc) }
+    private val defaultRoutes = listOf(
+        AiCreationRoute(
+            conditions = mapOf(AI_CREATION_MODE_KEY to GROUP_IMAGE, "style" to "连环画"),
+            template = "连环画"
+        ),
+        AiCreationRoute(
+            conditions = mapOf(AI_CREATION_MODE_KEY to GROUP_IMAGE, "style" to "单场景"),
+            template = "单场景"
+        ),
+        AiCreationRoute(
+            conditions = mapOf(AI_CREATION_MODE_KEY to GROUP_VIDEO),
+            template = "视频"
+        )
+    )
+
+    val defaultJson: String by lazy { buildDefaultJson(cogViewImageVariables) }
+
+    /**
+     * 组装一套完整变量定义 JSON：图片组由调用方按供应商传入（智谱 CogView 或硅基流动 Kolors），
+     * 视频组与路由为公共默认（视频组喂 LLM 视频提示词模板，路由选择请求模板）。
+     */
+    fun buildDefaultJson(imageVariables: List<AiCreationVariable>): String {
+        return GSON.toJson(
+            AiCreationVariableDoc(
+                groups = listOf(
+                    AiCreationVariableGroup(
+                        key = GROUP_IMAGE,
+                        label = "图片",
+                        variables = imageVariables
+                    ),
+                    AiCreationVariableGroup(
+                        key = GROUP_VIDEO,
+                        label = "视频",
+                        variables = defaultVideoVariables
+                    )
+                ),
+                routes = defaultRoutes
+            )
+        )
+    }
+
+    private val zhipuVideoVariables = defaultVideoVariables + AiCreationVariable(
+        key = "watermark_enabled",
+        label = "水印",
+        format = AiCreationVariable.FORMAT_SWITCH,
+        defaultValue = "false",
+        onValue = "true",
+        offValue = "false",
+        group = GROUP_VIDEO
+    )
+
+    //硅基流动视频（Wan）官方参数：image_size 三档 + 负面提示
+    private val siliconFlowVideoVariables = listOf(
+        AiCreationVariable(
+            key = "video_size",
+            label = "分辨率",
+            format = AiCreationVariable.FORMAT_OPTIONS,
+            options = listOf(
+                "1280x720（16:9，横）",
+                "720x1280（9:16，竖）",
+                "960x960（1:1，方）"
+            ),
+            values = listOf("1280x720", "720x1280", "960x960"),
+            defaultValue = "1280x720",
+            group = GROUP_VIDEO
+        ),
+        AiCreationVariable(
+            key = "negative_prompt",
+            label = "负面提示",
+            format = AiCreationVariable.FORMAT_INPUT,
+            defaultValue = "",
+            group = GROUP_VIDEO
+        )
+    )
+
+    /** 视频供应商的变量文档：仅视频组 + 视频路由，用于渲染视频请求模板取值 */
+    val zhipuVideoVariablesJson: String by lazy { buildVideoVariablesJson(zhipuVideoVariables) }
+    val siliconFlowVideoVariablesJson: String by lazy { buildVideoVariablesJson(siliconFlowVideoVariables) }
+
+    private fun buildVideoVariablesJson(variables: List<AiCreationVariable>): String {
+        return GSON.toJson(
+            AiCreationVariableDoc(
+                groups = listOf(
+                    AiCreationVariableGroup(
+                        key = GROUP_VIDEO,
+                        label = "视频",
+                        variables = variables
+                    )
+                ),
+                routes = listOf(
+                    AiCreationRoute(
+                        conditions = mapOf(AI_CREATION_MODE_KEY to GROUP_VIDEO),
+                        template = "视频"
+                    )
+                )
+            )
+        )
+    }
 
     fun parse(json: String): AiCreationDefinition {
         val doc = GSON.fromJsonObject<AiCreationVariableDoc>(json).getOrNull()

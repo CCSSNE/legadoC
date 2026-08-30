@@ -118,7 +118,7 @@ object AiChatService {
             provider.apiKey.trim().takeIf { it.isNotBlank() }?.let {
                 addHeader("Authorization", "Bearer $it")
             }
-            addHeaders(parseCustomHeaders(provider.headers.orEmpty()))
+            addHeaders(AiCreationProviderStore.parseCustomHeaders(provider.headers.orEmpty()))
         }
         response.use { rawResponse ->
             val payload = rawResponse.body?.string().orEmpty()
@@ -1262,31 +1262,6 @@ object AiChatService {
             },
             reasoningContent = reasoningContent
         )
-    }
-
-    private fun parseCustomHeaders(rawHeaders: String): Map<String, String> {
-        val text = rawHeaders.trim()
-        if (text.isBlank()) return emptyMap()
-        runCatching {
-            val json = JSONObject(text)
-            return buildMap {
-                json.keys().forEach { key ->
-                    val value = json.optString(key)
-                    if (key.isNotBlank() && value.isNotBlank()) put(key, value)
-                }
-            }
-        }
-        return text.lineSequence()
-            .map { it.trim() }
-            .filter { it.isNotBlank() && !it.startsWith("#") }
-            .mapNotNull { line ->
-                val separator = line.indexOf(':').takeIf { it > 0 } ?: line.indexOf('=').takeIf { it > 0 }
-                separator?.let {
-                    line.substring(0, it).trim() to line.substring(it + 1).trim()
-                }
-            }
-            .filter { it.first.isNotBlank() && it.second.isNotBlank() }
-            .toMap()
     }
 
     private fun resolveChatUrl(baseUrl: String): String {
