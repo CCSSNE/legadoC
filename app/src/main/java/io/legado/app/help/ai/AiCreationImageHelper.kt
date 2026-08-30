@@ -196,7 +196,6 @@ object AiCreationImageTaskHolder {
 
     private val displayLock = Any()
     private var latestTask: GenerationTask? = null
-    private val runningTasks = AtomicInteger(0)
 
     private val _slots = MutableStateFlow<List<AiCreationImageSlot>>(emptyList())
     val slots: StateFlow<List<AiCreationImageSlot>> = _slots.asStateFlow()
@@ -239,15 +238,9 @@ object AiCreationImageTaskHolder {
             _notice.value = null
         }
         floatingDismissed = false
-        runningTasks.incrementAndGet()
         updateFloatingState()
         scope.launch {
-            try {
-                runGeneration(task, target, prompt, count, extraValues)
-            } finally {
-                runningTasks.decrementAndGet()
-                updateFloatingState()
-            }
+            runGeneration(task, target, prompt, count, extraValues)
         }
     }
 
@@ -265,15 +258,9 @@ object AiCreationImageTaskHolder {
             _notice.value = null
         }
         floatingDismissed = false
-        runningTasks.incrementAndGet()
         updateFloatingState()
         scope.launch {
-            try {
-                runVideoGeneration(task, target, prompt, count, extraValues)
-            } finally {
-                runningTasks.decrementAndGet()
-                updateFloatingState()
-            }
+            runVideoGeneration(task, target, prompt, count, extraValues)
         }
     }
 
@@ -341,10 +328,12 @@ object AiCreationImageTaskHolder {
         throw lastError ?: IllegalStateException("视频生成失败")
     }
 
+    //悬浮窗转圈只反映最新任务是否还有未完成槽位；被接管的老任务跑完不再影响状态图标
     private fun updateFloatingState() {
+        val slots = _slots.value
         _floatingState.value = AiCreationFloatingState(
-            hasTask = _slots.value.isNotEmpty(),
-            taskRunning = runningTasks.get() > 0,
+            hasTask = slots.isNotEmpty(),
+            taskRunning = slots.any { it.state == AiCreationImageSlotState.LOADING },
             dismissed = floatingDismissed,
             uiVisible = uiVisible
         )
