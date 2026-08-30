@@ -314,8 +314,11 @@ data class CreationSectionItem(
 /**
  * 连线的对象是分区（素材类型），不是分区里的卡片：
  * 被连到一起的分区，其全部卡片在生成素材时合并为一条「背景加场景」式的条目。
+ * label 为会话内稳定的展示组名（A、B、C…）：成员加入或并组时保持不变，
+ * 整组撤销后组名回收，供下一组复用。
  */
 data class CreationLinkGroup(
+    val label: String,
     val sections: List<String>
 )
 
@@ -360,20 +363,24 @@ class AiCreationSession {
         itemsOf(section).removeAll { it.cardId == cardId }
     }
 
-    fun isSectionLinked(section: String): Boolean =
-        linkGroups.any { group -> group.sections.contains(section) }
+    fun linkGroupOf(section: String): CreationLinkGroup? =
+        linkGroups.firstOrNull { group -> group.sections.contains(section) }
+
+    fun isSectionLinked(section: String): Boolean = linkGroupOf(section) != null
 
     /**
-     * 连线/取消连线两个分区：已直接相连则断开；否则合并两者所在的链接组
+     * 连线/取消连线两个分区：已直接相连则断开（整组解除）；否则合并两者所在的链接组
      * （各自已在别的组里则把两组并成一组），都不在组里则新建一组。
+     * 组名归属跟随长按发起方：单方有组即并入该组，双方都有组则保留发起方组名；
+     * 全新组合按 A、B、C 顺序取空闲组名。返回连线后所在组的组名，取消连线返回 null。
      */
-    fun toggleLink(sourceSection: String, targetSection: String): Boolean {
+    fun toggleLink(sourceSection: String, targetSection: String): String? {
         val existing = linkGroups.indexOfFirst { group ->
             group.sections.contains(sourceSection) && group.sections.contains(targetSection)
         }
         if (existing >= 0) {
             linkGroups.removeAt(existing)
-            return false
+            return null
         }
         val sourceGroup = linkGroups.firstOrNull { it.sections.contains(sourceSection) }
         val targetGroup = linkGroups.firstOrNull { it.sections.contains(targetSection) }
@@ -381,8 +388,27 @@ class AiCreationSession {
         val merged = ((sourceGroup?.sections ?: emptyList()) +
             (targetGroup?.sections ?: emptyList()) +
             listOf(sourceSection, targetSection)).distinct()
-        linkGroups.add(CreationLinkGroup(merged))
-        return true
+        val label = sourceGroup?.label ?: targetGroup?.label ?: nextGroupLabel()
+        linkGroups.add(CreationLinkGroup(label, merged))
+        return label
+    }
+
+    /** 下一个空闲组名：A、B、…、Z、AA… 依次分配，被撤销组腾出的字母优先复用 */
+    private fun nextGroupLabel(): String {
+        val used = linkGroups.mapTo(mutableSetOf()) { it.label }
+        var index = 0
+        while (groupLabel(index) in used) {
+            index++
+        }
+        return groupLabel(index)
+    }
+
+    private fun groupLabel(index: Int): String = buildString {
+        var n = index
+        do {
+            insert(0, 'A' + n % 26)
+            n = n / 26 - 1
+        } while (n >= 0)
     }
 
     fun clear() {
@@ -415,7 +441,7 @@ class AiCreationSession {
             if (items.isEmpty()) {
                 return@forEach
             }
-            val group = linkGroups.firstOrNull { it.sections.contains(section) }
+            val group = linkGroupOf(section)
             if (group == null) {
                 appendSectionContents(builder, listOf(section), cardsById)
             } else {

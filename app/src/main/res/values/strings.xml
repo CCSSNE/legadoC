@@ -383,12 +383,13 @@
     <string name="ai_creation_clear_confirm">Clear the current creation session and session-only materials?</string>
     <string name="ai_creation_add">+</string>
     <string name="ai_creation_empty_section">No cards</string>
-    <string name="ai_creation_linked">Linked</string>
+    <string name="ai_creation_group_label">%s group</string>
     <string name="ai_creation_linking">Linking…</string>
     <string name="ai_creation_unlink">Unlink</string>
+    <string name="ai_creation_start_link">Start link</string>
     <string name="ai_creation_remove">Remove</string>
     <string name="ai_creation_linking_hint">Tap or long-press another section name to link</string>
-    <string name="ai_creation_link_done">Sections linked</string>
+    <string name="ai_creation_link_done">Sections linked (%s group)</string>
     <string name="ai_creation_link_removed">Link removed</string>
     <string name="ai_creation_select_card_first">Add at least one material card</string>
     <string name="ai_creation_new_card">New card</string>

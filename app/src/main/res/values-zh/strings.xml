@@ -382,12 +382,13 @@
     <string name="ai_creation_clear_confirm">清空当前创作会话与一次性素材？</string>
     <string name="ai_creation_add">+</string>
     <string name="ai_creation_empty_section">暂无卡片</string>
-    <string name="ai_creation_linked">已连线</string>
+    <string name="ai_creation_group_label">%s组</string>
     <string name="ai_creation_linking">连线中</string>
     <string name="ai_creation_unlink">取消连线</string>
+    <string name="ai_creation_start_link">发起连线</string>
     <string name="ai_creation_remove">移除</string>
     <string name="ai_creation_linking_hint">请点击或长按另一分区的名称完成连线</string>
-    <string name="ai_creation_link_done">分区已连线</string>
+    <string name="ai_creation_link_done">分区已连线（%s组）</string>
     <string name="ai_creation_link_removed">已取消连线</string>
     <string name="ai_creation_select_card_first">请先添加素材卡片</string>
     <string name="ai_creation_new_card">新建卡片</string>

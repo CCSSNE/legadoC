@@ -459,7 +459,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
                 layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT, dp(24)
                 )
-                //分区名即连线按钮：长按发起连线，再点另一分区名完成连线
+                //分区名即连线按钮：长按发起连线（已连线分区可选发起或取消），再点另一分区名完成连线
                 setOnClickListener { onSectionLabelClick(section) }
                 setOnLongClickListener {
                     onSectionLabelLongClick(section)
@@ -499,9 +499,10 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
 
     private fun linkStateView(section: String): TextView {
         val pending = session.pendingLink
+        val group = session.linkGroupOf(section)
         val text = when {
             pending == section -> getString(R.string.ai_creation_linking)
-            session.isSectionLinked(section) -> getString(R.string.ai_creation_linked)
+            group != null -> getString(R.string.ai_creation_group_label, group.label)
             else -> ""
         }
         return TextView(requireContext()).apply {
@@ -518,12 +519,13 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
         if (pending == section) {
             session.pendingLink = null
         } else {
-            val linked = session.toggleLink(pending, section)
+            val groupLabel = session.toggleLink(pending, section)
             toastOnUi(
-                getString(
-                    if (linked) R.string.ai_creation_link_done
-                    else R.string.ai_creation_link_removed
-                )
+                if (groupLabel != null) {
+                    getString(R.string.ai_creation_link_done, groupLabel)
+                } else {
+                    getString(R.string.ai_creation_link_removed)
+                }
             )
             session.pendingLink = null
         }
@@ -538,18 +540,32 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
         if (session.isSectionLinked(section)) {
             requireContext().selector(
                 AiCreationSessionHolder.session.sectionLabel(section),
-                listOf(getString(R.string.ai_creation_unlink))
-            ) { _, _, _ ->
-                session.linkGroups.removeAll { group ->
-                    group.sections.contains(section)
+                listOf(
+                    getString(R.string.ai_creation_start_link),
+                    getString(R.string.ai_creation_unlink)
+                )
+            ) { _, _, which ->
+                when (which) {
+                    0 -> startSectionLink(section)
+                    else -> removeSectionGroup(section)
                 }
-                rebuildSections()
             }
         } else {
-            session.pendingLink = section
-            toastOnUi(R.string.ai_creation_linking_hint)
-            rebuildSections()
+            startSectionLink(section)
         }
+    }
+
+    private fun startSectionLink(section: String) {
+        session.pendingLink = section
+        toastOnUi(R.string.ai_creation_linking_hint)
+        rebuildSections()
+    }
+
+    private fun removeSectionGroup(section: String) {
+        session.linkGroups.removeAll { group ->
+            group.sections.contains(section)
+        }
+        rebuildSections()
     }
 
     private fun hintView(text: String): TextView {
