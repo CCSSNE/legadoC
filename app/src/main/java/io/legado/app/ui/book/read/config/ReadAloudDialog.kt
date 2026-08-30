@@ -16,6 +16,7 @@ import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
 import io.legado.app.databinding.DialogReadAloudBinding
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.tts.BookTtsCastingCoordinator
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.bottomBackground
@@ -200,11 +201,14 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
         llCatalog.setOnClickListener {
             SpeakEngineDialog().show(childFragmentManager, "speakEngineDialog")
         }
-        // AI分角色入口：仅当本构建注册了发音人目录（自有构建）时显示；
+        // AI分角色入口：本构建注册了发音人目录或当前选择 V2 脚本引擎时显示；
         // 开源构建无内置引擎与发音人，入口一并隐藏，目录随插件注册自动出现。
-        llAiRole.visible(TtsVoiceDirectories.active != null)
+        // 按多角色门控结果置灰：当前引擎不支持分角色朗读时不可点。
+        upAiRoleEntry()
         llAiRole.setOnClickListener {
-            AiMultiVoiceDialog.show(childFragmentManager)
+            if (llAiRole.isEnabled) {
+                AiMultiVoiceDialog.show(childFragmentManager)
+            }
         }
         llTtsCache.setOnClickListener {
             ReadBook.book?.let { book ->
@@ -328,6 +332,13 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
                 }
             }
         })
+    }
+
+    private fun upAiRoleEntry() = binding.llAiRole.run {
+        visible(TtsVoiceDirectories.active != null || ReadAloud.currentScriptTtsEngine() != null)
+        val unsupportedReason = BookTtsCastingCoordinator.multiRoleUnsupportedReason()
+        isEnabled = unsupportedReason == null
+        alpha = if (unsupportedReason == null) 1f else 0.45f
     }
 
     override fun upSpeakEngineSummary() {
@@ -519,6 +530,7 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
         observeEvent<ReadAloudEngineType>(EventBus.READ_ALOUD_ENGINE_CHANGED) {
             upSpeakEngineSummary()
             upReadProgress()
+            upAiRoleEntry()
         }
     }
 

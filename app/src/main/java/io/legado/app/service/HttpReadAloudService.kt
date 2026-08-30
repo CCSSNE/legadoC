@@ -29,6 +29,7 @@ import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.EventBus
+import io.legado.app.constant.LogModule
 import io.legado.app.constant.Status
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.exception.NoStackTraceException
@@ -36,9 +37,17 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.exoplayer.InputStreamDataSource
 import io.legado.app.help.http.okHttpClient
+import io.legado.app.help.tts.AiMultiVoiceConfig
+import io.legado.app.help.tts.AiTtsStoryboardHelper
+import io.legado.app.help.tts.BookTtsAutomationConfig
+import io.legado.app.help.tts.BookTtsCastingCoordinator
+import io.legado.app.help.tts.ChapterStoryboard
+import io.legado.app.help.tts.ReadAloudTtsRouter
 import io.legado.app.help.tts.TtsEngineSetting
+import io.legado.app.help.tts.TtsEngineStore
 import io.legado.app.help.tts.TtsScriptEngineClient
 import io.legado.app.help.tts.TtsSpeedPolicy
+import io.legado.app.help.tts.normalizeStoryboardSynthesisText
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.model.analyzeRule.AnalyzeUrl
@@ -110,8 +119,29 @@ class HttpReadAloudService : BaseReadAloudService(),
 
     private data class PreparedMediaItem(
         val textLength: Int,
-        val mediaItem: MediaItem
+        val mediaItem: MediaItem,
+        /** 多角色子段：本子段在朗读单元内的起始字符偏移（整段合成时为 0）。 */
+        val charStartInUnit: Int = 0,
+        /** 多角色子段：是否为当前朗读单元最后一个媒体项（驱动段落推进）。 */
+        val paragraphEnd: Boolean = true
     )
+
+    /**
+     * 多角色脚本管线的播放队列对齐条目：与 ExoPlayer 媒体项严格同序（主线程维护），
+     * 仅当消费到段尾条目时才推进段落光标，保证一个朗读单元可由多个子段媒体项构成。
+     */
+    private data class ScriptQueueEntry(
+        val textLength: Int,
+        val charStartInUnit: Int,
+        val paragraphEnd: Boolean
+    )
+
+    private val scriptQueue = ArrayDeque<ScriptQueueEntry>()
+
+    // AI 分镜缓存：本章复用，失败章不再逐段重复发起 AI 请求（与百度宿主同构）。
+    private var storyboard: ChapterStoryboard? = null
+    private var storyboardChapterIndex = -1
+    private var failedStoryboardChapterIndex = -1
 
     private data class PreparedMediaSource(
         val textLength: Int,
@@ -186,6 +216,18 @@ class HttpReadAloudService : BaseReadAloudService(),
         downloadTask = null
         httpRequestJob?.cancel()
         httpRequestJob = null
+        scriptQueue.clear()
+    }
+
+    /**
+     * 播放队列推进：多角色管线一个朗读单元可含多个子段媒体项，
+     * 只在消费到段尾条目时推进段落光标；队列空（旧 HTTP/整段管线）直接走原推进。
+     */
+    private fun advanceScriptQueue(): Boolean {
+        if (scriptQueue.isEmpty()) return updateNextPos()
+        val entry = scriptQueue.removeFirst()
+        if (!entry.paragraphEnd) return true
+        return updateNextPos()
     }
 
     private fun updateNextPos(): Boolean {
@@ -208,6 +250,7 @@ class HttpReadAloudService : BaseReadAloudService(),
         exoPlayer.clearMediaItems()
         downloadTask?.cancel()
         renewHttpRequestJob()
+        scriptQueue.clear()
         downloadTask = execute {
             downloadTaskActiveLock.withLock {
                 ensureActive()
@@ -258,50 +301,68 @@ class HttpReadAloudService : BaseReadAloudService(),
     /**
      * 脚本引擎合成管线：与旧 HttpTTS 路径同构的文件缓存 +
      * 顺序播放，逐段经 [TtsScriptEngineClient.getSynthesisStream] 获取音频流。
-     * 音色/语速/音量/音调取引擎当前运行时状态；参数变更经 refreshTtsRoute 热刷新。
+     * AI 多角色开启且分镜就绪时，朗读单元按分镜子段拆分：每段经选角路由
+     * （[ReadAloudTtsRouter]）解析（引擎, 音色）后独立合成；绑定到内置语音包
+     * 引擎外观（无脚本可合成）的子段明示日志后按当前引擎兜底，不静默、不丢段。
+     * 音色/语速/音量/音调取路由引擎当前运行时状态；参数变更经 refreshTtsRoute 热刷新。
      */
     private fun downloadAndPlayScriptAudios() {
         exoPlayer.clearMediaItems()
         downloadTask?.cancel()
         renewHttpRequestJob()
+        scriptQueue.clear()
         downloadTask = execute {
             downloadTaskActiveLock.withLock {
                 ensureActive()
                 val scriptEngine = ReadAloud.currentScriptTtsEngine()
                     ?: throw NoStackTraceException("朗读脚本引擎为空")
+                val storyboard = prepareScriptStoryboard()
                 val firstMediaItems = arrayListOf<MediaItem>()
+                val firstQueueEntries = arrayListOf<ScriptQueueEntry>()
                 var firstMediaLength = 0
                 var firstMediaItemsAdded = false
                 contentList.forEachIndexed { index, content ->
                     ensureActive()
                     if (index < nowSpeak) return@forEachIndexed
-                    val prepared = runCatching {
-                        prepareScriptMediaItem(scriptEngine, index, content)
+                    val items = runCatching {
+                        prepareScriptMediaItems(scriptEngine, storyboard, index, content)
                     }.onFailure {
                         if (it !is CancellationException) pauseReadAloud()
                         return@execute
                     }.getOrThrow()
                     if (!firstMediaItemsAdded) {
-                        firstMediaItems.add(prepared.mediaItem)
-                        firstMediaLength += prepared.textLength
+                        items.forEach { prepared ->
+                            firstMediaItems.add(prepared.mediaItem)
+                            firstQueueEntries.add(
+                                ScriptQueueEntry(prepared.textLength, prepared.charStartInUnit, prepared.paragraphEnd)
+                            )
+                            firstMediaLength += prepared.textLength
+                        }
                         if (firstMediaLength >= httpStartPreloadLength()
                             || index == contentList.lastIndex
                         ) {
                             firstMediaItemsAdded = true
                             launch(Main) {
                                 exoPlayer.addMediaItems(firstMediaItems)
+                                scriptQueue.addAll(firstQueueEntries)
                                 upReadAloudLoading(false)
                             }
                         }
                     } else {
                         launch(Main) {
-                            exoPlayer.addMediaItem(prepared.mediaItem)
+                            items.forEach { prepared ->
+                                exoPlayer.addMediaItem(prepared.mediaItem)
+                                scriptQueue.add(
+                                    ScriptQueueEntry(prepared.textLength, prepared.charStartInUnit, prepared.paragraphEnd)
+                                )
+                            }
                         }
                     }
                 }
                 if (!firstMediaItemsAdded && firstMediaItems.isNotEmpty()) {
                     launch(Main) {
                         exoPlayer.addMediaItems(firstMediaItems)
+                        scriptQueue.addAll(firstQueueEntries)
                         upReadAloudLoading(false)
                     }
                 }
@@ -309,6 +370,167 @@ class HttpReadAloudService : BaseReadAloudService(),
         }.onError {
             AppLog.put("朗读下载出错\n${it.localizedMessage}", it, true)
         }
+    }
+
+    /**
+     * 确保本章分镜就绪（缓存优先，未命中现场调 1号AI），收编角色并按需自动选音。
+     * 返回 null = 本段回退整段合成（多角色未开、缺书章信息或本章已失败过）。
+     */
+    private suspend fun prepareScriptStoryboard(): ChapterStoryboard? {
+        if (!AiMultiVoiceConfig.enabled) return null
+        val book = ReadBook.book ?: return null
+        val chapter = textChapter ?: return null
+        val chapterIndex = chapter.chapter.index
+        if (storyboardChapterIndex == chapterIndex && storyboard != null) return storyboard
+        if (failedStoryboardChapterIndex == chapterIndex) return null
+        return try {
+            val chapterContent = if (chapter.isCompleted) {
+                chapter.getNeedReadAloud(0, false, 0).takeIf { it.isNotBlank() }
+            } else {
+                null
+            } ?: return null
+            val workKey = BookTtsAutomationConfig.workKeyOf(book.name, book.author)
+            val generated = AiTtsStoryboardHelper.getOrGenerate(
+                book, chapterIndex, chapter.title ?: "", chapterContent
+            )
+            val synced = BookTtsCastingCoordinator.syncCastRoles(workKey, chapterIndex, generated)
+            storyboard = synced
+            storyboardChapterIndex = chapterIndex
+            failedStoryboardChapterIndex = -1
+            if (BookTtsAutomationConfig.get(workKey).autoAssignVoices) {
+                runCatching { BookTtsCastingCoordinator.assignMissingVoices(workKey) }
+                    .onFailure { error ->
+                        AppLog.put(
+                            "[朗读][AI选音] 失败\n${error.localizedMessage}",
+                            module = LogModule.AI_CAST
+                        )
+                    }
+            }
+            synced
+        } catch (error: Throwable) {
+            if (error is CancellationException) throw error
+            failedStoryboardChapterIndex = chapterIndex
+            AppLog.put(
+                "[朗读][AI分镜] 分镜生成失败，本章按当前引擎整段合成\n${error.localizedMessage}",
+                module = LogModule.AI_CAST
+            )
+            null
+        }
+    }
+
+    /** 朗读单元 → 播放媒体项列表：多角色分镜命中时按子段拆分，否则整段一项。 */
+    private suspend fun prepareScriptMediaItems(
+        engine: TtsEngineSetting,
+        storyboard: ChapterStoryboard?,
+        index: Int,
+        content: String
+    ): List<PreparedMediaItem> {
+        val currentStoryboard = storyboard ?: return listOf(prepareScriptMediaItem(engine, index, content))
+        val text = getSpeakContent(index, content)
+        val paragraphIndex = locateStoryboardParagraph(currentStoryboard, text)
+            ?: return listOf(prepareScriptMediaItem(engine, index, content))
+        val router = ReadBook.book?.let { ReadAloudTtsRouter.create(it) }
+            ?: return listOf(prepareScriptMediaItem(engine, index, content))
+        val segments = currentStoryboard.segmentsForParagraph(paragraphIndex)
+        if (segments.isEmpty()) return listOf(prepareScriptMediaItem(engine, index, content))
+        val paragraphText = currentStoryboard.paragraphs.getOrNull(paragraphIndex).orEmpty()
+        val unitStart = locateStoryboardUnitOffset(paragraphText, text)
+        val unitEnd = (unitStart + text.length).coerceAtMost(paragraphText.length)
+        val items = arrayListOf<PreparedMediaItem>()
+        segments.forEach { segment ->
+            val overlapStart = maxOf(segment.start, unitStart)
+            val overlapEnd = minOf(segment.end, unitEnd)
+            if (overlapEnd <= overlapStart) return@forEach
+            val overlapText = paragraphText.substring(
+                overlapStart.coerceIn(0, paragraphText.length),
+                overlapEnd.coerceIn(0, paragraphText.length)
+            )
+            val synthText = normalizeStoryboardSynthesisText(overlapText, segment.type)
+            if (synthText.isBlank()) return@forEach
+            var route = router.route(segment, engine)
+            if (route.engine.id == TtsEngineStore.VOICE_DIRECTORY_ID || route.engine.script.isBlank()) {
+                // 选角绑定到内置语音包外观：脚本宿主无法合成，明示后按当前引擎兜底
+                AppLog.put(
+                    "[朗读][AI分镜] 子段绑定到内置语音包引擎「${route.engine.name}」，" +
+                        "脚本引擎宿主不支持该引擎合成，按当前引擎兜底",
+                    module = LogModule.AI_CAST
+                )
+                route = route.copy(engine = engine, voiceId = engine.activeVoiceId)
+            }
+            items += prepareScriptSegmentItem(
+                engine = route.engine,
+                voiceId = route.voiceId,
+                synthText = synthText,
+                textLength = overlapEnd - overlapStart,
+                charStartInUnit = overlapStart - unitStart,
+                paragraphEnd = false
+            )
+        }
+        if (items.isEmpty()) return listOf(prepareScriptMediaItem(engine, index, content))
+        items[items.lastIndex] = items[items.lastIndex].copy(paragraphEnd = true)
+        return items
+    }
+
+    /** 定位朗读单元在分镜段落内的字符偏移：精确（含续读起点）→ 后缀 → 0。 */
+    private fun locateStoryboardUnitOffset(paragraphText: String, speakText: String): Int {
+        if (speakText.isEmpty()) return 0
+        val exact = paragraphText.indexOf(speakText)
+        if (exact >= 0) return exact
+        if (paragraphText.endsWith(speakText)) {
+            return paragraphText.length - speakText.length
+        }
+        return 0
+    }
+
+    /**
+     * 定位朗读段在分镜中的段落下标：分镜段落与 contentList 同源，
+     * 归一空白后先精确匹配，再包含匹配（段内偏移续读场景）。
+     */
+    private fun locateStoryboardParagraph(storyboard: ChapterStoryboard, speakText: String): Int? {
+        val normalize: (String) -> String = { value -> value.filterNot { it.isWhitespace() } }
+        val target = normalize(speakText)
+        if (target.isEmpty()) return null
+        storyboard.paragraphs.forEachIndexed { index, paragraph ->
+            if (normalize(paragraph) == target) return index
+        }
+        storyboard.paragraphs.forEachIndexed { index, paragraph ->
+            if (normalize(paragraph).contains(target)) return index
+        }
+        return null
+    }
+
+    /** 按路由（引擎, 音色）合成单个分镜子段，缓存键含路由引擎与音色。 */
+    private suspend fun prepareScriptSegmentItem(
+        engine: TtsEngineSetting,
+        voiceId: String?,
+        synthText: String,
+        textLength: Int,
+        charStartInUnit: Int,
+        paragraphEnd: Boolean
+    ): PreparedMediaItem {
+        val speed = TtsSpeedPolicy.synthesisSpeed(engine)
+        val fileName = MD5Utils.md5Encode16(textChapter?.title ?: "") + "_" +
+                MD5Utils.md5Encode16(
+                    TtsScriptEngineClient.audioCacheKey(
+                        engine = engine,
+                        text = synthText,
+                        voiceId = voiceId,
+                        speed = speed
+                    )
+                )
+        if (!hasSpeakFile(fileName)) {
+            val stream = TtsScriptEngineClient.getSynthesisStream(
+                engine = engine,
+                text = synthText,
+                voiceId = voiceId,
+                speed = speed,
+                coroutineContext = currentCoroutineContext()
+            )
+            currentCoroutineContext().ensureActive()
+            createSpeakFile(fileName, stream)
+        }
+        val file = getSpeakFileAsMd5(fileName)
+        return PreparedMediaItem(textLength, MediaItem.fromUri(Uri.fromFile(file)), charStartInUnit, paragraphEnd)
     }
 
     private suspend fun prepareScriptMediaItem(
@@ -353,6 +575,7 @@ class HttpReadAloudService : BaseReadAloudService(),
         playIndexJob?.cancel()
         downloadTask?.cancel()
         exoPlayer.stop()
+        scriptQueue.clear()
         if (!pause) {
             postEvent(EventBus.ALOUD_STATE, Status.LOADING)
         }
@@ -392,6 +615,7 @@ class HttpReadAloudService : BaseReadAloudService(),
         exoPlayer.clearMediaItems()
         downloadTask?.cancel()
         renewHttpRequestJob()
+        scriptQueue.clear()
         downloadTask = execute {
             downloadTaskActiveLock.withLock {
                 ensureActive()
@@ -776,9 +1000,11 @@ class HttpReadAloudService : BaseReadAloudService(),
         playIndexJob?.cancel()
         val textChapter = textChapter ?: return
         playIndexJob = lifecycleScope.launch {
-            upTtsProgress(readAloudNumber + 1)
+            val queueEntry = scriptQueue.firstOrNull()
+            val charBase = queueEntry?.charStartInUnit ?: 0
+            upTtsProgress(readAloudNumber + charBase + 1)
             val content = contentList.getOrNull(nowSpeak) ?: return@launch
-            val speakTextLength = content.length
+            val speakTextLength = queueEntry?.textLength ?: content.length
             if (speakTextLength <= 0) {
                 return@launch
             }
@@ -801,13 +1027,13 @@ class HttpReadAloudService : BaseReadAloudService(),
             }
             for (i in start..speakTextLength) {
                 if (pageIndex + 1 < textChapter.pageSize
-                    && readAloudNumber + i > textChapter.getReadLength(pageIndex + 1)
+                    && readAloudNumber + charBase + i > textChapter.getReadLength(pageIndex + 1)
                 ) {
                     // 扫过页界：只推进引擎私有页光标并发布位置，
                     // 显示翻页由 UI 侧跟随规则处理
                     pageIndex++
-                    AppLog.putDebug("[朗读] HTTP过界发布 pos:${readAloudNumber + i}")
-                    upTtsProgress(readAloudNumber + i)
+                    AppLog.putDebug("[朗读] HTTP过界发布 pos:${readAloudNumber + charBase + i}")
+                    upTtsProgress(readAloudNumber + charBase + i)
                 }
                 delay(sleep)
             }
@@ -852,7 +1078,7 @@ class HttpReadAloudService : BaseReadAloudService(),
             Player.STATE_ENDED -> {
                 // 结束
                 playErrorNo = 0
-                if (!updateNextPos()) return
+                if (!advanceScriptQueue()) return
                 exoPlayer.stop()
                 exoPlayer.clearMediaItems()
             }
@@ -876,7 +1102,7 @@ class HttpReadAloudService : BaseReadAloudService(),
         if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
             playErrorNo = 0
         }
-        if (!updateNextPos()) return
+        if (!advanceScriptQueue()) return
         upPlayPos()
     }
 
@@ -895,6 +1121,7 @@ class HttpReadAloudService : BaseReadAloudService(),
                 exoPlayer.prepare()
             } else {
                 exoPlayer.clearMediaItems()
+                scriptQueue.clear()
                 if (!updateNextPos()) return
             }
         }

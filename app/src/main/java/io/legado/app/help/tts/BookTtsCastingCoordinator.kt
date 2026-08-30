@@ -490,14 +490,16 @@ object BookTtsCastingCoordinator {
     )
 
     /**
-     * AI 自动选音引擎门控：多角色播放路由（ReadAloudTtsRouter）当前仅内置语音包引擎宿主
-     * （百度）消费，系统 TTS / HTTP TTS / V2 脚本与系统引擎均无多角色播放路径，对其自动
-     * 选音落库的绑定一律不会被播放消费。按 [ReadAloud] 引擎路由同源顺序解析当前书引擎：
-     * 支持返回 null；不支持返回带当前引擎名的明确原因。必须报错暴露，禁止静默回退内置语音包。
+     * AI 自动选音引擎门控：多角色播放路由当前由两类宿主消费——
+     * 内置语音包引擎（百度，BdReadAloudService）与启用的 V2 脚本引擎
+     * （HttpReadAloudService 脚本管线按段路由合成）。系统 TTS / HTTP TTS /
+     * 其他插件引擎均无多角色播放路径，对其自动选音落库的绑定不会被播放消费。
+     * 按 [ReadAloud] 引擎路由同源顺序解析当前书引擎：支持返回 null；
+     * 不支持返回带当前引擎名的明确原因。必须报错暴露，禁止静默回退内置语音包。
      */
     fun multiRoleUnsupportedReason(): String? {
-        ReadAloud.currentScriptTtsEngine()?.let { engine ->
-            return unsupportedEngineReason(engine.name)
+        if (ReadAloud.currentScriptTtsEngine() != null) {
+            return null
         }
         val engineId = ReadAloud.ttsEngine
         ReadAloudEngines.byId(engineId)?.let { plugin ->
@@ -521,7 +523,7 @@ object BookTtsCastingCoordinator {
 
     private fun unsupportedEngineReason(engineLabel: String): String {
         return "当前朗读引擎「$engineLabel」不支持 AI 分角色自动选音：" +
-            "多角色朗读仅内置语音包引擎（本地百度 TTS）支持，请先切换朗读引擎"
+            "多角色朗读仅内置语音包引擎（本地百度 TTS）与 V2 脚本引擎支持，请先切换朗读引擎"
     }
 
     /**
@@ -537,7 +539,15 @@ object BookTtsCastingCoordinator {
         }
         val (provider, modelId) = AiStoryboardConfig.requireModelTarget()
         val dao = appDb.bookRoleDao
-        val speakers = cachedSpeakers()
+        // 候选发音人按宿主能力解析：V2 脚本引擎宿主从启用的脚本引擎音色中选音
+        // （绑定携带 engineId，id 以 "engineId\nvoiceId" 复合编码）；
+        // 内置语音包宿主沿用插件目录发音人（engineId 空串 = 内置语音包引擎外观）。
+        val scriptHost = ReadAloud.currentScriptTtsEngine() != null
+        val speakers = if (scriptHost) {
+            v2CandidateSpeakers()
+        } else {
+            cachedSpeakers()
+        }
         if (speakers.isEmpty()) return 0
         val speakerIds = speakers.map { it.id }.toSet()
         val bindings = dao.getBindings(workKey)
@@ -569,7 +579,18 @@ object BookTtsCastingCoordinator {
         eligible.forEach { target ->
             val assignment = assignmentIndex[target.targetType to target.targetId] ?: return@forEach
             val speakerId = assignment.speakerId?.takeIf { it in target.candidateSpeakerIds } ?: return@forEach
-            dao.insertBinding(
+            val binding = if (scriptHost) {
+                val parts = speakerId.split('\n')
+                BookTtsVoiceBinding(
+                    workKey = workKey,
+                    targetType = target.targetType,
+                    targetId = target.targetId,
+                    engineId = parts.getOrElse(0) { "" },
+                    speakerId = parts.getOrElse(1) { "" },
+                    bindingMode = BookTtsVoiceBinding.BindingMode.AUTO,
+                    updatedAt = now
+                )
+            } else {
                 BookTtsVoiceBinding(
                     workKey = workKey,
                     targetType = target.targetType,
@@ -578,10 +599,31 @@ object BookTtsCastingCoordinator {
                     bindingMode = BookTtsVoiceBinding.BindingMode.AUTO,
                     updatedAt = now
                 )
-            )
+            }
+            dao.insertBinding(binding)
             saved++
         }
         return saved
+    }
+
+    /**
+     * V2 宿主候选音色：全部启用的脚本引擎（有脚本可合成）的启用音色，
+     * id 复合编码 "engineId\nvoiceId"，落库时拆分写入（引擎, 音色）绑定。
+     */
+    private fun v2CandidateSpeakers(): List<TtsVoiceInfo> {
+        return TtsEngineStore.engines().flatMap { engine ->
+            if (engine.type != TtsEngineType.SCRIPT || !engine.enabled || engine.script.isBlank()) {
+                return@flatMap emptyList()
+            }
+            engine.enabledVoices().map { voice ->
+                TtsVoiceInfo(
+                    id = "${engine.id}\n${voice.id}",
+                    name = "${engine.name} / ${voice.name}",
+                    gender = voice.gender,
+                    locale = voice.language
+                )
+            }
+        }
     }
 
     private fun BookRole.toCastingTarget(speakerIds: Set<String>): CastingTarget = CastingTarget(
