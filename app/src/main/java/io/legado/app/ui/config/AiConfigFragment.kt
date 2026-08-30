@@ -177,9 +177,7 @@ class AiConfigFragment : PreferenceFragment(),
             ) { AiChapterPurifyConfig.concurrency = it }
             PreferKey.aiCreationProvider -> showSelectCreationProviderDialog()
             PreferKey.aiCreationModel -> showSelectCreationModelDialog()
-            PreferKey.aiCreationVariables -> showCreationVariablesDialog()
             PreferKey.aiCreationPromptTemplate -> showCreationPromptDialog()
-            PreferKey.aiCreationRequestTemplate -> showCreationRequestDialog()
             "aiCreationTestConnection" -> testCreationConnection()
             PreferKey.aiCreationScope -> showCreationScopeSettingsDialog()
             "aiCreationImageAddProvider" -> showCreationProviderEditDialog(null, isVideo = false)
@@ -460,93 +458,6 @@ class AiConfigFragment : PreferenceFragment(),
             neutralButton(R.string.restore_default) {
                 AiCreationConfig.promptTemplate = AiCreationConfig.defaultPromptTemplate
                 refreshUi()
-            }
-            cancelButton()
-        }
-    }
-
-    private fun showCreationRequestDialog() {
-        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
-            editView.hint = getString(R.string.ai_creation_request_template_hint)
-            editView.inputType = InputType.TYPE_CLASS_TEXT or
-                InputType.TYPE_TEXT_FLAG_MULTI_LINE or
-                InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-            editView.minLines = 16
-            editView.setText(AiCreationConfig.requestTemplatesJson)
-            editView.setSelection(editView.text?.length ?: 0)
-        }
-        alert(titleResource = R.string.ai_creation_request_template) {
-            customView { binding.root }
-            okButton {
-                val json = binding.editView.text?.toString()?.trim().orEmpty()
-                val error = runCatching {
-                    AiCreationConfig.requestTemplatesJson = json
-                }.exceptionOrNull()
-                if (error != null) {
-                    toastOnUi(
-                        getString(
-                            R.string.ai_creation_request_template_invalid,
-                            error.message.orEmpty()
-                        )
-                    )
-                    return@okButton
-                }
-                refreshUi()
-            }
-            neutralButton(R.string.restore_default) {
-                AiCreationConfig.requestTemplatesJson = AiCreationConfig.defaultRequestTemplatesJson
-                refreshUi()
-            }
-            cancelButton()
-        }
-    }
-
-    private fun showCreationVariablesDialog() {
-        val provider = AiCreationProviderStore.imageCurrentProvider ?: run {
-            toastOnUi(R.string.ai_creation_provider_required)
-            return
-        }
-        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
-            editView.hint = getString(R.string.ai_creation_variables_hint)
-            editView.inputType = InputType.TYPE_CLASS_TEXT or
-                InputType.TYPE_TEXT_FLAG_MULTI_LINE or
-                InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-            editView.minLines = 16
-            editView.setText(provider.variablesJson)
-            editView.setSelection(editView.text?.length ?: 0)
-        }
-        alert(titleResource = R.string.ai_creation_variables) {
-            customView { binding.root }
-            okButton {
-                val json = binding.editView.text?.toString()?.trim().orEmpty()
-                val error = runCatching {
-                    AiCreationVariables.parse(json)
-                }.exceptionOrNull()
-                if (error != null) {
-                    toastOnUi(
-                        getString(
-                            R.string.ai_creation_variables_invalid,
-                            error.message.orEmpty()
-                        )
-                    )
-                    return@okButton
-                }
-                updateCreationProvider(provider.id, isVideo = false) {
-                    it.copy(variablesJson = json)
-                }
-                refreshUi()
-            }
-            //恢复默认仅对内置供应商有意义（有出厂变量定义可还原）
-            if (AiCreationProviderStore.defaultVariablesJsonOf(provider) != null) {
-                neutralButton(R.string.restore_default) {
-                    updateCreationProvider(provider.id, isVideo = false) {
-                        it.copy(
-                            variablesJson = AiCreationProviderStore.defaultVariablesJsonOf(it)
-                                .orEmpty()
-                        )
-                    }
-                    refreshUi()
-                }
             }
             cancelButton()
         }
@@ -2273,12 +2184,8 @@ class AiConfigFragment : PreferenceFragment(),
                 else -> getString(R.string.ai_creation_model_summary_empty)
             }
         }
-        findPreference<Preference>(PreferKey.aiCreationVariables)?.summary =
-            getString(R.string.ai_creation_variables_summary)
         findPreference<Preference>(PreferKey.aiCreationPromptTemplate)?.summary =
             getString(R.string.ai_creation_prompt_template_summary)
-        findPreference<Preference>(PreferKey.aiCreationRequestTemplate)?.summary =
-            getString(R.string.ai_creation_request_template_summary)
         findPreference<Preference>("aiCreationTestConnection")?.isVisible =
             !creationReuseCurrentModel
         val storyboardReuseCurrentModel = AiStoryboardConfig.reuseCurrentModel
