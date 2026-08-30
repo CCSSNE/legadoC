@@ -2104,6 +2104,7 @@ class AiConfigFragment : PreferenceFragment(),
         findPreference<PreferenceGroup>("aiMcpCategory")?.isVisible = advancedSettingsEnabled
         findPreference<PreferenceGroup>("aiWebToolsCategory")?.isVisible = advancedSettingsEnabled
         findPreference<PreferenceGroup>("aiTimeoutCategory")?.isVisible = advancedSettingsEnabled
+        findPreference<PreferenceGroup>("aiCreationCategory")?.isVisible = advancedSettingsEnabled
         listOf(
             "aiChapterPurifyFlowInfo",
             PreferKey.aiChapterPurifyReuseCurrentModel,
