@@ -1021,6 +1021,7 @@ abstract class BaseReadAloudService : BaseService(),
             IntentAction.pause -> pauseReadAloud()
             IntentAction.resume -> resumeReadAloud()
             IntentAction.upTtsSpeechRate -> upSpeechRate(true)
+            IntentAction.refreshTtsRoute -> refreshTtsRoute()
             IntentAction.prevParagraph -> prevP()
             IntentAction.nextParagraph -> nextP()
             IntentAction.seekReadAloudProgress -> seekToReadAloudProgress(
@@ -1191,6 +1192,12 @@ abstract class BaseReadAloudService : BaseService(),
     }
 
     abstract fun playStop()
+
+    /**
+     * 引擎路由参数刷新（运行时语速/音量/音调或选角路由变更后由 ReadAloud.refreshTtsRoute 触发）。
+     * 默认无动作；按引擎路由参数合成音频的服务（如 V2 脚本引擎）覆写以热更新当前段落。
+     */
+    open fun refreshTtsRoute() = Unit
 
     @CallSuper
     open fun pauseReadAloud(abandonFocus: Boolean = true) {

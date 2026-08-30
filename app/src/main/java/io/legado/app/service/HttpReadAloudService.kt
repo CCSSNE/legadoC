@@ -28,12 +28,17 @@ import com.script.ScriptException
 import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
+import io.legado.app.constant.EventBus
+import io.legado.app.constant.Status
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.exoplayer.InputStreamDataSource
 import io.legado.app.help.http.okHttpClient
+import io.legado.app.help.tts.TtsEngineSetting
+import io.legado.app.help.tts.TtsScriptEngineClient
+import io.legado.app.help.tts.TtsSpeedPolicy
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.model.analyzeRule.AnalyzeUrl
@@ -133,6 +138,18 @@ class HttpReadAloudService : BaseReadAloudService(),
         exoPlayer.stop()
         if (!requestFocus()) return
         httpTtsSnapshot = ReadAloud.httpTTS
+        if (ReadAloud.currentTtsEngineV2() != null) {
+            // V2 数据驱动引擎接管：脚本引擎合成走文件缓存 + 顺序播放管线
+            if (contentList.isEmpty()) {
+                AppLog.putDebug("朗读列表为空")
+                nextChapter()
+            } else {
+                super.play()
+                upReadAloudLoading(true)
+                downloadAndPlayAudiosV2()
+            }
+            return
+        }
         if (httpTtsSnapshot == null) {
             AppLog.putDebug("http tts is null")
             pauseReadAloud()
@@ -235,6 +252,110 @@ class HttpReadAloudService : BaseReadAloudService(),
         }.onError {
             AppLog.put("朗读下载出错\n${it.localizedMessage}", it, true)
         }
+    }
+
+    /**
+     * V2 数据驱动引擎（脚本引擎）合成管线：与旧 HttpTTS 路径同构的文件缓存 +
+     * 顺序播放，逐段经 [TtsScriptEngineClient.getSynthesisStream] 获取音频流。
+     * 音色/语速/音量/音调取引擎当前运行时状态；参数变更经 refreshTtsRoute 热刷新。
+     */
+    private fun downloadAndPlayAudiosV2() {
+        exoPlayer.clearMediaItems()
+        downloadTask?.cancel()
+        renewHttpRequestJob()
+        downloadTask = execute {
+            downloadTaskActiveLock.withLock {
+                ensureActive()
+                val engineV2 = ReadAloud.currentTtsEngineV2()
+                    ?: throw NoStackTraceException("朗读引擎V2为空")
+                val firstMediaItems = arrayListOf<MediaItem>()
+                var firstMediaLength = 0
+                var firstMediaItemsAdded = false
+                contentList.forEachIndexed { index, content ->
+                    ensureActive()
+                    if (index < nowSpeak) return@forEachIndexed
+                    val prepared = runCatching {
+                        prepareMediaItemV2(engineV2, index, content)
+                    }.onFailure {
+                        if (it !is CancellationException) pauseReadAloud()
+                        return@execute
+                    }.getOrThrow()
+                    if (!firstMediaItemsAdded) {
+                        firstMediaItems.add(prepared.mediaItem)
+                        firstMediaLength += prepared.textLength
+                        if (firstMediaLength >= httpStartPreloadLength()
+                            || index == contentList.lastIndex
+                        ) {
+                            firstMediaItemsAdded = true
+                            launch(Main) {
+                                exoPlayer.addMediaItems(firstMediaItems)
+                                upReadAloudLoading(false)
+                            }
+                        }
+                    } else {
+                        launch(Main) {
+                            exoPlayer.addMediaItem(prepared.mediaItem)
+                        }
+                    }
+                }
+                if (!firstMediaItemsAdded && firstMediaItems.isNotEmpty()) {
+                    launch(Main) {
+                        exoPlayer.addMediaItems(firstMediaItems)
+                        upReadAloudLoading(false)
+                    }
+                }
+            }
+        }.onError {
+            AppLog.put("朗读下载出错\n${it.localizedMessage}", it, true)
+        }
+    }
+
+    private suspend fun prepareMediaItemV2(
+        engine: TtsEngineSetting,
+        index: Int,
+        content: String
+    ): PreparedMediaItem {
+        val text = getSpeakContent(index, content)
+        val fileName = md5SpeakFileNameV2(engine, text)
+        val speakText = text.replace(AppPattern.notReadAloudRegex, "")
+        if (speakText.isEmpty()) {
+            AppLog.put("阅读段落内容为空，使用无声音频代替。\n朗读文本：$text")
+            createSilentSound(fileName)
+        } else if (!hasSpeakFile(fileName)) {
+            val stream = TtsScriptEngineClient.getSynthesisStream(
+                engine = engine,
+                text = speakText,
+                voiceId = engine.activeVoiceId,
+                speed = TtsSpeedPolicy.synthesisSpeed(engine),
+                coroutineContext = currentCoroutineContext()
+            )
+            currentCoroutineContext().ensureActive()
+            createSpeakFile(fileName, stream)
+        }
+        val file = getSpeakFileAsMd5(fileName)
+        return PreparedMediaItem(text.length, MediaItem.fromUri(Uri.fromFile(file)))
+    }
+
+    private fun md5SpeakFileNameV2(
+        engine: TtsEngineSetting,
+        content: String,
+        textChapter: TextChapter? = this.textChapter
+    ): String {
+        val cacheKey = TtsScriptEngineClient.audioCacheKey(engine, content)
+        return MD5Utils.md5Encode16(textChapter?.title ?: "") + "_" +
+                MD5Utils.md5Encode16(cacheKey)
+    }
+
+    override fun refreshTtsRoute() {
+        if (ReadAloud.currentTtsEngineV2() == null) return
+        // 运行时参数或选角路由变更：中断当前下载/播放，从当前段落按新参数重新合成
+        playIndexJob?.cancel()
+        downloadTask?.cancel()
+        exoPlayer.stop()
+        if (!pause) {
+            postEvent(EventBus.ALOUD_STATE, Status.LOADING)
+        }
+        downloadAndPlayAudiosV2()
     }
 
     private suspend fun preDownloadAudios(httpTts: HttpTTS) {

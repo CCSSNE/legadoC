@@ -13,6 +13,8 @@ import io.legado.app.data.entities.HttpTTS
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.tts.TtsEngineSetting
+import io.legado.app.help.tts.TtsEngineStore
+import io.legado.app.help.tts.TtsEngineType
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.plugin.ReadAloudEngines
 import io.legado.app.service.BaseReadAloudService
@@ -169,7 +171,31 @@ object ReadAloud {
         return GSON.fromJsonObject<SelectItem<String>>(selected).getOrNull()?.title
     }
 
+    /**
+     * V2 数据驱动引擎层是否接管朗读路由：仅当用户在 V2 引擎列表里显式选择了
+     * 启用的脚本引擎（内置语音包引擎外观不可被选为活动引擎）时接管；
+     * 未选择时保持既有引擎选择（系统/HTTP源/插件引擎）完全不变。
+     */
+    private fun resolveActiveTtsEngineV2(): TtsEngineSetting? {
+        val savedId = appCtx.getPrefString(PreferKey.ttsEngineV2ActiveId)
+        if (savedId.isNullOrBlank()) return null
+        return TtsEngineStore.engine(savedId)?.takeIf {
+            it.enabled && it.type == TtsEngineType.SCRIPT
+        }
+    }
+
+    /** 当前生效的 V2 引擎：以引擎存储实时解析为准，并同步共享快照供服务侧读取。 */
+    fun currentTtsEngineV2(): TtsEngineSetting? {
+        return resolveActiveTtsEngineV2()?.also { httpTtsEngineV2 = it }
+    }
+
     private fun getReadAloudClass(): Class<out BaseReadAloudService>? {
+        val engineV2 = currentTtsEngineV2()
+        if (engineV2 != null) {
+            httpTTS = null
+            return HttpReadAloudService::class.java
+        }
+        httpTtsEngineV2 = null
         val book = ReadBook.book
         if (ttsEngine == SOURCE_AUDIO_ENGINE_ID) {
             httpTTS = null
@@ -240,12 +266,15 @@ object ReadAloud {
 
     /**
      * 重算引擎路由但不打断朗读。NG 中此函数重算存储的 aloudClass 字段；
-     * 我们的引擎路由是每次播放时的派生值（无存储字段），等效动作是广播引擎变化
-     * 让依赖引擎状态的界面同步刷新。与 [upReadAloudClass] 的区别是不停止当前朗读。
+     * 我们的引擎路由是每次播放时的派生值（无存储字段），等效动作是
+     * 刷新 V2 引擎快照（音色/运行时参数可能已变）并广播引擎变化 +
+     * 通知运行中服务刷新路由参数。与 [upReadAloudClass] 的区别是不停止当前朗读。
+     * 注意：本函数会被 TtsEngineStore 的锁内调用（selectVoice 等），
+     * 不得加 ReadAloud 对象监视器锁，也不得在持锁状态下反查引擎存储。
      */
-    @Synchronized
     fun refreshReadAloudClass() {
         postEvent(EventBus.READ_ALOUD_ENGINE_CHANGED, selectedEngineType)
+        refreshTtsRoute(appCtx)
     }
 
     /** 通知正在运行的朗读服务刷新引擎路由参数（语速/音量/音调等运行时参数变更后调用）。 */
