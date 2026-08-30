@@ -23,7 +23,7 @@ import io.legado.app.help.ai.AiChapterPurifyConfig
 import io.legado.app.help.ai.AiStoryboardConfig
 import io.legado.app.help.ai.AiChatService
 import io.legado.app.help.ai.AiCreationConfig
-import io.legado.app.help.ai.AiCreationImageFile
+import io.legado.app.help.ai.AiCreationImageTaskHolder
 import io.legado.app.help.ai.AiCreationProviderConfig
 import io.legado.app.help.ai.AiCreationProviderModel
 import io.legado.app.help.ai.AiCreationProviderStore
@@ -975,7 +975,7 @@ class AiConfigFragment : PreferenceFragment(),
         toastOnUi(R.string.ai_creation_image_test_running)
         lifecycleScope.launch {
             val result = withContext(IO) {
-                runCatching { AiCreationImageFile.testConnection(target.provider, target.modelId) }
+                runCatching { AiCreationImageTaskHolder.testConnection(target.provider, target.modelId) }
             }
             result.onSuccess {
                 toastOnUi(R.string.ai_creation_image_test_success)
