@@ -31,7 +31,45 @@ object DatabaseMigrations {
             migration_107_108,
             migration_108_109,
             migration_109_110,
+            migration_110_111,
         )
+    }
+
+    private val migration_110_111 = object : Migration(110, 111) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `ttsEngineRuntime` (
+                    `engineId` TEXT NOT NULL,
+                    `speed` INTEGER NOT NULL DEFAULT 50,
+                    `volume` INTEGER NOT NULL DEFAULT 50,
+                    `pitch` INTEGER NOT NULL DEFAULT 50,
+                    `updatedAt` INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY(`engineId`)
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `ttsVoices` (
+                    `engineId` TEXT NOT NULL,
+                    `id` TEXT NOT NULL,
+                    `name` TEXT NOT NULL,
+                    `language` TEXT,
+                    `gender` TEXT,
+                    `style` TEXT,
+                    `tagsJson` TEXT NOT NULL DEFAULT '[]',
+                    `sampleText` TEXT,
+                    `extraJson` TEXT NOT NULL DEFAULT '{}',
+                    `updatedAt` INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY(`engineId`, `id`)
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_ttsVoices_engineId` ON `ttsVoices` (`engineId`)"
+            )
+        }
     }
 
     private val migration_109_110 = object : Migration(109, 110) {

@@ -40,6 +40,8 @@ import io.legado.app.data.dao.SearchBookDao
 import io.legado.app.data.dao.SearchKeywordDao
 import io.legado.app.data.dao.ServerDao
 import io.legado.app.data.dao.TxtTocRuleDao
+import io.legado.app.data.dao.TtsEngineRuntimeDao
+import io.legado.app.data.dao.TtsVoiceDao
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.AiChapterPurifyRecord
 import io.legado.app.data.entities.BookChapter
@@ -75,6 +77,8 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.SearchKeyword
 import io.legado.app.data.entities.Server
 import io.legado.app.data.entities.TxtTocRule
+import io.legado.app.data.entities.TtsEngineRuntimeEntity
+import io.legado.app.data.entities.TtsVoiceEntity
 import io.legado.app.help.DefaultData
 import org.intellij.lang.annotations.Language
 import splitties.init.appCtx
@@ -90,7 +94,7 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 110,
+    version = 111,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
         BookCollection::class, BookCollectionItem::class, BookCollectionChild::class,
@@ -101,7 +105,8 @@ val appDb by lazy {
         RuleSub::class, DictRule::class, KeyboardAssist::class, Server::class,
         ReadRecentBook::class, AiChapterPurifyRecord::class, BookShortcut::class,
         CreationCard::class, CreationResult::class,
-        BookRole::class, BookTtsCastRole::class, BookTtsVoiceBinding::class],
+        BookRole::class, BookTtsCastRole::class, BookTtsVoiceBinding::class,
+        TtsEngineRuntimeEntity::class, TtsVoiceEntity::class],
     views = [BookSourcePart::class],
     autoMigrations = [
         AutoMigration(from = 43, to = 44),
@@ -185,6 +190,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract val dictRuleDao: DictRuleDao
     abstract val keyboardAssistsDao: KeyboardAssistsDao
     abstract val serverDao: ServerDao
+    abstract val ttsEngineRuntimeDao: TtsEngineRuntimeDao
+    abstract val ttsVoiceDao: TtsVoiceDao
 
     companion object {
 
