@@ -356,6 +356,42 @@ object AiTtsStoryboardHelper {
 
     // ===================== AI 请求与重试 =====================
 
+    /** 按字数上限切分章节：段落是原子单位，单段超限也整段进当前块，绝不跨块。 */
+    private class ChapterBlock(
+        val paragraphs: List<ContextParagraph>,
+        val units: List<CandidateUnit>
+    )
+
+    private fun splitChapterBlocks(
+        paragraphs: List<ContextParagraph>,
+        units: List<CandidateUnit>,
+        maxChars: Int
+    ): List<ChapterBlock> {
+        val blocks = mutableListOf<ChapterBlock>()
+        var current = mutableListOf<ContextParagraph>()
+        var currentChars = 0
+        fun flush() {
+            if (current.isEmpty()) return
+            val indices = current.map { it.paragraphIndex }.toSet()
+            blocks += ChapterBlock(
+                paragraphs = current.toList(),
+                units = units.filter { it.ranges.first().paragraphIndex in indices }
+            )
+            current = mutableListOf()
+            currentChars = 0
+        }
+        paragraphs.forEach { paragraph ->
+            val length = paragraph.text.length
+            if (current.isNotEmpty() && currentChars + length > maxChars) {
+                flush()
+            }
+            current += paragraph
+            currentChars += length
+        }
+        flush()
+        return blocks
+    }
+
     private suspend fun requestModelUnits(
         provider: io.legado.app.ui.main.ai.AiProviderConfig,
         modelId: String,
@@ -365,6 +401,42 @@ object AiTtsStoryboardHelper {
         knownCastRoles: List<KnownCastRole>
     ): List<ModelUnitResult> {
         if (units.isEmpty()) return emptyList()
+        if (!AiStoryboardConfig.splitLongChapters) {
+            return requestWholeChapterUnits(
+                provider, modelId, paragraphs, units, knownCharacters, knownCastRoles
+            )
+        }
+        val maxChars = AiStoryboardConfig.maxChapterChars
+        val blocks = splitChapterBlocks(paragraphs, units, maxChars)
+        if (blocks.size <= 1) {
+            return requestWholeChapterUnits(
+                provider, modelId, paragraphs, units, knownCharacters, knownCastRoles
+            )
+        }
+        val totalChars = paragraphs.sumOf { it.text.length }
+        AppLog.putDebug(
+            "[AI分镜] 超长章节拆分：${paragraphs.size} 段 ${totalChars} 字，" +
+                "上限 ${maxChars} 字/次 → ${blocks.size} 次请求",
+            module = LogModule.AI_CAST
+        )
+        val assignments = blocks.flatMapIndexed { index, block ->
+            requestChapterBlock(
+                provider, modelId, block, index + 1, blocks.size,
+                knownCharacters, knownCastRoles
+            )
+        }
+        return applyAdjacentGenderEvidence(assignments, units)
+    }
+
+    /** 整章一次请求；失败且候选数足够时对半拆两段重试（关闭拆分开关时的原始路径）。 */
+    private suspend fun requestWholeChapterUnits(
+        provider: io.legado.app.ui.main.ai.AiProviderConfig,
+        modelId: String,
+        paragraphs: List<ContextParagraph>,
+        units: List<CandidateUnit>,
+        knownCharacters: List<KnownCharacter>,
+        knownCastRoles: List<KnownCastRole>
+    ): List<ModelUnitResult> {
         return runCatching {
             requestModelUnitsOnce(
                 provider, modelId, paragraphs, units, knownCharacters, knownCastRoles
@@ -381,6 +453,55 @@ object AiTtsStoryboardHelper {
             }
             applyAdjacentGenderEvidence(assignments, units)
         }
+    }
+
+    /** 单块请求：失败重试一次，再失败抛出终止本章生成（不静默丢块）。 */
+    private suspend fun requestChapterBlock(
+        provider: io.legado.app.ui.main.ai.AiProviderConfig,
+        modelId: String,
+        block: ChapterBlock,
+        blockIndex: Int,
+        blockCount: Int,
+        knownCharacters: List<KnownCharacter>,
+        knownCastRoles: List<KnownCastRole>
+    ): List<ModelUnitResult> {
+        val blockChars = block.paragraphs.sumOf { it.text.length }
+        var lastError: Throwable? = null
+        repeat(2) { attempt ->
+            val startedAt = System.currentTimeMillis()
+            try {
+                val result = requestModelUnitsOnce(
+                    provider, modelId, block.paragraphs, block.units,
+                    knownCharacters, knownCastRoles
+                )
+                AppLog.putAi(
+                    "STORYBOARD BLOCK OK\n" +
+                        "block=$blockIndex/$blockCount\n" +
+                        "attempt=${attempt + 1}\n" +
+                        "paragraphs=${block.paragraphs.size}\n" +
+                        "chars=$blockChars\n" +
+                        "units=${block.units.size}\n" +
+                        "elapsedMs=${System.currentTimeMillis() - startedAt}"
+                )
+                return result
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                lastError = error
+                AppLog.putAi(
+                    "STORYBOARD BLOCK FAILED\n" +
+                        "block=$blockIndex/$blockCount\n" +
+                        "attempt=${attempt + 1}\n" +
+                        "paragraphs=${block.paragraphs.size}\n" +
+                        "chars=$blockChars\n" +
+                        "units=${block.units.size}\n" +
+                        "elapsedMs=${System.currentTimeMillis() - startedAt}\n" +
+                        "error=${error.message}",
+                    error
+                )
+            }
+        }
+        throw lastError ?: IllegalStateException("分镜块请求失败但无错误信息")
     }
 
     private suspend fun requestModelUnitsOnce(

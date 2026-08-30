@@ -328,6 +328,10 @@
     <string name="ai_auto_create_roles_summary">AI 认出的新人物自动记入本书角色池</string>
     <string name="ai_auto_assign_voices">自动选音</string>
     <string name="ai_auto_assign_voices_summary">新角色由 AI 自动挑选发音人</string>
+    <string name="ai_split_long_chapters">拆分超长章节</string>
+    <string name="ai_split_long_chapters_summary">超过字数上限的章节按段落边界拆成多次请求</string>
+    <string name="ai_max_chapter_chars">章节字数上限</string>
+    <string name="ai_max_chapter_chars_value">%1$d 字</string>
     <string name="ai_batch_analyze">批量分析章节</string>
     <string name="ai_batch_analyze_summary">选择章节范围，后台逐章生成分镜</string>
     <string name="ai_storyboard_cache">分镜缓存</string>

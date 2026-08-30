@@ -17,6 +17,10 @@ import splitties.init.appCtx
  */
 object AiStoryboardConfig {
 
+    const val DEFAULT_MAX_CHAPTER_CHARS = 5000
+    const val MIN_MAX_CHAPTER_CHARS = 1000
+    const val MAX_MAX_CHAPTER_CHARS = 50000
+
     var reuseCurrentModel: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.aiStoryboardReuseCurrentModel, true)
         set(value) = appCtx.putPrefBoolean(PreferKey.aiStoryboardReuseCurrentModel, value)
@@ -32,6 +36,22 @@ object AiStoryboardConfig {
     var preloadCount: Int
         get() = appCtx.getPrefInt(PreferKey.aiStoryboardPreloadCount, 2).coerceIn(0, 10)
         set(value) = appCtx.putPrefInt(PreferKey.aiStoryboardPreloadCount, value)
+
+    /** 超长章节按段落边界拆成多次请求；关闭时整章一次请求（失败两段重试）。 */
+    var splitLongChapters: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.aiStoryboardSplitLongChapters, true)
+        set(value) = appCtx.putPrefBoolean(PreferKey.aiStoryboardSplitLongChapters, value)
+
+    /** 单次分镜请求的章节字数上限；段落是原子单位，单段超限也整段进当前块。 */
+    var maxChapterChars: Int
+        get() = appCtx.getPrefInt(
+            PreferKey.aiStoryboardMaxChapterChars,
+            DEFAULT_MAX_CHAPTER_CHARS
+        ).coerceIn(MIN_MAX_CHAPTER_CHARS, MAX_MAX_CHAPTER_CHARS)
+        set(value) = appCtx.putPrefInt(
+            PreferKey.aiStoryboardMaxChapterChars,
+            value.coerceIn(MIN_MAX_CHAPTER_CHARS, MAX_MAX_CHAPTER_CHARS)
+        )
 
     val provider: AiProviderConfig?
         get() = AppConfig.aiProviderList.firstOrNull { it.id == providerId }

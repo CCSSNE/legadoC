@@ -1,8 +1,11 @@
 package io.legado.app.ui.book.read.config
 
 import android.os.Bundle
+import android.text.InputType
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
+import androidx.appcompat.app.AlertDialog
 import androidx.core.view.isVisible
 import androidx.fragment.app.FragmentManager
 import androidx.lifecycle.lifecycleScope
@@ -20,6 +23,7 @@ import io.legado.app.data.entities.BookTtsVoiceBinding
 import io.legado.app.databinding.DialogAiMultiVoiceBinding
 import io.legado.app.databinding.ItemAiRoleBinding
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.ai.AiStoryboardConfig
 import io.legado.app.help.tts.AiBatchAnalyzeDialog
 import io.legado.app.help.tts.AiMultiVoiceConfig
 import io.legado.app.help.tts.AiStoryboardCacheDialog
@@ -124,6 +128,18 @@ class AiMultiVoiceDialog : BaseDialogFragment(R.layout.dialog_ai_multi_voice) {
             binding.switchAutoAssignVoices.toggle()
             BookTtsAutomationConfig.setAutoAssignVoices(key, binding.switchAutoAssignVoices.isChecked)
         }
+        binding.switchSplitLongChapters.isChecked = AiStoryboardConfig.splitLongChapters
+        binding.switchSplitLongChapters.setOnCheckedChangeListener { _, checked ->
+            AiStoryboardConfig.splitLongChapters = checked
+        }
+        binding.itemSplitLongChapters.setOnClickListener {
+            binding.switchSplitLongChapters.toggle()
+            AiStoryboardConfig.splitLongChapters = binding.switchSplitLongChapters.isChecked
+        }
+        refreshMaxChapterChars()
+        binding.itemMaxChapterChars.setOnClickListener {
+            editMaxChapterChars()
+        }
         refreshSpeakerValues()
         binding.tvNarratorValue.setOnClickListener {
             pickPoolSpeaker(SpeakerPoolKind.NARRATOR)
@@ -140,6 +156,33 @@ class AiMultiVoiceDialog : BaseDialogFragment(R.layout.dialog_ai_multi_voice) {
         binding.tvStoryboardCache.setOnClickListener {
             AiStoryboardCacheDialog().show(childFragmentManager, "aiStoryboardCache")
         }
+    }
+
+    private fun refreshMaxChapterChars() {
+        binding.tvMaxChapterCharsValue.text = getString(
+            R.string.ai_max_chapter_chars_value, AiStoryboardConfig.maxChapterChars
+        )
+    }
+
+    private fun editMaxChapterChars() {
+        val context = requireContext()
+        val input = EditText(context).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER
+            setText(AiStoryboardConfig.maxChapterChars.toString())
+            setSelection(text.length)
+        }
+        AlertDialog.Builder(context)
+            .setTitle(R.string.ai_max_chapter_chars)
+            .setView(input)
+            .setPositiveButton(R.string.ok) { dialog, _ ->
+                input.text.toString().trim().toIntOrNull()?.let {
+                    AiStoryboardConfig.maxChapterChars = it
+                    refreshMaxChapterChars()
+                }
+                dialog.dismiss()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
     }
 
     private fun refreshSpeakerValues() {

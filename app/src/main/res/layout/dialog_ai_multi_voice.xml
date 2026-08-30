@@ -192,6 +192,62 @@
                 android:textColor="@color/secondaryText"
                 android:textSize="12sp" />
 
+            <LinearLayout
+                android:id="@+id/item_split_long_chapters"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackground"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/ai_split_long_chapters"
+                    android:textColor="@color/primaryText"
+                    android:textSize="16sp" />
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/switch_split_long_chapters"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingBottom="6dp"
+                android:text="@string/ai_split_long_chapters_summary"
+                android:textColor="@color/secondaryText"
+                android:textSize="12sp" />
+
+            <LinearLayout
+                android:id="@+id/item_max_chapter_chars"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackground"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="4dp"
+                android:paddingEnd="4dp">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/ai_max_chapter_chars"
+                    android:textColor="@color/primaryText"
+                    android:textSize="16sp" />
+
+                <TextView
+                    android:id="@+id/tv_max_chapter_chars_value"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/secondaryText"
+                    android:textSize="14sp" />
+            </LinearLayout>
+
             <TextView
                 android:id="@+id/tv_batch_analyze"
                 android:layout_width="match_parent"

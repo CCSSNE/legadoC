@@ -83,6 +83,8 @@ object PreferKey {
     const val aiStoryboardProviderId = "aiStoryboardProviderId"
     const val aiStoryboardModelId = "aiStoryboardModelId"
     const val aiStoryboardPreloadCount = "aiStoryboardPreloadCount"
+    const val aiStoryboardSplitLongChapters = "aiStoryboardSplitLongChapters"
+    const val aiStoryboardMaxChapterChars = "aiStoryboardMaxChapterChars"
     const val ttsFollowSys = "ttsFollowSys"
     const val ttsSpeechRate = "ttsSpeechRate"
     const val prevKeys = "prevKeyCodes"

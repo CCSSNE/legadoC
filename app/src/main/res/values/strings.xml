@@ -329,6 +329,10 @@
     <string name="ai_auto_create_roles_summary">Register new characters found by AI for this book</string>
     <string name="ai_auto_assign_voices">Auto-assign Voices</string>
     <string name="ai_auto_assign_voices_summary">Let AI pick a speaker for new characters</string>
+    <string name="ai_split_long_chapters">Split Long Chapters</string>
+    <string name="ai_split_long_chapters_summary">Chapters over the character limit are split at paragraph boundaries into multiple requests</string>
+    <string name="ai_max_chapter_chars">Chapter Character Limit</string>
+    <string name="ai_max_chapter_chars_value">%1$d chars</string>
     <string name="ai_batch_analyze">Batch Analyze Chapters</string>
     <string name="ai_batch_analyze_summary">Generate storyboards for a chapter range in background</string>
     <string name="ai_storyboard_cache">Storyboard Cache</string>
