@@ -17,7 +17,6 @@ import io.legado.app.help.http.okHttpClient
 import io.legado.app.help.update.UpdateManager
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.FileDoc
-import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.createFileIfNotExist
 import io.legado.app.utils.createFolderIfNotExist
 import io.legado.app.utils.delete
@@ -34,6 +33,9 @@ import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.delay
 import splitties.init.appCtx
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class AboutFragment : PreferenceFragmentCompat() {
 
@@ -114,19 +116,26 @@ class AboutFragment : PreferenceFragmentCompat() {
         showDialogFragment(TextDialog(title, mdText, TextDialog.Mode.MD))
     }
 
+    /** 保存日志：把普通日志弹窗当前勾选模块过滤后的日志导出为 TXT 到备份目录 */
     private fun saveLog() {
         Coroutine.async {
             val backupPath = AppConfig.backupPath ?: let {
                 appCtx.toastOnUi("未设置备份目录")
                 return@async
             }
-            if (AppConfig.logShownModules.isEmpty()) {
-                appCtx.toastOnUi("调试日志未开启，可在其他设置的普通日志模块中勾选")
-                delay(3000)
+            val logs = AppLog.logsForView(AppConfig.logShownModules)
+            if (logs.isEmpty()) {
+                appCtx.toastOnUi("当前没有可保存的日志，请先在其他设置的普通日志模块中勾选")
+                return@async
             }
             val doc = FileDoc.fromUri(Uri.parse(backupPath), true)
-            copyLogs(doc)
-            copyHeapDump(doc)
+            val fileName = "app-log-" + SimpleDateFormat(
+                "yyyyMMdd-HHmmss", Locale.getDefault()
+            ).format(Date()) + ".txt"
+            doc.find(fileName)?.delete()
+            doc.createFileIfNotExist(fileName).openOutputStream().getOrNull()?.use {
+                it.write(AppLog.formatLogs(logs).toByteArray(Charsets.UTF_8))
+            } ?: error("无法创建日志文件")
             appCtx.toastOnUi("已保存至备份目录")
         }.onError {
             AppLog.put("保存日志出错\n${it.localizedMessage}", it, true)
@@ -157,28 +166,6 @@ class AboutFragment : PreferenceFragmentCompat() {
         }
     }
 
-    private fun copyLogs(doc: FileDoc) {
-        val cacheDir = appCtx.externalCache
-        val logFiles = File(cacheDir, "logs")
-        val crashFiles = File(cacheDir, "crash")
-        val logcatFile = File(cacheDir, "logcat.txt")
-
-        dumpLogcat(logcatFile)
-
-        val zipFile = File(cacheDir, "logs.zip")
-        ZipUtils.zipFiles(arrayListOf(logFiles, crashFiles, logcatFile), zipFile)
-
-        doc.find("logs.zip")?.delete()
-
-        zipFile.inputStream().use { input ->
-            doc.createFileIfNotExist("logs.zip").openOutputStream().getOrNull()
-                ?.use {
-                    input.copyTo(it)
-                }
-        }
-        zipFile.delete()
-    }
-
     private fun copyHeapDump(doc: FileDoc): Boolean {
         val heapFile = FileDoc.fromFile(File(appCtx.externalCache, "heapDump")).list()
             ?.firstOrNull() ?: return false
@@ -191,17 +178,6 @@ class AboutFragment : PreferenceFragmentCompat() {
                 }
         }
         return true
-    }
-
-    private fun dumpLogcat(file: File) {
-        try {
-            val process = Runtime.getRuntime().exec("logcat -d")
-            file.outputStream().use {
-                process.inputStream.copyTo(it)
-            }
-        } catch (e: Exception) {
-            AppLog.put("保存Logcat失败\n$e", e)
-        }
     }
 
 }
