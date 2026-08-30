@@ -222,13 +222,6 @@
             android:title="@string/ai_creation_image_test_connection"
             app:iconSpaceReserved="false" />
 
-        <io.legado.app.lib.prefs.SwitchPreference
-            android:defaultValue="true"
-            android:key="aiCreationVideoReuseImage"
-            android:summary="@string/ai_creation_video_reuse_image_summary"
-            android:title="@string/ai_creation_video_reuse_image"
-            app:iconSpaceReserved="false" />
-
         <io.legado.app.lib.prefs.Preference
             android:key="aiCreationVideoAddProvider"
             android:summary="@string/ai_creation_video_add_provider_summary"

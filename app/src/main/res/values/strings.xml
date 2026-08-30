@@ -443,8 +443,6 @@
     <string name="ai_creation_image_test_connection_summary">Request one image with the full provider config; the result goes to the creation cache</string>
     <string name="ai_creation_image_test_running">Testing image generation…</string>
     <string name="ai_creation_image_test_success">Test succeeded, image returned</string>
-    <string name="ai_creation_video_reuse_image">Video reuses image provider</string>
-    <string name="ai_creation_video_reuse_image_summary">On: video uses the image provider config; off: configure video providers separately</string>
     <string name="ai_creation_video_add_provider">Add video provider</string>
     <string name="ai_creation_video_add_provider_summary">Add a custom provider; built-in: SiliconFlow, Zhipu</string>
     <string name="ai_creation_video_manage_providers">Manage video providers</string>

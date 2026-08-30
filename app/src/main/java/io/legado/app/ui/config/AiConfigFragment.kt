@@ -205,7 +205,6 @@ class AiConfigFragment : PreferenceFragment(),
             key == PreferKey.aiChapterPurifyReuseCurrentModel ||
             key == PreferKey.aiChapterPurifyRequestTemplate ||
             key == PreferKey.aiCreationReuseCurrentModel ||
-            key == PreferKey.aiCreationVideoReuseImage ||
             key == PreferKey.aiStoryboardReuseCurrentModel ||
             key == PreferKey.aiSseIdleTimeoutSeconds ||
             key == PreferKey.aiGenerationTimeoutSeconds ||
@@ -2230,19 +2229,7 @@ class AiConfigFragment : PreferenceFragment(),
             AiCreationProviderStore.imageCurrentModelId.ifBlank {
                 getString(R.string.ai_creation_current_model_empty)
             }
-        // —— 视频供应商（复用图片时隐藏子项） ——
-        val creationVideoReuseImage = AiCreationProviderStore.videoReuseImage
-        findPreference<SwitchPreference>(PreferKey.aiCreationVideoReuseImage)?.isChecked =
-            creationVideoReuseImage
-        listOf(
-            "aiCreationVideoAddProvider",
-            "aiCreationVideoManageProviders",
-            "aiCreationVideoAddModel",
-            "aiCreationVideoManageModels",
-            "aiCreationVideoTestConnection"
-        ).forEach { key ->
-            findPreference<Preference>(key)?.isVisible = !creationVideoReuseImage
-        }
+        // —— 视频供应商（与图片各自独立，始终可见） ——
         findPreference<Preference>("aiCreationVideoManageProviders")?.summary =
             AiCreationProviderStore.videoCurrentProvider?.name
                 ?: getString(R.string.ai_creation_current_provider_empty)

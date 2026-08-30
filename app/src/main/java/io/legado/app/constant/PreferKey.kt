@@ -159,7 +159,6 @@ object PreferKey {
     const val aiCreationVideoModelList = "aiCreationVideoModelList"
     const val aiCreationVideoCurrentProviderId = "aiCreationVideoCurrentProviderId"
     const val aiCreationVideoCurrentModelId = "aiCreationVideoCurrentModelId"
-    const val aiCreationVideoReuseImage = "aiCreationVideoReuseImage"
     const val aiEnterToSend = "aiEnterToSend"
     const val aiEnabledToolNames = "aiEnabledToolNames"
     const val aiTavilyEnabled = "aiTavilyEnabled"

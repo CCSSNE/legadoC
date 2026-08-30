@@ -442,8 +442,6 @@
     <string name="ai_creation_image_test_connection_summary">用当前供应商全部配置真实请求一张图片，结果计入创作缓存</string>
     <string name="ai_creation_image_test_running">正在测试图片生成链路…</string>
     <string name="ai_creation_image_test_success">测试成功，已返回图片</string>
-    <string name="ai_creation_video_reuse_image">视频供应商复用图片</string>
-    <string name="ai_creation_video_reuse_image_summary">开启后视频复用图片供应商配置；关闭后单独配置视频供应商</string>
     <string name="ai_creation_video_add_provider">添加视频供应商</string>
     <string name="ai_creation_video_add_provider_summary">添加自定义视频供应商，内置硅基流动与智谱</string>
     <string name="ai_creation_video_manage_providers">管理视频供应商</string>

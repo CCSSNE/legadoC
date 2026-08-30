@@ -16,7 +16,8 @@ import java.util.UUID
 /**
  * AI 创作图片/视频供应商配置：
  * 供应商管连线协议（Base URL / API Key / 请求头 / 变量定义 / 请求模板），
- * 模型挂在供应商下；图片与视频各持一套，视频可整体复用图片的配置。
+ * 模型挂在供应商下；图片与视频各持一套完整独立的供应商与模型体系，
+ * 两者的 Base URL、变量定义、请求模板必然不同，不存在复用关系。
  */
 @Keep
 data class AiCreationProviderConfig(
@@ -145,10 +146,6 @@ object AiCreationProviderStore {
         get() = imageCurrentModel?.modelId.orEmpty()
 
     // ———————— 视频供应商 ————————
-
-    var videoReuseImage: Boolean
-        get() = appCtx.getPrefBoolean(PreferKey.aiCreationVideoReuseImage, true)
-        set(value) = appCtx.putPrefBoolean(PreferKey.aiCreationVideoReuseImage, value)
 
     var videoProviderList: List<AiCreationProviderConfig>
         get() {
