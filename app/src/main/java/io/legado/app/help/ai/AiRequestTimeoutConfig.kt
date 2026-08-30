@@ -11,7 +11,7 @@ import splitties.init.appCtx
 object AiRequestTimeoutConfig {
 
     const val DEFAULT_SSE_IDLE_TIMEOUT_SECONDS = 30
-    const val DEFAULT_GENERATION_TIMEOUT_SECONDS = 120
+    const val DEFAULT_GENERATION_TIMEOUT_SECONDS = 300
 
     const val MIN_SSE_IDLE_TIMEOUT_SECONDS = 5
     const val MAX_SSE_IDLE_TIMEOUT_SECONDS = 300
@@ -19,7 +19,6 @@ object AiRequestTimeoutConfig {
     const val MAX_GENERATION_TIMEOUT_SECONDS = 900
     const val MIN_THINKING_INTERRUPT_SECONDS = 5
     const val MAX_THINKING_INTERRUPT_SECONDS = 600
-    const val DEFAULT_THINKING_INTERRUPT_SECONDS = 5
     const val DEFAULT_THINKING_INTERRUPT_MAX_COUNT = 3
     const val MIN_THINKING_INTERRUPT_MAX_COUNT = 1
     const val MAX_THINKING_INTERRUPT_MAX_COUNT = 20
@@ -47,8 +46,8 @@ object AiRequestTimeoutConfig {
     /** Null keeps the existing generation-timeout path. */
     var thinkingInterruptSeconds: Int?
         get() {
-            val stored = appCtx.getPrefString(PreferKey.aiThinkingInterruptSeconds)
-            if (stored == null) return DEFAULT_THINKING_INTERRUPT_SECONDS
+            // 未配置即默认不打断（返回 null，走生成总超时路径）
+            val stored = appCtx.getPrefString(PreferKey.aiThinkingInterruptSeconds) ?: return null
             val raw = stored.trim()
             if (raw.isEmpty()) return null
             val value = raw.toIntOrNull()
