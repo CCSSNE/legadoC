@@ -1,0 +1,32 @@
+#!/bin/sh
+# 防泄露保护（AGENTS.md 第 3、5 节）：本地 own 是完整私有历史，
+# 禁止直接推向公开仓 origin/own；发布必须走仓库根 publish-oss-source.ps1
+# 的临时克隆（filter-repo 清洗后强推）。主仓库唯一合法远程推送目标是 private。
+# 本脚本只做机械兜底，不改规则；规则变更时需同步更新。
+
+REMOTE_NAME="$1"
+REMOTE_URL="$2"
+
+# 判定目标是否为公开仓：远程名为 origin，或 name/URL 以 legadoC.git 结尾
+# （覆盖 git push <URL> 直传形式；私有仓为 legadoC-private.git，不匹配）
+is_origin=""
+if [ "$REMOTE_NAME" = "origin" ]; then
+  is_origin=1
+elif printf '%s' "$REMOTE_NAME" | LC_ALL=C grep -qiE 'legadoC\.git$' \
+  || printf '%s' "$REMOTE_URL" | LC_ALL=C grep -qiE 'legadoC\.git$'; then
+  is_origin=1
+fi
+[ -n "$is_origin" ] || exit 0
+
+# 读取待推送 ref：<local ref> <local sha> <remote ref> <remote sha>
+while read -r local_ref local_sha remote_ref remote_sha; do
+  case "$remote_ref" in
+    refs/heads/own)
+      echo "pre-push: 禁止直接向公开仓 $REMOTE_NAME 推送 own 分支（泄露保护）" >&2
+      echo "请改用仓库根 publish-oss-source.ps1 发布清洗镜像到 origin/own" >&2
+      exit 1
+      ;;
+  esac
+done
+
+exit 0

@@ -1,0 +1,24 @@
+#!/bin/sh
+# 项目规则 AGENTS.md 第 5 节 Git：提交说明必须为中文。
+# 本脚本只做机械兜底，不改规则；规则变更时需同步更新。
+# 豁免 merge / revert（其默认消息为英文，属正常 Git 操作）。
+
+MSG_FILE="$1"
+[ -n "$MSG_FILE" ] || exit 0
+
+# 豁免自动生成的英文提交
+if head -n 1 "$MSG_FILE" | LC_ALL=C grep -qE '^Merge|^Revert'; then
+  exit 0
+fi
+
+# 校验提交说明含非 ASCII 字节（中文提交必然含 UTF-8 多字节字符）。
+# 注意：MSYS2 GNU grep 的 ERE 不支持 \xHH 转义，无法用字节区间类匹配中文，
+# 故先 tr 去掉换行/回车，再用 [^ -~] 探测 0x80 以上字节。
+if LC_ALL=C tr -d '\n\r' < "$MSG_FILE" | LC_ALL=C grep -q '[^ -~]'; then
+  exit 0
+fi
+
+echo "commit-msg: 提交说明必须包含中文（AGENTS.md 第 5 节 Git 规则）" >&2
+echo "当前提交信息：" >&2
+cat "$MSG_FILE" >&2
+exit 1
