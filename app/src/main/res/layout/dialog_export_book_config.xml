@@ -229,6 +229,20 @@
             </LinearLayout>
 
             <LinearLayout
+                android:id="@+id/row_export_tts_cache"
+                style="@style/ReadColorRow">
+
+                <TextView
+                    style="@style/ReadColorRowTitle"
+                    android:text="@string/export_tts_cache" />
+
+                <TextView
+                    android:id="@+id/tv_export_tts_cache_value"
+                    style="@style/ReadColorRowValue" />
+
+            </LinearLayout>
+
+            <LinearLayout
                 android:id="@+id/row_custom_export"
                 style="@style/ReadColorRow">
 

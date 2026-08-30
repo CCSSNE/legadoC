@@ -1474,6 +1474,13 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefBoolean(PreferKey.exportBookmarks, value)
         }
 
+    // TXT-ZIP 导出附带 TTS 音频缓存（体积大且可重新合成，默认不勾选）
+    var exportTtsCache: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.exportTtsCache, false)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.exportTtsCache, value)
+        }
+
     var epubExportTitleColor: String?
         get() = appCtx.getPrefString(PreferKey.epubExportTitleColor)
         set(value) {

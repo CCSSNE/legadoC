@@ -1,5 +1,6 @@
 package io.legado.app.help.tts
 
+import android.speech.tts.TextToSpeech
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookHelp
@@ -10,7 +11,12 @@ import io.legado.app.utils.GSON
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.StringUtils
 import io.legado.app.utils.fromJsonObject
+import kotlinx.coroutines.suspendCancellableCoroutine
+import splitties.init.appCtx
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.coroutines.resume
 
 /**
  * TTS 音频缓存唯一数据所有者。
@@ -153,4 +159,37 @@ object TtsCacheParams {
     /** 音色 key：引擎在合成实例上实际生效的 voice name；拿不到时记 default。 */
     fun voiceKey(voiceName: String?): String =
         voiceName?.takeIf { it.isNotBlank() } ?: TtsCacheStore.DEFAULT_VOICE_KEY
+
+    /**
+     * 创建系统 TextToSpeech 实例（engine 为空表示系统默认引擎），初始化完成后返回；
+     * 引擎不可用返回 null。批量缓存执行器与缓存归档的音色候选枚举共用此入口。
+     */
+    suspend fun createSystemTts(engine: String?): TextToSpeech? =
+        suspendCancellableCoroutine { cont ->
+            val resumed = AtomicBoolean(false)
+            fun finish(instance: TextToSpeech?) {
+                if (resumed.compareAndSet(false, true)) cont.resume(instance)
+            }
+
+            // init 回调经主线程异步投递，先建实例再登记；holder 兜住极端早到回调
+            val holder = AtomicReference<TextToSpeech?>()
+            val callback: (Int) -> Unit = { status ->
+                val instance = holder.get()
+                when {
+                    instance == null -> Unit
+                    status == TextToSpeech.SUCCESS -> finish(instance)
+                    else -> {
+                        runCatching { instance.shutdown() }
+                        finish(null)
+                    }
+                }
+            }
+            val instance = if (engine.isNullOrBlank()) {
+                TextToSpeech(appCtx, callback)
+            } else {
+                TextToSpeech(appCtx, callback, engine)
+            }
+            holder.set(instance)
+            cont.invokeOnCancellation { runCatching { instance.shutdown() } }
+        }
 }

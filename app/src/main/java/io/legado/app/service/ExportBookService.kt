@@ -48,6 +48,8 @@ import io.legado.app.help.review.ReviewSnapshotStore
 import io.legado.app.help.illustration.imageSrcsFromJson
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.exoplayer.ExoPlayerHelper
+import io.legado.app.help.tts.TtsCacheArchive
+import io.legado.app.help.tts.TtsCacheStore
 import io.legado.app.model.ReadBook
 import io.legado.app.model.localBook.EpubFile
 import io.legado.app.model.localBook.LocalBook
@@ -144,6 +146,7 @@ class ExportBookService : BaseService() {
         val pictureFile: Boolean = AppConfig.exportPictureFile,
         val exportBookmarks: Boolean = AppConfig.exportBookmarks,
         val exportReviews: Boolean = AppConfig.exportReviews,
+        val exportTtsCache: Boolean = AppConfig.exportTtsCache,
         val parallelExport: Boolean = AppConfig.parallelExportBook,
         val bookExportFileName: String? = AppConfig.bookExportFileName,
         val episodeExportFileName: String? = AppConfig.episodeExportFileName,
@@ -203,6 +206,10 @@ class ExportBookService : BaseService() {
                         exportReviews = intent.getBooleanExtra(
                             "exportReviews",
                             AppConfig.exportReviews
+                        ),
+                        exportTtsCache = intent.getBooleanExtra(
+                            "exportTtsCache",
+                            AppConfig.exportTtsCache
                         ),
                         parallelExport = intent.getBooleanExtra(
                             "parallelExportBook",
@@ -532,6 +539,13 @@ class ExportBookService : BaseService() {
         } else {
             null
         }
+        // TTS 音频缓存归档：按清单收集已缓存的朗读单元音频，
+        // 导入端以清单重算缓存 key 落位，回导后可直接命中
+        val tmpTtsCacheDir = if (config.exportTtsCache) {
+            exportTtsCacheArchive(book, tmpRoot)
+        } else {
+            null
+        }
         try {
             val bookArchiveEntries = exportBookArchiveMetadata(book, tmpRoot, txtName)
             val tmpAudioManifest = if (book.isAudio) {
@@ -596,6 +610,7 @@ class ExportBookService : BaseService() {
             tmpReviewsDir?.takeIf { dir ->
                 dir.exists() && (dir.listFiles()?.isNotEmpty() == true)
             }?.let { zipEntries.add(it) }
+            tmpTtsCacheDir?.takeIf { it.isDirectory }?.let { zipEntries.add(it) }
             if (book.isAudio) {
                 zipAudioBookArchive(book, zipEntries, tmpZip)
             } else {
@@ -611,6 +626,61 @@ class ExportBookService : BaseService() {
         } finally {
             FileUtils.delete(tmpRoot)
         }
+    }
+
+    /**
+     * 收集 TTS 音频缓存归档：逐章排版推导朗读单元，按 key 维度候选枚举命中的
+     * 缓存文件，产出 tts_cache/ 目录（单元文件 + manifest 清单）。清单与文件在
+     * 复制阶段重新对账，收集后被打包前清除/删改的单元自动剔除。无可导出内容
+     * 返回 null。
+     */
+    private suspend fun exportTtsCacheArchive(book: Book, tmpRoot: File): File? {
+        exportMsg[book.bookUrl] = "正在收集 TTS 音频缓存"
+        postEvent(EventBus.EXPORT_BOOK, book.bookUrl)
+        val manifest = TtsCacheArchive.collectManifest(book) { done, total ->
+            exportMsg[book.bookUrl] = "正在收集 TTS 音频缓存 $done/$total"
+            postEvent(EventBus.EXPORT_BOOK, book.bookUrl)
+        } ?: run {
+            AppLog.put("TTS 音频缓存导出：无已缓存的 TTS 音频（${book.name}）")
+            return null
+        }
+        val exportDir = File(tmpRoot, TtsCacheStore.DIR_NAME)
+        val keptChapters = manifest.chapters.mapNotNull { chapter ->
+            val chapterDir = File(exportDir, chapter.stem)
+            FileUtils.createFolderIfNotExist(chapterDir.absolutePath)
+            val keptUnits = chapter.units.mapNotNull { unit ->
+                currentCoroutineContext().ensureActive()
+                val source = File(
+                    TtsCacheStore.ttsCacheDir(book),
+                    "${chapter.stem}/${unit.file}",
+                )
+                if (!source.isFile) return@mapNotNull null
+                val target = File(chapterDir, unit.file)
+                source.copyTo(target, overwrite = true)
+                if (!target.isFile || target.length() != source.length()) {
+                    AppLog.put("TTS 音频缓存导出：复制不完整，跳过 ${chapter.stem}/${unit.file}")
+                    return@mapNotNull null
+                }
+                unit
+            }
+            if (keptUnits.isEmpty()) {
+                FileUtils.delete(chapterDir)
+                null
+            } else {
+                chapter.copy(units = keptUnits)
+            }
+        }
+        if (keptChapters.isEmpty()) {
+            FileUtils.delete(exportDir)
+            AppLog.put("TTS 音频缓存导出：缓存文件在打包前被清除（${book.name}）")
+            return null
+        }
+        val keptManifest = manifest.copy(chapters = keptChapters)
+        File(exportDir, TtsCacheArchive.MANIFEST_FILE_NAME)
+            .writeText(GSON.toJson(keptManifest), Charsets.UTF_8)
+        val unitCount = keptChapters.sumOf { it.units.size }
+        AppLog.put("TTS 音频缓存导出：${book.name} ${keptChapters.size} 章 $unitCount 个音频单元")
+        return exportDir
     }
 
     private fun exportBookArchiveMetadata(

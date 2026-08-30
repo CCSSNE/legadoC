@@ -11,15 +11,10 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.exception.NoStackTraceException
-import io.legado.app.help.book.BookHelp
-import io.legado.app.help.book.ContentProcessor
-import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.cache.CacheOperationDiagnostics
 import io.legado.app.help.cache.CacheWorkerLease
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.analyzeRule.AnalyzeUrl
-import io.legado.app.ui.book.read.page.provider.ChapterProvider
-import io.legado.app.ui.book.read.page.entities.TextChapter
 import io.legado.app.utils.StringUtils
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -29,8 +24,6 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Semaphore
@@ -41,7 +34,6 @@ import org.mozilla.javascript.WrappedException
 import splitties.init.appCtx
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.resume
 
 /**
@@ -208,51 +200,32 @@ internal object TtsCacheManager {
         val trace = CacheOperationDiagnostics.begin(diagnostics, "TTS_CHAPTER")
         try {
             // 1. 正文（TEXT+TTS 只读本领域产物；正文缺失直接失败，不静默兜底）
-            val rawContent = BookHelp.getContent(book, chapter)
-            if (rawContent.isNullOrBlank()) {
-                TtsCacheLog.put("第${chapter.index + 1}章 正文不可用，无法合成")
-                trace.fail(IllegalStateException("body content unavailable"))
-                return false
+            return when (val unitsResult = TtsChapterUnits.of(book, chapter, scope)) {
+                is TtsChapterUnits.Result.ContentUnavailable -> {
+                    TtsCacheLog.put("第${chapter.index + 1}章 正文不可用，无法合成")
+                    trace.fail(IllegalStateException("body content unavailable"))
+                    false
+                }
+
+                is TtsChapterUnits.Result.LayoutFailed -> {
+                    TtsCacheLog.put("第${chapter.index + 1}章 排版失败")
+                    trace.fail(IllegalStateException("text chapter layout failed"))
+                    false
+                }
+
+                is TtsChapterUnits.Result.Ok -> {
+                    // 2. 朗读单元序列（与 BaseReadAloudService.prepareReadAloudChapter 同款）
+                    val contentList = unitsResult.units
+                    // 3. 逐单元合成
+                    val success = synthesizeChapter(task, contentList, trace)
+                    if (success) {
+                        trace.done(CacheOperationDiagnostics.Metrics(unitCount = contentList.size))
+                    } else {
+                        trace.fail(IllegalStateException("one or more tts units failed"))
+                    }
+                    success
+                }
             }
-            // 2. 与朗读引擎同参排版：替换规则 + 标题处理 + TextChapter 布局
-            val contentProcessor = ContentProcessor.get(book.name, book.origin)
-            val displayTitle = chapter.getDisplayTitle(
-                contentProcessor.getTitleReplaceRules(),
-                book.getUseReplaceRule(),
-                replaceBook = book.toReplaceBook(),
-            )
-            val contents = contentProcessor.getContent(
-                book,
-                chapter,
-                rawContent,
-                includeTitle = false,
-            )
-            val textChapter = ChapterProvider.getTextChapterAsync(
-                scope,
-                book,
-                chapter,
-                displayTitle,
-                contents,
-                book.simulatedTotalChapterNum(),
-            )
-            textChapter.layoutChannel.receiveAsFlow().collect()
-            if (!textChapter.isCompleted || textChapter.pages.isEmpty()) {
-                TtsCacheLog.put("第${chapter.index + 1}章 排版失败")
-                trace.fail(IllegalStateException("text chapter layout failed"))
-                return false
-            }
-            // 3. 朗读单元序列（与 BaseReadAloudService.prepareReadAloudChapter 同款）
-            val contentList = textChapter.getNeedReadAloud(0, AppConfig.pageSplit, 0)
-                .split("\n")
-                .filter { it.isNotEmpty() }
-            // 4. 逐单元合成
-            val success = synthesizeChapter(task, contentList, trace)
-            if (success) {
-                trace.done(CacheOperationDiagnostics.Metrics(unitCount = contentList.size))
-            } else {
-                trace.fail(IllegalStateException("one or more tts units failed"))
-            }
-            return success
         } catch (error: Throwable) {
             trace.fail(error)
             throw error
@@ -433,7 +406,7 @@ internal object TtsCacheManager {
     ): Boolean {
         val book = task.book
         val chapter = task.chapter
-        val tts = createTextToSpeech(engine)
+        val tts = TtsCacheParams.createSystemTts(engine)
         if (tts == null) {
             TtsCacheLog.put("第${chapter.index + 1}章 TTS 引擎初始化失败")
             return false
@@ -485,34 +458,6 @@ internal object TtsCacheManager {
             runCatching { tts.shutdown() }
         }
     }
-
-    private suspend fun createTextToSpeech(engine: String?): TextToSpeech? =
-        suspendCancellableCoroutine { cont ->
-            val resumed = AtomicBoolean(false)
-            fun finish(instance: TextToSpeech?) {
-                if (resumed.compareAndSet(false, true)) cont.resume(instance)
-            }
-            // init 回调经主线程异步投递，先建实例再登记；holder 兜住极端早到回调
-            val holder = AtomicReference<TextToSpeech?>()
-            val callback: (Int) -> Unit = { status ->
-                val instance = holder.get()
-                when {
-                    instance == null -> Unit
-                    status == TextToSpeech.SUCCESS -> finish(instance)
-                    else -> {
-                        runCatching { instance.shutdown() }
-                        finish(null)
-                    }
-                }
-            }
-            val instance = if (engine.isNullOrBlank()) {
-                TextToSpeech(appCtx, callback)
-            } else {
-                TextToSpeech(appCtx, callback, engine)
-            }
-            holder.set(instance)
-            cont.invokeOnCancellation { runCatching { instance.shutdown() } }
-        }
 
     private suspend fun synthesizeUnit(
         tts: TextToSpeech,

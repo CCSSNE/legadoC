@@ -915,6 +915,7 @@
     <string name="style">樣式</string>
     <string name="group_style">分組樣式</string>
     <string name="export_file_name">匯出檔案名</string>
+    <string name="export_tts_cache">匯出 TTS 音訊快取</string>
     <string name="reset">重設</string>
     <string name="null_url">url為空</string>
     <string name="dict">字典</string>

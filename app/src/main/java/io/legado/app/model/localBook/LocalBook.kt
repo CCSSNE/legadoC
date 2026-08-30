@@ -46,6 +46,8 @@ import io.legado.app.help.book.removeLocalUriCache
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.tts.TtsCacheArchive
+import io.legado.app.help.tts.TtsCacheStore
 import io.legado.app.lib.webdav.WebDav
 import io.legado.app.lib.webdav.WebDavException
 import io.legado.app.model.analyzeRule.AnalyzeUrl
@@ -575,6 +577,7 @@ object LocalBook {
             restoreBookCoverFromArchive(archiveFileDoc, importedArchiveBooks, manifest)
         }
         restoreIllustrationsFromArchive(archiveFileDoc, books, audioChapterMapping)
+        restoreTtsCacheFromArchive(archiveFileDoc, importedArchiveBooks, audioChapterMapping)
         return books
     }
 
@@ -994,6 +997,51 @@ object LocalBook {
         }.onFailure { e ->
             if (e is ReviewArchiveIntegrityException) throw e.cause ?: e
             AppLog.put("还原配图数据失败\n${e.localizedMessage}", e)
+        }
+    }
+
+    /**
+     * 识别 TTS 音频缓存归档（tts_cache/ + tts_cache_manifest.json），按清单重算
+     * 缓存 key 落位到导入书的缓存目录。章节身份用与评论快照一致的本地章节匹配
+     * 策略（宁可漏迁也不绑错章）；单元落位全程 key 寻址，映射偏差只会 miss 后
+     * 重新合成，不会错播。
+     */
+    private fun restoreTtsCacheFromArchive(
+        archiveFileDoc: FileDoc,
+        importedBooks: List<ImportedArchiveBook>,
+        audioChapterMapping: AudioArchiveImportMapping?,
+    ) {
+        kotlin.runCatching {
+            val manifestEntryName = TtsCacheArchive.MANIFEST_FILE_NAME
+            val cacheDirName = "${TtsCacheStore.DIR_NAME}/"
+            fun isArchiveEntry(entryName: String): Boolean {
+                val name = entryName.replace('\\', '/').removePrefix("./")
+                return name == manifestEntryName || name.startsWith(cacheDirName)
+            }
+            if (ArchiveUtils.getArchiveFilesName(archiveFileDoc) { isArchiveEntry(it) }
+                    .isEmpty()
+            ) {
+                return
+            }
+            val extracted = ArchiveUtils.deCompress(archiveFileDoc) { isArchiveEntry(it) }
+            val manifestFile = extracted.firstOrNull { it.name == manifestEntryName } ?: return
+            val manifest = GSON.fromJsonObject<TtsCacheArchive.Manifest>(manifestFile.readText())
+                .getOrNull() ?: return
+            val importedBook = audioChapterMapping?.let { mapping ->
+                importedBooks.singleOrNull { it.bookUrl == mapping.bookUrl }
+            } ?: importedBooks.firstOrNull() ?: return
+            val archiveRootDir = manifestFile.parentFile ?: return
+            val localChapters = appDb.bookChapterDao.getChapterList(importedBook.bookUrl)
+            val report = TtsCacheArchive.restore(
+                importedBook,
+                manifest,
+                archiveRootDir,
+            ) { index, title ->
+                matchLocalChapter(localChapters, index, title)
+            }
+            AppLog.put("导入 TTS 音频缓存（${importedBook.name}）：$report")
+        }.onFailure { e ->
+            AppLog.put("导入 TTS 音频缓存失败\n${e.localizedMessage}", e)
         }
     }
 
