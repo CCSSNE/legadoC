@@ -44,6 +44,13 @@ data class ReadAloudPositionUpdate(
     val previousPosition: ReadAloudPosition?,
     val switchConfirmed: Boolean,
     val generation: Long,
+    /**
+     * 用户显式传送标记：本次位置发布来自“上一章/下一章、拖动朗读进度条”
+     * 这类用户操作（命令层 syncView=true）。显示侧收到后直接走原语B
+     * （backToAloudProgress）对齐，不走跟随规则判定。事件元数据，
+     * 不是存储的跟随/脱钩状态。
+     */
+    val syncView: Boolean,
 )
 
 object ReadAloud {
@@ -71,7 +78,10 @@ object ReadAloud {
 
     /** The engine is the only authority allowed to update and publish this position. */
     @Synchronized
-    fun publishAloudPosition(position: ReadAloudPosition): ReadAloudPositionUpdate {
+    fun publishAloudPosition(
+        position: ReadAloudPosition,
+        syncView: Boolean = false,
+    ): ReadAloudPositionUpdate {
         val previousPosition = aloudPosition
         aloudPosition = position
         val generation = ++positionGeneration
@@ -81,10 +91,16 @@ object ReadAloud {
         }
         AppLog.putDebug(
             "[朗读] 位置发布 ch:${position.chapterIndex} pos:${position.chapterPosition} " +
-                "gen:$generation confirmed:$switchConfirmed " +
+                "gen:$generation confirmed:$switchConfirmed syncView:$syncView " +
                 "prev:${previousPosition?.let { "ch${it.chapterIndex}:${it.chapterPosition}" } ?: "null"}"
         )
-        return ReadAloudPositionUpdate(position, previousPosition, switchConfirmed, generation).also {
+        return ReadAloudPositionUpdate(
+            position,
+            previousPosition,
+            switchConfirmed,
+            generation,
+            syncView,
+        ).also {
             postEvent(EventBus.READ_ALOUD_POSITION, it)
         }
     }
@@ -381,12 +397,24 @@ object ReadAloud {
         }
     }
 
-    fun seekToProgress(context: Context, chapterIndex: Int, position: Int) {
+    /**
+     * 拖动朗读进度条跳转。syncView=true（朗读面板进度条）表示用户显式传送：
+     * 新位置发布带 syncView 标记，显示侧等同再点一次“回原进度”，
+     * 语义与 [prevChapter]/[nextChapter] 一致；沉浸听书页等自身跟随
+     * 进度事件的调用方保持默认 false。
+     */
+    fun seekToProgress(
+        context: Context,
+        chapterIndex: Int,
+        position: Int,
+        syncView: Boolean = false,
+    ) {
         if (BaseReadAloudService.isRun) {
             val intent = Intent(context, commandClass() ?: return)
             intent.action = IntentAction.seekReadAloudProgress
             intent.putExtra("chapterIndex", chapterIndex)
             intent.putExtra("position", position)
+            intent.putExtra("syncView", syncView)
             context.startForegroundServiceCompat(intent)
         }
     }

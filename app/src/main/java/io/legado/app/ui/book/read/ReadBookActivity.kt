@@ -3374,6 +3374,21 @@ class ReadBookActivity : BaseReadBookActivity(),
             // 纯判定（显示页==朗读出发页），无任何存储的跟随/脱钩状态；
             // 显示与朗读的脱节是派生事实（isViewBehindAloud），悬浮窗随之现算。
             lifecycleScope.launch(Main) {
+                if (update.syncView) {
+                    // 用户显式传送（拖动朗读进度条）：等同再点一次“回原进度”，
+                    // 不走跟随规则判定，直接复用原语B对齐；
+                    // 回退方向（跟随规则永不做）与暂停态同样生效。
+                    // 先失效当前页绘制缓存，同页对齐时 upContent 的重绘才会重录红字
+                    binding.readView.invalidateReadAloudHighlight()
+                    AppLog.putDebug(
+                        "[朗读] 显式传送对齐 ch:${position.chapterIndex} pos:${position.chapterPosition} " +
+                            "显示章:${ReadBook.durChapterIndex} 显示pos:${ReadBook.durChapterPos}",
+                        module = LogModule.READ_ALOUD
+                    )
+                    backToAloudProgress()
+                    updateReadAloudPanels()
+                    return@launch
+                }
                 if (!BaseReadAloudService.isPlay()) {
                     AppLog.putDebug(
                         "[朗读] 位置事件忽略(未播放) ch:${position.chapterIndex} pos:${position.chapterPosition}",

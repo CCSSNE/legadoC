@@ -1025,7 +1025,8 @@ abstract class BaseReadAloudService : BaseService(),
             IntentAction.nextParagraph -> nextP()
             IntentAction.seekReadAloudProgress -> seekToReadAloudProgress(
                 intent.getIntExtra("chapterIndex", -1),
-                intent.getIntExtra("position", -1)
+                intent.getIntExtra("position", -1),
+                intent.getBooleanExtra("syncView", false)
             )
             IntentAction.seekReadAloudTextPosition -> seekToReadAloudTextPosition(
                 intent.getIntExtra("chapterIndex", -1),
@@ -1259,19 +1260,20 @@ abstract class BaseReadAloudService : BaseService(),
 
     abstract fun upSpeechRate(reset: Boolean = false)
 
-    fun upTtsProgress(progress: Int) {
+    fun upTtsProgress(progress: Int, syncView: Boolean = false) {
         publishParagraphProgress()
-        postReadAloudTextPosition(progress)
+        postReadAloudTextPosition(progress, syncView)
     }
 
-    protected fun postReadAloudTextPosition(progress: Int) {
+    protected fun postReadAloudTextPosition(progress: Int, syncView: Boolean = false) {
         if (preparedReadAloudStartRequest != readAloudStartRequest) return
         val chapterIndex = currentChapterIndex.takeIf { it >= 0 } ?: ReadBook.durChapterIndex
         val position = ReadAloudPosition(chapterIndex, progress)
         // 引擎只发布朗读位置，绝不直写显示进度（durChapterPos）。
         // 显示是否跟随、何时翻页，全部由 UI 侧跟随规则
-        // （ReadBookActivity.shouldFollowAloudAdvance）基于位置事件现算判定。
-        ReadAloud.publishAloudPosition(position)
+        // （ReadBookActivity.shouldFollowAloudAdvance）基于位置事件现算判定；
+        // 用户显式传送（syncView，如拖动进度条）由观察者直接走原语B对齐。
+        ReadAloud.publishAloudPosition(position, syncView)
     }
 
     private fun publishParagraphProgress() {
@@ -1289,7 +1291,11 @@ abstract class BaseReadAloudService : BaseService(),
         )
     }
 
-    protected open fun seekToReadAloudProgress(chapterIndex: Int, position: Int) {
+    protected open fun seekToReadAloudProgress(
+        chapterIndex: Int,
+        position: Int,
+        syncView: Boolean = false,
+    ) {
         val chapter = textChapter ?: run {
             stopReadAloudOnInvalidPosition("Read aloud seek failed: chapter is missing")
             return
@@ -1337,7 +1343,7 @@ abstract class BaseReadAloudService : BaseService(),
             "Read aloud seek: chapter=$chapterIndex, paragraph=$position, " +
                     "chapterPosition=$readAloudNumber, page=$pageIndex"
         )
-        upTtsProgress(readAloudNumber + 1)
+        upTtsProgress(readAloudNumber + 1, syncView)
         if (resumeAfterSeek) {
             play()
         }

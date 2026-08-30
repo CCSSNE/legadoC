@@ -234,7 +234,7 @@ $apk = 'D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_<version>
 **两个原语：**
 
 - 原语A 双击换段 `setAloudStart(position)`：只写“读哪里”，不联动任何显示状态。所有起点设置归一到它：双击段落（真段首）、从本页读（本页第一段）、强制追页翻页（新页第一段）、选择朗读。
-- 原语B 回原进度 `backToAloudProgress()`：把“看哪里”对齐“读哪里”。自动触发仅一处——用户上一章/下一章（命令层 Intent 携带 `syncView=true`，引擎跳章后显示章节一起切）；其余一切事件默认不触发。
+- 原语B 回原进度 `backToAloudProgress()`：把“看哪里”对齐“读哪里”。自动触发仅两类用户显式传送——上一章/下一章（命令层 Intent 携带 `syncView=true`，引擎跳章后显示章节一起切）、拖动朗读面板进度条（段落/时间两种形态；seek 命令携带 `syncView=true`，新位置发布带 `syncView` 标记，ReadBookActivity 观察者收到后直接走本原语对齐，回退方向与暂停态同样生效）；其余一切事件默认不触发。
 
 **跟随规则（纯判定，无存储）`shouldFollowAloudAdvance(prev, current)`：** 显示物理页 == 朗读出发页（prev 所在页）且位置前进时才写显示进度并翻页；其余（用户翻到别处、回退型起点补读期）一律不动。显示永不被朗读事件拽向后退，“该跳才跳/回退不拽页”由这一条单调性规则全覆盖，不需要地板/闩。
 
@@ -252,7 +252,7 @@ $apk = 'D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_<version>
 
 流程收口：所有改变朗读位置的操作只经 `setAloudStart(position)`；引擎内部光标（`contentList/nowSpeak/readAloudNumber/textChapter/pageIndex/currentChapterIndex/paragraphStartPos`）只能由引擎推进方法读写，对外仅 `publishAloudPosition` / `publishParagraphProgress` 两个出口；引擎跨章推进时“显示章节是否跟随”同为派生判定（`syncView || 显示章==朗读章`），视角在别处时走 `switchReadAloudChapterKeepingView` 只切朗读不动显示。
 
-朗读诊断日志约定：全部走 `AppLog.putDebug`（需开启"记录日志"设置）、统一 `[朗读]` 前缀、归属 `LogModule.READ_ALOUD`（ReadBookActivity/ReadBook/ReadView 等按类名会被误归阅读模块的调用点必须显式传 `module`）；覆盖点为操作层（双击换段/从本页读/手动翻页/回原进度）、位置发布（publish/confirm/cancel/clear）、跟随决策（跟随写显示/不跟随/忽略）、引擎（章节准备/起点偏移/视角保持切章）、状态事件与高亮失效。绘制路径（TextLine/TextPage）禁止打点。用户报 bug 时附上普通日志（勾选朗读模块）即可按链路定位。
+朗读诊断日志约定：全部走 `AppLog.putDebug`（需开启"记录日志"设置）、统一 `[朗读]` 前缀、归属 `LogModule.READ_ALOUD`（ReadBookActivity/ReadBook/ReadView 等按类名会被误归阅读模块的调用点必须显式传 `module`）；覆盖点为操作层（双击换段/从本页读/手动翻页/回原进度/进度条显式传送对齐）、位置发布（publish/confirm/cancel/clear，含 syncView 标记）、跟随决策（跟随写显示/不跟随/忽略）、引擎（章节准备/起点偏移/视角保持切章）、状态事件与高亮失效。绘制路径（TextLine/TextPage）禁止打点。用户报 bug 时附上普通日志（勾选朗读模块）即可按链路定位。
 
 ### 设置默认值
 

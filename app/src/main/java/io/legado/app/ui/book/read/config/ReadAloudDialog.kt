@@ -317,10 +317,13 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
                 trackingReadProgress = false
                 val progress = displayedReadProgress ?: return
                 if (seekBar.progress != progress.position) {
+                    // 用户显式传送：跳到目标位置后再自动“回原进度”一次，
+                    // 显示对齐到新朗读位置（段落/时间两种形态同一条命令）。
                     ReadAloud.seekToProgress(
                         requireContext(),
                         progress.chapterIndex,
-                        seekBar.progress
+                        seekBar.progress,
+                        syncView = true
                     )
                 }
             }

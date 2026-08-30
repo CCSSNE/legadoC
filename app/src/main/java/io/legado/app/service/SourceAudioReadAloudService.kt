@@ -222,7 +222,11 @@ class SourceAudioReadAloudService : BaseReadAloudService(), Player.Listener {
         player.setPlaybackSpeed(speed)
     }
 
-    override fun seekToReadAloudProgress(chapterIndex: Int, position: Int) {
+    override fun seekToReadAloudProgress(
+        chapterIndex: Int,
+        position: Int,
+        syncView: Boolean,
+    ) {
         if (chapterIndex != currentChapterIndex) {
             AppLog.putDebug(
                 "Ignore stale source audio seek: requestedChapter=$chapterIndex, currentChapter=$currentChapterIndex"
@@ -243,7 +247,7 @@ class SourceAudioReadAloudService : BaseReadAloudService(), Player.Listener {
         player.seekTo(position.toLong())
         persistProgress(position)
         publishTimeProgress(position, duration)
-        syncTextPosition(position)
+        syncTextPosition(position, syncView)
     }
 
     override fun onPlaybackStateChanged(playbackState: Int) {
@@ -320,10 +324,13 @@ class SourceAudioReadAloudService : BaseReadAloudService(), Player.Listener {
         )
     }
 
-    private fun syncTextPosition(position: Int) {
+    private fun syncTextPosition(position: Int, syncView: Boolean = false) {
         val chapter = textChapter?.takeIf { it.chapter.index == currentChapterIndex } ?: return
         val paragraphIndex = layoutBinding?.layoutParagraphAt(position) ?: return
-        if (paragraphIndex == lastMappedParagraph) return
+        val paragraphUnchanged = paragraphIndex == lastMappedParagraph
+        // 用户显式传送（拖动进度条）：映射段落未变也要发布一次位置事件，
+        // 阅读页“回原进度”对齐才有目标；常规轮询保持段落变化才发布。
+        if (paragraphUnchanged && !syncView) return
         val paragraphs = chapter.getParagraphs(false)
         val paragraph = paragraphs.getOrNull(paragraphIndex) ?: run {
             // 字幕映射异常只影响正文同步与高亮，不能停止正常播放的音频
@@ -332,11 +339,13 @@ class SourceAudioReadAloudService : BaseReadAloudService(), Player.Listener {
             )
             return
         }
-        lastMappedParagraph = paragraphIndex
-        nowSpeak = paragraphIndex
-        readAloudNumber = paragraph.chapterPosition
-        pageIndex = chapter.getPageIndexByCharIndex(paragraph.chapterPosition)
-        postReadAloudTextPosition(paragraph.chapterPosition + 1)
+        if (!paragraphUnchanged) {
+            lastMappedParagraph = paragraphIndex
+            nowSpeak = paragraphIndex
+            readAloudNumber = paragraph.chapterPosition
+            pageIndex = chapter.getPageIndexByCharIndex(paragraph.chapterPosition)
+        }
+        postReadAloudTextPosition(paragraph.chapterPosition + 1, syncView)
     }
 
     private fun persistProgress(position: Int) {
