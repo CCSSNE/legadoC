@@ -314,6 +314,6 @@ uiautomator2 / ADB
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- `3.26.083016c` / `10770`，2026-08-30（UTC 16 时），`own` 主线（编译锚点 `own @ c4a3b2bb`；基于基线 `10769`（锚点 `98cf0ae7`）后新增提交 `ad3289e8`（彻底重构AI创作供应商路由与提示词模板）、`a2a3702d`（重构AI创作最终提示词链路）、`c4a3b2bb`（高级AI设置统一控制AI创作分组显示））。本次编译一次通过，无源码错误。BUILD SUCCESSFUL in 4m 14s（75 actionable tasks: 20 executed, 55 up-to-date），err.log 为空，退出码 0。`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.083016c` / `10770`、中文名 `阅读 C`（zh）、架构 `arm64-v8a`、compileSdk 36；`apksigner` 完整执行退出码 0（Signer #1 CN=Android Debug，SHA-256 `70cb88ca...`）。产物 `legado_app_3.26.083016_10770.apk`（Gradle 自动命名）收录于 `app\build\outputs\apk\app\c` 并备份至 `D:\AI\audio\build-tmp`，旧 `10769` APK 已由 Gradle 重建产物目录自动清除。构建后 `gradlew --stop`、无残留构建进程；未安装到模拟器、未做正式回归。
+- `3.26.083017c` / `10771`，2026-08-30（UTC 17 时），`own` 主线（编译锚点 `own @ 623735b8`；基于基线 `10770`（锚点 `3bb95606`）后新增提交 `623735b8`（修复AI创作占位符正则初始化崩溃））。本次编译一次通过，无源码错误。BUILD SUCCESSFUL in 2m 34s（75 actionable tasks: 13 executed, 62 up-to-date），err.log 为空，退出码 0。`aapt` 确认包名 `io.legado.app.c`、版本 `3.26.083017c` / `10771`、中文名 `阅读 C`（zh）、架构 `arm64-v8a`、compileSdk 36；`apksigner` 完整执行退出码 0（Signer #1 CN=Android Debug，SHA-256 `70cb88ca...`）。产物 `legado_app_3.26.083017_10771.apk`（Gradle 自动命名）收录于 `app\build\outputs\apk\app\c` 并备份至 `D:\AI\audio\build-tmp`，旧 `10770` APK 已由 Gradle 重建产物目录自动清除。构建后 `gradlew --stop`、按 PID 清理残留 Gradle/Kotlin daemon；未安装到模拟器、未做正式回归。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
