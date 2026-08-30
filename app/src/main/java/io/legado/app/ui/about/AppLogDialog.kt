@@ -60,11 +60,6 @@ class AppLogDialog : BaseLogDialogFragment() {
         requireContext().sendToClip(AppLog.formatLogs(visibleLogs()))
     }
 
-    /** 导出与显示同一份勾选过滤后的普通日志 */
-    override fun exportLogs() {
-        startExport(visibleLogs(), "app")
-    }
-
     /** 显示与复制共用同一份数据：通用条目始终显示，其余按勾选模块过滤 */
     private fun visibleLogs(): List<AppLog.Entry> {
         return AppLog.logsForView(AppConfig.logShownModules)

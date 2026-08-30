@@ -1670,9 +1670,6 @@
     <string name="check_source_config_summary">Check timeout: %1$ss\nCheck item:%2$s</string>
     <string name="log_shown_modules_t">Normal log modules</string>
     <string name="log_shown_modules_s">Check modules to show their logs in normal log; unchecked modules are hidden and nothing is shown when nothing is checked</string>
-    <string name="log_empty">There are no logs to export.</string>
-    <string name="log_export_success">Logs exported.</string>
-    <string name="log_export_failed">Log export failed: %s</string>
     <string name="log_module_read_aloud">Read aloud</string>
     <string name="log_module_baidu_tts">Baidu TTS</string>
     <string name="log_module_tts_cache">TTS cache</string>

@@ -14,9 +14,4 @@
         android:title="@string/copy"
         app:showAsAction="always" />
 
-    <item
-        android:id="@+id/menu_export"
-        android:title="@string/export"
-        app:showAsAction="always" />
-
 </menu>
