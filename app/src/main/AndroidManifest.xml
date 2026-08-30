@@ -359,6 +359,11 @@
             android:name=".ui.about.ReadRecordActivity"
             android:configChanges="orientation|screenSize"
             android:hardwareAccelerated="true" />
+        <!-- TTS 引擎 V2 管理 -->
+        <activity
+            android:name=".ui.config.TtsEngineManageActivity"
+            android:configChanges="orientation|screenSize"
+            android:hardwareAccelerated="true" />
         <!-- 字典管理 -->
         <activity
             android:name=".ui.dict.rule.DictRuleActivity"

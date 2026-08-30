@@ -2562,4 +2562,32 @@ Selected text or question:
     <string name="ai_creation_scope">Scope</string>
     <string name="ai_creation_scope_summary">Configure the scopes for selected text, background, scene, character, and notes</string>
     <string name="ai_creation_scope_item">%1$s: %2$s</string>
+
+    <string name="tts_engine_v2_manage">TTS engine V2</string>
+    <string name="menu_tts_engine_v2">TTS engine V2</string>
+    <string name="tts_engine_v2_summary_format">%1$s · voices %2$d · %3$s</string>
+    <string name="tts_engine_v2_state_active">active read-aloud engine</string>
+    <string name="tts_engine_v2_state_enabled">enabled</string>
+    <string name="tts_engine_v2_state_disabled">disabled</string>
+    <string name="tts_engine_v2_state_builtin">built-in</string>
+    <string name="tts_engine_v2_create">New custom engine</string>
+    <string name="tts_engine_v2_import">Import engine</string>
+    <string name="tts_engine_v2_restore_classic">Restore classic engine selection</string>
+    <string name="tts_engine_v2_restore_classic_toast">Restored classic engine selection; the read-aloud dialog manages engines as before</string>
+    <string name="tts_engine_v2_use_this">Set as current read-aloud engine</string>
+    <string name="tts_engine_v2_enable">Enable</string>
+    <string name="tts_engine_v2_disable">Disable</string>
+    <string name="tts_engine_v2_edit_hint">Editing method: export → modify → re-import. The script follows the JS contract of options / voices / synthesize.</string>
+    <string name="tts_engine_v2_import_conflict_title">Import conflict</string>
+    <string name="tts_engine_v2_import_conflict_msg">The following read-aloud engines already exist:\n%1$s</string>
+    <string name="tts_engine_v2_import_overwrite">Overwrite</string>
+    <string name="tts_engine_v2_import_keep_both">Keep both</string>
+    <string name="tts_engine_v2_import_success">Imported %1$d read-aloud engines</string>
+    <string name="tts_engine_v2_import_empty">Nothing importable in the file</string>
+    <string name="tts_engine_v2_create_success">New engine created; modify it via export or use import to overwrite</string>
+    <string name="tts_engine_v2_export_success">Engine script exported</string>
+    <string name="tts_engine_v2_delete_confirm">Delete read-aloud engine %1$s?</string>
+    <string name="tts_engine_v2_system_no_delete">System engines cannot be deleted</string>
+    <string name="tts_engine_v2_facade_note">Built-in voice-pack engine: the voice directory is provided by the local plugin and follows the current speaker selection</string>
+    <string name="tts_engine_v2_voice_catalog">Voices</string>
 </resources>

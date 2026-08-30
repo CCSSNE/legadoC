@@ -437,6 +437,12 @@ object TtsEngineStore {
         ReadAloud.upReadAloudClass()
     }
 
+    /** 恢复经典引擎选择：清空 V2 活动引擎，朗读路由回到既有引擎选择路径。 */
+    fun clearActiveEngine() {
+        appCtx.putPrefString(PreferKey.ttsEngineV2ActiveId, "")
+        ReadAloud.upReadAloudClass()
+    }
+
     @Synchronized
     fun selectVoice(engineId: String, voiceId: String?): TtsEngineSetting? {
         val engine = engine(engineId)?.takeIf { it.enabled } ?: return null

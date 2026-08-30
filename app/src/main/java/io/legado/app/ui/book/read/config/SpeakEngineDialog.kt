@@ -32,6 +32,7 @@ import io.legado.app.help.book.isAudio
 import io.legado.app.plugin.ReadAloudEngines
 import io.legado.app.plugin.ReadAloudEnginePlugin
 import io.legado.app.ui.association.ImportHttpTtsDialog
+import io.legado.app.ui.config.TtsEngineManageActivity
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.utils.FileUtils
@@ -268,6 +269,7 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
                 mode = HandleFileContract.FILE
                 allowExtensions = arrayOf("txt", "json")
             }
+            R.id.menu_tts_engine_v2 -> startActivity<TtsEngineManageActivity>()
         }
         return true
     }
