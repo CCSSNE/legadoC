@@ -84,6 +84,10 @@ class AnalyzeUrl(
     private val page: Int? = null,
     private val speakText: String? = null,
     private val speakSpeed: Int? = null,
+    private val speakVolume: Int? = null,
+    private val speakPitch: Int? = null,
+    private val voiceId: String? = null,
+    private val voiceName: String? = null,
     private var baseUrl: String = "",
     private val source: BaseSource? = null,
     private val ruleData: RuleDataInterface? = null,
@@ -372,6 +376,14 @@ class AnalyzeUrl(
             bindings["key"] = key
             bindings["speakText"] = speakText
             bindings["speakSpeed"] = speakSpeed
+            bindings["speakVolume"] = speakVolume
+            bindings["speakPitch"] = speakPitch
+            bindings["voiceId"] = voiceId
+            bindings["voiceName"] = voiceName
+            bindings["voice"] = mapOf(
+                "id" to voiceId.orEmpty(),
+                "name" to voiceName.orEmpty()
+            )
             bindings["book"] = ruleData as? Book
             bindings["source"] = source
             bindings["result"] = result

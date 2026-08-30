@@ -12,6 +12,7 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.tts.TtsEngineSetting
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.plugin.ReadAloudEngines
 import io.legado.app.service.BaseReadAloudService
@@ -217,6 +218,43 @@ object ReadAloud {
     fun upReadAloudClass() {
         postEvent(EventBus.READ_ALOUD_ENGINE_CHANGED, selectedEngineType)
         stop(appCtx)
+    }
+
+    // ===== TTS 引擎 V2（数据驱动引擎层，移植自 legado_NG）集成面 =====
+
+    /** 当前生效的 SCRIPT 类 V2 引擎快照：SCRIPT 引擎经 HttpReadAloudService 合成时与服务侧共享的引擎状态。 */
+    @Volatile
+    var httpTtsEngineV2: TtsEngineSetting? = null
+
+    /** 已为播放准备好的 V2 引擎快照；仅同 id 的更新会被接受，避免过期快照覆盖新选择的引擎。 */
+    @Volatile
+    private var preparedActiveEngine: TtsEngineSetting? = null
+
+    fun updatePreparedTtsEngine(engine: TtsEngineSetting) {
+        if (preparedActiveEngine?.id != engine.id) return
+        preparedActiveEngine = engine
+        if (httpTtsEngineV2?.id == engine.id) {
+            httpTtsEngineV2 = engine
+        }
+    }
+
+    /**
+     * 重算引擎路由但不打断朗读。NG 中此函数重算存储的 aloudClass 字段；
+     * 我们的引擎路由是每次播放时的派生值（无存储字段），等效动作是广播引擎变化
+     * 让依赖引擎状态的界面同步刷新。与 [upReadAloudClass] 的区别是不停止当前朗读。
+     */
+    @Synchronized
+    fun refreshReadAloudClass() {
+        postEvent(EventBus.READ_ALOUD_ENGINE_CHANGED, selectedEngineType)
+    }
+
+    /** 通知正在运行的朗读服务刷新引擎路由参数（语速/音量/音调等运行时参数变更后调用）。 */
+    fun refreshTtsRoute(context: Context) {
+        if (BaseReadAloudService.isRun) {
+            val intent = Intent(context, commandClass() ?: return)
+            intent.action = IntentAction.refreshTtsRoute
+            context.startForegroundServiceCompat(intent)
+        }
     }
 
     /**
