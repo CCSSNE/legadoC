@@ -27,9 +27,10 @@ import io.legado.app.help.ai.AiCreationImageTaskHolder
 import io.legado.app.help.ai.AiCreationProviderConfig
 import io.legado.app.help.ai.AiCreationProviderModel
 import io.legado.app.help.ai.AiCreationProviderStore
+import io.legado.app.help.ai.AiCreationPromptTemplate
 import io.legado.app.help.ai.AiCreationVariables
 import io.legado.app.help.ai.AiCreationVideoHelper
-import io.legado.app.help.ai.AiLogExporter
+import io.legado.app.help.LogExporter
 import io.legado.app.help.ai.AiLogConfig
 import io.legado.app.help.ai.AiRequestTimeoutConfig
 import io.legado.app.help.ai.AiStructuredRequestTemplate
@@ -48,6 +49,8 @@ import io.legado.app.ui.main.ai.AiMcpServerConfig
 import io.legado.app.ui.main.ai.AiProviderConfig
 import io.legado.app.ui.main.ai.AiSkillConfig
 import io.legado.app.ui.about.AiLogDialog
+import org.json.JSONArray
+import org.json.JSONObject
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.setEdgeEffectColor
@@ -178,6 +181,7 @@ class AiConfigFragment : PreferenceFragment(),
             PreferKey.aiCreationProvider -> showSelectCreationProviderDialog()
             PreferKey.aiCreationModel -> showSelectCreationModelDialog()
             PreferKey.aiCreationPromptTemplate -> showCreationPromptDialog()
+            "aiCreationPromptLibrary" -> showPromptLibraryDialog()
             "aiCreationTestConnection" -> testCreationConnection()
             PreferKey.aiCreationScope -> showCreationScopeSettingsDialog()
             "aiCreationImageAddProvider" -> showCreationProviderEditDialog(null, isVideo = false)
@@ -221,7 +225,7 @@ class AiConfigFragment : PreferenceFragment(),
             return
         }
         pendingAiLogs = AppLog.aiLogs
-        exportAiLogLauncher.launch(AiLogExporter.fileName())
+        exportAiLogLauncher.launch(LogExporter.fileName("ai"))
     }
 
     private fun configureApiRedactionPreference() {
@@ -273,7 +277,7 @@ class AiConfigFragment : PreferenceFragment(),
         lifecycleScope.launch {
             val result = withContext(IO) {
                 runCatching {
-                    AiLogExporter.write(requireContext(), uri, logs)
+                    LogExporter.write(requireContext(), uri, logs)
                 }
             }
             result.onSuccess {
@@ -686,8 +690,99 @@ class AiConfigFragment : PreferenceFragment(),
         }
     }
 
-    private fun showCreationManageProvidersDialog(isVideo: Boolean) {
-        val providers = creationProviders(isVideo)
+    /** 提示词库管理：首项为新增，其余条目可选编辑或删除 */
+    private fun showPromptLibraryDialog() {
+        val items = AiCreationConfig.promptLibrary
+        context?.selector(
+            getString(R.string.ai_creation_prompt_library),
+            buildList {
+                add(getString(R.string.ai_creation_prompt_add))
+                items.forEach { add(it.name) }
+            }
+        ) { _, _, index ->
+            if (index == 0) {
+                showPromptEditDialog(null)
+            } else {
+                val item = items[index - 1]
+                context?.selector(
+                    item.name,
+                    listOf(
+                        getString(R.string.ai_edit_provider),
+                        getString(R.string.ai_remove_provider)
+                    )
+                ) { _, action ->
+                    when (action) {
+                        0 -> showPromptEditDialog(item)
+                        else -> confirmRemovePromptTemplate(item)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun showPromptEditDialog(existing: AiCreationPromptTemplate?) {
+        val nameBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
+            editView.hint = getString(R.string.ai_creation_prompt_name_hint)
+            editView.inputType = InputType.TYPE_CLASS_TEXT
+            editView.setText(existing?.name.orEmpty())
+            editView.setSelection(editView.text?.length ?: 0)
+        }
+        alert(
+            title = getString(
+                if (existing == null) R.string.ai_creation_prompt_add
+                else R.string.ai_creation_prompt_edit
+            )
+        ) {
+            customView { nameBinding.root }
+            okButton {
+                val name = nameBinding.editView.text?.toString()?.trim().orEmpty()
+                if (name.isEmpty()) {
+                    return@okButton
+                }
+                val library = AiCreationConfig.promptLibrary
+                if (library.any { it.name == name && it.name != existing?.name }) {
+                    toastOnUi(R.string.ai_creation_prompt_name_exists)
+                    return@okButton
+                }
+                showCreationTemplateEditorDialog(
+                    title = R.string.ai_creation_prompt_edit,
+                    content = existing?.text.orEmpty(),
+                    validate = { text ->
+                        require(text.isNotBlank()) { "提示词内容不能为空" }
+                    }
+                ) { text ->
+                    val others = library.filterNot { it.name == existing?.name }
+                    val updated = others + AiCreationPromptTemplate(name, text)
+                    savePromptLibrary(updated)
+                    refreshUi()
+                }
+            }
+            cancelButton()
+        }
+    }
+
+    private fun confirmRemovePromptTemplate(item: AiCreationPromptTemplate) {
+        alert(
+            title = item.name,
+            message = getString(R.string.ai_creation_prompt_remove_confirm)
+        ) {
+            okButton {
+                savePromptLibrary(AiCreationConfig.promptLibrary.filterNot { it.name == item.name })
+                refreshUi()
+            }
+            cancelButton()
+        }
+    }
+
+    private fun savePromptLibrary(items: List<AiCreationPromptTemplate>) {
+        val array = JSONArray()
+        items.forEach { item ->
+            array.put(JSONObject().put("name", item.name).put("text", item.text))
+        }
+        AiCreationConfig.promptLibraryJson = array.toString()
+    }
+
+    private fun showCreationManageProvidersDialog(isVideo: Boolean) {        val providers = creationProviders(isVideo)
         if (providers.isEmpty()) {
             toastOnUi(R.string.ai_no_providers)
             return
@@ -2185,6 +2280,11 @@ class AiConfigFragment : PreferenceFragment(),
         }
         findPreference<Preference>(PreferKey.aiCreationPromptTemplate)?.summary =
             getString(R.string.ai_creation_prompt_template_summary)
+        findPreference<Preference>("aiCreationPromptLibrary")?.summary =
+            getString(
+                R.string.ai_creation_prompt_library_summary,
+                runCatching { AiCreationConfig.promptLibrary.size }.getOrDefault(0)
+            )
         findPreference<Preference>("aiCreationTestConnection")?.isVisible =
             !creationReuseCurrentModel
         val storyboardReuseCurrentModel = AiStoryboardConfig.reuseCurrentModel

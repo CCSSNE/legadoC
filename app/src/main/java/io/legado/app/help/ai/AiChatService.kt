@@ -151,7 +151,7 @@ object AiChatService {
         systemPrompt: String,
         userContent: String,
         temperature: Double = 0.0,
-        requestTemplate: String,
+        requestTemplate: String? = null,
         onRequestAccepted: suspend () -> Unit = {},
         onStreamProgress: suspend (AiStreamProgress) -> Unit = {}
     ): String {

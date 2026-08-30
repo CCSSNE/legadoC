@@ -70,21 +70,44 @@ data class AiCreationDefinition(
     val groups: List<AiCreationVariableGroup>,
     val variables: List<AiCreationVariable>,
     val routes: List<AiCreationRoute>
-)
+) {
+    /**
+     * 按组 key 过滤归属：图片体系只认图片组，视频体系只认视频组。
+     * JSON 里塞了不归属的组直接忽略，两套体系互不引用。
+     */
+    fun keepGroups(groupKey: String, groupLabel: String): AiCreationDefinition {
+        val kept = groups.filter { it.key == groupKey }
+        require(kept.isNotEmpty() && kept.any { it.variables.isNotEmpty() }) {
+            "变量定义缺少${groupLabel}组"
+        }
+        val keptVariables = kept.flatMap { it.variables }
+        return copy(groups = kept, variables = keptVariables)
+    }
+}
 
 object AiCreationVariables {
 
     const val GROUP_IMAGE = "image"
     const val GROUP_VIDEO = "video"
 
-    //style 控制提示词走向（路由到连环画/单场景请求模板），保留
-    private val styleVariable = AiCreationVariable(
+    //图片组 style：控制提示词走向（路由到连环画/单场景提示词库条目），默认单场景
+    private val imageStyleVariable = AiCreationVariable(
         key = "style",
         label = "画面风格",
         format = AiCreationVariable.FORMAT_OPTIONS,
         options = listOf("连环画", "单场景"),
-        defaultValue = "连环画",
+        defaultValue = "单场景",
         group = GROUP_IMAGE
+    )
+
+    //视频组 style：与图片组同名但完全独立（各自 JSON 各自路由），默认单镜头
+    private val videoStyleVariable = AiCreationVariable(
+        key = "style",
+        label = "画面风格",
+        format = AiCreationVariable.FORMAT_OPTIONS,
+        options = listOf("多镜头", "单镜头"),
+        defaultValue = "单镜头",
+        group = GROUP_VIDEO
     )
 
     //智谱 CogView 官方 size 枚举：选项带比例与横竖标注，values 存纯 API 值
@@ -137,7 +160,7 @@ object AiCreationVariables {
     )
 
     private val cogViewImageVariables = listOf(
-        styleVariable,
+        imageStyleVariable,
         cogViewSizeVariable,
         cogViewQualityVariable,
         cogViewWatermarkVariable
@@ -192,7 +215,7 @@ object AiCreationVariables {
 
     /** 硅基流动 Kolors 版图片组（供内置硅基流动供应商组装变量定义） */
     val kolorsImageVariables = listOf(
-        styleVariable,
+        imageStyleVariable,
         kolorsImageSizeVariable,
         kolorsNegativePromptVariable,
         kolorsStepsVariable,
@@ -200,7 +223,7 @@ object AiCreationVariables {
     )
 
     //视频组按智谱 CogVideoX 官方参数定义；key 统一加 video_ 前缀保证全局唯一
-    private val defaultVideoVariables = listOf(
+    private val zhipuVideoParameters = listOf(
         AiCreationVariable(
             key = "video_quality",
             label = "输出模式",
@@ -264,28 +287,38 @@ object AiCreationVariables {
         )
     )
 
-    private val defaultRoutes = listOf(
+    //图片路由：写在图片供应商的变量定义 JSON 里，按图片 style 选择提示词库条目
+    private val imageRoutes = listOf(
         AiCreationRoute(
-            conditions = mapOf(AI_CREATION_MODE_KEY to GROUP_IMAGE, "style" to "连环画"),
+            conditions = mapOf("style" to "连环画"),
             template = "连环画"
         ),
         AiCreationRoute(
-            conditions = mapOf(AI_CREATION_MODE_KEY to GROUP_IMAGE, "style" to "单场景"),
+            conditions = mapOf("style" to "单场景"),
             template = "单场景"
-        ),
-        AiCreationRoute(
-            conditions = mapOf(AI_CREATION_MODE_KEY to GROUP_VIDEO),
-            template = "视频"
         )
     )
 
-    val defaultJson: String by lazy { buildDefaultJson(cogViewImageVariables) }
+    //视频路由：写在视频供应商的变量定义 JSON 里，按视频 style 选择提示词库条目
+    private val videoRoutes = listOf(
+        AiCreationRoute(
+            conditions = mapOf("style" to "多镜头"),
+            template = "多镜头"
+        ),
+        AiCreationRoute(
+            conditions = mapOf("style" to "单镜头"),
+            template = "单镜头"
+        )
+    )
+
+    /** 智谱 CogView 版图片供应商默认变量定义：仅图片组 + 图片路由 */
+    val defaultJson: String by lazy { buildImageJson(cogViewImageVariables) }
 
     /**
-     * 组装一套完整变量定义 JSON：图片组由调用方按供应商传入（智谱 CogView 或硅基流动 Kolors），
-     * 视频组与路由为公共默认（视频组喂 LLM 视频提示词模板，路由选择请求模板）。
+     * 组装图片供应商变量定义 JSON：图片组由调用方按供应商传入（智谱 CogView 或硅基流动 Kolors），
+     * 路由为公共默认。图片定义不再包含视频组，视频体系完全独立。
      */
-    fun buildDefaultJson(imageVariables: List<AiCreationVariable>): String {
+    fun buildImageJson(imageVariables: List<AiCreationVariable>): String {
         return GSON.toJson(
             AiCreationVariableDoc(
                 groups = listOf(
@@ -293,19 +326,16 @@ object AiCreationVariables {
                         key = GROUP_IMAGE,
                         label = "图片",
                         variables = imageVariables
-                    ),
-                    AiCreationVariableGroup(
-                        key = GROUP_VIDEO,
-                        label = "视频",
-                        variables = defaultVideoVariables
                     )
                 ),
-                routes = defaultRoutes
+                routes = imageRoutes
             )
         )
     }
 
-    private val zhipuVideoVariables = defaultVideoVariables + AiCreationVariable(
+    private val zhipuVideoVariables = listOf(videoStyleVariable) +
+        zhipuVideoParameters +
+        AiCreationVariable(
         key = "watermark_enabled",
         label = "水印",
         format = AiCreationVariable.FORMAT_SWITCH,
@@ -316,7 +346,7 @@ object AiCreationVariables {
     )
 
     //硅基流动视频（Wan）官方参数：image_size 三档 + 负面提示
-    private val siliconFlowVideoVariables = listOf(
+    private val siliconFlowVideoParameters = listOf(
         AiCreationVariable(
             key = "video_size",
             label = "分辨率",
@@ -339,9 +369,14 @@ object AiCreationVariables {
         )
     )
 
-    /** 视频供应商的变量文档：仅视频组 + 视频路由，用于渲染视频请求模板取值 */
+    private val siliconFlowVideoVariables =
+        listOf(videoStyleVariable) + siliconFlowVideoParameters
+
+    /** 视频供应商的变量定义：仅视频组 + 视频路由，与图片体系完全独立 */
     val zhipuVideoVariablesJson: String by lazy { buildVideoVariablesJson(zhipuVideoVariables) }
-    val siliconFlowVideoVariablesJson: String by lazy { buildVideoVariablesJson(siliconFlowVideoVariables) }
+    val siliconFlowVideoVariablesJson: String by lazy {
+        buildVideoVariablesJson(siliconFlowVideoVariables)
+    }
 
     private fun buildVideoVariablesJson(variables: List<AiCreationVariable>): String {
         return GSON.toJson(
@@ -353,12 +388,7 @@ object AiCreationVariables {
                         variables = variables
                     )
                 ),
-                routes = listOf(
-                    AiCreationRoute(
-                        conditions = mapOf(AI_CREATION_MODE_KEY to GROUP_VIDEO),
-                        template = "视频"
-                    )
-                )
+                routes = videoRoutes
             )
         )
     }

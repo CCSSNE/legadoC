@@ -2,8 +2,6 @@ package io.legado.app.help.ai
 
 import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.CreationCard
-import org.json.JSONArray
-import org.json.JSONObject
 
 object AiCreationHelper {
 
@@ -11,17 +9,22 @@ object AiCreationHelper {
         session: AiCreationSession,
         cardsById: Map<Long, CreationCard>
     ): String {
-        val definition = AiCreationConfig.definition
+        //按当前模式取对应体系的变量定义：图片读图片供应商，视频读视频供应商，互不引用
+        val isVideo = session.paramValue(AI_CREATION_MODE_KEY) == AiCreationVariables.GROUP_VIDEO
+        val definition = if (isVideo) {
+            AiCreationConfig.videoDefinition
+        } else {
+            AiCreationConfig.imageDefinition
+        }
         val target = AiCreationConfig.requireModelTarget()
         val values = buildValues(session, cardsById, definition.variables)
         val routeParams = definition.variables.associate {
             it.key to values[it.key].orEmpty()
         } + (AI_CREATION_MODE_KEY to values[AI_CREATION_MODE_KEY].orEmpty())
         val templateName = AiCreationConfig.resolveTemplateName(definition, routeParams)
-        val bodyTemplate = AiCreationConfig.requestTemplateBody(templateName)
+        val promptText = AiCreationConfig.promptTextOf(templateName)
         val systemPrompt = renderTemplate(AiCreationConfig.promptTemplate, values)
-        val userContent = values["素材"].orEmpty()
-        val bodyJson = renderBodyTemplate(bodyTemplate, values)
+        val userContent = renderTemplate(promptText, values)
         AppLog.putAi(
             "AI_CREATION REQUEST\n" +
                 "provider=${target.provider.name}\n" +
@@ -36,8 +39,7 @@ object AiCreationHelper {
             model = target.modelId,
             systemPrompt = systemPrompt,
             userContent = userContent,
-            temperature = 0.7,
-            requestTemplate = bodyJson
+            temperature = 0.7
         )
         return stripThinking(response)
     }
@@ -74,47 +76,6 @@ object AiCreationHelper {
     private fun renderTemplate(template: String, values: Map<String, String>): String {
         return values.entries.fold(template) { acc, (key, value) ->
             acc.replace("\${$key}", value)
-        }
-    }
-
-    private fun renderBodyTemplate(bodyJson: String, values: Map<String, String>): String {
-        val root = try {
-            JSONObject(bodyJson)
-        } catch (throwable: Throwable) {
-            throw IllegalStateException(
-                "请求模板 body 不是合法 JSON：${throwable.message}",
-                throwable
-            )
-        }
-        replaceTokens(root, values)
-        return root.toString()
-    }
-
-    private fun replaceTokens(json: JSONObject, values: Map<String, String>) {
-        val keys = json.keys()
-        while (keys.hasNext()) {
-            val key = keys.next()
-            when (val value = json.opt(key)) {
-                is JSONObject -> replaceTokens(value, values)
-                is JSONArray -> replaceTokens(value, values)
-                is String -> json.put(key, replaceTokensInString(value, values))
-            }
-        }
-    }
-
-    private fun replaceTokens(array: JSONArray, values: Map<String, String>) {
-        for (index in 0 until array.length()) {
-            when (val value = array.opt(index)) {
-                is JSONObject -> replaceTokens(value, values)
-                is JSONArray -> replaceTokens(value, values)
-                is String -> array.put(index, replaceTokensInString(value, values))
-            }
-        }
-    }
-
-    private fun replaceTokensInString(value: String, values: Map<String, String>): String {
-        return values.entries.fold(value) { acc, (key, replacement) ->
-            acc.replace("\${$key}", replacement)
         }
     }
 

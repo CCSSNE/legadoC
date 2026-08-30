@@ -20,9 +20,9 @@ data class AiCreationModelTarget(
     val modelId: String
 )
 
-data class AiCreationNamedTemplate(
+data class AiCreationPromptTemplate(
     val name: String,
-    val body: String
+    val text: String
 )
 
 object AiCreationConfig {
@@ -60,64 +60,50 @@ object AiCreationConfig {
         3. 素材未覆盖的部分按用户消息中的要求补全，不要虚构与素材冲突的设定。
     """.trimIndent()
 
-    private fun defaultTemplateBody(userContent: String): JSONObject {
-        return JSONObject().apply {
-            put("model", "{{model}}")
-            put("stream", true)
-            put(
-                "messages",
-                JSONArray().apply {
-                    put(
-                        JSONObject()
-                            .put("role", "system")
-                            .put("content", "{{systemPrompt}}")
-                    )
-                    put(
-                        JSONObject()
-                            .put("role", "user")
-                            .put("content", userContent)
-                    )
-                }
-            )
-            put("temperature", 0.7)
-        }
-    }
-
-    val defaultRequestTemplatesJson: String by lazy {
+    /**
+     * 提示词库默认 4 条：名字被变量定义里的路由按名字引用。
+     * 图片路由引用连环画/单场景，视频路由引用多镜头/单镜头。
+     */
+    val defaultPromptLibraryJson: String by lazy {
         JSONArray().apply {
             put(
                 JSONObject()
                     .put("name", "连环画")
                     .put(
-                        "body",
-                        defaultTemplateBody(
-                            "本次按连环画分镜脚本生成提示词：将素材拆分为连续分镜，" +
-                                "每格包含画面描述、构图与镜头调度。\n\n素材：\n\${素材}\n\n" +
-                                "风格：\${style}"
-                        )
+                        "text",
+                        "本次按连环画分镜脚本生成提示词：将素材拆分为连续分镜，" +
+                            "每格包含画面描述、构图与镜头调度。\n\n素材：\n\${素材}\n\n" +
+                            "风格：\${style}"
                     )
             )
             put(
                 JSONObject()
                     .put("name", "单场景")
                     .put(
-                        "body",
-                        defaultTemplateBody(
-                            "本次生成单场景精绘提示词：一个完整画面，" +
-                                "涵盖主体、环境、光影与构图。\n\n素材：\n\${素材}\n\n" +
-                                "风格：\${style}"
-                        )
+                        "text",
+                        "本次生成单场景精绘提示词：一个完整画面，" +
+                            "涵盖主体、环境、光影与构图。\n\n素材：\n\${素材}\n\n" +
+                            "风格：\${style}"
                     )
             )
             put(
                 JSONObject()
-                    .put("name", "视频")
+                    .put("name", "多镜头")
                     .put(
-                        "body",
-                        defaultTemplateBody(
-                            "本次生成视频提示词：分辨率 \${video_size}，" +
-                                "帧率 \${video_fps}，时长 \${video_duration} 秒。\n\n素材：\n\${素材}"
-                        )
+                        "text",
+                        "本次生成多镜头视频提示词：将素材拆分为连续镜头，" +
+                            "每个镜头包含画面、动作与运镜描述。\n\n素材：\n\${素材}\n\n" +
+                            "风格：\${style}"
+                    )
+            )
+            put(
+                JSONObject()
+                    .put("name", "单镜头")
+                    .put(
+                        "text",
+                        "本次生成单镜头视频提示词：一个连续镜头，" +
+                            "涵盖主体、动作、环境与运镜。\n\n素材：\n\${素材}\n\n" +
+                            "风格：\${style}"
                     )
             )
         }.toString()
@@ -156,45 +142,54 @@ object AiCreationConfig {
         }
 
     /**
-     * 创作界面与提示词生成使用的变量定义：来自当前图片供应商的「图片变量定义」。
+     * 图片体系的变量定义：来自当前图片供应商的「图片变量定义」JSON，只取图片组。
      */
-    val definition: AiCreationDefinition
+    val imageDefinition: AiCreationDefinition
         get() = AiCreationVariables.parse(AiCreationProviderStore.requireImageVariablesJson())
+            .keepGroups(AiCreationVariables.GROUP_IMAGE, "图片")
 
-    var requestTemplatesJson: String
-        get() = appCtx.getPrefString(PreferKey.aiCreationRequestTemplate)
+    /**
+     * 视频体系的变量定义：来自当前视频供应商的「视频变量定义」JSON，只取视频组。
+     * 与图片体系完全独立，互不引用。
+     */
+    val videoDefinition: AiCreationDefinition
+        get() = AiCreationVariables.parse(AiCreationProviderStore.requireVideoVariablesJson())
+            .keepGroups(AiCreationVariables.GROUP_VIDEO, "视频")
+
+    var promptLibraryJson: String
+        get() = appCtx.getPrefString(PreferKey.aiCreationPromptLibrary)
             ?.takeIf { it.isNotBlank() }
-            ?: defaultRequestTemplatesJson
+            ?: defaultPromptLibraryJson
         set(value) {
             val normalized = value.trim()
-            parseRequestTemplates(normalized)
-            appCtx.putPrefString(PreferKey.aiCreationRequestTemplate, normalized)
+            parsePromptLibrary(normalized)
+            appCtx.putPrefString(PreferKey.aiCreationPromptLibrary, normalized)
         }
 
-    val requestTemplates: List<AiCreationNamedTemplate>
-        get() = parseRequestTemplates(requestTemplatesJson)
+    val promptLibrary: List<AiCreationPromptTemplate>
+        get() = parsePromptLibrary(promptLibraryJson)
 
-    fun parseRequestTemplates(json: String): List<AiCreationNamedTemplate> {
+    fun parsePromptLibrary(json: String): List<AiCreationPromptTemplate> {
         val array = try {
             JSONArray(json)
         } catch (throwable: Throwable) {
             throw IllegalStateException(
-                "AI 创作请求模板必须是 JSON 数组：${throwable.message}",
+                "提示词库必须是 JSON 数组：${throwable.message}",
                 throwable
             )
         }
-        val list = mutableListOf<AiCreationNamedTemplate>()
+        val list = mutableListOf<AiCreationPromptTemplate>()
         for (index in 0 until array.length()) {
             val item = array.optJSONObject(index)
-                ?: throw IllegalStateException("AI 创作请求模板第 ${index + 1} 项必须是对象")
+                ?: throw IllegalStateException("提示词库第 ${index + 1} 项必须是对象")
             val name = item.optString("name").trim()
-            require(name.isNotEmpty()) { "AI 创作请求模板第 ${index + 1} 项缺少识别名 name" }
-            val body = item.optJSONObject("body")
-                ?: throw IllegalStateException("AI 创作请求模板「$name」缺少 body 或 body 不是 JSON 对象")
-            list.add(AiCreationNamedTemplate(name, body.toString()))
+            require(name.isNotEmpty()) { "提示词库第 ${index + 1} 项缺少名字 name" }
+            val text = item.optString("text")
+            require(text.isNotBlank()) { "提示词「$name」的内容为空" }
+            list.add(AiCreationPromptTemplate(name, text))
         }
         val duplicated = list.groupBy { it.name }.filterValues { it.size > 1 }.keys
-        require(duplicated.isEmpty()) { "AI 创作请求模板识别名重复：${duplicated.joinToString("，")}" }
+        require(duplicated.isEmpty()) { "提示词库名字重复：${duplicated.joinToString("，")}" }
         return list
     }
 
@@ -205,15 +200,16 @@ object AiCreationConfig {
         val matched = definition.routes.firstOrNull { route ->
             route.conditions.all { (key, value) -> params[key] == value }
         } ?: throw IllegalStateException(
-            "没有命中任何请求模板路由，当前参数：" +
+            "没有命中任何提示词路由，当前参数：" +
                 params.entries.joinToString("，") { "${it.key}=${it.value}" }
         )
         return matched.template
     }
 
-    fun requestTemplateBody(name: String): String {
-        return requestTemplates.firstOrNull { it.name == name }?.body
-            ?: throw IllegalStateException("路由指向的请求模板不存在：$name")
+    /** 按路由命中的名字从提示词库取提示词文本 */
+    fun promptTextOf(name: String): String {
+        return promptLibrary.firstOrNull { it.name == name }?.text
+            ?: throw IllegalStateException("路由指向的提示词不存在：$name")
     }
 
     /**

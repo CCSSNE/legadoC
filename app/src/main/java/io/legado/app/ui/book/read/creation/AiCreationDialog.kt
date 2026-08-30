@@ -78,7 +78,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
     private var currentPage = 0
     private var generating = false
     private var suppressPromptWatcher = false
-    private var pendingImageAfterPrompt = false
+    private var pendingGenerateAfterPrompt = false
     private var previewPageSize = 1
     private var previewPage = 0
     private val previewAdapter = PreviewAdapter()
@@ -124,13 +124,15 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         session.bookName = bookName
-        val definition = try {
-            AiCreationConfig.definition
+        //图片组来自图片供应商定义，视频组来自视频供应商定义，两套体系各自独立
+        val groups = try {
+            AiCreationConfig.imageDefinition.groups + AiCreationConfig.videoDefinition.groups
         } catch (throwable: Throwable) {
             toastOnUi(throwable.message ?: throwable.javaClass.simpleName)
-            AiCreationVariables.parse(AiCreationVariables.defaultJson)
+            AiCreationVariables.parse(AiCreationVariables.defaultJson).groups +
+                AiCreationVariables.parse(AiCreationVariables.zhipuVideoVariablesJson).groups
         }
-        variableGroups = definition.groups.filter { it.variables.isNotEmpty() }
+        variableGroups = groups.filter { it.variables.isNotEmpty() }
         //参数有记忆：模式恢复到上次选中的分组，无效或首次使用才回落到第一组
         val savedMode = session.paramValue(AI_CREATION_MODE_KEY)
         val initialIndex = variableGroups.indexOfFirst { it.key == savedMode }
@@ -278,8 +280,10 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
         val isVideo = isVideoMode()
         binding.etImageCount.visibility =
             if (page == 2 && !isVideo) View.VISIBLE else View.GONE
-        binding.btnGenerateImage.visibility =
-            if (page == 2 && !isVideo) View.VISIBLE else View.GONE
+        binding.btnGenerateImage.visibility = if (page == 2) View.VISIBLE else View.GONE
+        binding.btnGenerateImage.setText(
+            if (isVideo) R.string.ai_creation_generate_video else R.string.ai_creation_generate_image
+        )
         binding.tvClear.setText(
             if (page == 2) R.string.ai_creation_copy_prompt else R.string.ai_creation_clear
         )
@@ -677,14 +681,14 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
             binding.tvAction.setText(R.string.ai_creation_generate_prompt)
             result.onSuccess { prompt ->
                 session.prompt = prompt
-                if (pendingImageAfterPrompt) {
-                    pendingImageAfterPrompt = false
-                    startImageGeneration(prompt)
+                if (pendingGenerateAfterPrompt) {
+                    pendingGenerateAfterPrompt = false
+                    startGeneration(prompt)
                 } else {
                     showPage(2)
                 }
             }.onFailure { throwable ->
-                pendingImageAfterPrompt = false
+                pendingGenerateAfterPrompt = false
                 binding.tvAction.setText(R.string.ai_creation_generate_prompt)
                 toastOnUi(throwable.message ?: throwable.javaClass.simpleName)
             }
@@ -694,11 +698,36 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
     private fun onGenerateImageClicked() {
         val prompt = binding.etPrompt.text?.toString()?.trim().orEmpty()
         if (prompt.isEmpty()) {
-            pendingImageAfterPrompt = true
+            pendingGenerateAfterPrompt = true
             generatePrompt()
             return
         }
-        startImageGeneration(prompt)
+        startGeneration(prompt)
+    }
+
+    private fun startGeneration(prompt: String) {
+        if (isVideoMode()) {
+            startVideoGeneration(prompt)
+        } else {
+            startImageGeneration(prompt)
+        }
+    }
+
+    private fun startVideoGeneration(prompt: String) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val result = runCatching {
+                val definition = AiCreationConfig.videoDefinition
+                val values = withContext(IO) {
+                    AiCreationHelper.buildValues(session, emptyMap(), definition.variables)
+                }
+                AiCreationImageTaskHolder.startVideo(prompt, values)
+            }
+            result.onSuccess {
+                showPage(3)
+            }.onFailure { throwable ->
+                toastOnUi(throwable.message ?: throwable.javaClass.simpleName)
+            }
+        }
     }
 
     private fun startImageGeneration(prompt: String) {
@@ -710,7 +739,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
             .distinct()
         viewLifecycleOwner.lifecycleScope.launch {
             val result = runCatching {
-                val definition = AiCreationConfig.definition
+                val definition = AiCreationConfig.imageDefinition
                 val cardsById = withContext(IO) {
                     cardIds.mapNotNull { appDb.creationCardDao.getById(it) }
                         .associateBy { it.cardId }
@@ -810,25 +839,10 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
                 AiCreationImageSlotState.DONE -> {
                     rotateLoading.gone()
                     tvFailed.gone()
-                    ivPhoto.visible()
-                    ImageLoader.load(itemView.context, AiCreationImageFile.fileOf(slot.fileName))
-                        .dontTransform()
-                        .into(ivPhoto)
-                    ivPhoto.setOnClickListener {
-                        val doneFiles = previewAdapter.slots
-                            .filter { it.state == AiCreationImageSlotState.DONE }
-                            .map { it.fileName }
-                        val position = doneFiles.indexOf(slot.fileName)
-                        AiCreationPhotoDialog.newInstance(doneFiles, position)
-                            .show(childFragmentManager, "creationPhoto")
-                    }
-                    ivPhoto.setOnLongClickListener {
-                        val ok = AiCreationImageFile.saveToAlbum(requireContext(), slot.fileName)
-                        toastOnUi(
-                            if (ok) R.string.illustration_saved_to_album
-                            else R.string.illustration_save_failed
-                        )
-                        true
+                    if (slot.fileName.startsWith("vid_")) {
+                        bindVideoResult(itemBinding, slot)
+                    } else {
+                        bindImageResult(itemBinding, slot)
                     }
                 }
 
@@ -840,6 +854,89 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
                     tvFailed.setOnClickListener(null)
                 }
             }
+        }
+    }
+
+    private fun bindImageResult(
+        itemBinding: ItemAiPreviewBinding,
+        slot: AiCreationImageSlot
+    ) {
+        val ivPhoto = itemBinding.ivPhoto
+        ivPhoto.visible()
+        ImageLoader.load(itemBinding.root.context, AiCreationImageFile.fileOf(slot.fileName))
+            .dontTransform()
+            .into(ivPhoto)
+        ivPhoto.setOnClickListener {
+            val doneFiles = previewAdapter.slots
+                .filter { it.state == AiCreationImageSlotState.DONE }
+                .map { it.fileName }
+            val position = doneFiles.indexOf(slot.fileName)
+            AiCreationPhotoDialog.newInstance(doneFiles, position)
+                .show(childFragmentManager, "creationPhoto")
+        }
+        ivPhoto.setOnLongClickListener {
+            val ok = AiCreationImageFile.saveToAlbum(requireContext(), slot.fileName)
+            toastOnUi(
+                if (ok) R.string.illustration_saved_to_album
+                else R.string.illustration_save_failed
+            )
+            true
+        }
+    }
+
+    /** 视频槽位：首帧做缩略图，点击调系统播放器，长按保存到相册 */
+    private fun bindVideoResult(
+        itemBinding: ItemAiPreviewBinding,
+        slot: AiCreationImageSlot
+    ) {
+        val ivPhoto = itemBinding.ivPhoto
+        ivPhoto.visible()
+        ivPhoto.setImageBitmap(null)
+        ivPhoto.setOnClickListener(null)
+        viewLifecycleOwner.lifecycleScope.launch {
+            val bitmap = withContext(IO) {
+                runCatching {
+                    val retriever = android.media.MediaMetadataRetriever()
+                    try {
+                        retriever.setDataSource(
+                            AiCreationImageFile.fileOf(slot.fileName).absolutePath
+                        )
+                        retriever.getFrameAtTime(0)
+                    } finally {
+                        retriever.release()
+                    }
+                }.getOrNull()
+            }
+            val stillCurrent = previewAdapter.slots.any {
+                it.state == AiCreationImageSlotState.DONE && it.fileName == slot.fileName
+            }
+            if (stillCurrent) {
+                ivPhoto.setImageBitmap(bitmap)
+            }
+        }
+        ivPhoto.setOnClickListener {
+            runCatching {
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    val uri = androidx.core.content.FileProvider.getUriForFile(
+                        requireContext(),
+                        io.legado.app.constant.AppConst.authority,
+                        AiCreationImageFile.fileOf(slot.fileName)
+                    )
+                    setDataAndType(uri, "video/mp4")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                startActivity(intent)
+            }.onFailure { throwable ->
+                toastOnUi(throwable.message ?: throwable.javaClass.simpleName)
+            }
+        }
+        ivPhoto.setOnLongClickListener {
+            val ok = AiCreationImageFile.saveToAlbum(requireContext(), slot.fileName)
+            toastOnUi(
+                if (ok) R.string.illustration_saved_to_album
+                else R.string.illustration_save_failed
+            )
+            true
         }
     }
 

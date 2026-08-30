@@ -9,13 +9,13 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 /**
- * 视频供应商测试连接：用当前供应商全部配置真实提交一个视频生成请求并等到结果。
+ * 视频供应商请求：按供应商配置渲染请求模板，提交生成任务并等到结果。
  * 按提交响应自动识别两类内置异步协议：
  * - 智谱 CogVideoX：提交返回 {id, task_status}，轮询 GET <版本前缀>/async-result/{id}，
  *   task_status: PROCESSING / SUCCESS / FAIL，结果在 video_result[].url
  * - 硅基流动 Wan：提交返回 {requestId}，轮询 POST <版本前缀>/video/status（body {requestId}），
  *   status: InQueue / InProgress / Succeed / Failed，结果在 results.videos[].url
- * 同步型接口（响应直接携带视频链接）则跳过轮询直接下载校验。
+ * 同步型接口（响应直接携带视频链接）则跳过轮询直接下载。
  */
 object AiCreationVideoHelper {
 
@@ -24,11 +24,16 @@ object AiCreationVideoHelper {
     //视频生成耗时较长：轮询上限 8 分钟，超时如实报错并附任务号，不伪装成功
     private const val POLL_TIMEOUT_MS = 8 * 60_000L
 
-    /** 成功正常返回；任何失败抛出带原因的异常 */
-    suspend fun testConnection(
+    /**
+     * 生成一个视频：渲染请求模板（变量取传入值，缺省回落定义默认值）→ 提交 → 轮询 →
+     * 下载 mp4 落盘，返回文件名。真实生成与测试连接共用本入口。
+     */
+    suspend fun generateVideo(
         provider: AiCreationProviderConfig,
-        modelId: String
-    ): Unit = withContext(Dispatchers.IO) {
+        modelId: String,
+        prompt: String,
+        extraValues: Map<String, String> = emptyMap()
+    ): String = withContext(Dispatchers.IO) {
         check(provider.requestTemplate.isNotBlank()) {
             "当前视频供应商「${provider.name}」的视频请求模板为空"
         }
@@ -39,10 +44,11 @@ object AiCreationVideoHelper {
         }
         val tokens = buildMap {
             put("model", modelId)
-            put("prompt", AiCreationProviderStore.VIDEO_TEST_PROMPT)
+            put("prompt", prompt)
             put("n", "1")
             variables.forEach { variable ->
-                put(variable.key, variable.effectiveValue(null))
+                put(variable.key, extraValues[variable.key]?.takeIf { it.isNotBlank() }
+                    ?: variable.effectiveValue(null))
             }
         }
         val body = AiCreationProviderStore.renderRequestTemplate(provider.requestTemplate, tokens)
@@ -50,19 +56,30 @@ object AiCreationVideoHelper {
         val submitText = postForText(provider, provider.baseUrl, body)
         val submitRoot = JSONObject(submitText)
         //同步型接口：响应直接携带视频链接
-        extractVideoUrl(submitRoot)?.let { url ->
-            downloadVideo(url)
-            return@withContext
-        }
-        when {
-            submitRoot.has("requestId") -> pollSiliconFlow(provider, submitRoot.optString("requestId"))
+        val url = extractVideoUrl(submitRoot) ?: when {
+            submitRoot.has("requestId") ->
+                pollSiliconFlow(provider, submitRoot.optString("requestId"))
             submitRoot.has("id") && submitRoot.has("task_status") ->
                 pollBigModel(provider, submitRoot.optString("id"))
             else -> throw IllegalStateException("视频提交响应无法识别：${submitText.take(300)}")
         }
+        AiCreationImageFile.saveVideoBytes(downloadVideoBytes(url))
     }
 
-    private suspend fun pollBigModel(provider: AiCreationProviderConfig, taskId: String) {
+    /** 测试连接：真实生成一个视频验证链路，验证后删除文件，不进创作库 */
+    suspend fun testConnection(
+        provider: AiCreationProviderConfig,
+        modelId: String
+    ): Unit = withContext(Dispatchers.IO) {
+        val fileName = generateVideo(
+            provider,
+            modelId,
+            AiCreationProviderStore.VIDEO_TEST_PROMPT
+        )
+        AiCreationImageFile.delete(fileName)
+    }
+
+    private suspend fun pollBigModel(provider: AiCreationProviderConfig, taskId: String): String {
         val pollBase = versionBaseOf(provider.baseUrl)
             ?: throw IllegalStateException("无法从 Base URL 推导视频轮询地址：${provider.baseUrl}")
         val pollUrl = pollBase + "async-result/" + taskId
@@ -74,8 +91,7 @@ object AiCreationVideoHelper {
                 "SUCCESS" -> {
                     val url = extractVideoUrl(root)
                         ?: throw IllegalStateException("视频生成成功但未返回链接：${root.toString().take(300)}")
-                    downloadVideo(url)
-                    return
+                    return url
                 }
                 "FAIL" -> throw IllegalStateException("视频生成失败：${root.toString().take(300)}")
             }
@@ -85,7 +101,10 @@ object AiCreationVideoHelper {
         }
     }
 
-    private suspend fun pollSiliconFlow(provider: AiCreationProviderConfig, requestId: String) {
+    private suspend fun pollSiliconFlow(
+        provider: AiCreationProviderConfig,
+        requestId: String
+    ): String {
         val pollBase = versionBaseOf(provider.baseUrl)
             ?: throw IllegalStateException("无法从 Base URL 推导视频轮询地址：${provider.baseUrl}")
         val pollUrl = pollBase + "video/status"
@@ -98,8 +117,7 @@ object AiCreationVideoHelper {
                 "Succeed" -> {
                     val url = extractVideoUrl(root)
                         ?: throw IllegalStateException("视频生成成功但未返回链接：${root.toString().take(300)}")
-                    downloadVideo(url)
-                    return
+                    return url
                 }
                 "Failed" -> throw IllegalStateException(
                     "视频生成失败：${root.optString("reason").ifBlank { root.toString().take(300) }}"
@@ -186,14 +204,15 @@ object AiCreationVideoHelper {
         }
     }
 
-    /** 下载并校验视频内容非空（测试连接不落盘，链路打通即视为成功） */
-    private suspend fun downloadVideo(url: String) = withContext(Dispatchers.IO) {
+    /** 下载视频内容（返回字节，落盘由调用方决定） */
+    private suspend fun downloadVideoBytes(url: String): ByteArray = withContext(Dispatchers.IO) {
         val response = okHttpClient.newCallResponse { url(url) }
         response.use { rawResponse ->
             require(rawResponse.isSuccessful) { "视频下载失败 HTTP ${rawResponse.code}" }
             val bytes = rawResponse.body?.bytes()
                 ?: throw IllegalStateException("视频下载内容为空")
             require(bytes.isNotEmpty()) { "视频下载内容为空" }
+            bytes
         }
     }
 }

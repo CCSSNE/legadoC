@@ -53,6 +53,16 @@ object AiCreationImageFile {
         return fileName
     }
 
+    /** 视频落盘：vid_ 前缀 mp4，预览与图库按前缀区分视频条目 */
+    fun saveVideoBytes(bytes: ByteArray): String {
+        val fileName = "vid_${System.currentTimeMillis()}_${nameSeq.incrementAndGet()}.mp4"
+        val target = File(dir, fileName)
+        FileOutputStream(target).use { out ->
+            out.write(bytes)
+        }
+        return fileName
+    }
+
     fun delete(fileName: String) {
         runCatching { fileOf(fileName).delete() }
     }
@@ -60,7 +70,15 @@ object AiCreationImageFile {
     fun saveToAlbum(context: android.content.Context, fileName: String): Boolean {
         val file = fileOf(fileName)
         if (!file.exists()) return false
-        return kotlin.runCatching {
+        return if (fileName.startsWith("vid_")) {
+            saveVideoToAlbum(context, file)
+        } else {
+            saveImageToAlbum(context, file)
+        }
+    }
+
+    private fun saveImageToAlbum(context: android.content.Context, file: File): Boolean =
+        kotlin.runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val values = ContentValues().apply {
                     put(MediaStore.Images.Media.DISPLAY_NAME, file.name)
@@ -86,6 +104,44 @@ object AiCreationImageFile {
                 @Suppress("DEPRECATION")
                 val legacyDir = File(
                     Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
+                    "Legado"
+                )
+                if (!legacyDir.exists() && !legacyDir.mkdirs()) return false
+                val target = File(legacyDir, file.name)
+                FileOutputStream(target).use { out ->
+                    file.inputStream().use { it.copyTo(out) }
+                }
+                true
+            }
+        }.getOrDefault(false)
+
+    private fun saveVideoToAlbum(context: android.content.Context, file: File): Boolean =
+        kotlin.runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val values = ContentValues().apply {
+                    put(MediaStore.Video.Media.DISPLAY_NAME, file.name)
+                    put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+                    put(
+                        MediaStore.Video.Media.RELATIVE_PATH,
+                        "${Environment.DIRECTORY_MOVIES}/Legado"
+                    )
+                    put(MediaStore.Video.Media.IS_PENDING, 1)
+                }
+                val uri = context.contentResolver.insert(
+                    MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                    values
+                ) ?: return false
+                context.contentResolver.openOutputStream(uri)?.use { out ->
+                    file.inputStream().use { it.copyTo(out) }
+                } ?: return false
+                values.clear()
+                values.put(MediaStore.Video.Media.IS_PENDING, 0)
+                context.contentResolver.update(uri, values, null, null)
+                true
+            } else {
+                @Suppress("DEPRECATION")
+                val legacyDir = File(
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES),
                     "Legado"
                 )
                 if (!legacyDir.exists() && !legacyDir.mkdirs()) return false
@@ -193,6 +249,47 @@ object AiCreationImageTaskHolder {
                 runningTasks.decrementAndGet()
                 updateFloatingState()
             }
+        }
+    }
+
+    /**
+     * 视频生成任务：单槽位，走视频供应商全部配置（变量值由调用方按视频体系解析传入）。
+     * 展示与提示复用图片任务的槽位机制，槽位文件名以 vid_ 前缀区分视频。
+     */
+    fun startVideo(prompt: String, extraValues: Map<String, String>) {
+        val target = AiCreationProviderStore.requireVideoTarget()
+        val task = GenerationTask(listOf(AiCreationImageSlot(index = 0)))
+        synchronized(displayLock) {
+            latestTask = task
+            _slots.value = task.slots.toList()
+            _notice.value = null
+        }
+        floatingDismissed = false
+        runningTasks.incrementAndGet()
+        updateFloatingState()
+        scope.launch {
+            try {
+                runVideoGeneration(task, target, prompt, extraValues)
+            } finally {
+                runningTasks.decrementAndGet()
+                updateFloatingState()
+            }
+        }
+    }
+
+    private suspend fun runVideoGeneration(
+        task: GenerationTask,
+        target: AiCreationProviderTarget,
+        prompt: String,
+        extraValues: Map<String, String>
+    ) {
+        runCatching {
+            AiCreationVideoHelper.generateVideo(target.provider, target.modelId, prompt, extraValues)
+        }.onSuccess { fileName ->
+            acceptImage(task, 0, fileName)
+        }.onFailure { throwable ->
+            if (throwable is CancellationException) throw throwable
+            failSlot(task, 0, throwable.message ?: "视频生成失败")
         }
     }
 

@@ -16,8 +16,10 @@ import java.util.UUID
 /**
  * AI 创作图片/视频供应商配置：
  * 供应商管连线协议（Base URL / API Key / 请求头 / 变量定义 / 请求模板），
- * 模型挂在供应商下；图片与视频各持一套完整独立的供应商与模型体系，
- * 两者的 Base URL、变量定义、请求模板必然不同，不存在复用关系。
+ * 模型挂在供应商下。
+ * 图片与视频是两套结构对称、数据零关联的独立体系：
+ * 图片供应商的变量定义只含图片组 + 图片路由，视频供应商只含视频组 + 视频路由；
+ * 两边 style 各自独立，提示词库是唯一共享的全局件（路由按名字引用）。
  */
 @Keep
 data class AiCreationProviderConfig(
@@ -247,10 +249,18 @@ object AiCreationProviderStore {
         return provider.variablesJson
     }
 
+    /** 创作界面与提示词生成使用的变量定义：取当前视频供应商 */
+    fun requireVideoVariablesJson(): String {
+        val provider = videoCurrentProvider
+            ?: error("请先在「管理视频供应商」中设为当前供应商")
+        check(provider.variablesJson.isNotBlank()) { "当前视频供应商「${provider.name}」的变量定义为空" }
+        return provider.variablesJson
+    }
+
     /** 内置供应商的出厂变量定义（供恢复默认）；自定义供应商无默认 */
     fun defaultVariablesJsonOf(provider: AiCreationProviderConfig): String? = when (provider.id) {
         IMAGE_SILICONFLOW_ID ->
-            AiCreationVariables.buildDefaultJson(AiCreationVariables.kolorsImageVariables)
+            AiCreationVariables.buildImageJson(AiCreationVariables.kolorsImageVariables)
         IMAGE_ZHIPU_ID -> AiCreationVariables.defaultJson
         VIDEO_SILICONFLOW_ID -> AiCreationVariables.siliconFlowVideoVariablesJson
         VIDEO_ZHIPU_ID -> AiCreationVariables.zhipuVideoVariablesJson
@@ -378,7 +388,7 @@ object AiCreationProviderStore {
             name = "硅基流动",
             baseUrl = "https://api.siliconflow.cn/v1/images/generations",
             apiKeyUrl = API_KEY_URL_SILICONFLOW,
-            variablesJson = AiCreationVariables.buildDefaultJson(
+            variablesJson = AiCreationVariables.buildImageJson(
                 AiCreationVariables.kolorsImageVariables
             ),
             requestTemplate = SILICONFLOW_IMAGE_REQUEST_TEMPLATE,
@@ -592,91 +602,21 @@ object AiCreationProviderStore {
     }
 
     /**
-     * 首次访问时种入内置图片供应商并迁移旧版 4 个裸设置：
-     * 旧配置指向智谱（或为空）→ 归入内置智谱；指向其他地址 → 新建自定义供应商承接。
+     * 首次访问时种入内置图片供应商；键已存在则直接返回，不做任何改写。
      */
     private fun ensureImageConfigIfNeeded() {
         if (appCtx.getPrefString(PreferKey.aiCreationImageProviderList) != null) {
             return
         }
-        var providers = builtinImageProviders()
-        var models = builtinImageModels()
-        var currentProviderId = IMAGE_SILICONFLOW_ID
-        var currentModelRowId = models.first { it.providerId == IMAGE_SILICONFLOW_ID }.id
-
-        val legacyUrl = appCtx.getPrefString(PreferKey.aiCreationImageUrl).orEmpty().trim()
-        val legacyApiKey = appCtx.getPrefString(PreferKey.aiCreationImageApiKey).orEmpty().trim()
-        val legacyModelId = appCtx.getPrefString(PreferKey.aiCreationImageModel).orEmpty().trim()
-        val legacyTemplate = appCtx.getPrefString(PreferKey.aiCreationImageRequestTemplate).orEmpty().trim()
-        val legacyVariables = appCtx.getPrefString(PreferKey.aiCreationVariables).orEmpty().trim()
-        val legacyUrlCustom = legacyUrl.isNotBlank() &&
-                legacyUrl != "https://open.bigmodel.cn/api/paas/v4/images/generations"
-        val legacyModelCustom = legacyModelId.isNotBlank() && legacyModelId != "cogview-3-flash"
-        val legacyTemplateValid = runCatching { parseRequestTemplateJson(legacyTemplate) }.isSuccess
-
-        if (legacyUrlCustom) {
-            //旧配置指向第三方地址：新建自定义供应商完整承接，避免污染内置项
-            val custom = AiCreationProviderConfig(
-                name = hostOf(legacyUrl),
-                baseUrl = legacyUrl,
-                apiKey = legacyApiKey,
-                variablesJson = legacyVariables.takeIf { variables ->
-                    variables.isNotBlank() && runCatching {
-                        AiCreationVariables.parse(variables)
-                    }.isSuccess
-                }.orEmpty(),
-                requestTemplate = legacyTemplate.takeIf { legacyTemplateValid }.orEmpty()
-            )
-            providers = providers + custom
-            if (legacyModelId.isNotBlank()) {
-                val model = AiCreationProviderModel(providerId = custom.id, modelId = legacyModelId)
-                models = models + model
-                currentProviderId = custom.id
-                currentModelRowId = model.id
-            }
-        } else {
-            //旧配置为空或指向智谱：归入内置智谱供应商
-            val zhipuIndex = providers.indexOfFirst { it.id == IMAGE_ZHIPU_ID }
-            if (zhipuIndex >= 0) {
-                val zhipu = providers[zhipuIndex]
-                providers = providers.toMutableList().apply {
-                    set(
-                        zhipuIndex,
-                        zhipu.copy(
-                            apiKey = legacyApiKey.ifBlank { zhipu.apiKey },
-                            variablesJson = legacyVariables.takeIf { variables ->
-                                variables.isNotBlank() && runCatching {
-                                    AiCreationVariables.parse(variables)
-                                }.isSuccess
-                            } ?: zhipu.variablesJson,
-                            requestTemplate = legacyTemplate.takeIf { legacyTemplateValid }
-                                ?: zhipu.requestTemplate
-                        )
-                    )
-                }
-                if (legacyApiKey.isNotBlank()) {
-                    currentProviderId = IMAGE_ZHIPU_ID
-                }
-                if (legacyModelCustom) {
-                    val model = AiCreationProviderModel(
-                        providerId = IMAGE_ZHIPU_ID,
-                        modelId = legacyModelId
-                    )
-                    models = models + model
-                    if (legacyApiKey.isNotBlank()) {
-                        currentProviderId = IMAGE_ZHIPU_ID
-                        currentModelRowId = model.id
-                    }
-                } else if (currentProviderId == IMAGE_ZHIPU_ID) {
-                    currentModelRowId = models.first { it.providerId == IMAGE_ZHIPU_ID }.id
-                }
-            }
-        }
-
+        val providers = builtinImageProviders()
+        val models = builtinImageModels()
         persistImageProviders(providers)
         persistImageModels(models)
-        appCtx.putPrefString(PreferKey.aiCreationImageCurrentProviderId, currentProviderId)
-        appCtx.putPrefString(PreferKey.aiCreationImageCurrentModelId, currentModelRowId)
+        appCtx.putPrefString(PreferKey.aiCreationImageCurrentProviderId, IMAGE_SILICONFLOW_ID)
+        appCtx.putPrefString(
+            PreferKey.aiCreationImageCurrentModelId,
+            models.first { it.providerId == IMAGE_SILICONFLOW_ID }.id
+        )
     }
 
     private fun ensureVideoConfigIfNeeded() {
@@ -692,11 +632,5 @@ object AiCreationProviderStore {
             PreferKey.aiCreationVideoCurrentModelId,
             models.first { it.providerId == VIDEO_SILICONFLOW_ID }.id
         )
-    }
-
-    private fun hostOf(url: String): String {
-        return runCatching {
-            java.net.URI(url).host?.removePrefix("www.")
-        }.getOrNull()?.takeIf { it.isNotBlank() } ?: "自定义图片供应商"
     }
 }
