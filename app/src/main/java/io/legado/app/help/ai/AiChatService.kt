@@ -668,7 +668,7 @@ object AiChatService {
                     providerApiKey.trim().takeIf { it.isNotBlank() }?.let {
                         addHeader("Authorization", "Bearer $it")
                     }
-                    addHeaders(parseCustomHeaders(providerHeaders))
+                    addHeaders(AiCreationProviderStore.parseCustomHeaders(providerHeaders))
                     postJson(requestBody)
                 }
             }
@@ -900,7 +900,7 @@ object AiChatService {
                         else -> "Bearer $providerApiKey"
                     }
             )
-            parseCustomHeaders(rawHeaders).forEach { (name, value) ->
+            AiCreationProviderStore.parseCustomHeaders(rawHeaders).forEach { (name, value) ->
                 add("$name=${redactHeaderValue(name, value)}")
             }
         }
