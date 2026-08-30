@@ -295,5 +295,5 @@ object AiCreationConfig {
     }
 
     private val PROMPT_TEMPLATE_PLACEHOLDER =
-        Regex("\\$\\{[^{}]+}|\\{\\{[^{}]+}}")
+        Regex("\\$\\{[^{}]+\\}|\\{\\{[^{}]+\\}\\}")
 }

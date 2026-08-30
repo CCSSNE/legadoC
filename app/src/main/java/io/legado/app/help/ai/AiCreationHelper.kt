@@ -79,5 +79,5 @@ object AiCreationHelper {
         return rendered
     }
 
-    private val TEMPLATE_VARIABLE = Regex("\\$\\{([^{}]+)}")
+    private val TEMPLATE_VARIABLE = Regex("\\$\\{([^{}]+)\\}")
 }

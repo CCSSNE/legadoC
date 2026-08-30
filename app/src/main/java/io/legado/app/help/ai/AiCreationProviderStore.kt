@@ -62,7 +62,7 @@ object AiCreationProviderStore {
 
     const val IMAGE_TEST_PROMPT = "一只橘猫坐在窗台上，阳光洒落，温暖色调，高清摄影"
     const val VIDEO_TEST_PROMPT = "一只橘猫在草地上奔跑，阳光明媚，镜头平视"
-    private val REQUEST_PLACEHOLDER = Regex("\\{\\{([^{}\\s]+)}}")
+    private val REQUEST_PLACEHOLDER = Regex("\\{\\{([^{}\\s]+)\\}\\}")
 
     //内置供应商出厂请求模板
     const val ZHIPU_IMAGE_REQUEST_TEMPLATE =

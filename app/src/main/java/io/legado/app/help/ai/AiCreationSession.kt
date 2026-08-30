@@ -83,8 +83,8 @@ object AiCreationVariables {
         "根据素材生成绘画提示词。\n生成要求：\n\${prompt}\n素材：\n\${素材}"
     private const val VIDEO_FINAL_PROMPT =
         "根据素材生成视频提示词。\n生成要求：\n\${prompt}\n素材：\n\${素材}"
-    private val FINAL_PROMPT_VARIABLE = Regex("\\$\\{([^{}]+)}")
-    private val DOUBLE_BRACED_PLACEHOLDER = Regex("\\{\\{[^{}]+}}")
+    private val FINAL_PROMPT_VARIABLE = Regex("\\$\\{([^{}]+)\\}")
+    private val DOUBLE_BRACED_PLACEHOLDER = Regex("\\{\\{[^{}]+\\}\\}")
 
     //图片 style：只控制提示词路由（连环画/单场景），默认单场景
     private val imageStyleVariable = AiCreationVariable(
