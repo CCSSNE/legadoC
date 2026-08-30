@@ -51,20 +51,22 @@
         android:gravity="end"
         android:orientation="horizontal">
 
-        <com.google.android.material.button.MaterialButton
+        <Button
             android:id="@+id/btn_regenerate"
-            style="@style/Widget.MaterialComponents.Button.TextButton"
+            style="?android:attr/buttonBarButtonStyle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/ai_storyboard_regenerate"
+            android:textColor="@color/selector_btn_text_color"
             android:textSize="12sp" />
 
-        <com.google.android.material.button.MaterialButton
+        <Button
             android:id="@+id/btn_delete"
-            style="@style/Widget.MaterialComponents.Button.TextButton"
+            style="?android:attr/buttonBarButtonStyle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/delete"
+            android:textColor="@color/selector_btn_text_color"
             android:textSize="12sp" />
     </LinearLayout>
 </LinearLayout>

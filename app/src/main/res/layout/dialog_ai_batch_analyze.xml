@@ -87,18 +87,20 @@
         android:orientation="horizontal"
         android:paddingTop="8dp">
 
-        <com.google.android.material.button.MaterialButton
+        <Button
             android:id="@+id/btn_cancel"
-            style="@style/Widget.MaterialComponents.Button.TextButton"
+            style="?android:attr/buttonBarButtonStyle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/cancel" />
+            android:text="@string/cancel"
+            android:textColor="@color/selector_btn_text_color" />
 
-        <com.google.android.material.button.MaterialButton
+        <Button
             android:id="@+id/btn_start"
-            style="@style/Widget.MaterialComponents.Button.TextButton"
+            style="?android:attr/buttonBarButtonStyle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/ai_batch_start" />
+            android:text="@string/ai_batch_start"
+            android:textColor="@color/selector_btn_text_color" />
     </LinearLayout>
 </LinearLayout>

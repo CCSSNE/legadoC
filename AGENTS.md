@@ -220,6 +220,10 @@ $apk = 'D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_<version>
 
 > UI 设计相关规则（无头弹窗策略、UI 内核与浮层规范、异步 UI 与局部模糊）已单独维护在 `docs/ui-design-spec.md`。
 
+### 主题与控件约束
+
+- 应用主题统一为 `Base.AppTheme`（`Theme.AppCompat.DayNight` 系），对话框窗口主题同属 AppCompat 家族。`MaterialButton` 在构造器强制校验 `Theme.MaterialComponents` 主题（TabLayout、FloatingActionButton、TextInputLayout 均无此强制校验），放进任何对话框布局都会在 inflate 时直接崩溃；布局禁止使用这类强制校验控件，弹窗与列表条目按钮统一用 `<Button>` + `?android:attr/buttonBarButtonStyle` + `@color/selector_btn_text_color`。
+
 ### 朗读状态所有权契约
 
 朗读系统是“两个原语 + 一条跟随规则 + 派生事实 + 两个开关”，不存在存储的跟随/脱钩状态：
