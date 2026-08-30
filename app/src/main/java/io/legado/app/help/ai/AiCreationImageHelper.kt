@@ -152,7 +152,6 @@ object AiCreationImageFile {
                 true
             }
         }.getOrDefault(false)
-    }
 }
 
 enum class AiCreationImageSlotState {
