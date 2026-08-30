@@ -443,6 +443,14 @@
     <string name="ai_creation_image_test_running">正在测试图片生成链路…</string>
     <string name="ai_creation_image_test_success">测试成功，已返回图片</string>
     <string name="ai_creation_video_add_provider">添加视频供应商</string>
+    <string name="ai_creation_prompt_library">提示词库</string>
+    <string name="ai_creation_prompt_library_summary">共 %d 条提示词，变量定义里的路由按名字引用</string>
+    <string name="ai_creation_prompt_add">新增提示词</string>
+    <string name="ai_creation_prompt_edit">编辑提示词</string>
+    <string name="ai_creation_prompt_name_hint">提示词名字</string>
+    <string name="ai_creation_prompt_name_exists">已存在同名提示词</string>
+    <string name="ai_creation_prompt_remove_confirm">确定删除？引用它的路由将无法命中</string>
+    <string name="ai_creation_generate_video">生成视频</string>
     <string name="ai_creation_video_add_provider_summary">添加自定义视频供应商，内置硅基流动与智谱</string>
     <string name="ai_creation_video_manage_providers">管理视频供应商</string>
     <string name="ai_creation_video_add_model">添加视频模型</string>
@@ -1413,6 +1421,9 @@
     <string name="check_source_config_summary">校验超时：%1$s秒\n校验项目：%2$s</string>
     <string name="log_shown_modules_t">普通日志模块</string>
     <string name="log_shown_modules_s">勾选后在普通日志中显示该模块日志，不勾选则不显示，全不勾选时普通日志为空</string>
+    <string name="log_empty">当前没有可导出的日志。</string>
+    <string name="log_export_success">日志导出成功。</string>
+    <string name="log_export_failed">日志导出失败：%s</string>
     <string name="log_module_read_aloud">朗读链路</string>
     <string name="log_module_baidu_tts">百度TTS</string>
     <string name="log_module_tts_cache">TTS缓存</string>

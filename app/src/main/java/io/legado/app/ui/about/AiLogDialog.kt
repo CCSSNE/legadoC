@@ -46,6 +46,11 @@ class AiLogDialog : BaseLogDialogFragment() {
         requireContext().sendToClip(AppLog.formatLogs(AppLog.aiLogs))
     }
 
+    /** 导出 AI 日志（与 AI 设置页导出入口同一份完整数据） */
+    override fun exportLogs() {
+        startExport(AppLog.aiLogs, "ai")
+    }
+
     inner class LogAdapter(context: Context) :
         RecyclerAdapter<AppLog.Entry, ItemAiLogBinding>(context) {
 
