@@ -249,12 +249,9 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
         }
     }
 
+    //左上角返回只在创作体系四页内逐页回退，不退出界面；
+    //界面关闭（叉叉/系统返回键）才销毁临时卡片，回预览走生成任务悬浮窗
     private fun onBack() {
-        if (currentPage >= 3) {
-            destroyEphemeralCards()
-            dismissAllowingStateLoss()
-            return
-        }
         if (currentPage > 0) {
             showPage(currentPage - 1)
         }
