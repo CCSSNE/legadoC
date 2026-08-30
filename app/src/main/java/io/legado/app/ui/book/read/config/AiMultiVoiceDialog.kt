@@ -279,8 +279,10 @@ class AiMultiVoiceDialog : BaseDialogFragment(R.layout.dialog_ai_multi_voice) {
             return
         }
         alert(titleResource = R.string.tts_engine_pick_title) {
-            items(engines) { dialog, engine, _ ->
+            // 每行只显示引擎名：data class 的 toString() 是全字段转储，直接传入会整屏爆文本
+            items(engines.map { it.name.ifBlank { it.id } }) { dialog, index ->
                 dialog.dismiss()
+                val engine = engines[index]
                 pickVoiceInEngine(engine) { voiceId ->
                     onPicked(engine.id, voiceId)
                 }
