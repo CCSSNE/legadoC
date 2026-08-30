@@ -7,10 +7,13 @@ import android.os.Build
 import android.os.Bundle
 import android.util.AttributeSet
 import android.view.Display
+import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
 import androidx.activity.addCallback
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
@@ -18,17 +21,22 @@ import androidx.appcompat.view.menu.ActionMenuItemView
 import androidx.appcompat.widget.ActionMenuView
 import androidx.core.view.ViewCompat
 import androidx.core.view.children
+import androidx.lifecycle.lifecycleScope
 import androidx.viewbinding.ViewBinding
 import io.legado.app.R
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.Theme
+import io.legado.app.help.ai.AiCreationImageTaskHolder
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.lib.theme.applyUiBodyTypeface
 import io.legado.app.lib.theme.applyUiMenuTypefaceDeep
+import io.legado.app.model.ReadBook
 import io.legado.app.service.ExportBookService
+import io.legado.app.ui.book.read.creation.AiCreationDialog
+import io.legado.app.ui.book.read.creation.AiCreationFloatingHost
 import io.legado.app.ui.widget.TitleBar
 import io.legado.app.ui.widget.menu.SurfacePopupMenu
 import io.legado.app.utils.ColorUtils
@@ -36,14 +44,17 @@ import io.legado.app.utils.applyMenuScrollIndicators
 import io.legado.app.utils.applyOpenTint
 import io.legado.app.utils.applyUiMenuStyle
 import io.legado.app.utils.disableAutoFill
+import io.legado.app.utils.dpToPx
 import io.legado.app.utils.fullScreen
 import io.legado.app.utils.hideSoftInput
 import io.legado.app.utils.setLightStatusBar
 import io.legado.app.utils.setNavigationBarColorAuto
 import io.legado.app.utils.setStatusBarColorAuto
+import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.surfaceOverflowItems
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.windowSize
+import kotlinx.coroutines.launch
 
 abstract class BaseActivity<VB : ViewBinding>(
     val fullScreen: Boolean = true,
@@ -57,6 +68,31 @@ abstract class BaseActivity<VB : ViewBinding>(
     protected abstract val binding: VB
     private var lastThemeValuesChanged = 0L
     private var surfaceOverflowPopup: SurfacePopupMenu? = null
+
+    //AI 创作生成任务悬浮窗：应用内所有 Activity 统一挂载（预览页在前台时由状态统一拦截）
+    private val aiCreationFloatingHost by lazy {
+        AiCreationFloatingHost(
+            container = findViewById<ViewGroup>(android.R.id.content),
+            layoutParams = {
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    gravity = Gravity.END or Gravity.BOTTOM
+                    marginEnd = 16.dpToPx()
+                    bottomMargin = 120.dpToPx()
+                }
+            },
+            onOpen = {
+                showDialogFragment(
+                    AiCreationDialog.newInstance(
+                        ReadBook.book?.name.orEmpty(),
+                        jumpToPreview = true
+                    )
+                )
+            }
+        )
+    }
 
     val isInMultiWindow: Boolean
         @SuppressLint("ObsoleteSdkInt")
@@ -109,6 +145,11 @@ abstract class BaseActivity<VB : ViewBinding>(
             finish()
         }
         observeLiveBus()
+        lifecycleScope.launch {
+            AiCreationImageTaskHolder.floatingState.collect { state ->
+                aiCreationFloatingHost.update(state.shouldShow, state.taskRunning)
+            }
+        }
         onActivityCreated(savedInstanceState)
     }
 

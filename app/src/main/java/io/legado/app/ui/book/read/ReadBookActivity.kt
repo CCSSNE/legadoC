@@ -5,7 +5,6 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.Rect
-import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
 import android.os.Looper
@@ -57,8 +56,6 @@ import io.legado.app.help.ai.AiChapterPurifyProgress
 import io.legado.app.help.ai.AiChapterPurifyService
 import io.legado.app.help.ai.AI_CREATION_EPHEMERAL_BOOK
 import io.legado.app.help.ai.AiCreationConfig
-import io.legado.app.help.ai.AiCreationFloatingState
-import io.legado.app.help.ai.AiCreationImageTaskHolder
 import io.legado.app.help.ai.AiCreationSessionHolder
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.BookImgClick
@@ -267,7 +264,6 @@ class ReadBookActivity : BaseReadBookActivity(),
     private var backupJob: Job? = null
     private var aiChapterPurifyJob: Job? = null
     private var aiChapterPurifySummarySnackbar: Snackbar? = null
-    private var aiCreationFloatingView: View? = null
     private var aiChapterPurifyLastStreamSnackbarAt = 0L
     private var aiChapterPurifyPendingChapterIndex: Int? = null
     private var aiChapterPurifyPendingForce = false
@@ -369,7 +365,6 @@ class ReadBookActivity : BaseReadBookActivity(),
         ReadBook.register(this)
         updateReadAloudPageFloating()
         updateReadAloudPanels()
-        observeAiCreationTask()
         onBackPressedDispatcher.addCallback(this) {
             if (binding.readAiPanel.isVisible) {
                 binding.readAiPanel.close()
@@ -1352,60 +1347,6 @@ class ReadBookActivity : BaseReadBookActivity(),
             insertSelectedTextCard(text)
             toastOnUi(R.string.ai_creation_staged)
         }
-    }
-
-    private fun observeAiCreationTask() {
-        lifecycleScope.launch {
-            AiCreationImageTaskHolder.floatingState.collect { state ->
-                upAiCreationFloating(state)
-            }
-        }
-    }
-
-    private fun upAiCreationFloating(state: AiCreationFloatingState) {
-        val container = binding.root as? ViewGroup ?: return
-        if (!state.shouldShow) {
-            aiCreationFloatingView?.let { floating ->
-                container.removeView(floating)
-                aiCreationFloatingView = null
-            }
-            return
-        }
-        val floating = aiCreationFloatingView ?: run {
-            val view = layoutInflater.inflate(
-                R.layout.floating_ai_creation, container, false
-            )
-            view.background = GradientDrawable().apply {
-                cornerRadius = 22.dpToPx().toFloat()
-                setColor(Color.parseColor("#CC222222"))
-            }
-            val layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply {
-                gravity = Gravity.END or Gravity.BOTTOM
-                marginEnd = 16.dpToPx()
-                bottomMargin = 120.dpToPx()
-            }
-            container.addView(view, layoutParams)
-            view.setOnClickListener {
-                showDialogFragment(
-                    AiCreationDialog.newInstance(
-                        ReadBook.book?.name.orEmpty(),
-                        jumpToPreview = true
-                    )
-                )
-            }
-            view.findViewById<View>(R.id.iv_floating_close).setOnClickListener {
-                AiCreationImageTaskHolder.dismissFloating()
-            }
-            aiCreationFloatingView = view
-            view
-        }
-        floating.findViewById<View>(R.id.rotate_loading).visibility =
-            if (state.taskRunning) View.VISIBLE else View.GONE
-        floating.findViewById<View>(R.id.tv_floating_done).visibility =
-            if (state.taskRunning) View.GONE else View.VISIBLE
     }
 
     private fun askAiBySelection() {

@@ -9,6 +9,7 @@ import android.text.InputType
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -82,6 +83,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
     private var previewPageSize = 1
     private var previewPage = 0
     private val previewAdapter = PreviewAdapter()
+    private var inDialogFloatingHost: AiCreationFloatingHost? = null
 
     private val cardEditLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -101,12 +103,13 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
     override fun onStart() {
         super.onStart()
         setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-        AiCreationImageTaskHolder.setUiVisible(true)
+        AiCreationImageTaskHolder.setPreviewBlocking(currentPage == 3)
     }
 
     override fun onStop() {
         super.onStop()
-        AiCreationImageTaskHolder.setUiVisible(false)
+        //预览页离开前台，全应用悬浮窗恢复显示判断
+        AiCreationImageTaskHolder.setPreviewBlocking(false)
     }
 
     override fun onCancel(dialog: DialogInterface) {
@@ -209,6 +212,30 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
                     AiCreationImageTaskHolder.consumeNotice()
                     toastOnUi(message)
                 }
+            }
+        }
+        //对话框前台时悬浮窗由对话框宿主挂载在窗口顶层；预览页由 previewBlocking 拦截不显示
+        inDialogFloatingHost = dialog?.window?.decorView
+            ?.findViewById<ViewGroup>(android.R.id.content)
+            ?.let { content ->
+                AiCreationFloatingHost(
+                    container = content,
+                    layoutParams = {
+                        FrameLayout.LayoutParams(
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            gravity = Gravity.END or Gravity.BOTTOM
+                            marginEnd = dp(16)
+                            bottomMargin = dp(64)
+                        }
+                    },
+                    onOpen = { showPage(3) }
+                )
+            }
+        viewLifecycleOwner.lifecycleScope.launch {
+            AiCreationImageTaskHolder.floatingState.collect {
+                upInDialogFloating()
             }
         }
         binding.etPrompt.addTextChangedListener { text ->
@@ -328,6 +355,14 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
                 }
             }
         }
+        AiCreationImageTaskHolder.setPreviewBlocking(page == 3)
+        upInDialogFloating()
+    }
+
+    private fun upInDialogFloating() {
+        val host = inDialogFloatingHost ?: return
+        val state = AiCreationImageTaskHolder.floatingState.value
+        host.update(show = state.shouldShow, taskRunning = state.taskRunning)
     }
 
     private fun currentParamValue(variable: AiCreationVariable): String {

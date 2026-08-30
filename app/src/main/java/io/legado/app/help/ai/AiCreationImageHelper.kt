@@ -168,14 +168,19 @@ data class AiCreationImageSlot(
     val error: String = ""
 )
 
+/**
+ * 生成任务悬浮窗状态：任务存在即应用内所有界面常驻显示，预览页除外。
+ * 各 Activity 由 BaseActivity 统一挂载，创作对话框由其自身挂载在窗口顶层；
+ * [taskRunning] 只反映最新任务，[previewBlocking] 表示预览页在前台（全部宿主隐藏）。
+ */
 data class AiCreationFloatingState(
     val hasTask: Boolean = false,
     val taskRunning: Boolean = false,
     val dismissed: Boolean = false,
-    val uiVisible: Boolean = false
+    val previewBlocking: Boolean = false
 ) {
     val shouldShow: Boolean
-        get() = hasTask && !dismissed && !uiVisible
+        get() = hasTask && !dismissed && !previewBlocking
 }
 
 object AiCreationImageTaskHolder {
@@ -209,11 +214,10 @@ object AiCreationImageTaskHolder {
     var floatingDismissed = false
         private set
 
-    var uiVisible = false
-        private set
+    private var previewBlocking = false
 
-    fun setUiVisible(visible: Boolean) {
-        uiVisible = visible
+    fun setPreviewBlocking(blocking: Boolean) {
+        previewBlocking = blocking
         updateFloatingState()
     }
 
@@ -335,7 +339,7 @@ object AiCreationImageTaskHolder {
             hasTask = slots.isNotEmpty(),
             taskRunning = slots.any { it.state == AiCreationImageSlotState.LOADING },
             dismissed = floatingDismissed,
-            uiVisible = uiVisible
+            previewBlocking = previewBlocking
         )
     }
 
