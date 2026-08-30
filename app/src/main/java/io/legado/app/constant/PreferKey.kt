@@ -60,6 +60,18 @@ object PreferKey {
     // 缓存包是否包含 TTS 缓存（默认不包含：wav 体积大且可由文本重新合成）
     const val ttsCacheIncludeInPackage = "ttsCacheIncludeInPackage"
     const val ttsEngine = "appTtsEngine"
+    // 对齐 legado_NG：数据驱动 TTS 引擎层（TtsEngineStore）存储键
+    const val ttsEngineV2ActiveId = "ttsEngineV2ActiveId"
+    const val ttsEngineV2SettingsJson = "ttsEngineV2SettingsJson"
+    const val ttsEngineV2DeletedIds = "ttsEngineV2DeletedIds"
+    const val ttsEngineV2SystemDisabledApplied = "ttsEngineV2SystemDisabledApplied"
+    const val ttsEngineV2RoleDefaultsApplied = "ttsEngineV2RoleDefaultsApplied"
+    // 对齐 legado_NG：AI 选角全局兜底（引擎, 音色）绑定
+    const val multiRoleTtsEngineId = "multiRoleTtsEngineId"
+    const val defaultNarratorTtsEngineId = "defaultNarratorTtsEngineId"
+    const val defaultNarratorTtsVoiceId = "defaultNarratorTtsVoiceId"
+    const val defaultDialogueMaleTtsVoiceId = "defaultDialogueMaleTtsVoiceId"
+    const val defaultDialogueFemaleTtsVoiceId = "defaultDialogueFemaleTtsVoiceId"
     const val bdSelectedSpeaker = "bdSelectedSpeaker"
     const val bdNarrationVoices = "bdNarrationVoices"
     const val bdDialogueVoices = "bdDialogueVoices"
