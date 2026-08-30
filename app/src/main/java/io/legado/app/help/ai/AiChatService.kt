@@ -821,18 +821,24 @@ object AiChatService {
                         cause = throwable
                     )
                     throwable is SocketTimeoutException || throwable is InterruptedIOException ->
-                        AiChatException(
-                            message = "模型生成超时或响应中断：${idleTimeoutSeconds} 秒无数据",
-                            debugLog = requestLog.append(
-                                "streamTimeout=SSE_IDLE\n" +
-                                    "generationTimeoutSeconds=$generationTimeoutSeconds\n" +
-                                    "sseIdleTimeoutSeconds=$idleTimeoutSeconds\n" +
-                                    "lastEventElapsedMs=${latestProgress?.elapsedMs ?: 0L}\n" +
-                                    "idleForMs=${(SystemClock.elapsedRealtime() - streamStartedAt) - (latestProgress?.elapsedMs ?: 0L)}\n" +
-                                    "lastProgress=$latestProgress\n"
-                            ).toString(),
-                            cause = throwable
-                        )
+                        // 竞态兜底：思考打断中断读线程时，InterruptedIOException 可能
+                        // 携带被 Suppressed 的思考异常冒泡；此时按思考打断原样抛出，
+                        // 让外层思考重试循环识别重发，而不是误报 SSE 空闲超时
+                        (throwable as? InterruptedIOException)?.suppressed
+                            ?.filterIsInstance<AiThinkingInterruptException>()
+                            ?.firstOrNull()
+                            ?: AiChatException(
+                                message = "模型生成超时或响应中断：${idleTimeoutSeconds} 秒无数据",
+                                debugLog = requestLog.append(
+                                    "streamTimeout=SSE_IDLE\n" +
+                                        "generationTimeoutSeconds=$generationTimeoutSeconds\n" +
+                                        "sseIdleTimeoutSeconds=$idleTimeoutSeconds\n" +
+                                        "lastEventElapsedMs=${latestProgress?.elapsedMs ?: 0L}\n" +
+                                        "idleForMs=${(SystemClock.elapsedRealtime() - streamStartedAt) - (latestProgress?.elapsedMs ?: 0L)}\n" +
+                                        "lastProgress=$latestProgress\n"
+                                ).toString(),
+                                cause = throwable
+                            )
                     else -> throwable
                 }
                 throw failure
@@ -1056,14 +1062,20 @@ object AiChatService {
             )
         }
         return coroutineScope {
+            // 读线程结果封装为值返回：思考打断触发 reader.close() 后，阻塞中的
+            // readLine 会抛 InterruptedIOException；该异常若从子协程冒泡会压过
+            // 思考打断异常并被误判成 SSE 空闲超时，必须在本 job 内消化。
             val readJob = async(Dispatchers.IO) {
-                runInterruptible { reader.readLine() }
+                val outcome = runCatching { runInterruptible { reader.readLine() } }
+                outcome.getOrNull() ?: outcome.exceptionOrNull()
             }
             try {
                 select {
-                    readJob.onAwait { it }
+                    readJob.onAwait { outcome ->
+                        (outcome as? Throwable)?.let { throw it }
+                        outcome as String?
+                    }
                     onTimeout(remainingMs) {
-                        readJob.cancel()
                         reader.close()
                         throw AiThinkingInterruptException(
                             thinkingInterruptSeconds
