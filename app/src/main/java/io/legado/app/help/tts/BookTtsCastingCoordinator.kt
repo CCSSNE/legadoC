@@ -619,7 +619,9 @@ object BookTtsCastingCoordinator {
                 TtsVoiceInfo(
                     id = "${engine.id}\n${voice.id}",
                     name = "${engine.name} / ${voice.name}",
-                    gender = voice.gender,
+                    gender = voice.gender?.takeIf {
+                        it == BookRole.Gender.MALE || it == BookRole.Gender.FEMALE
+                    } ?: BookRole.Gender.UNKNOWN,
                     locale = voice.language
                 )
             }
