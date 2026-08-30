@@ -1425,6 +1425,7 @@
     <string name="log_module_video">视频</string>
     <string name="log_module_performance">性能/线程/EventBus</string>
     <string name="log_module_app">应用/界面</string>
+    <string name="log_module_unclassified">未分类</string>
     <string name="sub_dir">子文件夹</string>
     <string name="general">全局</string>
     <string name="use_replace">使用替换</string>

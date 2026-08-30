@@ -11,9 +11,12 @@ import io.legado.app.R
  * 不依赖类名归类——其调用点分布在 help.tts 包（类名含 tts 会被误归 READ_ALOUD）
  * 与 BdReadAloudService（已钉定为 BAIDU_TTS），两类都无法按类名得到正确归属。
  *
- * APP（应用）收纳崩溃、权限、配置、界面与工具类等与功能模块无关的日志，
- * 同时是 classify 的最终兜底归属：未知调用方归入 APP，保证日志永不丢失，
- * 其显示与其他模块一样完全受勾选控制。
+ * APP（应用/界面）收纳崩溃、权限、配置、界面与工具类等与功能模块无关的日志，
+ * 全部由关键词显式覆盖。
+ *
+ * UNCLASSIFIED（未分类）是显式垃圾桶：只收纳 classify 未识别的新调用方，
+ * 当前调用点不应有日志落入；勾选它即可发现漏网的新日志，确认后为其建立正式归属。
+ * 显示与其他模块一样完全受勾选控制。
  */
 enum class LogModule(val labelRes: Int) {
     READ_ALOUD(R.string.log_module_read_aloud),
@@ -27,7 +30,8 @@ enum class LogModule(val labelRes: Int) {
     BACKUP(R.string.log_module_backup),
     VIDEO(R.string.log_module_video),
     PERFORMANCE(R.string.log_module_performance),
-    APP(R.string.log_module_app);
+    APP(R.string.log_module_app),
+    UNCLASSIFIED(R.string.log_module_unclassified);
 
     companion object {
 
@@ -46,6 +50,7 @@ enum class LogModule(val labelRes: Int) {
                 VIDEO,
                 PERFORMANCE,
                 APP,
+                UNCLASSIFIED,
             )
 
         val selectableNames: Set<String> = selectable.map { it.name }.toSet()
@@ -76,11 +81,12 @@ enum class LogModule(val labelRes: Int) {
 
         /**
          * 按调用方类名对日志单点归类，判定规则集中在这一处，
-         * 未匹配的类一律归入 APP（应用），保证不丢任何日志也不需要逐个调用点打标。
+         * 未匹配的类一律归入 UNCLASSIFIED（未分类）垃圾桶，保证不丢任何日志；
+         * 现有调用点应全部被上方关键词覆盖，未分类只应接到新增的未归类调用方。
          * 命中多组关键词的类必须先在 [pinnedByClassPrefix] 钉定唯一归属。
          */
         fun classify(callerClassName: String?): LogModule {
-            if (callerClassName.isNullOrBlank()) return APP
+            if (callerClassName.isNullOrBlank()) return UNCLASSIFIED
             val name = callerClassName.lowercase()
             pinnedByClassPrefix.firstOrNull { name.startsWith(it.first) }?.let { return it.second }
             return when {
@@ -209,7 +215,32 @@ enum class LogModule(val labelRes: Int) {
                     "toc",
                 ) -> READING
 
-                else -> APP
+                // APP（应用/界面）：崩溃、权限、配置、界面与工具类，全部显式覆盖，
+                // 不留隐式兜底——未匹配的调用方落入 UNCLASSIFIED 垃圾桶
+                containsAny(
+                    name,
+                    "baseactivity",
+                    "basedialogfragment",
+                    "appconfig",
+                    "theme",
+                    "crashhandler",
+                    "defaultdata",
+                    "permission",
+                    "about",
+                    "dict",
+                    "webview",
+                    "codeedit",
+                    "handlefile",
+                    "font",
+                    "imagecrop",
+                    "imageutils",
+                    "mainviewmodel",
+                    "keyboard",
+                    "logutils",
+                    "uriextensions",
+                ) -> APP
+
+                else -> UNCLASSIFIED
             }
         }
 

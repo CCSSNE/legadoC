@@ -176,10 +176,10 @@ object AppLog {
         }
     }
 
-    /** 兼容无模块列的历史文件：旧 [AI] 前缀日志归入 AI 模块，其余归入应用 */
+    /** 兼容无模块列的历史文件：旧 [AI] 前缀日志归入 AI 模块，其余属当年未分类遗留，归入未分类 */
     private fun decodeModule(raw: String?, message: String): LogModule {
         raw?.let { name -> LogModule.entries.firstOrNull { it.name == name }?.let { return it } }
-        return if (message.startsWith(AI_LOG_PREFIX)) LogModule.AI else LogModule.APP
+        return if (message.startsWith(AI_LOG_PREFIX)) LogModule.AI else LogModule.UNCLASSIFIED
     }
 
     private fun rewritePersisted() {

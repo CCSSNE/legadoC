@@ -1674,6 +1674,7 @@
     <string name="log_module_video">Video</string>
     <string name="log_module_performance">Performance/threads/EventBus</string>
     <string name="log_module_app">App/UI</string>
+    <string name="log_module_unclassified">Unclassified</string>
     <string name="sub_dir">Sub dir</string>
     <string name="general">General</string>
     <string name="use_replace">Use replace</string>
