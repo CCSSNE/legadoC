@@ -2595,5 +2595,6 @@ Selected text or question:
     <string name="tts_engine_v2_fetch_voices">Fetch voice catalog</string>
     <string name="tts_engine_v2_fetching">Fetching voice catalog…</string>
     <string name="tts_engine_v2_fetch_done">Voice catalog updated</string>
+    <string name="tts_engine_v2_fetch_empty">Voice catalog is empty; fetch voices first</string>
     <string name="tts_engine_v2_no_pickable_engine">No bindable read-aloud engine. Import or create a script engine first.</string>
 </resources>

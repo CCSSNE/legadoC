@@ -52,8 +52,7 @@ class TtsEngineManageActivity : BaseActivity<ActivityTtsEngineManageBinding>(),
         it.uri?.let { uri -> importEngine(uri) }
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onActivityCreated(savedInstanceState: Bundle?) {
         setSupportActionBar(binding.toolBar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         initRecyclerView()

@@ -2448,5 +2448,6 @@
     <string name="tts_engine_v2_fetch_voices">获取发音人目录</string>
     <string name="tts_engine_v2_fetching">正在获取发音人目录…</string>
     <string name="tts_engine_v2_fetch_done">发音人目录已更新</string>
+    <string name="tts_engine_v2_fetch_empty">发音人目录为空，请先获取发音人目录</string>
     <string name="tts_engine_v2_no_pickable_engine">没有可绑定的朗读引擎，请先导入或新建脚本引擎</string>
 </resources>

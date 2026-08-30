@@ -33,6 +33,7 @@ import io.legado.app.utils.postEvent
 import io.legado.app.utils.startForegroundServiceCompat
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.getPrefBoolean
+import io.legado.app.utils.getPrefString
 import splitties.init.appCtx
 
 /** Absolute text position shared by every read-aloud engine and the reader UI. */
