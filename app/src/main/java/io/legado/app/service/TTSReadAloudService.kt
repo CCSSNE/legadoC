@@ -778,29 +778,21 @@ class TTSReadAloudService : BaseReadAloudService() {
                 val utteranceId = utteranceId(nowSpeak)
                 activeUtteranceId = utteranceId
                 queuedUntilIndex = nowSpeak
-                // QUEUE_FLUSH 会让引擎在空闲队列上执行内部 stop 路径（MultiTTS 等引擎
-                // 存在 synthesizer 空对象 NPE，且该异常会同步透传回客户端）。
-                // 所有到达这里的路径都保证引擎已被 stop/前句已 onDone，
-                // flush 与 add 语义等价：异常时退化为 QUEUE_ADD 重试，
-                // 不再当作致命错误轰炸 toast。
+                // QUEUE_FLUSH 会让引擎在空闲队列上执行内部 stop 路径，MultiTTS 等引擎
+                // 冷启动首次合成前 synthesizer 为 null，NPE 经 binder 同步透传回客户端。
+                // 该异常意味着引擎侧合成会话已被打死：同会话 QUEUE_ADD 重试客户端侧
+                // "成功"但请求在引擎内消失，utterance 回调永不到来，最终永久无声。
+                // 唯一正确恢复是按 speak error 销毁重建 TTS 客户端
+                // （handleSpeakError retryWithReinit），重建后引擎已热，当前段重试成功。
                 val result = tts.runCatching {
                     speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
                 }.getOrElse {
                     AppLog.put(
-                        "[朗读] 引擎speak异常，QUEUE_ADD 重试\n${it.localizedMessage}",
+                        "[朗读] 引擎speak异常，重建TTS客户端重试\n${it.localizedMessage}",
                         it,
                         module = LogModule.READ_ALOUD,
                     )
-                    tts.runCatching {
-                        speak(text, TextToSpeech.QUEUE_ADD, null, utteranceId)
-                    }.getOrElse { retryError ->
-                        AppLog.put(
-                            "[朗读] 引擎speak重试失败\n${retryError.localizedMessage}",
-                            retryError,
-                            module = LogModule.READ_ALOUD,
-                        )
-                        TextToSpeech.ERROR
-                    }
+                    TextToSpeech.ERROR
                 }
                 if (result == TextToSpeech.ERROR) {
                     queuedUntilIndex = -1
