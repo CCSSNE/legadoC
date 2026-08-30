@@ -11,10 +11,15 @@ import io.legado.app.data.entities.BookTtsVoiceBinding
 import io.legado.app.help.ai.AiChatService
 import io.legado.app.help.ai.AiStoryboardConfig
 import io.legado.app.help.ai.AiStructuredRequestTemplate
+import io.legado.app.lib.dialogs.SelectItem
+import io.legado.app.model.ReadAloud
+import io.legado.app.plugin.ReadAloudEngines
 import io.legado.app.plugin.TtsVoiceDirectories
 import io.legado.app.plugin.TtsVoiceInfo
 import io.legado.app.utils.GSON
+import io.legado.app.utils.StringUtils
 import io.legado.app.utils.fromJsonArray
+import io.legado.app.utils.fromJsonObject
 import kotlinx.coroutines.CancellationException
 import splitties.init.appCtx
 
@@ -485,11 +490,51 @@ object BookTtsCastingCoordinator {
     )
 
     /**
+     * AI 自动选音引擎门控：多角色播放路由（ReadAloudTtsRouter）当前仅内置语音包引擎宿主
+     * （百度）消费，系统 TTS / HTTP TTS / V2 脚本与系统引擎均无多角色播放路径，对其自动
+     * 选音落库的绑定一律不会被播放消费。按 [ReadAloud] 引擎路由同源顺序解析当前书引擎：
+     * 支持返回 null；不支持返回带当前引擎名的明确原因。必须报错暴露，禁止静默回退内置语音包。
+     */
+    fun multiRoleUnsupportedReason(): String? {
+        ReadAloud.currentTtsEngineV2()?.let { engine ->
+            return unsupportedEngineReason(engine.name)
+        }
+        val engineId = ReadAloud.ttsEngine
+        ReadAloudEngines.byId(engineId)?.let { plugin ->
+            val unavailable = plugin.unavailableReason
+            return when {
+                unavailable != null -> unsupportedEngineReason("${plugin.engineLabel}（$unavailable）")
+                plugin.supportsMultiRoleCasting -> null
+                else -> unsupportedEngineReason(plugin.engineLabel)
+            }
+        }
+        val engineLabel = when {
+            engineId.isNullOrBlank() -> "系统默认 TTS"
+            engineId == ReadAloud.SOURCE_AUDIO_ENGINE_ID -> "书源音频引擎"
+            StringUtils.isNumeric(engineId) ->
+                appDb.httpTTSDao.getName(engineId.toLong()) ?: "HTTP TTS 源"
+            else -> GSON.fromJsonObject<SelectItem<String>>(engineId).getOrNull()?.title
+                ?: "系统默认 TTS"
+        }
+        return unsupportedEngineReason(engineLabel)
+    }
+
+    private fun unsupportedEngineReason(engineLabel: String): String {
+        return "当前朗读引擎「$engineLabel」不支持 AI 分角色自动选音：" +
+            "多角色朗读仅内置语音包引擎（本地百度 TTS）支持，请先切换朗读引擎"
+    }
+
+    /**
      * 找出还没有音色绑定的角色，交给 2号AI 挑发音人。
      * pending 状态的临时角色不自动选音，等转正后分配。
+     * 当前书引擎不支持多角色时直接抛错（见 [multiRoleUnsupportedReason]），不静默回退。
+     * @throws IllegalStateException 当前书引擎不支持 AI 自动选音
      * @return 本次成功写入的绑定数
      */
     suspend fun assignMissingVoices(workKey: String): Int {
+        multiRoleUnsupportedReason()?.let { reason ->
+            throw IllegalStateException(reason)
+        }
         val (provider, modelId) = AiStoryboardConfig.requireModelTarget()
         val dao = appDb.bookRoleDao
         val speakers = cachedSpeakers()

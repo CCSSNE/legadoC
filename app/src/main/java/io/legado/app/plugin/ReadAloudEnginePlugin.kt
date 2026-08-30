@@ -29,4 +29,12 @@ interface ReadAloudEnginePlugin {
      * 主路由据此明示原因并回退系统 TTS（如百度引擎未导入语音包），不静默失效。
      */
     val unavailableReason: String? get() = null
+
+    /**
+     * 是否支持 AI 分角色多角色朗读：即本引擎的朗读服务是否消费选角路由
+     * （[io.legado.app.help.tts.ReadAloudTtsRouter]）按段切换发音人。
+     * 默认 false；仅内置语音包引擎宿主（百度）覆写为 true。AI 自动选音据此门控，
+     * 不支持的引擎必须明示报错，禁止静默回退到内置语音包。
+     */
+    val supportsMultiRoleCasting: Boolean get() = false
 }

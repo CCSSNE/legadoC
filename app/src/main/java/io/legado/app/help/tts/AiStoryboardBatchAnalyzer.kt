@@ -39,6 +39,14 @@ object AiStoryboardBatchAnalyzer {
 
     fun start(book: Book, fromIndex: Int, toIndex: Int) {
         if (_progress.value.running) return
+        // 当前书引擎不支持 AI 多角色时直接明示拒绝启动：
+        // 自动选音产出不会被该引擎的播放路径消费，禁止静默落库到内置语音包。
+        val unsupportedReason = BookTtsCastingCoordinator.multiRoleUnsupportedReason()
+        if (unsupportedReason != null) {
+            AppLog.put("[AI分镜] 批量分析未启动：$unsupportedReason", module = LogModule.AI_CAST)
+            _progress.value = Progress(message = unsupportedReason)
+            return
+        }
         val from = minOf(fromIndex, toIndex).coerceAtLeast(0)
         val to = maxOf(fromIndex, toIndex)
         job = scope.launch {

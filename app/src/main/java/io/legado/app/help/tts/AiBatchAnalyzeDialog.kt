@@ -112,6 +112,10 @@ class AiBatchAnalyzeDialog : BaseDialogFragment(R.layout.dialog_ai_batch_analyze
             toastOnUi(R.string.ai_storyboard_model_unset)
             return
         }
+        BookTtsCastingCoordinator.multiRoleUnsupportedReason()?.let { reason ->
+            toastOnUi(reason)
+            return
+        }
         AiStoryboardBatchAnalyzer.start(book, from - 1, to - 1)
     }
 }
