@@ -253,12 +253,13 @@ object AiCreationImageTaskHolder {
     }
 
     /**
-     * 视频生成任务：单槽位，走视频供应商全部配置（变量值由调用方按视频体系解析传入）。
-     * 展示与提示复用图片任务的槽位机制，槽位文件名以 vid_ 前缀区分视频。
+     * 视频生成任务：数量与图片一致由用户填写，走视频供应商全部配置
+     * （变量值由调用方按视频体系解析传入）。展示与提示复用图片任务的槽位机制，
+     * 槽位文件名以 vid_ 前缀区分视频。视频一次请求只产出一个视频，按并发上限分批提交。
      */
-    fun startVideo(prompt: String, extraValues: Map<String, String>) {
+    fun startVideo(prompt: String, count: Int, extraValues: Map<String, String>) {
         val target = AiCreationProviderStore.requireVideoTarget()
-        val task = GenerationTask(listOf(AiCreationImageSlot(index = 0)))
+        val task = GenerationTask((0 until count).map { index -> AiCreationImageSlot(index = index) })
         synchronized(displayLock) {
             latestTask = task
             _slots.value = task.slots.toList()
@@ -269,7 +270,7 @@ object AiCreationImageTaskHolder {
         updateFloatingState()
         scope.launch {
             try {
-                runVideoGeneration(task, target, prompt, extraValues)
+                runVideoGeneration(task, target, prompt, count, extraValues)
             } finally {
                 runningTasks.decrementAndGet()
                 updateFloatingState()
@@ -281,16 +282,64 @@ object AiCreationImageTaskHolder {
         task: GenerationTask,
         target: AiCreationProviderTarget,
         prompt: String,
+        count: Int,
         extraValues: Map<String, String>
     ) {
-        runCatching {
-            AiCreationVideoHelper.generateVideo(target.provider, target.modelId, prompt, extraValues)
-        }.onSuccess { fileName ->
-            acceptImage(task, 0, fileName)
-        }.onFailure { throwable ->
-            if (throwable is CancellationException) throw throwable
-            failSlot(task, 0, throwable.message ?: "视频生成失败")
+        val retry = AiCreationConfig.imageRetryCount
+        val failedIndexes = mutableListOf<Int>()
+        for (chunk in (0 until count).chunked(IMAGE_CONCURRENCY)) {
+            val results = coroutineScope {
+                chunk.map { index ->
+                    async {
+                        index to runCatching {
+                            requestVideo(target, prompt, extraValues, retry)
+                        }
+                    }
+                }.awaitAll()
+            }
+            for ((index, single) in results) {
+                single.onSuccess { fileName ->
+                    acceptImage(task, index, fileName)
+                }.onFailure { throwable ->
+                    if (throwable is CancellationException) throw throwable
+                    failedIndexes.add(index)
+                }
+            }
         }
+        //首轮仍失败的槽位串行重试（带完整重试与退避），两轮全败才如实标失败
+        for (index in failedIndexes) {
+            val single = runCatching { requestVideo(target, prompt, extraValues, retry) }
+            single.onSuccess { fileName ->
+                acceptImage(task, index, fileName)
+            }.onFailure { throwable ->
+                if (throwable is CancellationException) throw throwable
+                failSlot(task, index, throwable.message ?: "视频生成失败")
+            }
+        }
+    }
+
+    private suspend fun requestVideo(
+        target: AiCreationProviderTarget,
+        prompt: String,
+        extraValues: Map<String, String>,
+        retry: Int
+    ): String {
+        var lastError: Throwable? = null
+        repeat(retry + 1) { attempt ->
+            try {
+                return AiCreationVideoHelper.generateVideo(
+                    target.provider,
+                    target.modelId,
+                    prompt,
+                    extraValues
+                )
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                lastError = throwable
+                if (attempt < retry) delay(800)
+            }
+        }
+        throw lastError ?: IllegalStateException("视频生成失败")
     }
 
     private fun updateFloatingState() {

@@ -278,8 +278,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
             }
         )
         val isVideo = isVideoMode()
-        binding.etImageCount.visibility =
-            if (page == 2 && !isVideo) View.VISIBLE else View.GONE
+        binding.etImageCount.visibility = if (page == 2) View.VISIBLE else View.GONE
         binding.btnGenerateImage.visibility = if (page == 2) View.VISIBLE else View.GONE
         binding.btnGenerateImage.setText(
             if (isVideo) R.string.ai_creation_generate_video else R.string.ai_creation_generate_image
@@ -714,13 +713,15 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
     }
 
     private fun startVideoGeneration(prompt: String) {
+        val count = binding.etImageCount.text?.toString()?.toIntOrNull()
+            ?.coerceIn(1, 10) ?: 1
         viewLifecycleOwner.lifecycleScope.launch {
             val result = runCatching {
                 val definition = AiCreationConfig.videoDefinition
                 val values = withContext(IO) {
                     AiCreationHelper.buildValues(session, emptyMap(), definition.variables)
                 }
-                AiCreationImageTaskHolder.startVideo(prompt, values)
+                AiCreationImageTaskHolder.startVideo(prompt, count, values)
             }
             result.onSuccess {
                 showPage(3)
