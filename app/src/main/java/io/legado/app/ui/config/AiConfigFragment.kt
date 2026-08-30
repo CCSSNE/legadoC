@@ -472,7 +472,7 @@ class AiConfigFragment : PreferenceFragment(),
             return
         }
         val body = runCatching {
-            AiCreationConfig.requestTemplates.firstOrNull()?.body
+            AiCreationConfig.promptLibrary.firstOrNull()?.text
                 ?: error("AI 创作请求模板仓库为空")
         }.getOrElse {
             toastOnUi(it.message ?: it.javaClass.simpleName)

@@ -1028,18 +1028,18 @@ object LocalBook {
             val manifest = GSON.fromJsonObject<TtsCacheArchive.Manifest>(manifestFile.readText())
                 .getOrNull() ?: return
             val importedBook = audioChapterMapping?.let { mapping ->
-                importedBooks.singleOrNull { it.bookUrl == mapping.bookUrl }
+                importedBooks.singleOrNull { it.book.bookUrl == mapping.bookUrl }
             } ?: importedBooks.firstOrNull() ?: return
             val archiveRootDir = manifestFile.parentFile ?: return
-            val localChapters = appDb.bookChapterDao.getChapterList(importedBook.bookUrl)
+            val localChapters = appDb.bookChapterDao.getChapterList(importedBook.book.bookUrl)
             val report = TtsCacheArchive.restore(
-                importedBook,
+                importedBook.book,
                 manifest,
                 archiveRootDir,
             ) { index, title ->
                 matchLocalChapter(localChapters, index, title)
             }
-            AppLog.put("导入 TTS 音频缓存（${importedBook.name}）：$report")
+            AppLog.put("导入 TTS 音频缓存（${importedBook.book.name}）：$report")
         }.onFailure { e ->
             AppLog.put("导入 TTS 音频缓存失败\n${e.localizedMessage}", e)
         }
