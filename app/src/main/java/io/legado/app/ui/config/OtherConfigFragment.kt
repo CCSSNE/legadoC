@@ -7,6 +7,7 @@ import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.View
+import androidx.appcompat.app.AlertDialog
 import androidx.core.view.postDelayed
 import androidx.fragment.app.activityViewModels
 import androidx.preference.ListPreference
@@ -239,7 +240,7 @@ class OtherConfigFragment : PreferenceFragment(),
         return super.onPreferenceTreeClick(preference)
     }
 
-    /** 勾选普通日志中显示的模块；通用模块始终显示，不在弹窗中出现 */
+    /** 勾选普通日志中显示的模块；全部模块均可勾选，全不勾选时普通日志为空 */
     private fun showLogShownModulesDialog() {
         val modules = LogModule.selectable
         val labels = modules.map { getString(it.labelRes) }.toTypedArray()
@@ -255,12 +256,18 @@ class OtherConfigFragment : PreferenceFragment(),
                     .mapTo(mutableSetOf()) { modules[it].name }
                 putPrefStringSet(PreferKey.logShownModules, selected)
             }
-            negativeButton(R.string.select_all) {
-                repeat(checked.size) { index -> checked[index] = true }
+            negativeButton(R.string.select_all) { dialog ->
+                repeat(checked.size) { index ->
+                    checked[index] = true
+                    (dialog as AlertDialog).listView.setItemChecked(index, true)
+                }
                 putPrefStringSet(PreferKey.logShownModules, LogModule.selectableNames.toMutableSet())
             }
-            neutralButton(R.string.restore_default) {
-                repeat(checked.size) { index -> checked[index] = true }
+            neutralButton(R.string.restore_default) { dialog ->
+                repeat(checked.size) { index ->
+                    checked[index] = false
+                    (dialog as AlertDialog).listView.setItemChecked(index, false)
+                }
                 removePref(PreferKey.logShownModules)
             }
             cancelButton()

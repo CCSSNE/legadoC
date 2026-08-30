@@ -178,9 +178,9 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     }
 
     /**
-     * 普通日志中除通用外要显示并详细记录的模块名集合。
-     * 勾选模块即是打开该模块的详细调试日志；未配置时默认全部关闭，
-     * 普通用户只看到通用日志，避免被开发向调试日志刷屏。
+     * 普通日志中要显示的模块名集合。
+     * 勾选模块即是显示并详细记录该模块日志；全部模块均可勾选，
+     * 未配置时默认全部关闭，普通日志为空，避免被开发向调试日志刷屏。
      */
     private fun readLogShownModules(): Set<String> {
         val stored = appCtx.getPrefStringSet(PreferKey.logShownModules) ?: return emptySet()

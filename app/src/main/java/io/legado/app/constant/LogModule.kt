@@ -4,39 +4,48 @@ import androidx.annotation.StringRes
 import io.legado.app.R
 
 /**
- * 普通日志的模块归属。GENERAL 是兜底模块，始终在普通日志中显示；
- * 其余模块由用户在其他设置的“普通日志模块”弹窗中勾选是否显示。
+ * 普通日志的模块归属。每条日志必须归属唯一模块，且所有模块均可勾选：
+ * 未勾选的模块日志不显示，全部不勾选时普通日志为空，不存在始终显示的兜底模块。
  *
  * AI_CAST（AI分角色）约定：AI 分镜/角色收编/自动选音链路的日志必须显式传 module，
  * 不依赖类名归类——其调用点分布在 help.tts 包（类名含 tts 会被误归 READ_ALOUD）
  * 与 BdReadAloudService（已钉定为 BAIDU_TTS），两类都无法按类名得到正确归属。
+ *
+ * APP（应用）收纳崩溃、权限、配置、界面与工具类等与功能模块无关的日志，
+ * 同时是 classify 的最终兜底归属：未知调用方归入 APP，保证日志永不丢失，
+ * 其显示与其他模块一样完全受勾选控制。
  */
 enum class LogModule(val labelRes: Int) {
-    GENERAL(R.string.log_module_general),
     READ_ALOUD(R.string.log_module_read_aloud),
     BAIDU_TTS(R.string.log_module_baidu_tts),
     TTS_CACHE(R.string.log_module_tts_cache),
     AI_CAST(R.string.log_module_ai_cast),
+    AI(R.string.log_module_ai),
     DOWNLOAD_CACHE(R.string.log_module_download_cache),
     READING(R.string.log_module_reading),
     SOURCE_NETWORK(R.string.log_module_source_network),
+    BACKUP(R.string.log_module_backup),
+    VIDEO(R.string.log_module_video),
     PERFORMANCE(R.string.log_module_performance),
-    AI(R.string.log_module_ai);
+    APP(R.string.log_module_app);
 
     companion object {
 
-        /** 可勾选的模块（不含始终显示的 GENERAL），顺序即弹窗中的展示顺序 */
+        /** 可勾选的模块（全部模块），顺序即弹窗中的展示顺序 */
         val selectable: List<LogModule>
             get() = listOf(
                 READ_ALOUD,
                 BAIDU_TTS,
                 TTS_CACHE,
                 AI_CAST,
+                AI,
                 DOWNLOAD_CACHE,
                 READING,
                 SOURCE_NETWORK,
+                BACKUP,
+                VIDEO,
                 PERFORMANCE,
-                AI,
+                APP,
             )
 
         val selectableNames: Set<String> = selectable.map { it.name }.toSet()
@@ -46,7 +55,8 @@ enum class LogModule(val labelRes: Int) {
          * 优先于关键词匹配。用于收纳同时命中多组关键词的类——每条日志只允许归属一个模块，
          * 不允许靠 when 分支顺序裁决：
          * - 关键词子串嵌套：bdtts 含 tts、bdreadaloud 含 readaloud、ttscache 含 tts；
-         * - 跨组同名：localBook 内嵌 JsExtensions 同时命中 localbook 与 jsextensions。
+         * - 跨组同名：localBook 内嵌 JsExtensions 同时命中 localbook 与 jsextensions；
+         * - help.ai 与 ui.main.ai 整包属 AI，避免裸 "ai" 子串误伤（如 main 含 ai）。
          * 前缀按"外层类名"写，天然覆盖内部类（$）、companion 与 Kt 文件类变体。
          */
         private val pinnedByClassPrefix: List<Pair<String, LogModule>> = listOf(
@@ -58,15 +68,19 @@ enum class LogModule(val labelRes: Int) {
             // 本地书 TXT 目录规则的 JS 执行环境（TextFile$JsExtensions）双命中
             // READING（localbook）+ SOURCE_NETWORK（jsextensions），唯一归属阅读
             "io.legado.app.model.localbook.textfile\$jsextensions" to LogModule.READING,
+            // AI：help.ai 包与聊天界面、AI 配置页；裸 "ai" 关键词会误伤 main 等类名，必须钉定
+            "io.legado.app.help.ai." to LogModule.AI,
+            "io.legado.app.ui.main.ai." to LogModule.AI,
+            "io.legado.app.ui.config.aiconfigfragment" to LogModule.AI,
         )
 
         /**
          * 按调用方类名对日志单点归类，判定规则集中在这一处，
-         * 未匹配的类一律归入通用，保证不丢任何日志也不需要逐个调用点打标。
+         * 未匹配的类一律归入 APP（应用），保证不丢任何日志也不需要逐个调用点打标。
          * 命中多组关键词的类必须先在 [pinnedByClassPrefix] 钉定唯一归属。
          */
         fun classify(callerClassName: String?): LogModule {
-            if (callerClassName.isNullOrBlank()) return GENERAL
+            if (callerClassName.isNullOrBlank()) return APP
             val name = callerClassName.lowercase()
             pinnedByClassPrefix.firstOrNull { name.startsWith(it.first) }?.let { return it.second }
             return when {
@@ -98,7 +112,17 @@ enum class LogModule(val labelRes: Int) {
                     "aloudservice",
                     "tts",
                     "audioplay",
+                    "speakengine",
                 ) -> READ_ALOUD
+
+                containsAny(
+                    name,
+                    "webdav",
+                    "backup",
+                    "restore",
+                ) -> BACKUP
+
+                containsAny(name, "video") -> VIDEO
 
                 containsAny(
                     name,
@@ -108,27 +132,13 @@ enum class LogModule(val labelRes: Int) {
                     "cachelogsink",
                     "cacheoperationdiagnostics",
                     "mediacachetaskmanager",
+                    "cacheactivity",
+                    "exportbook",
+                    "review",
                 ) -> DOWNLOAD_CACHE
 
-                containsAny(
-                    name,
-                    "readbook",
-                    "textchapterlayout",
-                    "chapterprovider",
-                    "contenttextview",
-                    "readview",
-                    "imageprovider",
-                    "readmanga",
-                    "localbook",
-                    "epubfile",
-                    "mobifile",
-                    "pdffile",
-                    "textfile",
-                    "bookmark",
-                    "readrss",
-                    "rssarticle",
-                ) -> READING
-
+                // SOURCE_NETWORK 必须先于 READING 判定：importbooksource 等书源类
+                // 也含 importbook 这类阅读关键词，先判书源网络才能唯一归属
                 containsAny(
                     name,
                     "webbook",
@@ -147,9 +157,59 @@ enum class LogModule(val labelRes: Int) {
                     "booksource",
                     "rsssource",
                     "searchmodel",
+                    "sourcecallback",
+                    "changesource",
+                    "changecover",
+                    "explore",
+                    "searchactivity",
+                    "searchviewmodel",
+                    "searchscopedialog",
+                    "openurl",
+                    "remotebook",
+                    "serversdialog",
+                    "sourcepicker",
                 ) -> SOURCE_NETWORK
 
-                else -> GENERAL
+                containsAny(
+                    name,
+                    "readbook",
+                    "textchapterlayout",
+                    "chapterprovider",
+                    "contenttextview",
+                    "readview",
+                    "imageprovider",
+                    "readmanga",
+                    "localbook",
+                    "epubfile",
+                    "mobifile",
+                    "pdffile",
+                    "textfile",
+                    "bookmark",
+                    "readrss",
+                    "rssarticle",
+                    "audiotextfusion",
+                    "bookextensions",
+                    "bookimgclick",
+                    "contentprocessor",
+                    "bookchapter",
+                    "replacerule",
+                    "bookinfo",
+                    "bookshelf",
+                    "booksfragment",
+                    "bookcollection",
+                    "importbook",
+                    "fileassociation",
+                    "groupmanage",
+                    "textactionmenu",
+                    "bgtextconfig",
+                    "searchcontent",
+                    "rssfavorites",
+                    "rssfragment",
+                    "rulesub",
+                    "toc",
+                ) -> READING
+
+                else -> APP
             }
         }
 

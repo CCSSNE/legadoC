@@ -37,11 +37,11 @@ object AppLog {
         get() = logs.filter { it.message.startsWith("$AI_LOG_PREFIX ") }
 
     /**
-     * 普通日志视图数据：通用条目始终显示，其余条目只显示被勾选的模块。
+     * 普通日志视图数据：只显示被勾选模块的条目，全部不勾选时为空。
      */
     fun logsForView(shownModules: Set<String>): List<Entry> {
         return synchronized(this) {
-            mLogs.filter { it.module == LogModule.GENERAL || shownModules.contains(it.module.name) }
+            mLogs.filter { shownModules.contains(it.module.name) }
         }
     }
 
@@ -176,10 +176,10 @@ object AppLog {
         }
     }
 
-    /** 兼容无模块列的历史文件：旧 [AI] 前缀日志归入 AI 模块，其余归入通用 */
+    /** 兼容无模块列的历史文件：旧 [AI] 前缀日志归入 AI 模块，其余归入应用 */
     private fun decodeModule(raw: String?, message: String): LogModule {
         raw?.let { name -> LogModule.entries.firstOrNull { it.name == name }?.let { return it } }
-        return if (message.startsWith(AI_LOG_PREFIX)) LogModule.AI else LogModule.GENERAL
+        return if (message.startsWith(AI_LOG_PREFIX)) LogModule.AI else LogModule.APP
     }
 
     private fun rewritePersisted() {
