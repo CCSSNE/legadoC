@@ -4,6 +4,7 @@ import com.google.gson.annotations.SerializedName
 import io.legado.app.data.entities.CreationCard
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
+import org.json.JSONObject
 
 const val AI_CREATION_EPHEMERAL_BOOK = "\u0000ephemeral"
 const val AI_CREATION_MODE_KEY = "mode"
@@ -14,7 +15,6 @@ data class AiCreationVariable(
     val format: String = AiCreationVariable.FORMAT_OPTIONS,
     val options: List<String> = emptyList(),
     val defaultValue: String = "",
-    val group: String = AiCreationVariables.GROUP_IMAGE,
     val values: List<String> = emptyList(),
     val onValue: String = "true",
     val offValue: String = "false"
@@ -40,16 +40,17 @@ data class AiCreationVariable(
         else -> true
     }
 
-    /**
-     * 参数读取的统一清洗入口：持久层里的旧值/无效值（变量定义变更后）回退到默认值，
-     * 避免把已废弃的取值发进提示词或请求体。
-     */
+    /** 缺省时采用定义默认值；已有值不合法直接暴露配置错误。 */
     fun effectiveValue(stored: String?): String {
-        if (stored == null) return defaultValue
-        return if (accepts(stored)) stored else defaultValue
+        val value = stored ?: defaultValue
+        require(accepts(value)) {
+            "AI 创作变量 $key 的当前值无效：$value"
+        }
+        return value
     }
 }
 
+/** 创作页的显示分组；它不是供应商变量 JSON 的字段。 */
 data class AiCreationVariableGroup(
     val key: String,
     val label: String,
@@ -58,56 +59,40 @@ data class AiCreationVariableGroup(
 
 data class AiCreationRoute(
     @SerializedName("when") val conditions: Map<String, String> = emptyMap(),
-    val template: String = ""
+    val prompt: String = ""
 )
 
 data class AiCreationVariableDoc(
-    val groups: List<AiCreationVariableGroup>? = null,
+    val variables: List<AiCreationVariable>? = null,
     val routes: List<AiCreationRoute>? = null
 )
 
 data class AiCreationDefinition(
-    val groups: List<AiCreationVariableGroup>,
     val variables: List<AiCreationVariable>,
     val routes: List<AiCreationRoute>
-) {
-    /**
-     * 按组 key 过滤归属：图片体系只认图片组，视频体系只认视频组。
-     * JSON 里塞了不归属的组直接忽略，两套体系互不引用。
-     */
-    fun keepGroups(groupKey: String, groupLabel: String): AiCreationDefinition {
-        val kept = groups.filter { it.key == groupKey }
-        require(kept.isNotEmpty() && kept.any { it.variables.isNotEmpty() }) {
-            "变量定义缺少${groupLabel}组"
-        }
-        val keptVariables = kept.flatMap { it.variables }
-        return copy(groups = kept, variables = keptVariables)
-    }
-}
+)
 
 object AiCreationVariables {
 
     const val GROUP_IMAGE = "image"
     const val GROUP_VIDEO = "video"
 
-    //图片组 style：控制提示词走向（路由到连环画/单场景提示词库条目），默认单场景
+    //图片 style：控制提示词走向（路由到连环画/单场景提示词），默认单场景
     private val imageStyleVariable = AiCreationVariable(
         key = "style",
         label = "画面风格",
         format = AiCreationVariable.FORMAT_OPTIONS,
         options = listOf("连环画", "单场景"),
-        defaultValue = "单场景",
-        group = GROUP_IMAGE
+        defaultValue = "单场景"
     )
 
-    //视频组 style：与图片组同名但完全独立（各自 JSON 各自路由），默认单镜头
+    //视频 style：与图片独立（各自供应商 JSON 各自路由），默认单镜头
     private val videoStyleVariable = AiCreationVariable(
         key = "style",
         label = "画面风格",
         format = AiCreationVariable.FORMAT_OPTIONS,
         options = listOf("多镜头", "单镜头"),
-        defaultValue = "单镜头",
-        group = GROUP_VIDEO
+        defaultValue = "单镜头"
     )
 
     //智谱 CogView 官方 size 枚举：选项带比例与横竖标注，values 存纯 API 值
@@ -134,7 +119,6 @@ object AiCreationVariables {
             "720x1440"
         ),
         defaultValue = "1024x1024",
-        group = GROUP_IMAGE
     )
 
     //智谱 CogView 官方 quality：standard/hd，两值做成开关
@@ -145,7 +129,6 @@ object AiCreationVariables {
         defaultValue = "standard",
         onValue = "hd",
         offValue = "standard",
-        group = GROUP_IMAGE
     )
 
     //智谱 CogView 官方水印开关
@@ -156,7 +139,6 @@ object AiCreationVariables {
         defaultValue = "false",
         onValue = "true",
         offValue = "false",
-        group = GROUP_IMAGE
     )
 
     private val cogViewImageVariables = listOf(
@@ -186,7 +168,6 @@ object AiCreationVariables {
             "720x1280"
         ),
         defaultValue = "1024x1024",
-        group = GROUP_IMAGE
     )
 
     private val kolorsNegativePromptVariable = AiCreationVariable(
@@ -194,7 +175,6 @@ object AiCreationVariables {
         label = "负面提示",
         format = AiCreationVariable.FORMAT_INPUT,
         defaultValue = "",
-        group = GROUP_IMAGE
     )
 
     private val kolorsStepsVariable = AiCreationVariable(
@@ -202,7 +182,6 @@ object AiCreationVariables {
         label = "推理步数",
         format = AiCreationVariable.FORMAT_INPUT,
         defaultValue = "20",
-        group = GROUP_IMAGE
     )
 
     private val kolorsGuidanceVariable = AiCreationVariable(
@@ -210,7 +189,6 @@ object AiCreationVariables {
         label = "引导系数",
         format = AiCreationVariable.FORMAT_INPUT,
         defaultValue = "7.5",
-        group = GROUP_IMAGE
     )
 
     /** 硅基流动 Kolors 版图片组（供内置硅基流动供应商组装变量定义） */
@@ -222,7 +200,7 @@ object AiCreationVariables {
         kolorsGuidanceVariable
     )
 
-    //视频组按智谱 CogVideoX 官方参数定义；key 统一加 video_ 前缀保证全局唯一
+    //视频供应商按智谱 CogVideoX 官方参数定义；key 统一加 video_ 前缀保证全局唯一
     private val zhipuVideoParameters = listOf(
         AiCreationVariable(
             key = "video_quality",
@@ -231,7 +209,6 @@ object AiCreationVariables {
             defaultValue = "speed",
             onValue = "quality",
             offValue = "speed",
-            group = GROUP_VIDEO
         ),
         AiCreationVariable(
             key = "video_with_audio",
@@ -240,7 +217,6 @@ object AiCreationVariables {
             defaultValue = "false",
             onValue = "true",
             offValue = "false",
-            group = GROUP_VIDEO
         ),
         AiCreationVariable(
             key = "video_size",
@@ -265,7 +241,6 @@ object AiCreationVariables {
                 "3840x2160"
             ),
             defaultValue = "1920x1080",
-            group = GROUP_VIDEO
         ),
         AiCreationVariable(
             key = "video_fps",
@@ -274,7 +249,6 @@ object AiCreationVariables {
             defaultValue = "30",
             onValue = "60",
             offValue = "30",
-            group = GROUP_VIDEO
         ),
         AiCreationVariable(
             key = "video_duration",
@@ -283,51 +257,43 @@ object AiCreationVariables {
             defaultValue = "5",
             onValue = "10",
             offValue = "5",
-            group = GROUP_VIDEO
         )
     )
 
-    //图片路由：写在图片供应商的变量定义 JSON 里，按图片 style 选择提示词库条目
+    //图片路由：写在图片供应商变量定义 JSON 里，按 style 选择提示词模板 key。
     private val imageRoutes = listOf(
         AiCreationRoute(
             conditions = mapOf("style" to "连环画"),
-            template = "连环画"
+            prompt = "连环画"
         ),
         AiCreationRoute(
             conditions = mapOf("style" to "单场景"),
-            template = "单场景"
+            prompt = "单场景"
         )
     )
 
-    //视频路由：写在视频供应商的变量定义 JSON 里，按视频 style 选择提示词库条目
+    //视频路由：写在视频供应商变量定义 JSON 里，按 style 选择提示词模板 key。
     private val videoRoutes = listOf(
         AiCreationRoute(
             conditions = mapOf("style" to "多镜头"),
-            template = "多镜头"
+            prompt = "多镜头"
         ),
         AiCreationRoute(
             conditions = mapOf("style" to "单镜头"),
-            template = "单镜头"
+            prompt = "单镜头"
         )
     )
 
-    /** 智谱 CogView 版图片供应商默认变量定义：仅图片组 + 图片路由 */
+    /** 智谱 CogView 图片供应商的默认变量定义：变量 + 图片路由。 */
     val defaultJson: String by lazy { buildImageJson(cogViewImageVariables) }
 
     /**
-     * 组装图片供应商变量定义 JSON：图片组由调用方按供应商传入（智谱 CogView 或硅基流动 Kolors），
-     * 路由为公共默认。图片定义不再包含视频组，视频体系完全独立。
+     * 组装图片供应商变量定义 JSON：变量由供应商提供，路由为图片默认路由。
      */
     fun buildImageJson(imageVariables: List<AiCreationVariable>): String {
         return GSON.toJson(
             AiCreationVariableDoc(
-                groups = listOf(
-                    AiCreationVariableGroup(
-                        key = GROUP_IMAGE,
-                        label = "图片",
-                        variables = imageVariables
-                    )
-                ),
+                variables = imageVariables,
                 routes = imageRoutes
             )
         )
@@ -342,7 +308,6 @@ object AiCreationVariables {
         defaultValue = "false",
         onValue = "true",
         offValue = "false",
-        group = GROUP_VIDEO
     )
 
     //硅基流动视频（Wan）官方参数：image_size 三档 + 负面提示
@@ -358,21 +323,19 @@ object AiCreationVariables {
             ),
             values = listOf("1280x720", "720x1280", "960x960"),
             defaultValue = "1280x720",
-            group = GROUP_VIDEO
         ),
         AiCreationVariable(
             key = "negative_prompt",
             label = "负面提示",
             format = AiCreationVariable.FORMAT_INPUT,
             defaultValue = "",
-            group = GROUP_VIDEO
         )
     )
 
     private val siliconFlowVideoVariables =
         listOf(videoStyleVariable) + siliconFlowVideoParameters
 
-    /** 视频供应商的变量定义：仅视频组 + 视频路由，与图片体系完全独立 */
+    /** 视频供应商的变量定义：变量 + 视频路由，与图片体系完全独立。 */
     val zhipuVideoVariablesJson: String by lazy { buildVideoVariablesJson(zhipuVideoVariables) }
     val siliconFlowVideoVariablesJson: String by lazy {
         buildVideoVariablesJson(siliconFlowVideoVariables)
@@ -381,94 +344,100 @@ object AiCreationVariables {
     private fun buildVideoVariablesJson(variables: List<AiCreationVariable>): String {
         return GSON.toJson(
             AiCreationVariableDoc(
-                groups = listOf(
-                    AiCreationVariableGroup(
-                        key = GROUP_VIDEO,
-                        label = "视频",
-                        variables = variables
-                    )
-                ),
+                variables = variables,
                 routes = videoRoutes
             )
         )
     }
 
     fun parse(json: String): AiCreationDefinition {
+        val raw = try {
+            JSONObject(json)
+        } catch (throwable: Throwable) {
+            throw IllegalStateException("AI 创作变量定义 JSON 无效：${throwable.message}", throwable)
+        }
+        require(!raw.has("groups")) {
+            "AI 创作变量定义不支持 groups；请改用 variables"
+        }
+        raw.optJSONArray("variables")?.let { variables ->
+            for (index in 0 until variables.length()) {
+                val variable = variables.optJSONObject(index) ?: continue
+                require(!variable.has("group")) {
+                    "AI 创作变量定义不支持 group；变量直接写入 variables"
+                }
+            }
+        }
+        raw.optJSONArray("routes")?.let { routes ->
+            for (index in 0 until routes.length()) {
+                val route = routes.optJSONObject(index) ?: continue
+                require(!route.has("template")) {
+                    "AI 创作路由只使用 prompt（提示词名字）字段"
+                }
+            }
+        }
         val doc = GSON.fromJsonObject<AiCreationVariableDoc>(json).getOrNull()
             ?: throw IllegalStateException("AI 创作变量定义 JSON 无效：无法解析")
-        val groups = requireNotNull(doc.groups) { "AI 创作变量定义缺少 groups" }
-        val routes = requireNotNull(doc.routes) { "AI 创作变量定义缺少 routes（没有路由就无法选择请求模板）" }
-        require(groups.isNotEmpty()) { "AI 创作变量定义 groups 不能为空" }
-        val variables = mutableListOf<AiCreationVariable>()
+        val variables = requireNotNull(doc.variables) { "AI 创作变量定义缺少 variables" }
+        val routes = requireNotNull(doc.routes) { "AI 创作变量定义缺少 routes（没有路由就无法选择提示词）" }
+        require(variables.isNotEmpty()) { "AI 创作变量定义 variables 不能为空" }
         val keys = mutableSetOf<String>()
-        groups.forEach { group ->
-            require(group.key.isNotBlank()) { "AI 创作变量分组 key 不能为空" }
-            group.variables.forEach { variable ->
-                val withGroup = if (variable.group.isBlank()) {
-                    variable.copy(group = group.key)
-                } else {
-                    variable
+        val normalizedVariables = variables.map { variable ->
+            //GSON 反射解析对缺失字段不应用 Kotlin 默认值，这里统一归一到定义默认值。
+            val normalized = variable.copy(
+                values = variable.values.orEmpty(),
+                onValue = variable.onValue.orEmpty().ifBlank { "true" },
+                offValue = variable.offValue.orEmpty().ifBlank { "false" }
+            )
+            require(normalized.key.isNotBlank()) {
+                "AI 创作变量 key 不能为空：${normalized.label}"
+            }
+            require(normalized.key != AI_CREATION_MODE_KEY) {
+                "AI 创作变量 key 不能使用保留字：$AI_CREATION_MODE_KEY"
+            }
+            require(normalized.format in AiCreationVariable.formats) {
+                "AI 创作变量 ${normalized.key} 的 format 无效：${normalized.format}"
+            }
+            if (normalized.format == AiCreationVariable.FORMAT_OPTIONS) {
+                require(normalized.options.isNotEmpty()) {
+                    "AI 创作变量 ${normalized.key} 为选项式但没有选项"
                 }
-                //GSON 反射解析对缺失字段不应用 Kotlin 默认值，这里统一归一到安全默认
-                val normalized = withGroup.copy(
-                    values = withGroup.values.orEmpty(),
-                    onValue = withGroup.onValue.orEmpty().ifBlank { "true" },
-                    offValue = withGroup.offValue.orEmpty().ifBlank { "false" }
-                )
-                require(normalized.key.isNotBlank()) {
-                    "AI 创作变量 key 不能为空：${normalized.label}"
-                }
-                require(normalized.key != AI_CREATION_MODE_KEY) {
-                    "AI 创作变量 key 不能使用保留字：$AI_CREATION_MODE_KEY"
-                }
-                require(normalized.format in AiCreationVariable.formats) {
-                    "AI 创作变量 ${normalized.key} 的 format 无效：${normalized.format}"
-                }
-                if (normalized.format == AiCreationVariable.FORMAT_OPTIONS) {
-                    require(normalized.options.isNotEmpty()) {
-                        "AI 创作变量 ${normalized.key} 为选项式但没有选项"
-                    }
-                    if (normalized.values.isNotEmpty()) {
-                        require(normalized.values.size == normalized.options.size) {
-                            "AI 创作变量 ${normalized.key} 的 values 与 options 数量不一致"
-                        }
-                    }
-                    //空默认值表示不预选，允许；非空默认值必须命中已定义选项
-                    if (normalized.defaultValue.isNotEmpty()) {
-                        require(normalized.accepts(normalized.defaultValue)) {
-                            "AI 创作变量 ${normalized.key} 的默认值无效：${normalized.defaultValue}"
-                        }
+                if (normalized.values.isNotEmpty()) {
+                    require(normalized.values.size == normalized.options.size) {
+                        "AI 创作变量 ${normalized.key} 的 values 与 options 数量不一致"
                     }
                 }
-                if (normalized.format == AiCreationVariable.FORMAT_SWITCH) {
-                    require(normalized.onValue != normalized.offValue) {
-                        "AI 创作变量 ${normalized.key} 的 onValue 与 offValue 不能相同"
-                    }
+                if (normalized.defaultValue.isNotEmpty()) {
                     require(normalized.accepts(normalized.defaultValue)) {
                         "AI 创作变量 ${normalized.key} 的默认值无效：${normalized.defaultValue}"
                     }
                 }
-                require(keys.add(normalized.key)) { "AI 创作变量 key 重复：${normalized.key}" }
-                variables.add(normalized)
             }
+            if (normalized.format == AiCreationVariable.FORMAT_SWITCH) {
+                require(normalized.onValue != normalized.offValue) {
+                    "AI 创作变量 ${normalized.key} 的 onValue 与 offValue 不能相同"
+                }
+                require(normalized.accepts(normalized.defaultValue)) {
+                    "AI 创作变量 ${normalized.key} 的默认值无效：${normalized.defaultValue}"
+                }
+            }
+            require(keys.add(normalized.key)) { "AI 创作变量 key 重复：${normalized.key}" }
+            normalized
         }
-        require(variables.isNotEmpty()) { "AI 创作变量定义不能为空" }
-        val knownKeys = keys + AI_CREATION_MODE_KEY
         routes.forEach { route ->
-            require(route.template.isNotBlank()) { "AI 创作路由缺少 template（请求模板识别名）" }
+            require(route.prompt.isNotBlank()) { "AI 创作路由缺少 prompt（提示词名字）" }
             require(route.conditions.isNotEmpty()) {
-                "AI 创作路由（→ ${route.template}）缺少 when 条件"
+                "AI 创作路由（→ ${route.prompt}）缺少 when 条件"
             }
             route.conditions.forEach { (key, value) ->
-                require(key in knownKeys) {
-                    "AI 创作路由（→ ${route.template}）when 引用了未定义的变量：$key"
+                require(key in keys) {
+                    "AI 创作路由（→ ${route.prompt}）when 引用了未定义的变量：$key"
                 }
                 require(value.isNotBlank()) {
-                    "AI 创作路由（→ ${route.template}）when 的 $key 取值为空"
+                    "AI 创作路由（→ ${route.prompt}）when 的 $key 取值为空"
                 }
             }
         }
-        return AiCreationDefinition(groups, variables, routes)
+        return AiCreationDefinition(normalizedVariables, routes)
     }
 }
 
@@ -513,6 +482,29 @@ class AiCreationSession {
     fun setParam(key: String, value: String) {
         params[key] = value
         AiCreationConfig.saveCreationParams(params)
+    }
+
+    /**
+     * 供应商变量按“图片/视频体系 + 当前供应商 + 变量 key”独立存储。
+     * 同名 style 在图片与视频中、或不同供应商中，绝不共享值。
+     */
+    fun providerVariableValue(mode: String, key: String): String? =
+        params[providerVariableStorageKey(mode, key)]
+
+    fun setProviderVariable(mode: String, key: String, value: String) {
+        params[providerVariableStorageKey(mode, key)] = value
+        AiCreationConfig.saveCreationParams(params)
+    }
+
+    private fun providerVariableStorageKey(mode: String, key: String): String {
+        val providerId = when (mode) {
+            AiCreationVariables.GROUP_IMAGE ->
+                AiCreationProviderStore.imageCurrentProvider?.id
+            AiCreationVariables.GROUP_VIDEO ->
+                AiCreationProviderStore.videoCurrentProvider?.id
+            else -> error("未知 AI 创作模式：$mode")
+        } ?: error("AI 创作${if (mode == AiCreationVariables.GROUP_IMAGE) "图片" else "视频"}供应商未配置")
+        return "provider:$mode:$providerId:$key"
     }
 
     fun itemsOf(section: String): MutableList<CreationSectionItem> =

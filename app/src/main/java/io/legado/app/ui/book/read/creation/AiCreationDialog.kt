@@ -124,19 +124,31 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         session.bookName = bookName
-        //图片组来自图片供应商定义，视频组来自视频供应商定义，两套体系各自独立
-        val groups = try {
-            AiCreationConfig.imageDefinition.groups + AiCreationConfig.videoDefinition.groups
-        } catch (throwable: Throwable) {
-            toastOnUi(throwable.message ?: throwable.javaClass.simpleName)
-            AiCreationVariables.parse(AiCreationVariables.defaultJson).groups +
-                AiCreationVariables.parse(AiCreationVariables.zhipuVideoVariablesJson).groups
+        val imageDefinition = AiCreationConfig.imageDefinition
+        val videoDefinition = AiCreationConfig.videoDefinition
+        variableGroups = listOf(
+            AiCreationVariableGroup(
+                key = AiCreationVariables.GROUP_IMAGE,
+                label = "图片",
+                variables = imageDefinition.variables
+            ),
+            AiCreationVariableGroup(
+                key = AiCreationVariables.GROUP_VIDEO,
+                label = "视频",
+                variables = videoDefinition.variables
+            )
+        )
+        require(variableGroups.all { it.variables.isNotEmpty() }) {
+            "图片和视频供应商的变量定义都不能为空"
         }
-        variableGroups = groups.filter { it.variables.isNotEmpty() }
-        //参数有记忆：模式恢复到上次选中的分组，无效或首次使用才回落到第一组
+        //首次使用选图片；已存模式必须是当前新体系的合法值。
         val savedMode = session.paramValue(AI_CREATION_MODE_KEY)
-        val initialIndex = variableGroups.indexOfFirst { it.key == savedMode }
-            .takeIf { it >= 0 } ?: 0
+        val initialIndex = if (savedMode == null) {
+            0
+        } else {
+            variableGroups.indexOfFirst { it.key == savedMode }
+                .also { require(it >= 0) { "AI 创作模式无效：$savedMode" } }
+        }
         session.setParam(
             AI_CREATION_MODE_KEY,
             variableGroups.getOrNull(initialIndex)?.key.orEmpty()
@@ -257,8 +269,12 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
     }
 
     private fun isVideoMode(): Boolean {
-        val mode = session.paramValue(AI_CREATION_MODE_KEY).orEmpty()
-        return mode == AiCreationVariables.GROUP_VIDEO
+        return when (val mode = session.paramValue(AI_CREATION_MODE_KEY)) {
+            AiCreationVariables.GROUP_IMAGE -> false
+            AiCreationVariables.GROUP_VIDEO -> true
+            null -> error("AI 创作模式未设置")
+            else -> error("未知 AI 创作模式：$mode")
+        }
     }
 
     private fun showPage(page: Int) {
@@ -318,8 +334,13 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
     }
 
     private fun currentParamValue(variable: AiCreationVariable): String {
-        //经 effectiveValue 清洗：变量定义变更后，持久层旧值/无效值回落默认值
-        return variable.effectiveValue(session.paramValue(variable.key))
+        val mode = currentGroup()?.key ?: error("AI 创作模式未选择")
+        return variable.effectiveValue(session.providerVariableValue(mode, variable.key))
+    }
+
+    private fun setCurrentParamValue(variable: AiCreationVariable, value: String) {
+        val mode = currentGroup()?.key ?: error("AI 创作模式未选择")
+        session.setProviderVariable(mode, variable.key, value)
     }
 
     private fun buildVariableControls(group: AiCreationVariableGroup) {
@@ -355,7 +376,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
             line.addView(
                 chipView(option, value == current).apply {
                     setOnClickListener {
-                        session.setParam(variable.key, value)
+                        setCurrentParamValue(variable, value)
                         buildVariableControls(
                             currentGroup()
                                 ?: variableGroups.firstOrNull() ?: return@setOnClickListener
@@ -373,7 +394,10 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
         binding.llVariables.addView(
             chipView(current, true).apply {
                 setOnClickListener {
-                    session.setParam(variable.key, if (isOn) variable.offValue else variable.onValue)
+                    setCurrentParamValue(
+                        variable,
+                        if (isOn) variable.offValue else variable.onValue
+                    )
                     buildVariableControls(
                         currentGroup() ?: variableGroups.firstOrNull() ?: return@setOnClickListener
                     )
@@ -398,8 +422,8 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
         alert(title = variable.label) {
             customView { editBinding.root }
             okButton {
-                session.setParam(
-                    variable.key,
+                setCurrentParamValue(
+                    variable,
                     editBinding.editView.text?.toString()?.trim().orEmpty()
                 )
                 buildVariableControls(

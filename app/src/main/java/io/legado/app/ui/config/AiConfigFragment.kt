@@ -27,8 +27,6 @@ import io.legado.app.help.ai.AiCreationImageTaskHolder
 import io.legado.app.help.ai.AiCreationProviderConfig
 import io.legado.app.help.ai.AiCreationProviderModel
 import io.legado.app.help.ai.AiCreationProviderStore
-import io.legado.app.help.ai.AiCreationPromptTemplate
-import io.legado.app.help.ai.AiCreationVariables
 import io.legado.app.help.ai.AiCreationVideoHelper
 import io.legado.app.help.LogExporter
 import io.legado.app.help.ai.AiLogConfig
@@ -49,8 +47,6 @@ import io.legado.app.ui.main.ai.AiMcpServerConfig
 import io.legado.app.ui.main.ai.AiProviderConfig
 import io.legado.app.ui.main.ai.AiSkillConfig
 import io.legado.app.ui.about.AiLogDialog
-import org.json.JSONArray
-import org.json.JSONObject
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.setEdgeEffectColor
@@ -181,7 +177,6 @@ class AiConfigFragment : PreferenceFragment(),
             PreferKey.aiCreationProvider -> showSelectCreationProviderDialog()
             PreferKey.aiCreationModel -> showSelectCreationModelDialog()
             PreferKey.aiCreationPromptTemplate -> showCreationPromptDialog()
-            "aiCreationPromptLibrary" -> showPromptLibraryDialog()
             "aiCreationTestConnection" -> testCreationConnection()
             PreferKey.aiCreationScope -> showCreationScopeSettingsDialog()
             "aiCreationImageAddProvider" -> showCreationProviderEditDialog(null, isVideo = false)
@@ -447,19 +442,26 @@ class AiConfigFragment : PreferenceFragment(),
             editView.hint = getString(R.string.ai_creation_prompt_template_hint)
             editView.inputType = InputType.TYPE_CLASS_TEXT or
                 InputType.TYPE_TEXT_FLAG_MULTI_LINE or
-                InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+                InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             editView.minLines = 12
-            editView.setText(AiCreationConfig.promptTemplate)
+            editView.setText(AiCreationConfig.promptTemplateJson)
             editView.setSelection(editView.text?.length ?: 0)
         }
         alert(titleResource = R.string.ai_creation_prompt_template) {
             customView { binding.root }
             okButton {
-                AiCreationConfig.promptTemplate = binding.editView.text?.toString().orEmpty()
+                val value = binding.editView.text?.toString().orEmpty()
+                val error = runCatching {
+                    AiCreationConfig.promptTemplateJson = value
+                }.exceptionOrNull()
+                if (error != null) {
+                    toastOnUi(error.message ?: error.javaClass.simpleName)
+                    return@okButton
+                }
                 refreshUi()
             }
             neutralButton(R.string.restore_default) {
-                AiCreationConfig.promptTemplate = AiCreationConfig.defaultPromptTemplate
+                AiCreationConfig.promptTemplateJson = AiCreationConfig.defaultPromptTemplateJson
                 refreshUi()
             }
             cancelButton()
@@ -471,14 +473,7 @@ class AiConfigFragment : PreferenceFragment(),
             toastOnUi(it.message ?: it.javaClass.simpleName)
             return
         }
-        val body = runCatching {
-            AiCreationConfig.promptLibrary.firstOrNull()?.text
-                ?: error("AI 创作请求模板仓库为空")
-        }.getOrElse {
-            toastOnUi(it.message ?: it.javaClass.simpleName)
-            return
-        }
-        testAiConnection(target.provider, target.modelId, body)
+        testAiConnection(target.provider, target.modelId, AiStructuredRequestTemplate.default)
     }
 
     private fun showCreationImageRetryDialog() {
@@ -571,7 +566,10 @@ class AiConfigFragment : PreferenceFragment(),
                     title = if (isVideo) R.string.ai_creation_video_variables
                     else R.string.ai_creation_image_variables,
                     content = variablesJson,
-                    validate = { AiCreationVariables.parse(it) }
+                    validate = {
+                        if (isVideo) AiCreationConfig.parseVideoDefinition(it)
+                        else AiCreationConfig.parseImageDefinition(it)
+                    }
                 ) { json ->
                     variablesJson = json
                     tvProviderVariables.text = summarizeJsonText(json)
@@ -582,7 +580,10 @@ class AiConfigFragment : PreferenceFragment(),
                     title = if (isVideo) R.string.ai_creation_video_request_template
                     else R.string.ai_creation_image_request_template,
                     content = requestTemplate,
-                    validate = { AiCreationProviderStore.parseRequestTemplateJson(it) }
+                    validate = {
+                        if (isVideo) AiCreationProviderStore.parseVideoRequestTemplateJson(it)
+                        else AiCreationProviderStore.parseImageRequestTemplateJson(it)
+                    }
                 ) { json ->
                     requestTemplate = json
                     tvProviderTemplate.text = summarizeJsonText(json)
@@ -688,98 +689,6 @@ class AiConfigFragment : PreferenceFragment(),
             }
             cancelButton()
         }
-    }
-
-    /** 提示词库管理：首项为新增，其余条目可选编辑或删除 */
-    private fun showPromptLibraryDialog() {
-        val items = AiCreationConfig.promptLibrary
-        context?.selector(
-            getString(R.string.ai_creation_prompt_library),
-            buildList {
-                add(getString(R.string.ai_creation_prompt_add))
-                items.forEach { add(it.name) }
-            }
-        ) { _, _, index ->
-            if (index == 0) {
-                showPromptEditDialog(null)
-            } else {
-                val item = items[index - 1]
-                context?.selector(
-                    item.name,
-                    listOf(
-                        getString(R.string.ai_edit_provider),
-                        getString(R.string.ai_remove_provider)
-                    )
-                ) { _, action ->
-                    when (action) {
-                        0 -> showPromptEditDialog(item)
-                        else -> confirmRemovePromptTemplate(item)
-                    }
-                }
-            }
-        }
-    }
-
-    private fun showPromptEditDialog(existing: AiCreationPromptTemplate?) {
-        val nameBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-            editView.hint = getString(R.string.ai_creation_prompt_name_hint)
-            editView.inputType = InputType.TYPE_CLASS_TEXT
-            editView.setText(existing?.name.orEmpty())
-            editView.setSelection(editView.text?.length ?: 0)
-        }
-        alert(
-            title = getString(
-                if (existing == null) R.string.ai_creation_prompt_add
-                else R.string.ai_creation_prompt_edit
-            )
-        ) {
-            customView { nameBinding.root }
-            okButton {
-                val name = nameBinding.editView.text?.toString()?.trim().orEmpty()
-                if (name.isEmpty()) {
-                    return@okButton
-                }
-                val library = AiCreationConfig.promptLibrary
-                if (library.any { it.name == name && it.name != existing?.name }) {
-                    toastOnUi(R.string.ai_creation_prompt_name_exists)
-                    return@okButton
-                }
-                showCreationTemplateEditorDialog(
-                    title = R.string.ai_creation_prompt_edit,
-                    content = existing?.text.orEmpty(),
-                    validate = { text ->
-                        require(text.isNotBlank()) { "提示词内容不能为空" }
-                    }
-                ) { text ->
-                    val others = library.filterNot { it.name == existing?.name }
-                    val updated = others + AiCreationPromptTemplate(name, text)
-                    savePromptLibrary(updated)
-                    refreshUi()
-                }
-            }
-            cancelButton()
-        }
-    }
-
-    private fun confirmRemovePromptTemplate(item: AiCreationPromptTemplate) {
-        alert(
-            title = item.name,
-            message = getString(R.string.ai_creation_prompt_remove_confirm)
-        ) {
-            okButton {
-                savePromptLibrary(AiCreationConfig.promptLibrary.filterNot { it.name == item.name })
-                refreshUi()
-            }
-            cancelButton()
-        }
-    }
-
-    private fun savePromptLibrary(items: List<AiCreationPromptTemplate>) {
-        val array = JSONArray()
-        items.forEach { item ->
-            array.put(JSONObject().put("name", item.name).put("text", item.text))
-        }
-        AiCreationConfig.promptLibraryJson = array.toString()
     }
 
     private fun showCreationManageProvidersDialog(isVideo: Boolean) {        val providers = creationProviders(isVideo)
@@ -2279,11 +2188,9 @@ class AiConfigFragment : PreferenceFragment(),
             }
         }
         findPreference<Preference>(PreferKey.aiCreationPromptTemplate)?.summary =
-            getString(R.string.ai_creation_prompt_template_summary)
-        findPreference<Preference>("aiCreationPromptLibrary")?.summary =
             getString(
-                R.string.ai_creation_prompt_library_summary,
-                runCatching { AiCreationConfig.promptLibrary.size }.getOrDefault(0)
+                R.string.ai_creation_prompt_template_summary,
+                AiCreationConfig.promptTemplates.size
             )
         findPreference<Preference>("aiCreationTestConnection")?.isVisible =
             !creationReuseCurrentModel

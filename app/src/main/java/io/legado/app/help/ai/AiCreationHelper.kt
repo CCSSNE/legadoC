@@ -10,38 +10,36 @@ object AiCreationHelper {
         cardsById: Map<Long, CreationCard>
     ): String {
         //按当前模式取对应体系的变量定义：图片读图片供应商，视频读视频供应商，互不引用
-        val isVideo = session.paramValue(AI_CREATION_MODE_KEY) == AiCreationVariables.GROUP_VIDEO
-        val definition = if (isVideo) {
-            AiCreationConfig.videoDefinition
-        } else {
-            AiCreationConfig.imageDefinition
+        val mode = session.paramValue(AI_CREATION_MODE_KEY)
+            ?: error("AI 创作模式未设置")
+        val definition = when (mode) {
+            AiCreationVariables.GROUP_IMAGE -> AiCreationConfig.imageDefinition
+            AiCreationVariables.GROUP_VIDEO -> AiCreationConfig.videoDefinition
+            else -> error("未知 AI 创作模式：$mode")
         }
         val target = AiCreationConfig.requireModelTarget()
         val values = buildValues(session, cardsById, definition.variables)
         val routeParams = definition.variables.associate {
             it.key to values[it.key].orEmpty()
-        } + (AI_CREATION_MODE_KEY to values[AI_CREATION_MODE_KEY].orEmpty())
-        val templateName = AiCreationConfig.resolveTemplateName(definition, routeParams)
-        val promptText = AiCreationConfig.promptTextOf(templateName)
-        val systemPrompt = renderTemplate(AiCreationConfig.promptTemplate, values)
+        }
+        val promptName = AiCreationConfig.resolvePromptName(definition, routeParams)
+        val promptText = AiCreationConfig.promptTextOf(promptName)
         val userContent = renderTemplate(promptText, values)
         AppLog.putAi(
             "AI_CREATION REQUEST\n" +
                 "provider=${target.provider.name}\n" +
                 "model=${target.modelId}\n" +
-                "route=$templateName\n" +
+                "route=$promptName\n" +
                 "routeParams=${routeParams.entries.joinToString("，") { "${it.key}=${it.value}" }}\n" +
-                "systemChars=${systemPrompt.length}\n" +
                 "userChars=${userContent.length}"
         )
-        val response = AiChatService.generateStructuredText(
+        val response = AiChatService.generatePlainText(
             provider = target.provider,
             model = target.modelId,
-            systemPrompt = systemPrompt,
             userContent = userContent,
             temperature = 0.7
         )
-        return stripThinking(response)
+        return response
     }
 
     fun buildValues(
@@ -50,10 +48,13 @@ object AiCreationHelper {
         variables: List<AiCreationVariable>
     ): Map<String, String> {
         val values = linkedMapOf<String, String>()
-        values[AI_CREATION_MODE_KEY] = session.paramValue(AI_CREATION_MODE_KEY).orEmpty()
+        val mode = session.paramValue(AI_CREATION_MODE_KEY)
+            ?: error("AI 创作模式未设置")
+        values[AI_CREATION_MODE_KEY] = mode
         variables.forEach { variable ->
-            //经 effectiveValue 清洗：变量定义变更后，持久层旧值/无效值回退默认值
-            values[variable.key] = variable.effectiveValue(session.paramValue(variable.key))
+            values[variable.key] = variable.effectiveValue(
+                session.providerVariableValue(mode, variable.key)
+            )
         }
         AiCreationConfig.sectionOrder.forEach { section ->
             values[session.sectionLabel(section)] = sectionText(session, section, cardsById)
@@ -74,14 +75,17 @@ object AiCreationHelper {
     }
 
     private fun renderTemplate(template: String, values: Map<String, String>): String {
-        return values.entries.fold(template) { acc, (key, value) ->
+        val rendered = values.entries.fold(template) { acc, (key, value) ->
             acc.replace("\${$key}", value)
         }
+        val unresolved = TEMPLATE_VARIABLE.findAll(rendered)
+            .map { it.groupValues[1] }
+            .toSet()
+        require(unresolved.isEmpty()) {
+            "提示词包含未定义变量：${unresolved.joinToString("、")}"
+        }
+        return rendered
     }
 
-    private fun stripThinking(text: String): String {
-        return text
-            .replace(Regex("<think>[\\s\\S]*?</think>", RegexOption.IGNORE_CASE), "")
-            .trim()
-    }
+    private val TEMPLATE_VARIABLE = Regex("\\$\\{([^{}]+)}")
 }

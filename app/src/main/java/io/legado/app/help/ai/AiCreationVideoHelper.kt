@@ -25,7 +25,7 @@ object AiCreationVideoHelper {
     private const val POLL_TIMEOUT_MS = 8 * 60_000L
 
     /**
-     * 生成一个视频：渲染请求模板（变量取传入值，缺省回落定义默认值）→ 提交 → 轮询 →
+     * 生成一个视频：渲染请求模板（运行值完整传入；测试才取定义默认值）→ 提交 → 轮询 →
      * 下载 mp4 落盘，返回文件名。真实生成与测试连接共用本入口。
      */
     suspend fun generateVideo(
@@ -37,18 +37,13 @@ object AiCreationVideoHelper {
         check(provider.requestTemplate.isNotBlank()) {
             "当前视频供应商「${provider.name}」的视频请求模板为空"
         }
-        val variables = if (provider.variablesJson.isNotBlank()) {
-            AiCreationVariables.parse(provider.variablesJson).variables
-        } else {
-            emptyList()
-        }
+        val variables = AiCreationConfig.parseVideoDefinition(provider.variablesJson).variables
         val tokens = buildMap {
             put("model", modelId)
             put("prompt", prompt)
             put("n", "1")
             variables.forEach { variable ->
-                put(variable.key, extraValues[variable.key]?.takeIf { it.isNotBlank() }
-                    ?: variable.effectiveValue(null))
+                put(variable.key, extraValues[variable.key] ?: variable.effectiveValue(null))
             }
         }
         val body = AiCreationProviderStore.renderRequestTemplate(provider.requestTemplate, tokens)

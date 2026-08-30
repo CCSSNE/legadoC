@@ -409,8 +409,8 @@
     <string name="ai_creation_variables">变量定义</string>
     <string name="ai_creation_variables_invalid">变量定义无效：%1$s</string>
     <string name="ai_creation_prompt_template">提示词模板</string>
-    <string name="ai_creation_prompt_template_summary">定义素材与参数如何组合成提示词</string>
-    <string name="ai_creation_prompt_template_hint">可用变量：${素材} ${选中文本} ${背景} ${场景} ${人设} ${描述与备注} 以及变量定义中的各个 key</string>
+    <string name="ai_creation_prompt_template_summary">JSON 对象，共 %d 条；key 供供应商路由引用，value 为纯文本提示词</string>
+    <string name="ai_creation_prompt_template_hint">JSON 对象：{ &quot;连环画&quot;: &quot;提示词正文&quot; }。可用变量：${素材}、${选中文本}、${背景}、${场景}、${人设}、${描述与备注}及供应商变量 key</string>
     <string name="ai_creation_request_template">请求模板</string>
     <string name="ai_creation_request_template_invalid">请求模板无效：%1$s</string>
     <string name="ai_creation_test_connection">测试连接</string>
@@ -447,13 +447,6 @@
     <string name="ai_creation_image_test_running">正在测试图片生成链路…</string>
     <string name="ai_creation_image_test_success">测试成功，已返回图片</string>
     <string name="ai_creation_video_add_provider">添加视频供应商</string>
-    <string name="ai_creation_prompt_library">提示词库</string>
-    <string name="ai_creation_prompt_library_summary">共 %d 条提示词，变量定义里的路由按名字引用</string>
-    <string name="ai_creation_prompt_add">新增提示词</string>
-    <string name="ai_creation_prompt_edit">编辑提示词</string>
-    <string name="ai_creation_prompt_name_hint">提示词名字</string>
-    <string name="ai_creation_prompt_name_exists">已存在同名提示词</string>
-    <string name="ai_creation_prompt_remove_confirm">确定删除？引用它的路由将无法命中</string>
     <string name="ai_creation_generate_video">生成视频</string>
     <string name="ai_creation_video_add_provider_summary">添加自定义视频供应商，内置硅基流动与智谱</string>
     <string name="ai_creation_video_manage_providers">管理视频供应商</string>

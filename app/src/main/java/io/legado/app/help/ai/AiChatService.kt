@@ -145,12 +145,48 @@ object AiChatService {
      * Sends an isolated completion request. It deliberately does not inherit chat history,
      * the global AI system prompt, skills, MCP tools, or any tool loop state.
      */
+    suspend fun generatePlainText(
+        provider: AiProviderConfig,
+        model: String,
+        userContent: String,
+        temperature: Double = 0.0
+    ): String = generateText(
+        provider = provider,
+        model = model,
+        systemPrompt = "",
+        userContent = userContent,
+        temperature = temperature,
+        responseFormat = null
+    )
+
     suspend fun generateStructuredText(
         provider: AiProviderConfig,
         model: String,
         systemPrompt: String,
         userContent: String,
         temperature: Double = 0.0,
+        requestTemplate: String? = null,
+        onRequestAccepted: suspend () -> Unit = {},
+        onStreamProgress: suspend (AiStreamProgress) -> Unit = {}
+    ): String = generateText(
+        provider = provider,
+        model = model,
+        systemPrompt = systemPrompt,
+        userContent = userContent,
+        temperature = temperature,
+        responseFormat = "json_object",
+        requestTemplate = requestTemplate,
+        onRequestAccepted = onRequestAccepted,
+        onStreamProgress = onStreamProgress
+    )
+
+    private suspend fun generateText(
+        provider: AiProviderConfig,
+        model: String,
+        systemPrompt: String,
+        userContent: String,
+        temperature: Double,
+        responseFormat: String?,
         requestTemplate: String? = null,
         onRequestAccepted: suspend () -> Unit = {},
         onStreamProgress: suspend (AiStreamProgress) -> Unit = {}
@@ -189,9 +225,9 @@ object AiChatService {
                 onThinking = {},
                 onRequestAccepted = onRequestAccepted,
                 onStreamProgress = onStreamProgress,
-                options = CompletionRequestOptions(
-                    temperature = temperature,
-                    responseFormat = "json_object",
+            options = CompletionRequestOptions(
+                temperature = temperature,
+                responseFormat = responseFormat,
                     thinkingType = "disabled",
                     reasoningEffort = "low",
                     requestTemplate = requestTemplate

@@ -410,8 +410,8 @@
     <string name="ai_creation_variables">Variable definitions</string>
     <string name="ai_creation_variables_invalid">Invalid variable definitions: %1$s</string>
     <string name="ai_creation_prompt_template">Prompt template</string>
-    <string name="ai_creation_prompt_template_summary">How materials and parameters are combined into a prompt</string>
-    <string name="ai_creation_prompt_template_hint">Variables: ${素材} ${选中文本} ${背景} ${场景} ${人设} ${描述与备注} and every key defined in variable definitions</string>
+    <string name="ai_creation_prompt_template_summary">JSON object with %d entries; keys are route targets and values are plain-text prompts</string>
+    <string name="ai_creation_prompt_template_hint">JSON object: { &quot;连环画&quot;: &quot;prompt text&quot; }. Variables: ${素材}, ${选中文本}, ${背景}, ${场景}, ${人设}, ${描述与备注}, and every provider variable key</string>
     <string name="ai_creation_request_template">Request template</string>
     <string name="ai_creation_request_template_invalid">Invalid request templates: %1$s</string>
     <string name="ai_creation_test_connection">Test connection</string>
@@ -448,13 +448,6 @@
     <string name="ai_creation_image_test_running">Testing image generation…</string>
     <string name="ai_creation_image_test_success">Test succeeded, image returned</string>
     <string name="ai_creation_video_add_provider">Add video provider</string>
-    <string name="ai_creation_prompt_library">Prompt library</string>
-    <string name="ai_creation_prompt_library_summary">%d prompts; routes reference them by name</string>
-    <string name="ai_creation_prompt_add">Add prompt</string>
-    <string name="ai_creation_prompt_edit">Edit prompt</string>
-    <string name="ai_creation_prompt_name_hint">Prompt name</string>
-    <string name="ai_creation_prompt_name_exists">A prompt with this name already exists</string>
-    <string name="ai_creation_prompt_remove_confirm">Delete it? Routes referencing it will fail</string>
     <string name="ai_creation_generate_video">Generate video</string>
     <string name="ai_creation_video_add_provider_summary">Add a custom provider; built-in: SiliconFlow, Zhipu</string>
     <string name="ai_creation_video_manage_providers">Manage video providers</string>

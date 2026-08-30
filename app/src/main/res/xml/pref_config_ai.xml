@@ -276,12 +276,6 @@
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
-            android:key="aiCreationPromptLibrary"
-            android:summary="@string/ai_creation_prompt_library_summary"
-            android:title="@string/ai_creation_prompt_library"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.Preference
             android:key="aiCreationPromptTemplate"
             android:summary="@string/ai_creation_prompt_template_summary"
             android:title="@string/ai_creation_prompt_template"

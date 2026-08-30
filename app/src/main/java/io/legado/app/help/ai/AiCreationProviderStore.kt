@@ -18,8 +18,9 @@ import java.util.UUID
  * 供应商管连线协议（Base URL / API Key / 请求头 / 变量定义 / 请求模板），
  * 模型挂在供应商下。
  * 图片与视频是两套结构对称、数据零关联的独立体系：
- * 图片供应商的变量定义只含图片组 + 图片路由，视频供应商只含视频组 + 视频路由；
- * 两边 style 各自独立，提示词库是唯一共享的全局件（路由按名字引用）。
+ * 图片供应商变量 JSON 含图片 style、图片参数与图片提示词路由；
+ * 视频供应商变量 JSON 含视频 style、视频参数与视频提示词路由；
+ * 两边 style 各自独立，路由统一引用“提示词模板”JSON 的 key。
  */
 @Keep
 data class AiCreationProviderConfig(
@@ -49,7 +50,7 @@ data class AiCreationProviderTarget(
 
 object AiCreationProviderStore {
 
-    //内置供应商使用固定 id：迁移与恢复默认都靠它定位
+    //内置供应商使用固定 id，供初始配置与恢复默认定位。
     const val IMAGE_SILICONFLOW_ID = "builtin-img-siliconflow"
     const val IMAGE_ZHIPU_ID = "builtin-img-zhipu"
     const val VIDEO_SILICONFLOW_ID = "builtin-video-siliconflow"
@@ -60,8 +61,9 @@ object AiCreationProviderStore {
 
     const val IMAGE_TEST_PROMPT = "一只橘猫坐在窗台上，阳光洒落，温暖色调，高清摄影"
     const val VIDEO_TEST_PROMPT = "一只橘猫在草地上奔跑，阳光明媚，镜头平视"
+    private val REQUEST_PLACEHOLDER = Regex("\\{\\{([^{}\\s]+)}}")
 
-    //内置供应商出厂默认模板（与迁移前全局默认保持一致）
+    //内置供应商出厂请求模板
     const val ZHIPU_IMAGE_REQUEST_TEMPLATE =
         """{"model":"{{model}}","prompt":"{{prompt}}","n":{{n}},"size":"{{size}}","quality":"{{quality}}","watermark_enabled":{{watermark_enabled}}}"""
 
@@ -225,6 +227,8 @@ object AiCreationProviderStore {
         val provider = imageCurrentProvider
             ?: error("请先在「管理图片供应商」中设为当前供应商")
         check(provider.baseUrl.isNotBlank()) { "当前图片供应商「${provider.name}」的 API 地址为空" }
+        AiCreationConfig.parseImageDefinition(provider.variablesJson)
+        parseImageRequestTemplateJson(provider.requestTemplate)
         val model = imageCurrentModel
             ?: error("请先在「添加图片模型」中为当前供应商添加模型")
         check(model.modelId.isNotBlank()) { "当前图片模型不能为空" }
@@ -235,6 +239,8 @@ object AiCreationProviderStore {
         val provider = videoCurrentProvider
             ?: error("请先在「管理视频供应商」中设为当前供应商")
         check(provider.baseUrl.isNotBlank()) { "当前视频供应商「${provider.name}」的 API 地址为空" }
+        AiCreationConfig.parseVideoDefinition(provider.variablesJson)
+        parseVideoRequestTemplateJson(provider.requestTemplate)
         val model = videoCurrentModel
             ?: error("请先在「添加视频模型」中为当前供应商添加模型")
         check(model.modelId.isNotBlank()) { "当前视频模型不能为空" }
@@ -280,9 +286,16 @@ object AiCreationProviderStore {
 
     /**
      * 渲染请求模板：裸占位符（值位置不带引号）按 JSON 字面量替换，布尔/整数/小数不加引号；
-     * 带引号与字符串内嵌的 {{key}} / ${key} 按字符串替换。
+     * 带引号与字符串内嵌的 {{key}} 按字符串替换。
      */
     fun renderRequestTemplate(template: String, tokens: Map<String, String>): String {
+        val unresolved = REQUEST_PLACEHOLDER.findAll(template)
+            .map { it.groupValues[1] }
+            .filterNot { it in tokens }
+            .toSet()
+        require(unresolved.isEmpty()) {
+            "请求模板引用了未定义的占位符：${unresolved.joinToString("、")}"
+        }
         var withLiterals = template
         tokens.forEach { (key, value) ->
             val tokenRegex = Regex("([:,\\[]\\s*)" + Regex.escape("{{$key}}") + "(\\s*[,}\\]])")
@@ -333,7 +346,7 @@ object AiCreationProviderStore {
 
     private fun replaceTokensInString(value: String, tokens: Map<String, String>): String {
         return tokens.entries.fold(value) { acc, (key, replacement) ->
-            acc.replace("{{$key}}", replacement).replace("\${$key}", replacement)
+            acc.replace("{{$key}}", replacement)
         }
     }
 
@@ -380,7 +393,25 @@ object AiCreationProviderStore {
         return normalized
     }
 
-    // ———————— 内置默认与迁移 ————————
+    fun parseImageRequestTemplateJson(json: String): String =
+        parseRequiredRequestTemplate(json, setOf("model", "prompt", "n"))
+
+    fun parseVideoRequestTemplateJson(json: String): String =
+        parseRequiredRequestTemplate(json, setOf("model", "prompt"))
+
+    private fun parseRequiredRequestTemplate(json: String, required: Set<String>): String {
+        val normalized = parseRequestTemplateJson(json)
+        val placeholders = REQUEST_PLACEHOLDER.findAll(normalized)
+            .map { it.groupValues[1] }
+            .toSet()
+        val missing = required - placeholders
+        require(missing.isEmpty()) {
+            "请求模板缺少占位符：${missing.joinToString("、")}"
+        }
+        return normalized
+    }
+
+    // ———————— 内置初始配置 ————————
 
     private fun builtinImageProviders(): List<AiCreationProviderConfig> = listOf(
         AiCreationProviderConfig(
