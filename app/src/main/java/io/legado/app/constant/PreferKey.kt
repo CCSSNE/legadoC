@@ -61,7 +61,6 @@ object PreferKey {
     const val ttsCacheIncludeInPackage = "ttsCacheIncludeInPackage"
     const val ttsEngine = "appTtsEngine"
     const val bdSelectedSpeaker = "bdSelectedSpeaker"
-    const val bdMultiVoice = "bdMultiVoice"
     const val bdNarrationVoices = "bdNarrationVoices"
     const val bdDialogueVoices = "bdDialogueVoices"
     const val aiMultiVoice = "aiMultiVoice"
