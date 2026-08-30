@@ -19,12 +19,16 @@ import io.legado.app.data.entities.BookTtsCastRole
 import io.legado.app.data.entities.BookTtsVoiceBinding
 import io.legado.app.databinding.DialogAiMultiVoiceBinding
 import io.legado.app.databinding.ItemAiRoleBinding
-import io.legado.app.plugin.TtsVoiceDirectories
+import io.legado.app.help.config.AppConfig
 import io.legado.app.help.tts.AiBatchAnalyzeDialog
 import io.legado.app.help.tts.AiMultiVoiceConfig
 import io.legado.app.help.tts.AiStoryboardCacheDialog
 import io.legado.app.help.tts.BookTtsAutomationConfig
 import io.legado.app.help.tts.BookTtsCastingCoordinator
+import io.legado.app.help.tts.ReadAloudTtsRouter
+import io.legado.app.help.tts.TtsEngineSetting
+import io.legado.app.help.tts.TtsEngineStore
+import io.legado.app.help.tts.TtsEngineType
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.applyUiTabTypeface
@@ -122,22 +126,13 @@ class AiMultiVoiceDialog : BaseDialogFragment(R.layout.dialog_ai_multi_voice) {
         }
         refreshSpeakerValues()
         binding.tvNarratorValue.setOnClickListener {
-            pickSpeaker(
-                PreferKey.aiNarratorSpeakerId,
-                AiMultiVoiceConfig.narratorSpeakerId
-            )
+            pickPoolSpeaker(SpeakerPoolKind.NARRATOR)
         }
         binding.tvDialogueMaleValue.setOnClickListener {
-            pickSpeaker(
-                PreferKey.aiDialogueMaleSpeakerId,
-                AiMultiVoiceConfig.dialogueMaleSpeakerId
-            )
+            pickPoolSpeaker(SpeakerPoolKind.DIALOGUE_MALE)
         }
         binding.tvDialogueFemaleValue.setOnClickListener {
-            pickSpeaker(
-                PreferKey.aiDialogueFemaleSpeakerId,
-                AiMultiVoiceConfig.dialogueFemaleSpeakerId
-            )
+            pickPoolSpeaker(SpeakerPoolKind.DIALOGUE_FEMALE)
         }
         binding.tvBatchAnalyze.setOnClickListener {
             AiBatchAnalyzeDialog().show(childFragmentManager, "aiBatchAnalyze")
@@ -148,32 +143,137 @@ class AiMultiVoiceDialog : BaseDialogFragment(R.layout.dialog_ai_multi_voice) {
     }
 
     private fun refreshSpeakerValues() {
-        val speakers = TtsVoiceDirectories.active?.listVoices().orEmpty()
-        fun nameOf(id: String): String =
-            speakers.firstOrNull { it.id == id }?.name ?: getString(R.string.ai_speaker_unset)
-        binding.tvNarratorValue.text = nameOf(AiMultiVoiceConfig.narratorSpeakerId)
-        binding.tvDialogueMaleValue.text = nameOf(AiMultiVoiceConfig.dialogueMaleSpeakerId)
-        binding.tvDialogueFemaleValue.text = nameOf(AiMultiVoiceConfig.dialogueFemaleSpeakerId)
+        val bindings = ReadAloudTtsRouter.resolveGlobalBindings(
+            multiRoleEngineId = AppConfig.multiRoleTtsEngineId,
+            narratorEngineId = AppConfig.defaultNarratorTtsEngineId,
+            narratorVoiceId = AppConfig.defaultNarratorTtsVoiceId,
+            dialogueMaleVoiceId = AppConfig.defaultDialogueMaleTtsVoiceId,
+            dialogueFemaleVoiceId = AppConfig.defaultDialogueFemaleTtsVoiceId,
+            engineResolver = TtsEngineStore::engineOrVoiceDirectory
+        )
+        fun labelOf(pool: ReadAloudTtsRouter.RouteBinding?): String {
+            if (pool == null) return getString(R.string.ai_speaker_unset)
+            val voiceName = pool.engine.effectiveVoices()
+                .firstOrNull { it.id == pool.voiceId }?.name
+                ?: pool.voiceId.orEmpty()
+            return "${pool.engine.name} · $voiceName"
+        }
+        binding.tvNarratorValue.text = labelOf(bindings.narrator)
+        binding.tvDialogueMaleValue.text = labelOf(bindings.dialogueMale)
+        binding.tvDialogueFemaleValue.text = labelOf(bindings.dialogueFemale)
     }
 
-    private fun pickSpeaker(prefKey: String, currentId: String) {
-        val speakers = TtsVoiceDirectories.active?.listVoices().orEmpty()
-        if (speakers.isEmpty()) {
-            toastOnUi(R.string.ai_speaker_empty)
+    /** 全局兜底池类别：旁白 / 对白男 / 对白女。 */
+    private enum class SpeakerPoolKind(val legacyKey: String) {
+        NARRATOR(PreferKey.aiNarratorSpeakerId),
+        DIALOGUE_MALE(PreferKey.aiDialogueMaleSpeakerId),
+        DIALOGUE_FEMALE(PreferKey.aiDialogueFemaleSpeakerId)
+    }
+
+    private fun pickPoolSpeaker(kind: SpeakerPoolKind) {
+        pickEngineThenVoice(
+            allowClear = true,
+            onPicked = { engineId, voiceId ->
+                if (engineId == TtsEngineStore.VOICE_DIRECTORY_ID) {
+                    // 内置目录：沿用旧偏好键，路由层自动归属内置语音包引擎
+                    requireContext().putPrefString(kind.legacyKey, voiceId)
+                } else {
+                    // 脚本引擎：写 NG 键（引擎, 音色），旧键清空避免双源混淆
+                    requireContext().putPrefString(kind.legacyKey, "")
+                    when (kind) {
+                        SpeakerPoolKind.NARRATOR -> {
+                            AppConfig.defaultNarratorTtsEngineId = engineId
+                            AppConfig.defaultNarratorTtsVoiceId = voiceId
+                        }
+                        SpeakerPoolKind.DIALOGUE_MALE -> {
+                            AppConfig.multiRoleTtsEngineId = engineId
+                            AppConfig.defaultDialogueMaleTtsVoiceId = voiceId
+                        }
+                        SpeakerPoolKind.DIALOGUE_FEMALE -> {
+                            AppConfig.multiRoleTtsEngineId = engineId
+                            AppConfig.defaultDialogueFemaleTtsVoiceId = voiceId
+                        }
+                    }
+                }
+                refreshSpeakerValues()
+            },
+            onClear = {
+                requireContext().putPrefString(kind.legacyKey, "")
+                when (kind) {
+                    SpeakerPoolKind.NARRATOR -> {
+                        AppConfig.defaultNarratorTtsEngineId = null
+                        AppConfig.defaultNarratorTtsVoiceId = null
+                    }
+                    SpeakerPoolKind.DIALOGUE_MALE ->
+                        AppConfig.defaultDialogueMaleTtsVoiceId = null
+                    SpeakerPoolKind.DIALOGUE_FEMALE ->
+                        AppConfig.defaultDialogueFemaleTtsVoiceId = null
+                }
+                refreshSpeakerValues()
+            }
+        )
+    }
+
+    /**
+     * 两段式选择：先选引擎（内置语音包引擎 + 可用脚本引擎），再选该引擎内的音色。
+     * 目录缺失且引擎支持拉取时现场获取发音人目录。
+     */
+    private fun pickEngineThenVoice(
+        allowClear: Boolean = false,
+        onPicked: (engineId: String, voiceId: String) -> Unit,
+        onClear: (() -> Unit)? = null
+    ) {
+        val facade = TtsEngineStore.voiceDirectoryEngine()
+        val scriptEngines = TtsEngineStore.engines().filter {
+            it.enabled && it.type == TtsEngineType.SCRIPT && it.script.isNotBlank()
+        }
+        val engines = buildList {
+            facade?.let { add(it) }
+            addAll(scriptEngines)
+        }
+        if (engines.isEmpty()) {
+            toastOnUi(R.string.tts_engine_v2_no_pickable_engine)
             return
         }
-        val names = speakers.map { it.name.ifBlank { it.id } }
-        val selectedIndex = speakers.indexOfFirst { it.id == currentId }
-        alert(titleResource = R.string.ai_pick_speaker) {
-            singleChoiceItems(names.toTypedArray(), selectedIndex) { dialog, which ->
-                requireContext().putPrefString(prefKey, speakers[which].id)
-                refreshSpeakerValues()
+        alert(titleResource = R.string.tts_engine_pick_title) {
+            items(engines) { dialog, engine, _ ->
                 dialog.dismiss()
+                pickVoiceInEngine(engine) { voiceId ->
+                    onPicked(engine.id, voiceId)
+                }
             }
-            negativeButton(R.string.ai_speaker_unset) { dialog ->
-                requireContext().putPrefString(prefKey, "")
-                refreshSpeakerValues()
-                dialog.dismiss()
+            if (allowClear && onClear != null) {
+                neutralButton(R.string.ai_speaker_unset) { onClear() }
+            }
+            negativeButton(R.string.cancel)
+        }
+    }
+
+    private fun pickVoiceInEngine(
+        engine: TtsEngineSetting,
+        onPicked: (voiceId: String) -> Unit
+    ) {
+        lifecycleScope.launch {
+            val voices = withContext(Dispatchers.IO) {
+                runCatching {
+                    if (engine.effectiveVoices().isEmpty() && engine.supportsVoiceFetch()) {
+                        TtsEngineStore.ensureVoiceCatalog(engine.id)
+                    } else {
+                        engine
+                    }
+                }.getOrNull()
+            }?.effectiveVoices().orEmpty()
+            if (voices.isEmpty()) {
+                toastOnUi(R.string.tts_engine_v2_fetch_empty)
+                return@launch
+            }
+            val names = voices.map { it.name.ifBlank { it.id } }
+            alert(titleResource = R.string.tts_engine_v2_pick_voice) {
+                singleChoiceItems(names.toTypedArray(), -1) { dialog, which ->
+                    dialog.dismiss()
+                    onPicked(voices[which].id)
+                }
+                negativeButton(R.string.cancel)
             }
         }
     }
@@ -216,10 +316,14 @@ class AiMultiVoiceDialog : BaseDialogFragment(R.layout.dialog_ai_multi_voice) {
         }
         lifecycleScope.launch(Dispatchers.IO) {
             val dao = appDb.bookRoleDao
-            val speakers = TtsVoiceDirectories.active?.listVoices().orEmpty()
-            fun speakerName(id: String?): String {
-                if (id.isNullOrBlank()) return ""
-                return speakers.firstOrNull { it.id == id }?.name ?: ""
+            fun bindingLabel(engineId: String?, speakerId: String?): String {
+                if (speakerId.isNullOrBlank()) return ""
+                val engine = TtsEngineStore.engineOrVoiceDirectory(engineId)
+                    ?: return speakerId
+                val voiceName = engine.effectiveVoices()
+                    .firstOrNull { it.id == speakerId }?.name
+                    ?: speakerId
+                return "${engine.name} · $voiceName"
             }
             val pendingLabel = getString(R.string.ai_role_state_pending)
             val stableLabel = getString(R.string.ai_role_state_stable)
@@ -227,24 +331,23 @@ class AiMultiVoiceDialog : BaseDialogFragment(R.layout.dialog_ai_multi_voice) {
                 dao.getRoles(workKey).map { role ->
                     val bound = dao.getBinding(
                         workKey, BookTtsVoiceBinding.TargetType.CHARACTER, role.roleId
-                    )?.speakerId
+                    )
                     RoleRow(
                         targetType = BookTtsVoiceBinding.TargetType.CHARACTER,
                         targetId = role.roleId,
                         name = role.name,
                         detail = buildString {
                             append(genderLabel(role.gender))
-                            val speaker = speakerName(bound)
-                            if (speaker.isNotBlank()) append(" · ").append(speaker)
-                        },
-                        speakerId = bound.orEmpty()
+                            val label = bindingLabel(bound?.engineId, bound?.speakerId)
+                            if (label.isNotBlank()) append(" · ").append(label)
+                        }
                     )
                 }
             } else {
                 dao.getCastRoles(workKey).filter { !it.ignored }.map { role ->
                     val bound = dao.getBinding(
                         workKey, BookTtsVoiceBinding.TargetType.CAST_ROLE, role.castRoleId
-                    )?.speakerId
+                    )
                     RoleRow(
                         targetType = BookTtsVoiceBinding.TargetType.CAST_ROLE,
                         targetId = role.castRoleId,
@@ -260,10 +363,9 @@ class AiMultiVoiceDialog : BaseDialogFragment(R.layout.dialog_ai_multi_voice) {
                             )
                             append(" · ")
                             append(getString(R.string.ai_role_occurrence, role.occurrenceCount))
-                            val speaker = speakerName(bound)
-                            if (speaker.isNotBlank()) append(" · ").append(speaker)
-                        },
-                        speakerId = bound.orEmpty()
+                            val label = bindingLabel(bound?.engineId, bound?.speakerId)
+                            if (label.isNotBlank()) append(" · ").append(label)
+                        }
                     )
                 }
             }
@@ -283,8 +385,7 @@ class AiMultiVoiceDialog : BaseDialogFragment(R.layout.dialog_ai_multi_voice) {
         val targetType: String,
         val targetId: Long,
         val name: String,
-        val detail: String,
-        val speakerId: String
+        val detail: String
     )
 
     private inner class RoleAdapter(context: android.content.Context) :
@@ -343,44 +444,33 @@ class AiMultiVoiceDialog : BaseDialogFragment(R.layout.dialog_ai_multi_voice) {
     }
 
     private fun showSpeakerPickerFor(row: RoleRow) {
-        val speakers = TtsVoiceDirectories.active?.listVoices().orEmpty()
-        if (speakers.isEmpty()) {
-            toastOnUi(R.string.ai_speaker_empty)
-            return
-        }
-        val names = speakers.map { it.name.ifBlank { it.id } }
-        val selectedIndex = speakers.indexOfFirst { it.id == row.speakerId }
-        alert(titleResource = R.string.ai_role_change_speaker) {
-            singleChoiceItems(names.toTypedArray(), selectedIndex) { dialog, which ->
-                val workKey = currentWorkKey()
-                if (workKey != null) {
-                    lifecycleScope.launch(Dispatchers.IO) {
-                        appDb.bookRoleDao.insertBinding(
-                            BookTtsVoiceBinding(
-                                workKey = workKey,
-                                targetType = row.targetType,
-                                targetId = row.targetId,
-                                speakerId = speakers[which].id,
-                                bindingMode = BookTtsVoiceBinding.BindingMode.MANUAL,
-                                updatedAt = System.currentTimeMillis()
-                            )
+        pickEngineThenVoice(
+            allowClear = true,
+            onPicked = { engineId, voiceId ->
+                val workKey = currentWorkKey() ?: return@pickEngineThenVoice
+                lifecycleScope.launch(Dispatchers.IO) {
+                    appDb.bookRoleDao.insertBinding(
+                        BookTtsVoiceBinding(
+                            workKey = workKey,
+                            targetType = row.targetType,
+                            targetId = row.targetId,
+                            engineId = engineId,
+                            speakerId = voiceId,
+                            bindingMode = BookTtsVoiceBinding.BindingMode.MANUAL,
+                            updatedAt = System.currentTimeMillis()
                         )
-                        withContext(Dispatchers.Main) { loadRoles() }
-                    }
+                    )
+                    withContext(Dispatchers.Main) { loadRoles() }
                 }
-                dialog.dismiss()
-            }
-            negativeButton(R.string.ai_speaker_unset) { dialog ->
-                val workKey = currentWorkKey()
-                if (workKey != null) {
-                    lifecycleScope.launch(Dispatchers.IO) {
-                        appDb.bookRoleDao.deleteBinding(workKey, row.targetType, row.targetId)
-                        withContext(Dispatchers.Main) { loadRoles() }
-                    }
+            },
+            onClear = {
+                val workKey = currentWorkKey() ?: return@pickEngineThenVoice
+                lifecycleScope.launch(Dispatchers.IO) {
+                    appDb.bookRoleDao.deleteBinding(workKey, row.targetType, row.targetId)
+                    withContext(Dispatchers.Main) { loadRoles() }
                 }
-                dialog.dismiss()
             }
-        }
+        )
     }
 
     private fun promoteCastRole(castRoleId: Long) {

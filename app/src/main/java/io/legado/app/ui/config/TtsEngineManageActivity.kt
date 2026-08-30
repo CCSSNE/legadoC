@@ -302,6 +302,9 @@ class TtsEngineManageActivity : BaseActivity<ActivityTtsEngineManageBinding>(),
                     if (engine.enabled) getString(R.string.tts_engine_v2_disable)
                     else getString(R.string.tts_engine_v2_enable)
                 )
+                if (engine.supportsVoiceFetch()) {
+                    add(getString(R.string.tts_engine_v2_fetch_voices))
+                }
                 add(getString(R.string.export))
                 if (TtsEngineStore.isDeletableEngine(engine)) {
                     add(getString(R.string.delete))
@@ -312,9 +315,25 @@ class TtsEngineManageActivity : BaseActivity<ActivityTtsEngineManageBinding>(),
                     when (options[index]) {
                         getString(R.string.tts_engine_v2_enable),
                         getString(R.string.tts_engine_v2_disable) -> toggleEnabled(engine)
+                        getString(R.string.tts_engine_v2_fetch_voices) -> fetchVoices(engine)
                         getString(R.string.export) -> exportEngine(engine)
                         getString(R.string.delete) -> deleteEngine(engine)
                     }
+                }
+            }
+        }
+
+        private fun fetchVoices(engine: TtsEngineSetting) {
+            lifecycleScope.launch(IO) {
+                toastOnUi(R.string.tts_engine_v2_fetching)
+                runCatching {
+                    TtsEngineStore.ensureVoiceCatalog(engine.id, forceRefresh = true)
+                }.onSuccess {
+                    toastOnUi(R.string.tts_engine_v2_fetch_done)
+                    refreshData()
+                }.onFailure { error ->
+                    AppLog.put("获取发音人目录失败\n${error.localizedMessage}", error)
+                    toastOnUi(error.localizedMessage)
                 }
             }
         }

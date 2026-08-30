@@ -2590,4 +2590,10 @@ Selected text or question:
     <string name="tts_engine_v2_system_no_delete">System engines cannot be deleted</string>
     <string name="tts_engine_v2_facade_note">Built-in voice-pack engine: the voice directory is provided by the local plugin and follows the current speaker selection</string>
     <string name="tts_engine_v2_voice_catalog">Voices</string>
+    <string name="tts_engine_pick_title">Select read-aloud engine</string>
+    <string name="tts_engine_v2_pick_voice">Select voice</string>
+    <string name="tts_engine_v2_fetch_voices">Fetch voice catalog</string>
+    <string name="tts_engine_v2_fetching">Fetching voice catalog…</string>
+    <string name="tts_engine_v2_fetch_done">Voice catalog updated</string>
+    <string name="tts_engine_v2_no_pickable_engine">No bindable read-aloud engine. Import or create a script engine first.</string>
 </resources>

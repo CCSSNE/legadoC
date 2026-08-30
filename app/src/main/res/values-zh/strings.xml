@@ -2443,4 +2443,10 @@
     <string name="tts_engine_v2_system_no_delete">系统朗读引擎不能删除</string>
     <string name="tts_engine_v2_facade_note">内置语音包引擎：发音人目录由本机插件提供，跟随当前发音人选择</string>
     <string name="tts_engine_v2_voice_catalog">发音人</string>
+    <string name="tts_engine_pick_title">选择朗读引擎</string>
+    <string name="tts_engine_v2_pick_voice">选择音色</string>
+    <string name="tts_engine_v2_fetch_voices">获取发音人目录</string>
+    <string name="tts_engine_v2_fetching">正在获取发音人目录…</string>
+    <string name="tts_engine_v2_fetch_done">发音人目录已更新</string>
+    <string name="tts_engine_v2_no_pickable_engine">没有可绑定的朗读引擎，请先导入或新建脚本引擎</string>
 </resources>

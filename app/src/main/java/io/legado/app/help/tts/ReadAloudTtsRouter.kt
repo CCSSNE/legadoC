@@ -385,10 +385,9 @@ class ReadAloudTtsRouter private constructor(
             binding: BookTtsVoiceBinding,
             multiRoleEngineId: String?
         ): Boolean {
-            // multiRoleEngineId 未配置时沿用旧版行为：全部书级绑定生效。
-            return binding.targetType == BookTtsVoiceBinding.TargetType.NARRATOR ||
-                multiRoleEngineId.isNullOrBlank() ||
-                binding.engineId == multiRoleEngineId
+            // 绑定按行携带 engineId（engineId 空串 = 内置语音包引擎），路由按各自引擎解析，
+            // 不再受全局对白引擎限制（NG 的单引擎绑定 UI 假设在本项目不成立）。
+            return true
         }
 
         internal fun createResolved(

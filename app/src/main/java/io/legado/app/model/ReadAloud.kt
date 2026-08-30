@@ -173,15 +173,15 @@ object ReadAloud {
 
     /**
      * V2 数据驱动引擎层是否接管朗读路由：仅当用户在 V2 引擎列表里显式选择了
-     * 启用的脚本引擎（内置语音包引擎外观不可被选为活动引擎）时接管；
+     * 启用的引擎（内置语音包引擎外观不可被选为活动引擎）时接管；
      * 未选择时保持既有引擎选择（系统/HTTP源/插件引擎）完全不变。
+     * SCRIPT 引擎经 HttpReadAloudService 合成；SYSTEM 引擎经 TTSReadAloudService
+     * 并按引擎声明的 enginePackage 绑定系统 TTS 实现。
      */
     private fun resolveActiveTtsEngineV2(): TtsEngineSetting? {
         val savedId = appCtx.getPrefString(PreferKey.ttsEngineV2ActiveId)
         if (savedId.isNullOrBlank()) return null
-        return TtsEngineStore.engine(savedId)?.takeIf {
-            it.enabled && it.type == TtsEngineType.SCRIPT
-        }
+        return TtsEngineStore.engine(savedId)?.takeIf { it.enabled }
     }
 
     /** 当前生效的 V2 引擎：以引擎存储实时解析为准，并同步共享快照供服务侧读取。 */
@@ -193,7 +193,11 @@ object ReadAloud {
         val engineV2 = currentTtsEngineV2()
         if (engineV2 != null) {
             httpTTS = null
-            return HttpReadAloudService::class.java
+            httpTtsEngineV2 = engineV2.takeIf { it.type == TtsEngineType.SCRIPT }
+            return when (engineV2.type) {
+                TtsEngineType.SCRIPT -> HttpReadAloudService::class.java
+                TtsEngineType.SYSTEM -> TTSReadAloudService::class.java
+            }
         }
         httpTtsEngineV2 = null
         val book = ReadBook.book
