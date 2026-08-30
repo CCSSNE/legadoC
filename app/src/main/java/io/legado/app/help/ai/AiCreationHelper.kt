@@ -18,13 +18,17 @@ object AiCreationHelper {
             else -> error("未知 AI 创作模式：$mode")
         }
         val target = AiCreationConfig.requireModelTarget()
-        val values = buildValues(session, cardsById, definition.variables)
+        val requestValues = buildRequestValues(session, definition.variables)
         val routeParams = definition.variables.associate {
-            it.key to values[it.key].orEmpty()
+            it.key to requestValues[it.key].orEmpty()
         }
         val promptName = AiCreationConfig.resolvePromptName(definition, routeParams)
         val promptText = AiCreationConfig.promptTextOf(promptName)
-        val userContent = renderTemplate(promptText, values)
+        val userContent = renderFinalPrompt(
+            finalPrompt = definition.finalPrompt,
+            prompt = promptText,
+            material = session.buildMaterialText(cardsById)
+        )
         AppLog.putAi(
             "AI_CREATION REQUEST\n" +
                 "provider=${target.provider.name}\n" +
@@ -42,47 +46,35 @@ object AiCreationHelper {
         return response
     }
 
-    fun buildValues(
+    /** 供应商变量只服务于路由与最终图片/视频请求，不进入 LLM 的 finalPrompt。 */
+    fun buildRequestValues(
         session: AiCreationSession,
-        cardsById: Map<Long, CreationCard>,
         variables: List<AiCreationVariable>
     ): Map<String, String> {
         val values = linkedMapOf<String, String>()
         val mode = session.paramValue(AI_CREATION_MODE_KEY)
             ?: error("AI 创作模式未设置")
-        values[AI_CREATION_MODE_KEY] = mode
         variables.forEach { variable ->
             values[variable.key] = variable.effectiveValue(
                 session.providerVariableValue(mode, variable.key)
             )
         }
-        AiCreationConfig.sectionOrder.forEach { section ->
-            values[session.sectionLabel(section)] = sectionText(session, section, cardsById)
-        }
-        values["素材"] = session.buildMaterialText(cardsById)
         return values
     }
 
-    private fun sectionText(
-        session: AiCreationSession,
-        section: String,
-        cardsById: Map<Long, CreationCard>
+    private fun renderFinalPrompt(
+        finalPrompt: String,
+        prompt: String,
+        material: String
     ): String {
-        return session.sectionItems[section].orEmpty()
-            .mapNotNull { cardsById[it.cardId]?.content?.trim() }
-            .filter { it.isNotEmpty() }
-            .joinToString("\n")
-    }
-
-    private fun renderTemplate(template: String, values: Map<String, String>): String {
-        val rendered = values.entries.fold(template) { acc, (key, value) ->
-            acc.replace("\${$key}", value)
-        }
+        val rendered = finalPrompt
+            .replace("\${prompt}", prompt)
+            .replace("\${素材}", material)
         val unresolved = TEMPLATE_VARIABLE.findAll(rendered)
             .map { it.groupValues[1] }
             .toSet()
         require(unresolved.isEmpty()) {
-            "提示词包含未定义变量：${unresolved.joinToString("、")}"
+            "finalPrompt 包含未定义变量：${unresolved.joinToString("、")}"
         }
         return rendered
     }

@@ -742,9 +742,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
         viewLifecycleOwner.lifecycleScope.launch {
             val result = runCatching {
                 val definition = AiCreationConfig.videoDefinition
-                val values = withContext(IO) {
-                    AiCreationHelper.buildValues(session, emptyMap(), definition.variables)
-                }
+                val values = AiCreationHelper.buildRequestValues(session, definition.variables)
                 AiCreationImageTaskHolder.startVideo(prompt, count, values)
             }
             result.onSuccess {
@@ -758,20 +756,10 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
     private fun startImageGeneration(prompt: String) {
         val count = binding.etImageCount.text?.toString()?.toIntOrNull()
             ?.coerceIn(1, 10) ?: 1
-        val cardIds = AiCreationConfig.sectionOrder
-            .flatMap { session.itemsOf(it) }
-            .map { it.cardId }
-            .distinct()
         viewLifecycleOwner.lifecycleScope.launch {
             val result = runCatching {
                 val definition = AiCreationConfig.imageDefinition
-                val cardsById = withContext(IO) {
-                    cardIds.mapNotNull { appDb.creationCardDao.getById(it) }
-                        .associateBy { it.cardId }
-                }
-                val values = withContext(IO) {
-                    AiCreationHelper.buildValues(session, cardsById, definition.variables)
-                }
+                val values = AiCreationHelper.buildRequestValues(session, definition.variables)
                 AiCreationConfig.requireImageApiReady()
                 AiCreationImageTaskHolder.start(prompt, count, values)
             }

@@ -64,12 +64,14 @@ data class AiCreationRoute(
 
 data class AiCreationVariableDoc(
     val variables: List<AiCreationVariable>? = null,
-    val routes: List<AiCreationRoute>? = null
+    val routes: List<AiCreationRoute>? = null,
+    val finalPrompt: String? = null
 )
 
 data class AiCreationDefinition(
     val variables: List<AiCreationVariable>,
-    val routes: List<AiCreationRoute>
+    val routes: List<AiCreationRoute>,
+    val finalPrompt: String
 )
 
 object AiCreationVariables {
@@ -77,7 +79,14 @@ object AiCreationVariables {
     const val GROUP_IMAGE = "image"
     const val GROUP_VIDEO = "video"
 
-    //图片 style：控制提示词走向（路由到连环画/单场景提示词），默认单场景
+    private const val IMAGE_FINAL_PROMPT =
+        "根据素材生成绘画提示词。\n生成要求：\n\${prompt}\n素材：\n\${素材}"
+    private const val VIDEO_FINAL_PROMPT =
+        "根据素材生成视频提示词。\n生成要求：\n\${prompt}\n素材：\n\${素材}"
+    private val FINAL_PROMPT_VARIABLE = Regex("\\$\\{([^{}]+)}")
+    private val DOUBLE_BRACED_PLACEHOLDER = Regex("\\{\\{[^{}]+}}")
+
+    //图片 style：只控制提示词路由（连环画/单场景），默认单场景
     private val imageStyleVariable = AiCreationVariable(
         key = "style",
         label = "画面风格",
@@ -86,7 +95,7 @@ object AiCreationVariables {
         defaultValue = "单场景"
     )
 
-    //视频 style：与图片独立（各自供应商 JSON 各自路由），默认单镜头
+    //视频 style：只控制提示词路由（多镜头/单镜头），默认单镜头
     private val videoStyleVariable = AiCreationVariable(
         key = "style",
         label = "画面风格",
@@ -284,17 +293,19 @@ object AiCreationVariables {
         )
     )
 
-    /** 智谱 CogView 图片供应商的默认变量定义：变量 + 图片路由。 */
+    /** 智谱 CogView 图片供应商的默认变量定义：变量 + 图片路由 + LLM 最终提示词。 */
     val defaultJson: String by lazy { buildImageJson(cogViewImageVariables) }
 
     /**
-     * 组装图片供应商变量定义 JSON：变量由供应商提供，路由为图片默认路由。
+     * 组装图片供应商变量定义 JSON：变量由供应商提供，路由选全局纯文本，
+     * finalPrompt 组装后才发送 LLM。
      */
     fun buildImageJson(imageVariables: List<AiCreationVariable>): String {
         return GSON.toJson(
             AiCreationVariableDoc(
                 variables = imageVariables,
-                routes = imageRoutes
+                routes = imageRoutes,
+                finalPrompt = IMAGE_FINAL_PROMPT
             )
         )
     }
@@ -335,7 +346,7 @@ object AiCreationVariables {
     private val siliconFlowVideoVariables =
         listOf(videoStyleVariable) + siliconFlowVideoParameters
 
-    /** 视频供应商的变量定义：变量 + 视频路由，与图片体系完全独立。 */
+    /** 视频供应商的变量定义：变量 + 视频路由 + LLM 最终提示词，与图片体系完全独立。 */
     val zhipuVideoVariablesJson: String by lazy { buildVideoVariablesJson(zhipuVideoVariables) }
     val siliconFlowVideoVariablesJson: String by lazy {
         buildVideoVariablesJson(siliconFlowVideoVariables)
@@ -345,7 +356,8 @@ object AiCreationVariables {
         return GSON.toJson(
             AiCreationVariableDoc(
                 variables = variables,
-                routes = videoRoutes
+                routes = videoRoutes,
+                finalPrompt = VIDEO_FINAL_PROMPT
             )
         )
     }
@@ -379,6 +391,22 @@ object AiCreationVariables {
             ?: throw IllegalStateException("AI 创作变量定义 JSON 无效：无法解析")
         val variables = requireNotNull(doc.variables) { "AI 创作变量定义缺少 variables" }
         val routes = requireNotNull(doc.routes) { "AI 创作变量定义缺少 routes（没有路由就无法选择提示词）" }
+        val finalPrompt = requireNotNull(doc.finalPrompt) {
+            "AI 创作变量定义缺少 finalPrompt（发送给 LLM 的最终提示词）"
+        }
+        require(finalPrompt.isNotBlank()) { "AI 创作变量定义的 finalPrompt 不能为空" }
+        val finalPromptVariables = FINAL_PROMPT_VARIABLE.findAll(finalPrompt)
+            .map { it.groupValues[1] }
+            .toList()
+        require(
+            finalPromptVariables.size == 2 &&
+                finalPromptVariables.toSet() == setOf("prompt", "素材")
+        ) {
+            "AI 创作变量定义的 finalPrompt 必须且只能各包含一次 \${prompt} 和 \${素材}"
+        }
+        require(!DOUBLE_BRACED_PLACEHOLDER.containsMatchIn(finalPrompt)) {
+            "AI 创作变量定义的 finalPrompt 不支持 {{名字}} 占位符"
+        }
         require(variables.isNotEmpty()) { "AI 创作变量定义 variables 不能为空" }
         val keys = mutableSetOf<String>()
         val normalizedVariables = variables.map { variable ->
@@ -437,7 +465,7 @@ object AiCreationVariables {
                 }
             }
         }
-        return AiCreationDefinition(normalizedVariables, routes)
+        return AiCreationDefinition(normalizedVariables, routes, finalPrompt)
     }
 }
 

@@ -407,11 +407,11 @@
     <string name="ai_creation_provider_summary_empty">Not selected</string>
     <string name="ai_creation_model">Model</string>
     <string name="ai_creation_model_summary_empty">Not selected</string>
-    <string name="ai_creation_variables">Variable definitions</string>
-    <string name="ai_creation_variables_invalid">Invalid variable definitions: %1$s</string>
+    <string name="ai_creation_variables">Variables and final prompt</string>
+    <string name="ai_creation_variables_invalid">Invalid variables or final prompt: %1$s</string>
     <string name="ai_creation_prompt_template">Prompt template</string>
-    <string name="ai_creation_prompt_template_summary">JSON object with %d entries; keys are route targets and values are plain-text prompts</string>
-    <string name="ai_creation_prompt_template_hint">JSON object: { &quot;连环画&quot;: &quot;prompt text&quot; }. Variables: ${素材}, ${选中文本}, ${背景}, ${场景}, ${人设}, ${描述与备注}, and every provider variable key</string>
+    <string name="ai_creation_prompt_template_summary">JSON object with %d entries; keys are route targets and values must be plain text without placeholders</string>
+    <string name="ai_creation_prompt_template_hint">JSON object: { &quot;连环画&quot;: &quot;Split material into sequential shots.&quot; }. Values cannot contain placeholders; the provider finalPrompt combines the routed text and material</string>
     <string name="ai_creation_request_template">Request template</string>
     <string name="ai_creation_request_template_invalid">Invalid request templates: %1$s</string>
     <string name="ai_creation_test_connection">Test connection</string>
@@ -459,8 +459,8 @@
     <string name="ai_creation_video_test_running">Testing video generation (submitting and polling, may take minutes)…</string>
     <string name="ai_creation_video_test_success">Test succeeded, video returned</string>
     <string name="ai_creation_connection_test_failed">Test failed: %1$s</string>
-    <string name="ai_creation_image_variables">Image variables</string>
-    <string name="ai_creation_video_variables">Video variables</string>
+    <string name="ai_creation_image_variables">Image variables and final prompt</string>
+    <string name="ai_creation_video_variables">Video variables and final prompt</string>
     <string name="ai_creation_video_request_template">Video request template</string>
     <string name="ai_creation_provider_builtin">Built-in provider cannot be removed</string>
     <string name="ai_creation_provider_required">Set a current provider in Manage Providers first</string>

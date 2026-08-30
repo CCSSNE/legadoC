@@ -15,12 +15,13 @@ import java.util.UUID
 
 /**
  * AI 创作图片/视频供应商配置：
- * 供应商管连线协议（Base URL / API Key / 请求头 / 变量定义 / 请求模板），
+ * 供应商管连线协议（Base URL / API Key / 请求头 / 变量定义+finalPrompt / 请求模板），
  * 模型挂在供应商下。
  * 图片与视频是两套结构对称、数据零关联的独立体系：
- * 图片供应商变量 JSON 含图片 style、图片参数与图片提示词路由；
- * 视频供应商变量 JSON 含视频 style、视频参数与视频提示词路由；
- * 两边 style 各自独立，路由统一引用“提示词模板”JSON 的 key。
+ * 图片供应商变量 JSON 含图片 style、图片参数、图片提示词路由与图片 finalPrompt；
+ * 视频供应商变量 JSON 含视频 style、视频参数、视频提示词路由与视频 finalPrompt；
+ * 两边 style 各自独立，路由统一引用“提示词模板”JSON 的 key，
+ * finalPrompt 把路由纯文本与素材组合后发送给 LLM。
  */
 @Keep
 data class AiCreationProviderConfig(

@@ -45,34 +45,26 @@ object AiCreationConfig {
     val scopeValues = listOf(SCOPE_GLOBAL, SCOPE_BOOK, SCOPE_SESSION)
 
     /**
-     * 唯一的提示词模板：JSON 对象的 key 是名字，value 是纯文本提示词。
+     * 唯一的提示词模板：JSON 对象的 key 是名字，value 是无占位符的纯文本提示词。
      * 图片/视频供应商变量 JSON 中的路由按 key 引用此对象。
      */
     val defaultPromptTemplateJson: String by lazy {
         JSONObject().apply {
             put(
                 "连环画",
-                "本次按连环画分镜脚本生成提示词：将素材拆分为连续分镜，" +
-                    "每格包含画面描述、构图与镜头调度。\n\n素材：\n\${素材}\n\n" +
-                    "风格：\${style}"
+                "将素材拆分为连续分镜，每格包含画面描述、构图与镜头调度。"
             )
             put(
                 "单场景",
-                "本次生成单场景精绘提示词：一个完整画面，" +
-                    "涵盖主体、环境、光影与构图。\n\n素材：\n\${素材}\n\n" +
-                    "风格：\${style}"
+                "一个完整画面，涵盖主体、环境、光影与构图。"
             )
             put(
                 "多镜头",
-                "本次生成多镜头视频提示词：将素材拆分为连续镜头，" +
-                    "每个镜头包含画面、动作与运镜描述。\n\n素材：\n\${素材}\n\n" +
-                    "风格：\${style}"
+                "将素材拆分为连续镜头，每个镜头包含画面、动作与运镜描述。"
             )
             put(
                 "单镜头",
-                "本次生成单镜头视频提示词：一个连续镜头，" +
-                    "涵盖主体、动作、环境与运镜。\n\n素材：\n\${素材}\n\n" +
-                    "风格：\${style}"
+                "一个连续镜头，涵盖主体、动作、环境与运镜。"
             )
         }.toString()
     }
@@ -189,6 +181,9 @@ object AiCreationConfig {
             val text = objectValue.opt(name)
             require(text is String) { "提示词「${name}」必须是纯文本" }
             require(text.isNotBlank()) { "提示词「${name}」的内容为空" }
+            require(!PROMPT_TEMPLATE_PLACEHOLDER.containsMatchIn(text)) {
+                "提示词「${name}」必须是无占位符的纯文本"
+            }
             templates[name] = text
         }
         return templates
@@ -298,4 +293,7 @@ object AiCreationConfig {
         SECTION_SELECTED_TEXT -> SCOPE_SESSION
         else -> SCOPE_GLOBAL
     }
+
+    private val PROMPT_TEMPLATE_PLACEHOLDER =
+        Regex("\\$\\{[^{}]+}|\\{\\{[^{}]+}}")
 }

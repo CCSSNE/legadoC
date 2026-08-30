@@ -406,11 +406,11 @@
     <string name="ai_creation_provider_summary_empty">未选择</string>
     <string name="ai_creation_model">模型</string>
     <string name="ai_creation_model_summary_empty">未选择</string>
-    <string name="ai_creation_variables">变量定义</string>
-    <string name="ai_creation_variables_invalid">变量定义无效：%1$s</string>
+    <string name="ai_creation_variables">变量与最终提示词定义</string>
+    <string name="ai_creation_variables_invalid">变量与最终提示词定义无效：%1$s</string>
     <string name="ai_creation_prompt_template">提示词模板</string>
-    <string name="ai_creation_prompt_template_summary">JSON 对象，共 %d 条；key 供供应商路由引用，value 为纯文本提示词</string>
-    <string name="ai_creation_prompt_template_hint">JSON 对象：{ &quot;连环画&quot;: &quot;提示词正文&quot; }。可用变量：${素材}、${选中文本}、${背景}、${场景}、${人设}、${描述与备注}及供应商变量 key</string>
+    <string name="ai_creation_prompt_template_summary">JSON 对象，共 %d 条；key 供供应商路由引用，value 必须是无占位符的纯文本</string>
+    <string name="ai_creation_prompt_template_hint">JSON 对象：{ &quot;连环画&quot;: &quot;将素材拆分为连续分镜。&quot; }。这里的 value 不允许占位符；由供应商 finalPrompt 统一组合路由文本与素材</string>
     <string name="ai_creation_request_template">请求模板</string>
     <string name="ai_creation_request_template_invalid">请求模板无效：%1$s</string>
     <string name="ai_creation_test_connection">测试连接</string>
@@ -458,8 +458,8 @@
     <string name="ai_creation_video_test_running">正在测试视频生成链路（提交并轮询，可能需要数分钟）…</string>
     <string name="ai_creation_video_test_success">测试成功，已返回视频</string>
     <string name="ai_creation_connection_test_failed">测试失败：%1$s</string>
-    <string name="ai_creation_image_variables">图片变量定义</string>
-    <string name="ai_creation_video_variables">视频变量定义</string>
+    <string name="ai_creation_image_variables">图片变量与最终提示词定义</string>
+    <string name="ai_creation_video_variables">视频变量与最终提示词定义</string>
     <string name="ai_creation_video_request_template">视频请求模板</string>
     <string name="ai_creation_provider_builtin">内置供应商不可删除</string>
     <string name="ai_creation_provider_required">请先在管理供应商中设为当前供应商</string>
