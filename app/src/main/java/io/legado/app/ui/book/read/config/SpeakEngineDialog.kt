@@ -19,6 +19,7 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.databinding.DialogRecyclerViewBinding
 import io.legado.app.databinding.ItemHttpTtsBinding
+import io.legado.app.help.IntentHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
@@ -185,6 +186,11 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
                     .getOrNull()?.value.isNullOrEmpty()
                 cbName.setOnClickListener {
                     upTts(GSON.toJson(SelectItem("系统默认", "")))
+                }
+                // 长按"系统默认"直接跳到系统 TTS 设置界面（与朗读设置里的"系统TTS设置"一致）
+                cbName.setOnLongClickListener {
+                    IntentHelp.openTTSSetting()
+                    true
                 }
             }
         }
