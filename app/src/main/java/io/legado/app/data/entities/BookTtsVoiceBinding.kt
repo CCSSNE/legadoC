@@ -3,8 +3,10 @@ package io.legado.app.data.entities
 import androidx.room.Entity
 
 /**
- * 音色绑定：目标 → 发音人（发音人目录条目 id，如百度TTS语音包的发音人 id）。
- * 绑定一次长期生效；bindingMode=manual 时自动选音不得覆盖。
+ * 角色绑定：目标 → （引擎, 音色）。
+ * engineId 空串 = 内置语音包引擎（百度等插件注册的发音人目录）；
+ * speakerId 为该引擎内的音色/发音人 id（内置目录即发音人 id）。
+ * 首次生成时生效；bindingMode=manual 时自动选音不会覆盖该绑定。
  * narrator / dialogue_male / dialogue_female 的 targetId 固定为 0。
  */
 @Entity(tableName = "book_tts_voice_bindings", primaryKeys = ["workKey", "targetType", "targetId"])
@@ -12,6 +14,7 @@ data class BookTtsVoiceBinding(
     val workKey: String = "",
     val targetType: String = TargetType.CHARACTER,
     val targetId: Long = 0L,
+    val engineId: String = "",
     val speakerId: String = "",
     val bindingMode: String = BindingMode.AUTO,
     val updatedAt: Long = 0L

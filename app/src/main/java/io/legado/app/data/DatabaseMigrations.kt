@@ -32,7 +32,17 @@ object DatabaseMigrations {
             migration_108_109,
             migration_109_110,
             migration_110_111,
+            migration_111_112,
         )
+    }
+
+    private val migration_111_112 = object : Migration(111, 112) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // 选角绑定泛化为（引擎, 音色）：engineId 空串 = 内置语音包引擎（百度等插件目录）。
+            db.execSQL(
+                "ALTER TABLE `book_tts_voice_bindings` ADD COLUMN `engineId` TEXT NOT NULL DEFAULT ''"
+            )
+        }
     }
 
     private val migration_110_111 = object : Migration(110, 111) {

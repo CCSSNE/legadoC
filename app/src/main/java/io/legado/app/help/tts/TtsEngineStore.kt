@@ -13,6 +13,7 @@ import io.legado.app.data.entities.TtsEngineRuntimeEntity
 import io.legado.app.data.entities.TtsVoiceEntity
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.ReadAloud
+import io.legado.app.plugin.TtsVoiceDirectories
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
@@ -175,6 +176,13 @@ internal object TtsEngineOrderResolver {
 object TtsEngineStore {
 
     const val SYSTEM_DEFAULT_ID = "system_default"
+
+    /**
+     * 内置语音包引擎外观 id：把插件注册的发音人目录（百度等）映射为 V2 引擎条目，
+     * 使选角绑定以（引擎, 音色）二元组统一表达。无 script、不参与全局引擎选择列表
+     * （[engines] 不注入），仅由选角路由与绑定界面经 [voiceDirectoryEngine] 使用。
+     */
+    const val VOICE_DIRECTORY_ID = "voice_directory"
     private const val SYSTEM_ENGINE_PREFIX = "system_engine_"
     private const val DEFAULT_TTS_ASSET_DIR = "defaultData/tts"
     private val DEFAULT_SCRIPT_ASSETS = listOf(
@@ -263,6 +271,39 @@ object TtsEngineStore {
     fun engine(id: String?): TtsEngineSetting? {
         if (id.isNullOrBlank()) return null
         return engines().firstOrNull { it.id == id }
+    }
+
+    /**
+     * 内置语音包引擎外观：无插件注册（开源构建）时返回 null。
+     * activeVoiceId 跟随插件目录当前选中发音人，作为选角路由的默认兜底音色。
+     */
+    fun voiceDirectoryEngine(): TtsEngineSetting? {
+        val directory = TtsVoiceDirectories.active ?: return null
+        val voices = directory.listVoices().map { info ->
+            TtsVoice(
+                id = info.id,
+                name = info.name,
+                language = info.locale,
+                gender = info.gender
+            )
+        }
+        return TtsEngineSetting(
+            id = VOICE_DIRECTORY_ID,
+            name = "内置语音包引擎",
+            type = TtsEngineType.SCRIPT,
+            enabled = true,
+            builtIn = true,
+            activeVoiceId = appCtx.getPrefString(PreferKey.bdSelectedSpeaker),
+            voices = voices
+        )
+    }
+
+    /** 引擎解析统一入口：空 id / 外观 id → 内置语音包引擎外观；其余走 V2 引擎存储。 */
+    fun engineOrVoiceDirectory(id: String?): TtsEngineSetting? {
+        if (id.isNullOrBlank() || id == VOICE_DIRECTORY_ID) {
+            return voiceDirectoryEngine()
+        }
+        return engine(id)
     }
 
     @Synchronized
