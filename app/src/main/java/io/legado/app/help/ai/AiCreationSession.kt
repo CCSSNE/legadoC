@@ -8,6 +8,7 @@ import org.json.JSONObject
 
 const val AI_CREATION_EPHEMERAL_BOOK = "\u0000ephemeral"
 const val AI_CREATION_MODE_KEY = "mode"
+const val AI_CREATION_IMAGE_COUNT_KEY = "imageCount"
 
 data class AiCreationVariable(
     val key: String,

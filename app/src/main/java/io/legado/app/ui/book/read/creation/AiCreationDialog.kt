@@ -26,6 +26,7 @@ import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.databinding.DialogAiCreationBinding
 import io.legado.app.databinding.ItemAiPreviewBinding
 import io.legado.app.help.ai.AI_CREATION_EPHEMERAL_BOOK
+import io.legado.app.help.ai.AI_CREATION_IMAGE_COUNT_KEY
 import io.legado.app.help.ai.AI_CREATION_MODE_KEY
 import io.legado.app.help.ai.AiCreationConfig
 import io.legado.app.help.ai.AiCreationHelper
@@ -243,6 +244,12 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
                 session.prompt = text?.toString().orEmpty()
             }
         }
+        //生成数量实时持久化：下次进入提示词页直接恢复上次值
+        binding.etImageCount.addTextChangedListener { text ->
+            val count = text?.toString()?.toIntOrNull()
+                ?.coerceIn(1, 10) ?: 1
+            session.setParam(AI_CREATION_IMAGE_COUNT_KEY, count.toString())
+        }
         binding.tabLayout.setBackgroundColor(backgroundColor)
         binding.tabLayout.setSelectedTabIndicatorColor(accentColor)
         variableGroups.forEach { group ->
@@ -319,6 +326,9 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
         )
         val isVideo = isVideoMode()
         binding.etImageCount.visibility = if (page == 2) View.VISIBLE else View.GONE
+        binding.etImageCount.setText(
+            session.paramValue(AI_CREATION_IMAGE_COUNT_KEY) ?: "1"
+        )
         binding.btnGenerateImage.visibility = if (page == 2) View.VISIBLE else View.GONE
         binding.btnGenerateImage.setText(
             if (isVideo) R.string.ai_creation_generate_video else R.string.ai_creation_generate_image
@@ -771,6 +781,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
     private fun startVideoGeneration(prompt: String) {
         val count = binding.etImageCount.text?.toString()?.toIntOrNull()
             ?.coerceIn(1, 10) ?: 1
+        session.setParam(AI_CREATION_IMAGE_COUNT_KEY, count.toString())
         viewLifecycleOwner.lifecycleScope.launch {
             val result = runCatching {
                 val definition = AiCreationConfig.videoDefinition
@@ -788,6 +799,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
     private fun startImageGeneration(prompt: String) {
         val count = binding.etImageCount.text?.toString()?.toIntOrNull()
             ?.coerceIn(1, 10) ?: 1
+        session.setParam(AI_CREATION_IMAGE_COUNT_KEY, count.toString())
         viewLifecycleOwner.lifecycleScope.launch {
             val result = runCatching {
                 val definition = AiCreationConfig.imageDefinition
