@@ -196,7 +196,7 @@ $versionName = '3.26.<MMddHH>' # <MMddHH> uses UTC; appC automatically appends c
 - 用户未指明构建路线时，"编译/正式编译/交付"一律指自用构建 `assembleAppC`（阅读C），完全沿用"不可变交付约束"与本节的版本、产物规则；不得自行切换成开源构建。
 - 仅当用户明确点名"开源编译/发布编译/oss 编译"时，才执行 `assembleOssRelease`：同样传 `-PVERSION_CODE`/`-PVERSION_NAME`（版本名不带 `c`，oss flavor 无后缀），产物在 `app\build\outputs\apk\oss\release\`；验证用同一套 `aapt`/`apksigner` 流程，但身份预期不同——包名 `io.legado.app.c`（标准公开身份，同签名同包名按 versionCode 递增即可互相覆盖安装）、中文名"阅读"（繁中"閱讀"）、版本名无后缀。不得把 ossRelease 当作阅读C 的交付物，也不得用 appC 冒充开源发布包。
 - 用户明确要求"双编译"时，两个构建都执行：先自用 `assembleAppC`，再开源 `assembleOssRelease`，各自完整走一遍版本传参与产物验证；两包包名不同（自用 `io.legado.app.dev` / 公开 `io.legado.app.c`），互不影响覆盖安装，可共存装在同一设备。
-- **签名统一：公开版（oss）与自用版（appC）使用完全相同的签名**，只走 `app/build.gradle` 里同一套逻辑——构建时传入 `RELEASE_STORE_FILE`/`RELEASE_STORE_PASSWORD`/`RELEASE_KEY_ALIAS`/`RELEASE_KEY_PASSWORD` 时用正式密钥 `myConfig` 签名；未传参时统一回退默认 debug 签名（`app` 的 `c` 变体与 `oss` 的 `release` 变体行为一致）。两条路线产物始终同一把签名，可互相覆盖安装互不冲突；任何构建路线产物的 `apksigner` 都必须验证通过、退出码为 0。
+- **签名铁律：自用版（appC=`io.legado.app.dev`）与公开版（oss=`io.legado.app.c`）一律使用正式签名 `myConfig`，绝对禁止 debug 签名，绝不允许以任何理由回退、借用或产出 debug 签名的包。** 两条路线的正式签名是同一把 `myConfig`（`app/build.gradle` 的 `signingConfigs.myConfig`），因此两版可互相覆盖安装互不冲突，且公开版同包名同签名按 versionCode 递增可正常覆盖。构建时必须同时传入 `RELEASE_STORE_FILE`/`RELEASE_STORE_PASSWORD`/`RELEASE_KEY_ALIAS`/`RELEASE_KEY_PASSWORD` 四个参数；`app/build.gradle` 已在配置阶段强制校验——任一缺失立即报"正式签名缺失"错误并中止构建，**不可能再产出 debug 签名包**。所有构建产物 `apksigner` 必须验证通过、退出码为 0，且打印出的签名必须是正式密钥（不得出现 CN=Android Debug）。历史遗留的 debug 签名旧包（如 `legado_oss_3.26.083106_10784.apk`，证书 CN=Android Debug、SHA-256 `70cb88ca...`）因签名不符合本规则，不再作为交付基线，相关安装/覆盖一律以正式签名产物为准。
 
 开源源码发布（历史清洗镜像）：
 

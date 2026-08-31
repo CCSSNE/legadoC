@@ -38,17 +38,32 @@ android {
     }
 
     signingConfigs {
-        if (project.hasProperty("RELEASE_STORE_FILE")) {
-            myConfig {
-                storeFile file(RELEASE_STORE_FILE)
-                storePassword RELEASE_STORE_PASSWORD
-                keyAlias RELEASE_KEY_ALIAS
-                keyPassword RELEASE_KEY_PASSWORD
-                enableV1Signing = true
-                enableV2Signing = true
-                enableV3Signing = true
-                enableV4Signing = true
-            }
+        // 正式签名（myConfig）是唯一允许的签名。自用版（appC）与公开版（oss）共用同一把，
+        // 必须走正式签名，绝不允许回退 debug 签名（AGENTS.md 明文规则）。
+        // 构建时必须传入 RELEASE_STORE_FILE/RELEASE_STORE_PASSWORD/RELEASE_KEY_ALIAS/
+        // RELEASE_KEY_PASSWORD；任一缺失即配置阶段报错，杜绝默认产出 debug 签名包。
+        if (!(project.hasProperty("RELEASE_STORE_FILE") &&
+                project.hasProperty("RELEASE_STORE_PASSWORD") &&
+                project.hasProperty("RELEASE_KEY_ALIAS") &&
+                project.hasProperty("RELEASE_KEY_PASSWORD"))) {
+            throw new GradleException(
+                "============================================================\n" +
+                "RELEASE SIGNING REQUIRED. See AGENTS.md\n" +
+                "正式签名缺失！本项目所有构建（自用版 appC 与公开版 oss）一律要求正式签名 myConfig，\n" +
+                "绝对禁止 debug 签名。构建时必须同时传入：\n" +
+                "  -PRELEASE_STORE_FILE -PRELEASE_STORE_PASSWORD -PRELEASE_KEY_ALIAS -PRELEASE_KEY_PASSWORD\n" +
+                "============================================================"
+            )
+        }
+        myConfig {
+            storeFile file(RELEASE_STORE_FILE)
+            storePassword RELEASE_STORE_PASSWORD
+            keyAlias RELEASE_KEY_ALIAS
+            keyPassword RELEASE_KEY_PASSWORD
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
+            enableV4Signing = true
         }
     }
     defaultConfig {
@@ -85,11 +100,7 @@ android {
     }
     buildTypes {
         release {
-            if (project.hasProperty("RELEASE_STORE_FILE")) {
-                signingConfig signingConfigs.myConfig
-            } else {
-                signingConfig signingConfigs.debug
-            }
+            signingConfig signingConfigs.myConfig
             applicationIdSuffix '.c'
             manifestPlaceholders.put("app_name", "@string/app_name")
 
@@ -98,9 +109,7 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro', 'cronet-proguard-rules.pro'
         }
         beta {
-            if (project.hasProperty("RELEASE_STORE_FILE")) {
-                signingConfig signingConfigs.myConfig
-            }
+            signingConfig signingConfigs.myConfig
             applicationIdSuffix '.c'
             versionNameSuffix '.beta'
             manifestPlaceholders.put("app_name", "@string/app_name")
@@ -112,9 +121,7 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro', 'cronet-proguard-rules.pro'
         }
         debug {
-            if (project.hasProperty("RELEASE_STORE_FILE")) {
-                signingConfig signingConfigs.myConfig
-            }
+            signingConfig signingConfigs.myConfig
             manifestPlaceholders.put("app_name", "@string/app_name")
 
             applicationIdSuffix '.debug'
@@ -124,9 +131,7 @@ android {
         }
         c {
             initWith debug
-            if (project.hasProperty("RELEASE_STORE_FILE")) {
-                signingConfig signingConfigs.myConfig
-            }
+            signingConfig signingConfigs.myConfig
             manifestPlaceholders.put("app_name", "@string/app_name")
 
             applicationIdSuffix '.dev'
