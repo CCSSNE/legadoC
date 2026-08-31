@@ -1116,6 +1116,14 @@ object ReadBook : CoroutineScope by MainScope() {
         return book?.getPageAnim() ?: ReadBookConfig.pageAnim
     }
 
+    /**
+     * 页间分段有效值：滚动模式没有页界概念，pageSplit 锁定关闭。
+     * 引擎朗读单元划分与所有朗读起点解析必须统一经此入口，不得各自读偏好。
+     */
+    fun pageSplitEnabled(): Boolean {
+        return book?.pageSplitEnabled() ?: (pageAnim() != 3 && AppConfig.pageSplit)
+    }
+
     fun setCharset(charset: String) {
         book?.let {
             it.charset = charset

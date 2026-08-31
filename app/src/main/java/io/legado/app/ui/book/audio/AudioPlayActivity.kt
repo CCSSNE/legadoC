@@ -672,7 +672,7 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         if (ReadAloud.selectedEngineType == ReadAloudEngineType.SOURCE_AUDIO) return null
         val chapter = ReadBook.curTextChapter ?: return null
         val serviceParagraph = chapter.getParagraphs(
-            AppConfig.pageSplit
+            ReadBook.pageSplitEnabled()
         ).getOrNull(serviceParagraphIndex) ?: return null
         return chapter.getParagraphs(false).indexOfFirst {
             serviceParagraph.chapterPosition in it.chapterIndices

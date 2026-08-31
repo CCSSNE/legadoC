@@ -7,7 +7,6 @@ import android.os.Bundle
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.IntentAction
-import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.help.book.isAudio
@@ -31,7 +30,6 @@ import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.startForegroundServiceCompat
 import io.legado.app.utils.toastOnUi
-import io.legado.app.utils.getPrefBoolean
 import splitties.init.appCtx
 
 /** Absolute text position shared by every read-aloud engine and the reader UI. */
@@ -299,9 +297,7 @@ object ReadAloud {
                 kind = expectedKind,
             )
         } else {
-            val paragraphs = chapter.getParagraphs(
-                appCtx.getPrefBoolean(PreferKey.pageSplit, false)
-            )
+            val paragraphs = chapter.getParagraphs(ReadBook.pageSplitEnabled())
             if (paragraphs.isEmpty()) return null
             val chapterPosition = aloudPosition
                 ?.takeIf { it.chapterIndex == chapterIndex }

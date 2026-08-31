@@ -259,6 +259,15 @@ data class Book(
         return pageAnim
     }
 
+    /**
+     * 页间分段有效值：滚动模式没有页界概念，pageSplit 锁定关闭。
+     * 引擎朗读单元划分、朗读起点解析、批量缓存单元推导的统一判定入口，
+     * 不得各自读偏好；无书上下文时经 ReadBook.pageSplitEnabled 判定。
+     */
+    fun pageSplitEnabled(): Boolean {
+        return getPageAnim() != PageAnim.scrollPageAnim && AppConfig.pageSplit
+    }
+
     fun setImageStyle(imageStyle: String?) {
         config.imageStyle = imageStyle
     }

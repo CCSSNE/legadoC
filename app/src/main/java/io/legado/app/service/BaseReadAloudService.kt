@@ -1121,7 +1121,8 @@ abstract class BaseReadAloudService : BaseService(),
             return false
         }
         readAloudNumber = chapter.getReadLength(safePageIndex) + startPos.coerceAtLeast(0)
-        pageSplit = getPrefBoolean(PreferKey.pageSplit)
+        // 朗读单元只由 pageSplit 有效值决定；滚动模式锁定关闭（无页界概念）。
+        pageSplit = ReadBook.pageSplitEnabled()
         contentList = chapter.getNeedReadAloud(0, pageSplit, 0)
             .split("\n")
             .filter { it.isNotEmpty() }

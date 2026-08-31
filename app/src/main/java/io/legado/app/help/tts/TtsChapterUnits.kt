@@ -5,7 +5,6 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.simulatedTotalChapterNum
-import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.book.read.page.provider.ChapterProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.collect
@@ -57,7 +56,9 @@ object TtsChapterUnits {
             return Result.LayoutFailed
         }
         return Result.Ok(
-            textChapter.getNeedReadAloud(0, AppConfig.pageSplit, 0)
+            // 与播放时引擎单元推导同源：按本书翻页模式判定（滚动锁定关闭），
+            // 保证缓存 key 与实际送入引擎的单元文本一致。
+            textChapter.getNeedReadAloud(0, book.pageSplitEnabled(), 0)
                 .split("\n")
                 .filter { it.isNotEmpty() }
         )

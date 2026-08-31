@@ -239,7 +239,7 @@ $apk = 'D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_<version>
 
 **两个原语：**
 
-- 原语A 双击换段 `setAloudStart(position)`：只写“读哪里”，不联动任何显示状态。所有起点设置归一到它：双击段落（真段首）、从本页读（起点按 pageSplit/滚动模式解析，见 pageSplit 条目）、强制追页翻页（同从本页读）、选择朗读（唯一允许段中间起读的入口）。
+- 原语A 双击换段 `setAloudStart(position)`：只写“读哪里”，不联动任何显示状态。所有起点设置归一到它：双击段落（所在朗读单元的段首：页间分段开=裂段段首；整段=原始段真段首）、从本页读（起点按 pageSplit 有效值解析，见 pageSplit 条目）、强制追页翻页（同从本页读）、选择朗读（唯一允许段中间起读的入口）。
 - 原语B 回原进度 `backToAloudProgress()`：把“看哪里”对齐“读哪里”。自动触发仅两类用户显式传送——上一章/下一章（命令层 Intent 携带 `syncView=true`，引擎跳章后显示章节一起切）、拖动朗读面板进度条（段落/时间两种形态；seek 命令携带 `syncView=true`，新位置发布带 `syncView` 标记，ReadBookActivity 观察者收到后直接走本原语对齐，回退方向与暂停态同样生效）；其余一切事件默认不触发。
 
 **跟随规则（纯判定，无存储）`shouldFollowAloudAdvance(prev, current)`：** 显示物理页 == 朗读出发页（prev 所在页）且位置前进时才写显示进度并翻页；其余（用户翻到别处、回退型起点补读期）一律不动。显示永不被朗读事件拽向后退，“该跳才跳/回退不拽页”由这一条单调性规则全覆盖，不需要地板/闩。
@@ -253,7 +253,7 @@ $apk = 'D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_<version>
 **两个开关（原 `readAloudByPage` 按页朗读已拆分删除，不做老配置迁移）：**
 
 - `forcePageFollow` 强制追页：ON 时翻页被翻译成双击换段（新页第一段），视角永远在朗读页；OFF 时翻页不联动，脱节由派生条件呈现。
-- `pageSplit` 页间分段：ON 时跨页的段从页边界裂成真正的两个朗读单元（边界绝对准，段间有停顿），“从本页读/强制追页”的起点是本页第一个正文行（裂段起点），不回退原始段首；OFF 时整段连读，读到跨页处自然翻页，“从本页读/强制追页”的起点一律归一到所在原始段的真段首（跨页时回退上一页段首）。滚动模式没有页界概念，永久按 OFF 的归一规则。段中间起读只存在于选中朗读。预测换页（按文字量比例预估翻页时刻）是未来高级功能，挂载点约定见 `BaseReadAloudService.pageSplit` 字段注释：预测只允许影响位置事件的发布时机，不得新增显示写点。原 `readAloudPageStartAtParagraph` 页首按段开关已删除：页首取字不再独立配置，由 pageSplit/滚动模式唯一决定（原 `readAloudByPage` 同此不做老配置迁移）。
+- `pageSplit` 页间分段：ON 时跨页的段从页边界裂成真正的两个朗读单元（边界绝对准，段间有停顿），页内一切朗读起点（双击段落/从本页读/强制追页）都落在所在裂段的段首，不回退原始段首；OFF 时整段连读，读到跨页处自然翻页，一切朗读起点都归一到所在原始段的真段首（跨页时回退上一页段首）。滚动模式没有页界概念，pageSplit 锁定关闭：有效值只有 `ReadBook.pageSplitEnabled()` 一个入口（引擎单元划分与起点解析共用），不得各自读偏好。段中间起读只存在于选中朗读；起点解析失败直接暴露（check），不允许静默段中起读。预测换页（按文字量比例预估翻页时刻）是未来高级功能，挂载点约定见 `BaseReadAloudService.pageSplit` 字段注释：预测只允许影响位置事件的发布时机，不得新增显示写点。原 `readAloudPageStartAtParagraph` 页首按段开关已删除（原 `readAloudByPage` 同此不做老配置迁移）。
 
 流程收口：所有改变朗读位置的操作只经 `setAloudStart(position)`；引擎内部光标（`contentList/nowSpeak/readAloudNumber/textChapter/pageIndex/currentChapterIndex/paragraphStartPos`）只能由引擎推进方法读写，对外仅 `publishAloudPosition` / `publishParagraphProgress` 两个出口；引擎跨章推进时“显示章节是否跟随”同为派生判定（`syncView || 显示章==朗读章`），视角在别处时走 `switchReadAloudChapterKeepingView` 只切朗读不动显示。
 

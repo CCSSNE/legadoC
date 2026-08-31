@@ -2086,12 +2086,20 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun restartFromParagraph(position: Pair<Int, TextLine>) {
         val (chapterIndex, line) = position
-        // 双击选择的对象是“这一段”，起点必须是全章真段首；
-        // 点击映射的页内段首查找越过不了页边界，跨页段落曾退化为本页首字。
-        val paragraphStart = resolveTrueParagraphStart(line) ?: line.chapterPosition
+        // 双击选择的对象是“所在朗读单元”：
+        // 页间分段开（翻页模式）时单元是裂段，点击层解析的页内段首就是裂段段首（页界即段界，不回退上一页）；
+        // 整段模式（分段关或滚动锁定关）单元是原始整段，起点归一到全章真段首。
+        val paragraphStart = if (ReadBook.pageSplitEnabled()) {
+            line.chapterPosition
+        } else {
+            checkNotNull(resolveTrueParagraphStart(line)) {
+                "Cannot resolve paragraph start for read aloud: ch:$chapterIndex " +
+                    "pos:${line.chapterPosition}"
+            }
+        }
         AppLog.putDebug(
             "[朗读] 双击段落 ch:$chapterIndex 点击:${line.chapterPosition} " +
-                "段号:${line.paragraphNum} 真段首:$paragraphStart",
+                "段号:${line.paragraphNum} 起点解析:$paragraphStart 分段:${AppConfig.pageSplit}",
             module = LogModule.READ_ALOUD
         )
         setAloudStart(ReadAloudPosition(chapterIndex, paragraphStart))
@@ -2124,7 +2132,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         // 页间分段：页界就是新段首，起点是本页第一个正文行（裂段起点），不回退原始段首；
         // 整段朗读：起点归一到本页第一段的全章真段首（跨页时回退上一页段首）。
         // 段中间起读只存在于选中朗读。
-        val chapterPosition = if (AppConfig.pageSplit) {
+        val chapterPosition = if (ReadBook.pageSplitEnabled()) {
             page.lines.firstOrNull { it.paragraphNum > 0 }?.chapterPosition
         } else {
             firstParagraphVisibleStart(page)
@@ -2157,11 +2165,13 @@ class ReadBookActivity : BaseReadBookActivity(),
     /**
      * 整段朗读与滚动模式的“本页第一段第一字”：本页第一个正文段落在全章中的真正段首。
      * 段落跨页时段首在上一页，页内查找无法越过页边界，必须按全局段号回退；
-     * 解析不到所属段落时返回首个正文行。
+     * 页面没有正文行时返回 null，解析失败直接暴露，不允许静默段中起读。
      */
     private fun firstParagraphVisibleStart(page: TextPage): Int? {
         val firstLine = page.lines.firstOrNull { it.paragraphNum > 0 } ?: return null
-        return resolveTrueParagraphStart(firstLine) ?: firstLine.chapterPosition
+        return checkNotNull(resolveTrueParagraphStart(firstLine)) {
+            "Cannot resolve true paragraph start: pos:${firstLine.chapterPosition}"
+        }
     }
 
     /**
