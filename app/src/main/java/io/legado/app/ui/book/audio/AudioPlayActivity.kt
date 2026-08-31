@@ -51,6 +51,7 @@ import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.cache.CacheCoordinator
 import io.legado.app.help.cache.CacheRequestSource
+import io.legado.app.help.tts.TtsCacheParams
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isVideo
@@ -108,6 +109,9 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     }
     private var displayedProgress: ReadAloudProgress? = null
     private var trackingProgress = false
+
+    /** TTS 缓存入口当前不可用的原因（字符串资源 id）；null = 可用。门控与朗读面板同源。 */
+    private var ttsCacheUnavailableReason: Int? = null
     private var sourceAudioLayoutBinding: AudioTextMapping.LayoutBinding? = null
     private var sourceAudioFallbackMapping: AudioTextMapping? = null
     private var boundListeningTextItems = emptyList<ListeningTextItem>()
@@ -244,8 +248,14 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         }
         ivChapter.setOnClickListener { tocActivityResult.launch(book.bookUrl) }
         ivCache?.setOnClickListener {
-            if (isLocalTextTtsPlayback()) {
-                TtsCacheChapterDialog.newInstance(book)
+            val ttsCacheBook = localTextBook()
+            if (ttsCacheBook != null) {
+                // 不可用不再静默：点击弹底部通知说明原因
+                ttsCacheUnavailableReason?.let { reason ->
+                    toastOnUi(reason)
+                    return@setOnClickListener
+                }
+                TtsCacheChapterDialog.newInstance(ttsCacheBook)
                     .show(supportFragmentManager, "ttsCacheChapterDialog")
             } else {
                 showBookDownloadRangeDialog(book)
@@ -283,13 +293,17 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
     private fun updateEngineUi() = binding.run {
         ivCache?.apply {
             visible()
-            if (isLocalTextTtsPlayback()) {
-                // 本地文字书走系统 TTS 朗读：下载按钮转为 TTS 缓存入口
+            val ttsCacheBook = localTextBook()
+            if (ttsCacheBook != null) {
+                // 本地文字书：下载语义 = TTS 缓存，门控与朗读面板同源
+                // （[TtsCacheParams.unavailableReasonRes]）；置灰保持可点，点击弹原因
                 contentDescription = getString(R.string.tts_cache)
-                isEnabled = AppConfig.ttsWavMode
-                alpha = if (AppConfig.ttsWavMode) 1f else 0.45f
+                ttsCacheUnavailableReason = TtsCacheParams.unavailableReasonRes(ttsCacheBook)
+                isEnabled = true
+                alpha = if (ttsCacheUnavailableReason == null) 1f else 0.45f
             } else {
                 contentDescription = getString(R.string.offline_cache)
+                ttsCacheUnavailableReason = null
                 isEnabled = ReadBook.book?.isLocal == false
                 alpha = 1f
             }
@@ -298,11 +312,13 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
         invalidateOptionsMenu()
     }
 
-    /** 本地文字书 + 系统 TTS 引擎：沉浸页的下载按钮语义转为 TTS 缓存。 */
-    private fun isLocalTextTtsPlayback(): Boolean {
-        val book = ReadBook.book ?: return false
-        return book.isLocal && !book.isAudio && !book.isVideo &&
-            ReadAloud.engineType == ReadAloudEngineType.SYSTEM_TTS
+    /**
+     * 本地文字书：下载按钮语义 = TTS 缓存。不管当前朗读引擎是什么——本地书
+     * 没有在线正文可下载，唯一可缓存的产物就是 TTS 音频（百度/脚本/HTTP/系统同权）。
+     */
+    private fun localTextBook(): Book? {
+        val book = ReadBook.book ?: return null
+        return book.takeIf { it.isLocal && !it.isAudio && !it.isVideo }
     }
 
     /**

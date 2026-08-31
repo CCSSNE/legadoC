@@ -17,6 +17,7 @@ import io.legado.app.data.appDb
 import io.legado.app.databinding.DialogReadAloudBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.tts.BookTtsCastingCoordinator
+import io.legado.app.help.tts.TtsCacheParams
 import io.legado.app.help.tts.TtsEngineStore
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
@@ -350,20 +351,13 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
     }
 
     /**
-     * TTS 缓存入口常显（置灰代替隐藏，避免看起来像没有这个功能）：
-     * - 书源音频引擎：媒体书有各自的下载入口；
-     * - 系统引擎 + TTS-Wav 模式关闭：系统播放走直连管线不消费缓存文件；
-     * - 其余引擎（HTTP / V2 脚本 / 内置插件）：播放天然按缓存文件命中，恒可用。
+     * TTS 缓存入口常显（置灰代替隐藏，避免看起来像没有这个功能）。
+     * 门控与沉浸页下载按钮同源（[TtsCacheParams.unavailableReasonRes]）；
      * 置灰只是视觉提示，按钮保持可点：点击弹底部通知说明不可用原因，不静默。
      */
     private fun upTtsCacheEntry() = binding.llTtsCache.run {
         visible()
-        ttsCacheUnavailableReason = when {
-            isSourceAudioSelected -> R.string.tts_cache_media_book_download
-            ReadAloud.selectedEngineType == ReadAloudEngineType.SYSTEM_TTS &&
-                    !AppConfig.ttsWavMode -> R.string.tts_cache_requires_wav
-            else -> null
-        }
+        ttsCacheUnavailableReason = ReadBook.book?.let(TtsCacheParams::unavailableReasonRes)
         alpha = if (ttsCacheUnavailableReason == null) 1f else 0.45f
     }
 

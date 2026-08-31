@@ -1,6 +1,7 @@
 package io.legado.app.help.tts
 
 import android.speech.tts.TextToSpeech
+import io.legado.app.R
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookHelp
@@ -271,17 +272,26 @@ object TtsCacheParams {
         TtsCacheStore.buildUnitKey(book, chapter, text, cacheVoiceKey(book))
 
     /**
-     * 批量缓存前置校验（提交与执行两端共用）：媒体书走各自下载入口；
-     * 系统引擎的缓存消费依赖 TTS-Wav 播放管线（直连播放不读缓存文件），
-     * 其他引擎（HTTP/脚本/插件）播放天然按缓存文件命中，无此前置。
+     * TTS 缓存入口不可用原因（朗读面板缓存按钮、沉浸页下载按钮等 UI 统一引用的唯一门控）；
+     * null = 可用。规则域与 [requireCacheSupported] 同源：
+     * 媒体书（含书源音频引擎选择）走各自下载；系统引擎依赖 TTS-Wav 播放管线，
+     * 其他引擎（HTTP/脚本/插件）播放天然按缓存文件命中，无限制。
+     */
+    fun unavailableReasonRes(book: Book): Int? = when {
+        book.isAudio || book.isVideo || kind(book) == Kind.SOURCE_AUDIO ->
+            R.string.tts_cache_media_book_download
+        kind(book) == Kind.SYSTEM && !AppConfig.ttsWavMode ->
+            R.string.tts_cache_requires_wav
+        else -> null
+    }
+
+    /**
+     * 批量缓存前置校验（提交与执行两端共用）：与 [unavailableReasonRes] 同一规则，
+     * 校验不过直接抛本地化原因，由提交端弹给用户。
      */
     fun requireCacheSupported(book: Book) {
-        require(!book.isAudio && !book.isVideo) {
-            "media book has its own download: ${book.bookUrl}"
-        }
-        if (kind(book) == Kind.SYSTEM) {
-            require(AppConfig.ttsWavMode) { "tts cache requires TTS-Wav mode" }
-        }
+        val reason = unavailableReasonRes(book)
+        require(reason == null) { appCtx.getString(reason!!) }
     }
 
     /** 语速 key：跟随系统时无法感知系统内部语速，退化为常量标记。 */
