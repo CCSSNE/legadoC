@@ -186,16 +186,16 @@ $versionName = '3.26.<MMddHH>' # <MMddHH> uses UTC; appC automatically appends c
 
 主代码只经 `app/src/main/java/io/legado/app/plugin` 的空接口与注册表（`ReadAloudEngines` / `TtsVoiceDirectories` / 各 flavor 的 `AppPlugins.init`）接触专有功能；插件缺失时主代码正常运行：引擎列表不渲染该行、路由到未内置引擎 id 明示回退系统 TTS、AI 选角在发音人目录缺失时自动降级。
 
-- 自有构建（阅读C）= `assembleAppC`：flavor `app` 自动并入 `app/src/app` 源集——百度引擎（`help/bdtts`、`BdReadAloudService`、`BdEngineManageActivity`、`com.baidu` SDK、`jniLibs/*.so`、自身 `app/src/app/AndroidManifest.xml` 与 `appImplementation(libs.snakeyaml)`）整体在包内，由自有 `AppPlugins` 注册为插件。
-- 开源构建 = `assembleOssRelease`：flavor `oss` 不并入 `app/src/app`，专有插件源码/so/组件声明/snakeyaml 完全不参与编译与打包（产物内不存在这些代码）；包名 `io.legado.app.refgd`、应用名"阅读"（`src/oss/res` 覆盖，繁中为"閱讀"）、版本 `3.26.MMddHH` 无后缀。
+- 自有构建（阅读C/自用版）= `assembleAppC`：flavor `app` 自动并入 `app/src/app` 源集——百度引擎（`help/bdtts`、`BdReadAloudService`、`BdEngineManageActivity`、`com.baidu` SDK、`jniLibs/*.so`、自身 `app/src/app/AndroidManifest.xml` 与 `appImplementation(libs.snakeyaml)`）整体在包内，由自有 `AppPlugins` 注册为插件；包名 `io.legado.app.dev`（c buildType 后缀 `.dev`，特殊专属身份，与公开版并存且不共享升级链）。
+- 开源构建（公开版）= `assembleOssRelease`：flavor `oss` 不并入 `app/src/app`，专有插件源码/so/组件声明/snakeyaml 完全不参与编译与打包（产物内不存在这些代码）；包名 `io.legado.app.c`（标准公开身份，同签名同包名按 versionCode 递增即可互相覆盖安装）、应用名"阅读"（`src/oss/res` 覆盖，繁中为"閱讀"）、版本 `3.26.MMddHH` 无后缀。
 - 新增专有功能一律放 `app/src/app`（或另开 flavor 专属源集）并在自有 `AppPlugins` 注册；开源构建自动剥离。
 - 若公开发布整个仓库源码而非仅 APK，`app/src/app` 下的专有代码会随源码泄露，需要导出过滤（只发布 APK 不受影响）。
 
 编译选择规则（默认自用，按用户点名才变）：
 
 - 用户未指明构建路线时，"编译/正式编译/交付"一律指自用构建 `assembleAppC`（阅读C），完全沿用"不可变交付约束"与本节的版本、产物规则；不得自行切换成开源构建。
-- 仅当用户明确点名"开源编译/发布编译/oss 编译"时，才执行 `assembleOssRelease`：同样传 `-PVERSION_CODE`/`-PVERSION_NAME`（版本名不带 `c`，oss flavor 无后缀），产物在 `app\build\outputs\apk\oss\release\`；验证用同一套 `aapt`/`apksigner` 流程，但身份预期不同——包名 `io.legado.app.refgd`、中文名"阅读"（繁中"閱讀"）、版本名无后缀。不得把 ossRelease 当作阅读C 的交付物，也不得用 appC 冒充开源发布包。
-- 用户明确要求"双编译"时，两个构建都执行：先自用 `assembleAppC`，再开源 `assembleOssRelease`，各自完整走一遍版本传参与产物验证；两包包名不同，同版本号互不影响覆盖安装。
+- 仅当用户明确点名"开源编译/发布编译/oss 编译"时，才执行 `assembleOssRelease`：同样传 `-PVERSION_CODE`/`-PVERSION_NAME`（版本名不带 `c`，oss flavor 无后缀），产物在 `app\build\outputs\apk\oss\release\`；验证用同一套 `aapt`/`apksigner` 流程，但身份预期不同——包名 `io.legado.app.c`（标准公开身份，同签名同包名按 versionCode 递增即可互相覆盖安装）、中文名"阅读"（繁中"閱讀"）、版本名无后缀。不得把 ossRelease 当作阅读C 的交付物，也不得用 appC 冒充开源发布包。
+- 用户明确要求"双编译"时，两个构建都执行：先自用 `assembleAppC`，再开源 `assembleOssRelease`，各自完整走一遍版本传参与产物验证；两包包名不同（自用 `io.legado.app.dev` / 公开 `io.legado.app.c`），互不影响覆盖安装，可共存装在同一设备。
 - **签名统一：公开版（oss）与自用版（appC）使用完全相同的签名**，只走 `app/build.gradle` 里同一套逻辑——构建时传入 `RELEASE_STORE_FILE`/`RELEASE_STORE_PASSWORD`/`RELEASE_KEY_ALIAS`/`RELEASE_KEY_PASSWORD` 时用正式密钥 `myConfig` 签名；未传参时统一回退默认 debug 签名（`app` 的 `c` 变体与 `oss` 的 `release` 变体行为一致）。两条路线产物始终同一把签名，可互相覆盖安装互不冲突；任何构建路线产物的 `apksigner` 都必须验证通过、退出码为 0。
 
 开源源码发布（历史清洗镜像）：
@@ -316,6 +316,6 @@ uiautomator2 / ADB
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- `3.26.083106` / `10784`，2026-08-31（UTC 06 时），`own` 主线，公开版 oss 交付（编译锚点 `own @ bf72042b`；基于基线 `10783`（锚点 `731456f1`）后新增提交 `4fefe1cc`（修复 ttsCacheUnitFile 调用签名：批量预取函数错误传入 `(BookChapter, String)`，改为完整三参数重载 `(Book, BookChapter, String)` 并前置 `ReadBook.book` 空安全返回）、`bf72042b`（修正 playbackUnitKey 引用对象：该方法属于 `TtsCacheParams` 而非 `TtsCacheStore`，顺带修正 KDoc 链接））。`assembleOssRelease -Pabi=arm64-v8a -PVERSION_CODE=10784 -PVERSION_NAME=3.26.083106`，冷编译 `--no-daemon --max-workers=1 -Dkotlin.incremental=false -Dksp.incremental=false -Dkotlin.compiler.execution.strategy=in-process`，BUILD SUCCESSFUL in 5m 48s（121 actionable tasks: 15 executed, 106 up-to-date），err.log 仅含两处编译错误（均为 `HttpReadAloudService.kt` 的问题，已随上述两提交修复后重编译成功），退出码 0。`aapt` 确认包名 `io.legado.app.refgd`、版本 `3.26.083106` / `10784`、中文名 `阅读`（繁中 `閱讀`）、架构 `arm64-v8a`、compileSdk 36；`apksigner` 退出码 0（Signer #1 CN=Android Debug，SHA-256 `70cb88ca...`，与 appC 同一签名，覆盖安装互不冲突）。产物 `legado_oss_3.26.083106_10784.apk` 收录于 `app\build\outputs\apk\oss\release` 并备份至 `D:\AI\audio\build-tmp`。构建后 `gradlew --stop` 确认无残留 Gradle 进程；未安装到模拟器、未做正式回归。appC 最近交付为 `3.26.083104c` / `10782`，见 Git 记录。
+- `3.26.083106` / `10784`，2026-08-31（UTC 06 时），`own` 主线，公开版 oss 交付（编译锚点 `own @ bf72042b`；基于基线 `10783`（锚点 `731456f1`）后新增提交 `4fefe1cc`（修复 ttsCacheUnitFile 调用签名：批量预取函数错误传入 `(BookChapter, String)`，改为完整三参数重载 `(Book, BookChapter, String)` 并前置 `ReadBook.book` 空安全返回）、`bf72042b`（修正 playbackUnitKey 引用对象：该方法属于 `TtsCacheParams` 而非 `TtsCacheStore`，顺带修正 KDoc 链接））。`assembleOssRelease -Pabi=arm64-v8a -PVERSION_CODE=10784 -PVERSION_NAME=3.26.083106`，冷编译 `--no-daemon --max-workers=1 -Dkotlin.incremental=false -Dksp.incremental=false -Dkotlin.compiler.execution.strategy=in-process`，BUILD SUCCESSFUL in 5m 48s（121 actionable tasks: 15 executed, 106 up-to-date），退出码 0。当时产物包名 `io.legado.app.refgd`，后因包名身份重映射（公开版统一为 `io.legado.app.c`、自用版独立为 `io.legado.app.dev`）此包名废弃，相关产物作废不再作为交付基线；新版包名交付需重新编译后按本条格式记录。`apksigner` 退出码 0（Signer #1 CN=Android Debug，SHA-256 `70cb88ca...`）。旧产物 `legado_oss_3.26.083106_10784.apk` 备份于 `D:\AI\audio\build-tmp`。构建后 `gradlew --stop` 确认无残留 Gradle 进程；未安装到模拟器、未做正式回归。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。

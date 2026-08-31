@@ -90,7 +90,7 @@ android {
             } else {
                 signingConfig signingConfigs.debug
             }
-            applicationIdSuffix '.refgd'
+            applicationIdSuffix '.c'
             manifestPlaceholders.put("app_name", "@string/app_name")
 
             minifyEnabled false
@@ -101,7 +101,7 @@ android {
             if (project.hasProperty("RELEASE_STORE_FILE")) {
                 signingConfig signingConfigs.myConfig
             }
-            applicationIdSuffix '.refgd'
+            applicationIdSuffix '.c'
             versionNameSuffix '.beta'
             manifestPlaceholders.put("app_name", "@string/app_name")
 
@@ -129,7 +129,7 @@ android {
             }
             manifestPlaceholders.put("app_name", "@string/app_name")
 
-            applicationIdSuffix '.c'
+            applicationIdSuffix '.dev'
             versionNameSuffix 'c'
             matchingFallbacks = ['debug']
             minifyEnabled false
@@ -146,7 +146,7 @@ android {
         // 开源路线（oss flavor）：剥离 app/src/app 下的全部专有插件（百度TTS 等），
         // 插件源码/so/自身manifest 完全不参与编译与打包。编译命令：
         //   gradlew :app:assembleOssRelease
-        // 包名随 release buildType 后缀（io.legado.app.refgd）、应用名见 src/oss/res、版本无后缀。
+        // 包名随 release buildType 后缀（io.legado.app.c）、应用名见 src/oss/res、版本无后缀。
         oss {
             dimension "mode"
             manifestPlaceholders.put("APP_CHANNEL_VALUE", "oss")
