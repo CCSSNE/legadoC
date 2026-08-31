@@ -1564,8 +1564,8 @@
     <string name="autobackup_fail">Autobackup failed\n%s</string>
     <string name="end">end</string>
     <string name="custom_group_summary">Turn off Replace Group / Turn on Add Group</string>
-    <string name="pref_media_button_per_next">Media Buttons • Previous | Next</string>
-    <string name="pref_media_button_per_next_summary">Previous Paragraph|Next Paragraph/Previous Chapter|Next Chapter</string>
+    <string name="pref_media_button_per_next">Headset Buttons • Previous | Next</string>
+    <string name="pref_media_button_per_next_summary">Wired/Bluetooth headset buttons only: off = previous|next paragraph, on = previous|next chapter</string>
     <string name="read_aloud_force_page_follow_summary">When on, turning to a page is like double-tapping the top paragraph of that page to start reading aloud; the view always stays on the read-aloud page.</string>
     <string name="read_aloud_page_split_summary">When on, a paragraph crossing a page break becomes two real read-aloud units (exact boundary, slight pause); when off, the whole paragraph is read as one and the page turns naturally as reading passes the break.</string>
     <string name="read_aloud_tts_wav_mode_summary">The engine synthesizes each paragraph to a local wav file first, then the app plays it itself. Audio duration is exactly known, so page turns follow the real audio progress. The first paragraph has a short synthesis delay; later ones are pre-synthesized while playing.</string>
