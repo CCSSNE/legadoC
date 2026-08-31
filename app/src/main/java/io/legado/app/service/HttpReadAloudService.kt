@@ -591,6 +591,7 @@ class HttpReadAloudService : BaseReadAloudService(),
     }
 
     private suspend fun preDownloadAudios(httpTts: HttpTTS) {
+        val book = ReadBook.book ?: return
         val textChapter = ReadBook.nextTextChapter ?: return
         val contentList = textChapter.getNeedReadAloud(0, pageSplit, 0, 1)
             .splitToSequence("\n")
@@ -605,7 +606,7 @@ class HttpReadAloudService : BaseReadAloudService(),
             } else if (
                 !hasSpeakFile(fileName) &&
                 // 批量缓存已覆盖的单元不再重复请求网络，播放时直接命中缓存
-                ttsCacheUnitFile(textChapter.chapter, content) == null
+                ttsCacheUnitFile(book, textChapter.chapter, content) == null
             ) {
                 runCatching {
                     val inputStream = getSpeakStream(
@@ -697,6 +698,7 @@ class HttpReadAloudService : BaseReadAloudService(),
         httpTts: HttpTTS,
         downloaderChannel: Channel<Downloader>
     ) {
+        val book = ReadBook.book ?: return
         val textChapter = ReadBook.nextTextChapter ?: return
         val contentList = textChapter.getNeedReadAloud(0, pageSplit, 0, 1)
             .splitToSequence("\n")
@@ -705,7 +707,7 @@ class HttpReadAloudService : BaseReadAloudService(),
         contentList.forEach { content ->
             currentCoroutineContext().ensureActive()
             // 批量缓存已覆盖的单元不再发起网络预取，播放时直接命中缓存文件
-            if (ttsCacheUnitFile(textChapter.chapter, content) != null) {
+            if (ttsCacheUnitFile(book, textChapter.chapter, content) != null) {
                 return@forEach
             }
             val fileName = md5SpeakFileName(content, textChapter)
