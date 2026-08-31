@@ -6,8 +6,6 @@ import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.RadioButton
-import android.widget.TextView
-import androidx.core.content.ContextCompat
 import androidx.appcompat.widget.Toolbar
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
@@ -41,6 +39,7 @@ import io.legado.app.ui.association.ImportHttpTtsDialog
 import io.legado.app.ui.config.TtsEngineManageActivity
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.login.SourceLoginActivity
+import io.legado.app.ui.widget.text.BevelLabelView
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.applyUiMenuStyle
@@ -89,7 +88,7 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
     private data class ScriptEngineRow(
         val engineId: String,
         val radioButton: RadioButton,
-        val badge: TextView
+        val badge: BevelLabelView
     )
 
     override fun onStart() {
@@ -390,15 +389,9 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
         }
     }
 
-    private fun showBadge(badge: TextView, label: String, isHttp: Boolean = false) {
-        badge.text = label
-        badge.setBackgroundColor(
-            if (isHttp) {
-                ContextCompat.getColor(requireContext(), R.color.error)
-            } else {
-                primaryColor
-            }
-        )
+    private fun showBadge(badge: BevelLabelView, label: String) {
+        //恢复原版斜角飘带样式：accent 红底白字，由 BevelLabelView 默认取色，不随主题漂移
+        badge.setText(label)
         badge.visible()
     }
 
@@ -466,7 +459,7 @@ class SpeakEngineDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
                 cbName.typeface = context.uiTypeface()
                 val isChecked = item.id.toString() == ttsEngine
                 cbName.isChecked = isChecked
-                showBadge(tvBadge, "HTTP", isHttp = true)
+                showBadge(tvBadge, "HTTP")
             }
         }
 

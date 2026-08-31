@@ -86,6 +86,11 @@ class BevelLabelView @JvmOverloads constructor(
         invalidate()
     }
 
+    fun setText(text: String) {
+        mText = text
+        invalidate()
+    }
+
     fun setTextColor(@ColorInt color: Int) {
         mTextColor = color
         invalidate()
