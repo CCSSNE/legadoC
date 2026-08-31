@@ -322,36 +322,8 @@ object AiCreationVariables {
         offValue = "false",
     )
 
-    //硅基流动视频（Wan）官方参数：image_size 三档 + 负面提示
-    private val siliconFlowVideoParameters = listOf(
-        AiCreationVariable(
-            key = "video_size",
-            label = "分辨率",
-            format = AiCreationVariable.FORMAT_OPTIONS,
-            options = listOf(
-                "1280x720（16:9，横）",
-                "720x1280（9:16，竖）",
-                "960x960（1:1，方）"
-            ),
-            values = listOf("1280x720", "720x1280", "960x960"),
-            defaultValue = "1280x720",
-        ),
-        AiCreationVariable(
-            key = "negative_prompt",
-            label = "负面提示",
-            format = AiCreationVariable.FORMAT_INPUT,
-            defaultValue = "",
-        )
-    )
-
-    private val siliconFlowVideoVariables =
-        listOf(videoStyleVariable) + siliconFlowVideoParameters
-
     /** 视频供应商的变量定义：变量 + 视频路由 + LLM 最终提示词，与图片体系完全独立。 */
     val zhipuVideoVariablesJson: String by lazy { buildVideoVariablesJson(zhipuVideoVariables) }
-    val siliconFlowVideoVariablesJson: String by lazy {
-        buildVideoVariablesJson(siliconFlowVideoVariables)
-    }
 
     private fun buildVideoVariablesJson(variables: List<AiCreationVariable>): String {
         return GSON.toJson(

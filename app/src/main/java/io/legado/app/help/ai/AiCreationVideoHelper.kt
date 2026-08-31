@@ -10,7 +10,7 @@ import org.json.JSONObject
 
 /**
  * 视频供应商请求：按供应商配置渲染请求模板，提交生成任务并等到结果。
- * 按提交响应自动识别两类内置异步协议：
+ * 按提交响应自动识别两类异步协议：
  * - 智谱 CogVideoX：提交返回 {id, task_status}，轮询 GET <版本前缀>/async-result/{id}，
  *   task_status: PROCESSING / SUCCESS / FAIL，结果在 video_result[].url
  * - 硅基流动 Wan：提交返回 {requestId}，轮询 POST <版本前缀>/video/status（body {requestId}），

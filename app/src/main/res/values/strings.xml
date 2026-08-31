@@ -449,7 +449,7 @@
     <string name="ai_creation_image_test_success">Test succeeded, image returned</string>
     <string name="ai_creation_video_add_provider">Add video provider</string>
     <string name="ai_creation_generate_video">Generate video</string>
-    <string name="ai_creation_video_add_provider_summary">Add a custom provider; built-in: SiliconFlow, Zhipu</string>
+    <string name="ai_creation_video_add_provider_summary">Add a custom provider; built-in: Zhipu</string>
     <string name="ai_creation_video_manage_providers">Manage video providers</string>
     <string name="ai_creation_video_add_model">Add video model</string>
     <string name="ai_creation_video_add_model_summary">Add a model to the current video provider</string>

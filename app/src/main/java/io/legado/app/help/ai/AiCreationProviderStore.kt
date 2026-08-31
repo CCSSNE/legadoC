@@ -54,7 +54,6 @@ object AiCreationProviderStore {
     //内置供应商使用固定 id，供初始配置与恢复默认定位。
     const val IMAGE_SILICONFLOW_ID = "builtin-img-siliconflow"
     const val IMAGE_ZHIPU_ID = "builtin-img-zhipu"
-    const val VIDEO_SILICONFLOW_ID = "builtin-video-siliconflow"
     const val VIDEO_ZHIPU_ID = "builtin-video-zhipu"
 
     const val API_KEY_URL_SILICONFLOW = "https://cloud.siliconflow.cn/me/account/ak"
@@ -73,9 +72,6 @@ object AiCreationProviderStore {
 
     const val ZHIPU_VIDEO_REQUEST_TEMPLATE =
         """{"model":"{{model}}","prompt":"{{prompt}}","quality":"{{video_quality}}","with_audio":{{video_with_audio}},"size":"{{video_size}}","fps":{{video_fps}},"duration":{{video_duration}},"watermark_enabled":{{watermark_enabled}}}"""
-
-    const val SILICONFLOW_VIDEO_REQUEST_TEMPLATE =
-        """{"model":"{{model}}","prompt":"{{prompt}}","negative_prompt":"{{negative_prompt}}","image_size":"{{video_size}}"}"""
 
     // ———————— 图片供应商 ————————
 
@@ -269,7 +265,6 @@ object AiCreationProviderStore {
         IMAGE_SILICONFLOW_ID ->
             AiCreationVariables.buildImageJson(AiCreationVariables.kolorsImageVariables)
         IMAGE_ZHIPU_ID -> AiCreationVariables.defaultJson
-        VIDEO_SILICONFLOW_ID -> AiCreationVariables.siliconFlowVideoVariablesJson
         VIDEO_ZHIPU_ID -> AiCreationVariables.zhipuVideoVariablesJson
         else -> null
     }
@@ -278,7 +273,6 @@ object AiCreationProviderStore {
     fun defaultRequestTemplateOf(provider: AiCreationProviderConfig): String? = when (provider.id) {
         IMAGE_SILICONFLOW_ID -> SILICONFLOW_IMAGE_REQUEST_TEMPLATE
         IMAGE_ZHIPU_ID -> ZHIPU_IMAGE_REQUEST_TEMPLATE
-        VIDEO_SILICONFLOW_ID -> SILICONFLOW_VIDEO_REQUEST_TEMPLATE
         VIDEO_ZHIPU_ID -> ZHIPU_VIDEO_REQUEST_TEMPLATE
         else -> null
     }
@@ -452,15 +446,6 @@ object AiCreationProviderStore {
 
     private fun builtinVideoProviders(): List<AiCreationProviderConfig> = listOf(
         AiCreationProviderConfig(
-            id = VIDEO_SILICONFLOW_ID,
-            name = "硅基流动",
-            baseUrl = "https://api.siliconflow.cn/v1/video/submit",
-            apiKeyUrl = API_KEY_URL_SILICONFLOW,
-            variablesJson = AiCreationVariables.siliconFlowVideoVariablesJson,
-            requestTemplate = SILICONFLOW_VIDEO_REQUEST_TEMPLATE,
-            builtIn = true
-        ),
-        AiCreationProviderConfig(
             id = VIDEO_ZHIPU_ID,
             name = "智谱",
             baseUrl = "https://open.bigmodel.cn/api/paas/v4/videos/generations",
@@ -473,14 +458,9 @@ object AiCreationProviderStore {
 
     private fun builtinVideoModels(): List<AiCreationProviderModel> = listOf(
         AiCreationProviderModel(
-            id = "builtin-video-model-wan22t2v",
-            providerId = VIDEO_SILICONFLOW_ID,
-            modelId = "Wan-AI/Wan2.2-T2V-A14B"
-        ),
-        AiCreationProviderModel(
-            id = "builtin-video-model-cogvideox3",
+            id = "builtin-video-model-cogvideoxflash",
             providerId = VIDEO_ZHIPU_ID,
-            modelId = "cogvideox-3"
+            modelId = "cogvideox-flash"
         )
     )
 
@@ -659,10 +639,10 @@ object AiCreationProviderStore {
         val models = builtinVideoModels()
         persistVideoProviders(providers)
         persistVideoModels(models)
-        appCtx.putPrefString(PreferKey.aiCreationVideoCurrentProviderId, VIDEO_SILICONFLOW_ID)
+        appCtx.putPrefString(PreferKey.aiCreationVideoCurrentProviderId, VIDEO_ZHIPU_ID)
         appCtx.putPrefString(
             PreferKey.aiCreationVideoCurrentModelId,
-            models.first { it.providerId == VIDEO_SILICONFLOW_ID }.id
+            models.first { it.providerId == VIDEO_ZHIPU_ID }.id
         )
     }
 }

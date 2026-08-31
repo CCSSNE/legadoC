@@ -448,7 +448,7 @@
     <string name="ai_creation_image_test_success">测试成功，已返回图片</string>
     <string name="ai_creation_video_add_provider">添加视频供应商</string>
     <string name="ai_creation_generate_video">生成视频</string>
-    <string name="ai_creation_video_add_provider_summary">添加自定义视频供应商，内置硅基流动与智谱</string>
+    <string name="ai_creation_video_add_provider_summary">添加自定义视频供应商，内置智谱</string>
     <string name="ai_creation_video_manage_providers">管理视频供应商</string>
     <string name="ai_creation_video_add_model">添加视频模型</string>
     <string name="ai_creation_video_add_model_summary">为当前视频供应商添加模型</string>
