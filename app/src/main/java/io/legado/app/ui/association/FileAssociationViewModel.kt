@@ -61,7 +61,8 @@ class FileAssociationViewModel(application: Application) : BaseAssociationViewMo
         val fileDoc = FileDoc.fromUri(uri, false)
         if (ArchiveUtils.isArchive(fileDoc.name)) {
             val books = LocalBook.importFiles(uri)
-            openBookLiveData.postValue(books.firstOrNull())
+            books.firstOrNull()?.let { openBookLiveData.postValue(it) }
+                ?: errorLive.postValue("压缩包内未找到书籍文件")
         } else {
             val book = LocalBook.importFile(uri)
             openBookLiveData.postValue(book)
