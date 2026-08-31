@@ -385,6 +385,7 @@
     <string name="ai_creation_clear">清空</string>
     <string name="ai_creation_clear_confirm">清空当前创作会话与一次性素材？</string>
     <string name="ai_creation_add">+</string>
+    <string name="ai_creation_add_cards">添加</string>
     <string name="ai_creation_empty_section">暂无卡片</string>
     <string name="ai_creation_group_label">%s组</string>
     <string name="ai_creation_linking">连线中</string>

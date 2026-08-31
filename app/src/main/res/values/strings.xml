@@ -386,6 +386,7 @@
     <string name="ai_creation_clear">Clear</string>
     <string name="ai_creation_clear_confirm">Clear the current creation session and session-only materials?</string>
     <string name="ai_creation_add">+</string>
+    <string name="ai_creation_add_cards">Add</string>
     <string name="ai_creation_empty_section">No cards</string>
     <string name="ai_creation_group_label">%s group</string>
     <string name="ai_creation_linking">Linking…</string>

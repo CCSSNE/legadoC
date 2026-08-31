@@ -57,7 +57,8 @@ import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
+class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
+    AiCreationLibraryDialog.OnCardsAddedListener {
 
     companion object {
         const val ARG_BOOK_NAME = "bookName"
@@ -504,6 +505,12 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
                 }
             }
             setTextColor(if (selected) Color.WHITE else context.primaryTextColor)
+        }
+    }
+
+    override fun onCardsAddedToSection(section: String) {
+        if (currentPage == 1) {
+            rebuildSections()
         }
     }
 

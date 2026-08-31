@@ -50,6 +50,11 @@ class AiCreationLibraryDialog : BaseDialogFragment(R.layout.dialog_ai_creation_l
         }
     }
 
+    /** 「添加」提交后通知组合素材页刷新对应分区 */
+    interface OnCardsAddedListener {
+        fun onCardsAddedToSection(section: String)
+    }
+
     private val binding by viewBinding(DialogAiCreationLibraryBinding::bind)
     private val section: String by lazy { requireArguments().getString(ARG_SECTION).orEmpty() }
     private val bookName: String by lazy { requireArguments().getString(ARG_BOOK_NAME).orEmpty() }
@@ -76,8 +81,11 @@ class AiCreationLibraryDialog : BaseDialogFragment(R.layout.dialog_ai_creation_l
             if (selectionMode) exitSelectionMode() else dismissAllowingStateLoss()
         }
         binding.tvOk.setOnClickListener {
-            selectedIds.forEach { cardId ->
-                AiCreationSessionHolder.session.addCard(section, cardId)
+            if (selectedIds.isNotEmpty()) {
+                selectedIds.forEach { cardId ->
+                    AiCreationSessionHolder.session.addCard(section, cardId)
+                }
+                (parentFragment as? OnCardsAddedListener)?.onCardsAddedToSection(section)
             }
             dismissAllowingStateLoss()
         }
