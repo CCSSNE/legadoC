@@ -1380,6 +1380,4 @@
     <string name="disable_all_toast">關閉所有底部彈窗</string>
     <string name="disable_all_toast_summary">不顯示應用程式透過 Toast 發出的所有底部彈窗，包括書源彈窗</string>
     <string name="reverse_toc_display">&#x53CD;&#x5411;&#x986F;&#x793A;</string>
-    <string name="read_aloud_page_start_at_paragraph">頁首按段</string>
-    <string name="read_aloud_page_start_at_paragraph_summary">頁首以本頁第一個字為開始，還是以本頁第一段的第一個字為開始？從本頁讀、按頁朗讀的起點都由這個開關決定。</string>
 </resources>

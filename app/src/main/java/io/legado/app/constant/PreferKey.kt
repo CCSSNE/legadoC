@@ -350,9 +350,6 @@ object PreferKey {
     const val pageTouchSlop = "pageTouchSlop"
     const val pageTouchClick = "pageTouchClick"
     const val readAloudDoubleTapTimeout = "readAloudDoubleTapTimeout"
-    // 页首按段：控制“页首”以本页第一个字为开始，还是以本页第一段第一个字为开始。
-    // 从本页读、按页朗读落到某一页时都按此开关决定起始位置。
-    const val readAloudPageStartAtParagraph = "readAloudPageStartAtParagraph"
     const val readAloudScrollFollowTimeout = "readAloudScrollFollowTimeout"
     const val readAloudProgressPollInterval = "readAloudProgressPollInterval"
     const val pageAnimationSpeed = "pageAnimationSpeed"

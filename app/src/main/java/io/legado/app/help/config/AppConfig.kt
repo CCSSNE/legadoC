@@ -1899,13 +1899,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         }
 
     /**
-     * 页首按段：true 表示页首取本页第一段第一个字（页首若在段落中间则回退到段首），
-     * false 表示页首严格取本页第一个字；从本页读与强制追页的起点都受此开关控制。
-     */
-    val readAloudPageStartAtParagraph
-        get() = appCtx.getPrefBoolean(PreferKey.readAloudPageStartAtParagraph, false)
-
-    /**
      * 页间分段：true 表示跨页的段从页边界裂成真正的两个朗读单元
      * （边界绝对准，朗读到段间会有停顿）；false 表示整段朗读，
      * 翻页时机由朗读位置过界自然触发。

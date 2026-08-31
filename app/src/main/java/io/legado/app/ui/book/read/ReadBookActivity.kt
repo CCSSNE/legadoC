@@ -2103,7 +2103,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
         AppLog.putDebug(
             "[朗读] 从本页读 ch:${position.chapterIndex} pos:${position.chapterPosition} " +
-                "段首:${AppConfig.readAloudPageStartAtParagraph} 分段:${AppConfig.pageSplit} " +
+                "分段:${AppConfig.pageSplit} " +
                 "滚动:${ReadBook.pageAnim() == 3} " +
                 "页首:${binding.readView.curPage.textPage.chapterPosition}",
             module = LogModule.READ_ALOUD
@@ -2115,20 +2115,21 @@ class ReadBookActivity : BaseReadBookActivity(),
         if (ReadBook.pageAnim() == 3) {
             val (chapterIndex, firstVisibleLine) =
                 binding.readView.getReadAloudPos() ?: return null
-            val chapterPosition = if (AppConfig.readAloudPageStartAtParagraph) {
-                firstParagraphVisibleStart(binding.readView.getCurVisiblePage())
-                    ?: firstVisibleLine.chapterPosition
-            } else {
-                firstVisibleLine.chapterPosition
-            }
+            // 滚动模式没有页界概念，永久按整段规则归一到真段首。
+            val chapterPosition = firstParagraphVisibleStart(binding.readView.getCurVisiblePage())
+                ?: firstVisibleLine.chapterPosition
             return ReadAloudPosition(chapterIndex, chapterPosition)
         }
         val page = binding.readView.curPage.textPage
-        val chapterPosition = if (AppConfig.readAloudPageStartAtParagraph) {
-            firstParagraphVisibleStart(page) ?: page.lines.firstOrNull()?.chapterPosition
+        // 页间分段：页界就是新段首，起点是本页第一个正文行（裂段起点），不回退原始段首；
+        // 整段朗读：起点归一到本页第一段的全章真段首（跨页时回退上一页段首）。
+        // 段中间起读只存在于选中朗读。
+        val chapterPosition = if (AppConfig.pageSplit) {
+            page.lines.firstOrNull { it.paragraphNum > 0 }?.chapterPosition
         } else {
-            page.lines.firstOrNull()?.chapterPosition
-        } ?: return null
+            firstParagraphVisibleStart(page)
+        } ?: page.lines.firstOrNull()?.chapterPosition
+            ?: return null
         return ReadAloudPosition(page.chapterIndex, chapterPosition)
     }
 
@@ -2154,9 +2155,9 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     /**
-     * 页首按段 ON 的“本页第一段第一字”：本页第一个正文段落在全章中的真正段首。
-     * 段落跨页时段首在上一页，必须回退到真正的段首，
-     * 否则该开关与“本页第一个字”没有任何可区分的行为。
+     * 整段朗读与滚动模式的“本页第一段第一字”：本页第一个正文段落在全章中的真正段首。
+     * 段落跨页时段首在上一页，页内查找无法越过页边界，必须按全局段号回退；
+     * 解析不到所属段落时返回首个正文行。
      */
     private fun firstParagraphVisibleStart(page: TextPage): Int? {
         val firstLine = page.lines.firstOrNull { it.paragraphNum > 0 } ?: return null
@@ -2166,7 +2167,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     /**
      * 原语A·双击换段：只写“读哪里”（朗读起点），不联动任何显示状态。
      * 所有的起点设置（双击段落/从本页读/强制追页翻页/选择朗读）都归一到这里；
-     * 起点回退造成的补读期显示保持，由跟随规则
+     * 段中间起读只存在于选择朗读；起点回退造成的补读期显示保持，由跟随规则
      * （shouldFollowAloudAdvance 的“显示页==出发页”判定）天然保证，无需额外闩。
      */
     private fun setAloudStart(position: ReadAloudPosition) {
