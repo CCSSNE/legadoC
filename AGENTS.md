@@ -196,6 +196,7 @@ $versionName = '3.26.<MMddHH>' # <MMddHH> uses UTC; appC automatically appends c
 - 用户未指明构建路线时，"编译/正式编译/交付"一律指自用构建 `assembleAppC`（阅读C），完全沿用"不可变交付约束"与本节的版本、产物规则；不得自行切换成开源构建。
 - 仅当用户明确点名"开源编译/发布编译/oss 编译"时，才执行 `assembleOssRelease`：同样传 `-PVERSION_CODE`/`-PVERSION_NAME`（版本名不带 `c`，oss flavor 无后缀），产物在 `app\build\outputs\apk\oss\release\`；验证用同一套 `aapt`/`apksigner` 流程，但身份预期不同——包名 `io.legado.app.refgd`、中文名"阅读"（繁中"閱讀"）、版本名无后缀。不得把 ossRelease 当作阅读C 的交付物，也不得用 appC 冒充开源发布包。
 - 用户明确要求"双编译"时，两个构建都执行：先自用 `assembleAppC`，再开源 `assembleOssRelease`，各自完整走一遍版本传参与产物验证；两包包名不同，同版本号互不影响覆盖安装。
+- **签名统一：公开版（oss）与自用版（appC）使用完全相同的签名**，只走 `app/build.gradle` 里同一套逻辑——构建时传入 `RELEASE_STORE_FILE`/`RELEASE_STORE_PASSWORD`/`RELEASE_KEY_ALIAS`/`RELEASE_KEY_PASSWORD` 时用正式密钥 `myConfig` 签名；未传参时统一回退默认 debug 签名（`app` 的 `c` 变体与 `oss` 的 `release` 变体行为一致）。两条路线产物始终同一把签名，可互相覆盖安装互不冲突；任何构建路线产物的 `apksigner` 都必须验证通过、退出码为 0。
 
 开源源码发布（历史清洗镜像）：
 
