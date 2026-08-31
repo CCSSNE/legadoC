@@ -289,6 +289,16 @@ object TtsEngineStore {
     }
 
     /**
+     * 是否存在已启用的 V2 脚本引擎：AI 角色入口在开源构建（无内置发音人目录）
+     * 也据此显示——V2 脚本引擎同样支持分角色朗读，入口不应隐藏。
+     */
+    fun hasEnabledScriptEngines(): Boolean {
+        return engines().any {
+            it.type == TtsEngineType.SCRIPT && it.enabled && it.script.isNotBlank()
+        }
+    }
+
+    /**
      * 一次性迁移旧版 V2 活动引擎。迁移目标只有经典全局 ttsEngine，迁移后立即清空
      * 旧键，后续不再存在能绕过按书/全局选择的覆盖状态。
      */

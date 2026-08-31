@@ -330,12 +330,12 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
     }
 
     /**
-     * AI分角色入口：注册了发音人目录（自有构建）或当前选择 V2 脚本引擎时显示；
-     * 开源构建无内置引擎与发音人，入口随脚本引擎选择出现。
+     * AI分角色入口：注册了发音人目录（自有构建）或存在已启用的 V2 脚本引擎时显示
+     * （开源构建无内置引擎与发音人，V2 脚本引擎同样支持分角色，入口不隐藏）。
      * 按多角色门控结果置灰：当前引擎不支持分角色朗读时不可点。
      */
     private fun upAiRoleEntry() = binding.llAiRole.run {
-        visible(TtsVoiceDirectories.active != null || ReadAloud.currentScriptTtsEngine() != null)
+        visible(TtsVoiceDirectories.active != null || TtsEngineStore.hasEnabledScriptEngines())
         val unsupportedReason = BookTtsCastingCoordinator.multiRoleUnsupportedReason()
         isEnabled = unsupportedReason == null
         alpha = if (unsupportedReason == null) 1f else 0.45f
