@@ -7,6 +7,7 @@ import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.ViewGroup
 import android.widget.CheckBox
+import android.widget.EditText
 import android.widget.LinearLayout
 import androidx.activity.addCallback
 import androidx.core.content.ContextCompat
