@@ -40,7 +40,19 @@
 
 阅读C Bug排期 https://docs.qq.com/doc/DVmtiSHZza1VPZWdG
 
-继承于 [阅读R](https://github.com/refgd/legado)
+### 代码参考
+
+[阅读R --- 直接继承](https://github.com/refgd/legado)
+
+[i阅读 --- 角色分配代码](https://github.com/legado-backup/iyuedu)
+
+[阅读NG --- 角色分配 听书引擎](https://github.com/joestar817/legado_NG)
+
+[阅读Max-sum --- 发现页 一些ui](https://github.com/Suml-1/Legado_Max)
+
+[阅读Archive 发现页](https://github.com/Rimchars/legado)
+
+[Max原版](https://github.com/youfengknight/Legado_Max)
 
 ### 阅读C 独有支持的书源能力
 
