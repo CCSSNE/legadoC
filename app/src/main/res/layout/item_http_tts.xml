@@ -45,6 +45,7 @@
         android:id="@+id/iv_menu_delete"
         android:layout_width="36dp"
         android:layout_height="36dp"
+        android:layout_marginEnd="5dp"
         android:background="?attr/selectableItemBackgroundBorderless"
         android:padding="6dp"
         android:src="@drawable/ic_outline_delete"
