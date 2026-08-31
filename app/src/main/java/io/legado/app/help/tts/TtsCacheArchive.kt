@@ -6,7 +6,6 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.config.AppConfig
-import io.legado.app.utils.StringUtils
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -83,7 +82,7 @@ object TtsCacheArchive {
         if (chapters.isEmpty()) return@coroutineScope null
         val engineKey = TtsCacheParams.engineKey(book)
         val speedCandidates = buildSpeedCandidates()
-        val voiceCandidates = buildVoiceCandidates(book, engineKey)
+        val voiceCandidates = buildVoiceCandidates(book)
         val archivedChapters = mutableListOf<ManifestChapter>()
         chapters.forEachIndexed { position, chapter ->
             currentCoroutineContext().ensureActive()
@@ -196,22 +195,34 @@ object TtsCacheArchive {
         }
     }
 
-    /** 音色 key 候选：在线引擎恒为 default；系统引擎枚举当前引擎实例的全部音色名。 */
-    private suspend fun buildVoiceCandidates(book: Book, engineKey: String): List<String?> {
+    /**
+     * 音色 key 候选：脚本/插件引擎取当前生效音色 key；在线(HTTP)引擎恒为 default；
+     * 系统引擎枚举当前引擎实例的全部音色名。
+     */
+    private suspend fun buildVoiceCandidates(book: Book): List<String?> {
         if (!AppConfig.ttsCacheKeyVoice) return listOf(null)
-        if (StringUtils.isNumeric(engineKey)) return listOf(TtsCacheStore.DEFAULT_VOICE_KEY)
-        val candidates = linkedSetOf(TtsCacheStore.DEFAULT_VOICE_KEY)
-        val tts = TtsCacheParams.createSystemTts(TtsCacheParams.engineValue(book))
-            ?: return candidates.toList()
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                tts.voice?.name?.let(candidates::add)
-                tts.voices?.forEach { voice -> voice.name?.let(candidates::add) }
+        return when (TtsCacheParams.kind(book)) {
+            TtsCacheParams.Kind.SCRIPT,
+            TtsCacheParams.Kind.PLUGIN,
+            TtsCacheParams.Kind.HTTP,
+            -> listOf(
+                TtsCacheParams.cacheVoiceKey(book) ?: TtsCacheStore.DEFAULT_VOICE_KEY
+            )
+            else -> {
+                val candidates = linkedSetOf(TtsCacheStore.DEFAULT_VOICE_KEY)
+                val tts = TtsCacheParams.createSystemTts(TtsCacheParams.engineValue(book))
+                    ?: return candidates.toList()
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                        tts.voice?.name?.let(candidates::add)
+                        tts.voices?.forEach { voice -> voice.name?.let(candidates::add) }
+                    }
+                } finally {
+                    runCatching { tts.stop() }
+                    runCatching { tts.shutdown() }
+                }
+                candidates.toList()
             }
-        } finally {
-            runCatching { tts.stop() }
-            runCatching { tts.shutdown() }
         }
-        return candidates.toList()
     }
 }

@@ -15,7 +15,7 @@ import io.legado.app.help.cache.CacheOperationDiagnostics
 import io.legado.app.help.cache.CacheWorkerLease
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.analyzeRule.AnalyzeUrl
-import io.legado.app.utils.StringUtils
+import io.legado.app.plugin.ReadAloudEngines
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -29,6 +29,8 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.TimeoutCancellationException
 import okhttp3.Response
 import org.mozilla.javascript.WrappedException
 import splitties.init.appCtx
@@ -233,8 +235,10 @@ internal object TtsCacheManager {
     }
 
     /**
-     * 引擎分流：在线(HTTP)引擎（引擎值为数字 ID）走单元级并发网络合成
-     * （并发数 = ttsCacheHttpThreadCount）；系统引擎走 TextToSpeech 串行合成。
+     * 引擎分流（与 [TtsCacheParams.kind] 同源）：在线类引擎（HTTP / V2 脚本）走
+     * 单元级并发网络合成（并发数 = ttsCacheHttpThreadCount）；插件引擎（本地百度等）
+     * 经插件合成能力离线串行合成；系统引擎走 TextToSpeech 串行合成。
+     * 书源音频引擎不可能到达（提交端已拒绝媒体书），到达即失败暴露。
      */
     private suspend fun synthesizeChapter(
         task: QueueTask,
@@ -251,12 +255,53 @@ internal object TtsCacheManager {
             trace.done(CacheOperationDiagnostics.Metrics())
             return true
         }
-        val engine = TtsCacheParams.engineValue(book)
-        return if (engine != null && StringUtils.isNumeric(engine)) {
-            synthesizeChapterHttp(task, readableUnits, engine, trace)
-        } else {
-            synthesizeChapterSysTts(task, readableUnits, engine, trace)
+        return when (TtsCacheParams.kind(book)) {
+            TtsCacheParams.Kind.HTTP -> synthesizeChapterHttp(
+                task, readableUnits, TtsCacheParams.engineSelection(book).orEmpty(), trace
+            )
+            TtsCacheParams.Kind.SCRIPT -> synthesizeChapterScript(task, readableUnits, trace)
+            TtsCacheParams.Kind.PLUGIN -> synthesizeChapterPlugin(task, readableUnits, trace)
+            TtsCacheParams.Kind.SOURCE_AUDIO -> {
+                TtsCacheLog.put("第${chapter.index + 1}章 书源音频引擎不支持 TTS 批量缓存")
+                trace.fail(IllegalStateException("source audio engine has no tts cache"))
+                false
+            }
+            TtsCacheParams.Kind.SYSTEM -> synthesizeChapterSysTts(
+                task, readableUnits, TtsCacheParams.engineValue(book), trace
+            )
         }
+    }
+
+    /** 在线类引擎共用：单元级并发执行 + 进度归并。 */
+    private suspend fun synthesizeUnitsConcurrently(
+        task: QueueTask,
+        readableUnits: List<String>,
+        label: String,
+        synthesizeUnit: suspend (index: Int, text: String) -> Boolean,
+    ): Boolean {
+        val total = readableUnits.size
+        var processed = 0
+        var failed = 0
+        val progressLock = Any()
+        val concurrency = AppConfig.ttsCacheHttpThreadCount
+        val semaphore = Semaphore(concurrency)
+        TtsCacheLog.put("第${task.chapter.index + 1}章 $label 单元:$total 并发:$concurrency")
+        coroutineScope {
+            readableUnits.forEachIndexed { index, text ->
+                launch {
+                    semaphore.withPermit {
+                        currentCoroutineContext().ensureActive()
+                        val ok = synthesizeUnit(index, text)
+                        synchronized(progressLock) {
+                            processed++
+                            if (!ok) failed++
+                            task.reportProgress(processed, total, failed)
+                        }
+                    }
+                }
+            }
+        }
+        return failed == 0
     }
 
     /** 在线(HTTP) TTS 引擎分支：单元级并发请求，语速换算与校验与朗读同源。 */
@@ -273,29 +318,194 @@ internal object TtsCacheManager {
             trace.fail(IllegalStateException("http tts config missing: $engineId"))
             return false
         }
+        return synthesizeUnitsConcurrently(task, readableUnits, "在线合成") { index, text ->
+            synthesizeUnitHttp(task, httpTTS, index, text)
+        }
+    }
+
+    /**
+     * V2 脚本引擎分支：与朗读脚本管线同源（[TtsScriptEngineClient.getSynthesisResponse]，
+     * 语速取引擎生效速度），单元级并发与在线分支一致；当前启用音色参与缓存 key。
+     */
+    private suspend fun synthesizeChapterScript(
+        task: QueueTask,
+        readableUnits: List<String>,
+        trace: CacheOperationDiagnostics.Operation,
+    ): Boolean {
+        val book = task.book
+        val chapter = task.chapter
+        val engine = TtsEngineStore.enabledScriptEngineForSelection(
+            TtsCacheParams.engineSelection(book)
+        )
+        if (engine == null) {
+            TtsCacheLog.put("第${chapter.index + 1}章 朗读脚本引擎不存在或已禁用")
+            trace.fail(IllegalStateException("script tts engine missing or disabled"))
+            return false
+        }
+        return synthesizeUnitsConcurrently(task, readableUnits, "脚本合成") { index, text ->
+            synthesizeUnitScript(task, engine, index, text)
+        }
+    }
+
+    /** 脚本引擎单单元：命中缓存直接成功，否则聚合响应字节落盘（产物后缀按引擎为 mp3）。 */
+    private suspend fun synthesizeUnitScript(
+        task: QueueTask,
+        engine: TtsEngineSetting,
+        index: Int,
+        text: String,
+    ): Boolean {
+        val book = task.book
+        val chapter = task.chapter
+        val key = TtsCacheParams.playbackUnitKey(book, chapter, text)
+        val target = TtsCacheStore.unitFile(book, key)
+        if (TtsCacheStore.has(book, key)) {
+            return true
+        }
+        val tempFile = File(tempDir, "${target.name}.$index.tmp")
+        tempFile.delete()
+        try {
+            val bytes = TtsScriptEngineClient.getSynthesisResponse(
+                engine = engine,
+                text = text,
+                speed = TtsSpeedPolicy.synthesisSpeed(engine),
+            ).use { it.body.bytes() }
+            if (bytes.isEmpty()) {
+                TtsCacheLog.put("第${chapter.index + 1}章 单元${index + 1} 脚本合成返回空音频")
+                return false
+            }
+            tempFile.writeBytes(bytes)
+            val committed = task.commitIfLeaseActive {
+                TtsCacheStore.commit(tempFile, target)
+            }
+            if (!committed) {
+                tempFile.delete()
+                throw CancellationException("tts lease is no longer active at cache commit")
+            }
+            return true
+        } catch (error: CancellationException) {
+            tempFile.delete()
+            throw error
+        } catch (error: Exception) {
+            tempFile.delete()
+            TtsCacheLog.put(
+                "第${chapter.index + 1}章 单元${index + 1} 脚本合成失败\n${error.localizedMessage}",
+                error,
+            )
+            return false
+        }
+    }
+
+    /**
+     * 插件引擎分支（本地百度等）：经插件注册的合成能力离线串行合成。
+     * 离线引擎不允许并发，逐单元顺序执行；合成文本经插件侧收口（终止标点），
+     * 缓存 key 文本保持朗读单元原文，与播放端命中同源。
+     */
+    private suspend fun synthesizeChapterPlugin(
+        task: QueueTask,
+        readableUnits: List<String>,
+        trace: CacheOperationDiagnostics.Operation,
+    ): Boolean {
+        val book = task.book
+        val chapter = task.chapter
+        val selection = TtsCacheParams.engineSelection(book)
+        val plugin = ReadAloudEngines.byId(selection)
+        val synthesizer = plugin?.cacheSynthesizer
+        if (synthesizer == null) {
+            TtsCacheLog.put(
+                "第${chapter.index + 1}章 朗读引擎「${plugin?.engineLabel ?: selection}」不支持批量缓存合成"
+            )
+            trace.fail(IllegalStateException("plugin engine has no tts cache synthesizer"))
+            return false
+        }
+        val voiceKey = synthesizer.activeVoiceKey()
+        if (voiceKey == null) {
+            TtsCacheLog.put("第${chapter.index + 1}章 插件引擎音色未就绪（如未导入语音包）")
+            trace.fail(IllegalStateException("plugin engine voice not ready"))
+            return false
+        }
         val total = readableUnits.size
         var processed = 0
         var failed = 0
-        val progressLock = Any()
-        val concurrency = AppConfig.ttsCacheHttpThreadCount
-        val semaphore = Semaphore(concurrency)
-        TtsCacheLog.put("第${chapter.index + 1}章 在线合成 单元:$total 并发:$concurrency")
-        coroutineScope {
-            readableUnits.forEachIndexed { index, text ->
-                launch {
-                    semaphore.withPermit {
-                        currentCoroutineContext().ensureActive()
-                        val ok = synthesizeUnitHttp(task, httpTTS, index, text)
-                        synchronized(progressLock) {
-                            processed++
-                            if (!ok) failed++
-                            task.reportProgress(processed, total, failed)
-                        }
+        // 语速与朗读服务同公式（[TtsCacheParams.speechRateValue]）
+        val speed = TtsCacheParams.speechRateValue()
+        TtsCacheLog.put("第${chapter.index + 1}章 插件离线合成 单元:$total")
+        readableUnits.forEachIndexed { index, text ->
+            currentCoroutineContext().ensureActive()
+            val ok = runCatching {
+                withTimeout(AppConfig.ttsCacheSegmentTimeoutSeconds * 1000L) {
+                    synthesizer.synthesize(text, speed)
+                }
+            }.map { bytes ->
+                commitUnitBytes(task, book, chapter, text, voiceKey, index, bytes)
+            }.getOrElse { error ->
+                when (error) {
+                    // 看门狗超时：本单元按失败记录，不取消整章任务
+                    is TimeoutCancellationException -> {
+                        TtsCacheLog.put(
+                            "第${chapter.index + 1}章 单元${index + 1} 插件合成超时" +
+                                "(${AppConfig.ttsCacheSegmentTimeoutSeconds}s)"
+                        )
+                        false
+                    }
+                    is CancellationException -> throw error
+                    else -> {
+                        TtsCacheLog.put(
+                            "第${chapter.index + 1}章 单元${index + 1} 插件合成失败\n${error.localizedMessage}",
+                            error,
+                        )
+                        false
                     }
                 }
             }
+            if (!ok) failed++
+            processed++
+            task.reportProgress(processed, total, failed)
         }
         return failed == 0
+    }
+
+    /** 单元字节落盘：命中跳过，临时文件经 lease 提交。 */
+    private suspend fun commitUnitBytes(
+        task: QueueTask,
+        book: Book,
+        chapter: BookChapter,
+        text: String,
+        voiceKey: String?,
+        index: Int,
+        bytes: ByteArray,
+    ): Boolean {
+        val key = TtsCacheStore.buildUnitKey(book, chapter, text, voiceKey)
+        val target = TtsCacheStore.unitFile(book, key)
+        if (TtsCacheStore.has(book, key)) {
+            return true
+        }
+        if (bytes.isEmpty()) {
+            TtsCacheLog.put("第${chapter.index + 1}章 单元${index + 1} 合成返回空音频")
+            return false
+        }
+        val tempFile = File(tempDir, "${target.name}.$index.tmp")
+        tempFile.delete()
+        try {
+            tempFile.writeBytes(bytes)
+            val committed = task.commitIfLeaseActive {
+                TtsCacheStore.commit(tempFile, target)
+            }
+            if (!committed) {
+                tempFile.delete()
+                throw CancellationException("tts lease is no longer active at cache commit")
+            }
+            return true
+        } catch (error: CancellationException) {
+            tempFile.delete()
+            throw error
+        } catch (error: Exception) {
+            tempFile.delete()
+            TtsCacheLog.put(
+                "第${chapter.index + 1}章 单元${index + 1} 缓存提交失败\n${error.localizedMessage}",
+                error,
+            )
+            return false
+        }
     }
 
     /** 在线引擎单单元：命中缓存直接成功，否则请求音频落盘（产物后缀按引擎为 mp3）。 */
@@ -308,7 +518,7 @@ internal object TtsCacheManager {
         val book = task.book
         val chapter = task.chapter
         // 在线引擎无音色维度，voice 记 default（与 key 约定一致）
-        val key = TtsCacheStore.buildUnitKey(book, chapter, text, null)
+        val key = TtsCacheParams.playbackUnitKey(book, chapter, text)
         val target = TtsCacheStore.unitFile(book, key)
         if (TtsCacheStore.has(book, key)) {
             return true

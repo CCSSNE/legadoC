@@ -37,4 +37,10 @@ interface ReadAloudEnginePlugin {
      * 不支持的引擎必须明示报错，禁止静默回退到内置语音包。
      */
     val supportsMultiRoleCasting: Boolean get() = false
+
+    /**
+     * 批量 TTS 缓存合成能力：null 表示本引擎不支持批量缓存（缓存执行端明示原因，
+     * 不静默回退其他引擎）。内置语音包引擎（百度）提供离线逐段合成实现。
+     */
+    val cacheSynthesizer: TtsCacheSynthesizer? get() = null
 }

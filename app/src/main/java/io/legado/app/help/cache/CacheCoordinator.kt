@@ -14,6 +14,7 @@ import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.tts.TtsCacheParams
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.help.review.ReviewResourceEpoch
@@ -234,17 +235,15 @@ object CacheCoordinator : CacheUiPort {
     /**
      * TTS 音频缓存提交：正文文本已可用的章直提 TEXT+TTS；有缺章时走 TEXT+BODY
      * （不搭车评论缓存），正文终态后由 Coordinator 追加 TTS 任务。
-     * TTS-Wav 模式是合成产物的前置，任何路径都强制要求。
+     * 前置校验收敛在 [TtsCacheParams.requireCacheSupported]：媒体书走各自下载；
+     * 系统引擎依赖 TTS-Wav 播放管线，其他引擎（HTTP/脚本/插件）无此前置。
      */
     fun submitTtsCacheDownload(
         book: Book,
         chapterIndexes: Iterable<Int>,
         source: CacheRequestSource,
     ): CacheSubmission {
-        require(!book.isAudio && !book.isVideo) {
-            "tts cache download is invalid for media book: ${book.bookUrl}"
-        }
-        require(AppConfig.ttsWavMode) { "tts cache requires TTS-Wav mode" }
+        TtsCacheParams.requireCacheSupported(book)
         val indexes = chapterIndexes
             .filterNot { index ->
                 appDb.bookChapterDao.getChapter(book.bookUrl, index)?.isVolume == true
@@ -745,8 +744,13 @@ object CacheCoordinator : CacheUiPort {
                 require(request.source == CacheRequestSource.READER) {
                     "TTS tasks must be appended by the coordinator or submitted by READER"
                 }
-                require(AppConfig.ttsWavMode) {
-                    "TTS cache requires TTS-Wav mode"
+                // 系统引擎的缓存消费依赖 TTS-Wav 播放管线；其他引擎播放天然按缓存文件命中
+                appDb.bookDao.getBook(request.bookUrl)?.let { book ->
+                    if (TtsCacheParams.kind(book) == TtsCacheParams.Kind.SYSTEM) {
+                        require(AppConfig.ttsWavMode) {
+                            "TTS cache requires TTS-Wav mode"
+                        }
+                    }
                 }
             }
             else -> {

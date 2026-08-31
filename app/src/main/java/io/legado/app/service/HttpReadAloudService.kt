@@ -12,6 +12,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.FileDataSource
 import androidx.media3.datasource.cache.CacheDataSink
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
@@ -31,6 +32,8 @@ import io.legado.app.constant.AppPattern
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.LogModule
 import io.legado.app.constant.Status
+import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.config.AppConfig
@@ -45,6 +48,7 @@ import io.legado.app.help.tts.ChapterStoryboard
 import io.legado.app.help.tts.ReadAloudTtsRouter
 import io.legado.app.help.tts.TtsEngineSetting
 import io.legado.app.help.tts.TtsEngineStore
+import io.legado.app.help.tts.TtsCacheStore
 import io.legado.app.help.tts.TtsScriptEngineClient
 import io.legado.app.help.tts.TtsSpeedPolicy
 import io.legado.app.help.tts.normalizeStoryboardSynthesisText
@@ -539,6 +543,10 @@ class HttpReadAloudService : BaseReadAloudService(),
         content: String
     ): PreparedMediaItem {
         val text = getSpeakContent(index, content)
+        // 批量 TTS 缓存命中（整段单元）：直接播缓存文件，不再走脚本合成请求
+        ttsCacheUnitFile(text)?.let { file ->
+            return PreparedMediaItem(text.length, MediaItem.fromUri(Uri.fromFile(file)))
+        }
         val fileName = md5SpeakFileNameForScript(engine, text)
         val speakText = text.replace(AppPattern.notReadAloudRegex, "")
         if (speakText.isEmpty()) {
@@ -594,7 +602,11 @@ class HttpReadAloudService : BaseReadAloudService(),
             val speakText = content.replace(AppPattern.notReadAloudRegex, "")
             if (speakText.isEmpty()) {
                 createSilentSound(fileName)
-            } else if (!hasSpeakFile(fileName)) {
+            } else if (
+                !hasSpeakFile(fileName) &&
+                // 批量缓存已覆盖的单元不再重复请求网络，播放时直接命中缓存
+                ttsCacheUnitFile(textChapter.chapter, content) == null
+            ) {
                 runCatching {
                     val inputStream = getSpeakStream(
                         httpTts,
@@ -692,6 +704,10 @@ class HttpReadAloudService : BaseReadAloudService(),
             .takePreloadContentList(maxLength = httpPreloadAheadLength())
         contentList.forEach { content ->
             currentCoroutineContext().ensureActive()
+            // 批量缓存已覆盖的单元不再发起网络预取，播放时直接命中缓存文件
+            if (ttsCacheUnitFile(textChapter.chapter, content) != null) {
+                return@forEach
+            }
             val fileName = md5SpeakFileName(content, textChapter)
             val speakText = content.replace(AppPattern.notReadAloudRegex, "")
             val dataSourceFactory = createDataSourceFactory(
@@ -743,6 +759,10 @@ class HttpReadAloudService : BaseReadAloudService(),
         content: String
     ): PreparedMediaItem {
         val text = getSpeakContent(index, content)
+        // 批量 TTS 缓存命中（整段单元）：直接播缓存文件，不再请求网络
+        ttsCacheUnitFile(text)?.let { file ->
+            return PreparedMediaItem(text.length, MediaItem.fromUri(Uri.fromFile(file)))
+        }
         val fileName = md5SpeakFileName(text)
         val speakText = text.replace(AppPattern.notReadAloudRegex, "")
         if (speakText.isEmpty()) {
@@ -766,6 +786,15 @@ class HttpReadAloudService : BaseReadAloudService(),
         content: String
     ): PreparedMediaSource {
         val text = getSpeakContent(index, content)
+        // 批量 TTS 缓存命中（整段单元）：本地文件数据源 + 空下载器，不再请求网络
+        ttsCacheUnitFile(text)?.let { file ->
+            val factory = DataSource.Factory { FileDataSource() }
+            return PreparedMediaSource(
+                text.length,
+                createMediaSource(factory, file.absolutePath),
+                noOpDownloader
+            )
+        }
         val speakText = text.replace(AppPattern.notReadAloudRegex, "")
         if (speakText.isEmpty()) {
             AppLog.put("阅读段落内容为空，使用无声音频代替。\n朗读文本：$text")
@@ -784,6 +813,25 @@ class HttpReadAloudService : BaseReadAloudService(),
             return content.substring(paragraphStartPos.coerceAtMost(content.length))
         }
         return content
+    }
+
+    /**
+     * 批量 TTS 缓存命中（整段单元）：缓存文件直接作为播放数据源，不再请求网络。
+     * key 与批量缓存/实时缓存同源（[TtsCacheStore.playbackUnitKey]，音色维度按
+     * 引擎种类解析）。多角色分镜子段与段内续读（paragraphStartPos 偏移后的文本）
+     * 与缓存单元文本不同，自然不命中，仍走现场合成。
+     */
+    private fun ttsCacheUnitFile(text: String): File? {
+        val book = ReadBook.book ?: return null
+        val chapter = textChapter?.chapter ?: return null
+        return ttsCacheUnitFile(book, chapter, text)
+    }
+
+    private fun ttsCacheUnitFile(book: Book, chapter: BookChapter, text: String): File? {
+        if (text.isEmpty()) return null
+        val key = TtsCacheStore.playbackUnitKey(book, chapter, text)
+        if (!TtsCacheStore.has(book, key)) return null
+        return TtsCacheStore.unitFile(book, key)
     }
 
     private fun httpPreloadAheadLength(): Int {
@@ -815,6 +863,13 @@ class HttpReadAloudService : BaseReadAloudService(),
         val request = DownloadRequest.Builder(fileName, uri).build()
         return DefaultDownloaderFactory(factory, okHttpClient.dispatcher.executorService)
             .createDownloader(request)
+    }
+
+    /** 批量缓存命中单元的占位下载器：文件已在本地，无网络下载动作。 */
+    private val noOpDownloader = object : Downloader {
+        override fun download(progressListener: Downloader.ProgressListener?) = Unit
+        override fun cancel() = Unit
+        override fun remove() = Unit
     }
 
     private fun createMediaSource(factory: DataSource.Factory, fileName: String): MediaSource {

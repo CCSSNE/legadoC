@@ -4,8 +4,12 @@ import android.speech.tts.TextToSpeech
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.isAudio
+import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.SelectItem
+import io.legado.app.model.ReadAloud
+import io.legado.app.plugin.ReadAloudEngines
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.MD5Utils
@@ -13,7 +17,11 @@ import io.legado.app.utils.StringUtils
 import io.legado.app.utils.fromJsonObject
 import kotlinx.coroutines.suspendCancellableCoroutine
 import splitties.init.appCtx
+import java.io.BufferedInputStream
+import java.io.DataInputStream
 import java.io.File
+import java.io.FileInputStream
+import java.io.InputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.resume
@@ -91,12 +99,15 @@ object TtsCacheStore {
         File(File(ttsCacheDir(book), key.chapterStem), MD5Utils.md5Encode16(key.hashInput()) + audioSuffix(key))
 
     /**
-     * 产物后缀按引擎类型区分：在线(HTTP) TTS 引擎返回的多为 mp3，
-     * 系统引擎 synthesizeToFile 产物为 wav。播放端按内容嗅探不受后缀影响，
-     * 这里只为文件管理器中的可读性诚实。
+     * 产物后缀按引擎类型区分：在线类引擎（HTTP / V2 脚本）返回的多为 mp3，
+     * 系统引擎 synthesizeToFile 产物与内置插件引擎（百度）PCM 封装产物为 wav。
+     * 播放端按内容嗅探不受后缀影响，这里只为文件管理器中的可读性诚实。
      */
-    private fun audioSuffix(key: UnitKey): String =
-        if (StringUtils.isNumeric(key.engineKey)) ".mp3" else ".wav"
+    private fun audioSuffix(key: UnitKey): String = when {
+        StringUtils.isNumeric(key.engineKey) -> ".mp3"
+        key.engineKey.startsWith("script:") -> ".mp3"
+        else -> ".wav"
+    }
 
     fun has(book: Book, key: UnitKey): Boolean {
         val file = unitFile(book, key)
@@ -126,6 +137,75 @@ object TtsCacheStore {
             FileUtils.delete(dir.absolutePath)
         }
     }
+
+    /** 单声道 PCM16 wav 的解析结果：采样率 + 位于 PCM 数据起点的流（调用方负责关闭）。 */
+    class MonoPcm16Wav(val sampleRate: Int, val pcmStream: InputStream)
+
+    /**
+     * 打开缓存 wav 的 PCM 数据流（仅接受 RIFF / PCM16 / 单声道）。
+     * 缓存产物格式由合成端保证：系统 TTS synthesizeToFile 与内置插件引擎合成器
+     * 均产出 PCM16 wav。格式不符直接抛错，由调用方明示原因并走实时合成恢复，
+     * 不做转码静默兜底。
+     */
+    fun openMonoPcm16Stream(file: File): MonoPcm16Wav {
+        val input = DataInputStream(BufferedInputStream(FileInputStream(file)))
+        try {
+            val riff = ByteArray(12)
+            input.readFully(riff)
+            check(
+                String(riff, 0, 4, Charsets.US_ASCII) == "RIFF" &&
+                        String(riff, 8, 4, Charsets.US_ASCII) == "WAVE"
+            ) { "not a RIFF/WAVE file: ${file.name}" }
+            var format = -1
+            var channels = -1
+            var sampleRate = -1
+            var bitsPerSample = -1
+            while (true) {
+                val header = ByteArray(8)
+                input.readFully(header)
+                val chunkId = String(header, 0, 4, Charsets.US_ASCII)
+                val chunkSize = readLittleInt(header, 4)
+                when (chunkId) {
+                    "fmt " -> {
+                        val fmt = ByteArray(chunkSize)
+                        input.readFully(fmt)
+                        format = readLittleShort(fmt, 0)
+                        channels = readLittleShort(fmt, 2)
+                        sampleRate = readLittleInt(fmt, 4)
+                        bitsPerSample = readLittleShort(fmt, 14)
+                    }
+                    "data" -> {
+                        check(format == 1) { "unsupported wav audio format: $format" }
+                        check(bitsPerSample == 16) { "unsupported wav bits: $bitsPerSample" }
+                        check(channels == 1) { "unsupported wav channels: $channels" }
+                        check(sampleRate > 0) { "invalid wav sample rate: $sampleRate" }
+                        return MonoPcm16Wav(sampleRate, input)
+                    }
+                    else -> {
+                        var skipped = 0L
+                        while (skipped < chunkSize) {
+                            val step = input.skip(chunkSize - skipped)
+                            if (step <= 0) throw IllegalStateException("wav chunk truncated: $chunkId")
+                            skipped += step
+                        }
+                        if (chunkSize % 2 == 1) input.readFully(ByteArray(1))
+                    }
+                }
+            }
+        } catch (error: Throwable) {
+            runCatching { input.close() }
+            throw error
+        }
+    }
+
+    private fun readLittleShort(data: ByteArray, offset: Int): Int =
+        (data[offset].toInt() and 0xFF) or ((data[offset + 1].toInt() and 0xFF) shl 8)
+
+    private fun readLittleInt(data: ByteArray, offset: Int): Int =
+        (data[offset].toInt() and 0xFF) or
+                ((data[offset + 1].toInt() and 0xFF) shl 8) or
+                ((data[offset + 2].toInt() and 0xFF) shl 16) or
+                ((data[offset + 3].toInt() and 0xFF) shl 24)
 }
 
 /**
@@ -134,15 +214,74 @@ object TtsCacheStore {
  */
 object TtsCacheParams {
 
-    /** 引擎标识：书级 ttsEngine 优先，回落全局设置；未指定（系统默认引擎）记 default。 */
-    fun engineKey(book: Book): String =
-        engineValue(book)?.takeIf { it.isNotBlank() } ?: TtsCacheStore.DEFAULT_ENGINE_KEY
+    /**
+     * 引擎种类：与 [io.legado.app.model.ReadAloud.selectedEngineType] 同序解析
+     * （插件注册表 → 书源音频 → 数字 HTTP → V2 脚本 → 系统兜底）。
+     * 两处消费（朗读路由、缓存合成/命中）共享同一判定顺序，禁止漂移。
+     */
+    enum class Kind { SYSTEM, HTTP, SCRIPT, PLUGIN, SOURCE_AUDIO }
 
-    /** 引擎包名原值：空表示系统默认引擎（TextToSpeech 不指定 engine）。 */
-    fun engineValue(book: Book): String? {
+    /** 经典引擎选择值原串（书级优先，回落全局）：空/未配置返回 null。 */
+    fun engineSelection(book: Book): String? {
         val raw = book.getTtsEngine() ?: AppConfig.ttsEngine
-        if (raw.isNullOrBlank()) return null
+        return raw?.takeIf { it.isNotBlank() }
+    }
+
+    fun kind(book: Book): Kind {
+        val selected = engineSelection(book) ?: return Kind.SYSTEM
+        ReadAloudEngines.byId(selected)?.let { return Kind.PLUGIN }
+        if (selected == ReadAloud.SOURCE_AUDIO_ENGINE_ID) return Kind.SOURCE_AUDIO
+        if (StringUtils.isNumeric(selected)) return Kind.HTTP
+        if (TtsEngineStore.scriptEngineForSelection(selected) != null) return Kind.SCRIPT
+        return Kind.SYSTEM
+    }
+
+    /** 引擎包名原值：空表示系统默认引擎（TextToSpeech 不指定 engine）。仅系统引擎语义。 */
+    fun engineValue(book: Book): String? {
+        val raw = engineSelection(book) ?: return null
         return GSON.fromJsonObject<SelectItem<String>>(raw).getOrNull()?.value
+    }
+
+    /**
+     * 引擎 key（缓存 key 的引擎维度）：
+     * 系统引擎取 SelectItem.value（引擎包名，未指定 = default，与历史 key 兼容）；
+     * HTTP 为数字 id 原串；V2 脚本引擎为 `script:<id>` 原串；插件引擎为引擎 id 原串。
+     */
+    fun engineKey(book: Book): String {
+        val selected = engineSelection(book) ?: return TtsCacheStore.DEFAULT_ENGINE_KEY
+        if (kind(book) != Kind.SYSTEM) return selected
+        return engineValue(book)?.takeIf { it.isNotBlank() } ?: TtsCacheStore.DEFAULT_ENGINE_KEY
+    }
+
+    /**
+     * 缓存音色维度（引擎实际生效音色的标识）：脚本引擎取当前启用引擎的 activeVoiceId，
+     * 插件引擎取插件合成能力上报的音色 key；系统引擎由调用方传 TextToSpeech 实例的
+     * voice name，在线(HTTP)引擎无音色维度。两侧（合成/命中）必须同源取值。
+     */
+    fun cacheVoiceKey(book: Book): String? = when (kind(book)) {
+        Kind.SCRIPT ->
+            TtsEngineStore.enabledScriptEngineForSelection(engineSelection(book))?.activeVoiceId
+        Kind.PLUGIN ->
+            ReadAloudEngines.byId(engineSelection(book))?.cacheSynthesizer?.activeVoiceKey()
+        else -> null
+    }
+
+    /** 播放端消费入口：与批量缓存同源的单元 key（音色维度按引擎种类统一解析）。 */
+    fun playbackUnitKey(book: Book, chapter: BookChapter, text: String): TtsCacheStore.UnitKey =
+        TtsCacheStore.buildUnitKey(book, chapter, text, cacheVoiceKey(book))
+
+    /**
+     * 批量缓存前置校验（提交与执行两端共用）：媒体书走各自下载入口；
+     * 系统引擎的缓存消费依赖 TTS-Wav 播放管线（直连播放不读缓存文件），
+     * 其他引擎（HTTP/脚本/插件）播放天然按缓存文件命中，无此前置。
+     */
+    fun requireCacheSupported(book: Book) {
+        require(!book.isAudio && !book.isVideo) {
+            "media book has its own download: ${book.bookUrl}"
+        }
+        if (kind(book) == Kind.SYSTEM) {
+            require(AppConfig.ttsWavMode) { "tts cache requires TTS-Wav mode" }
+        }
     }
 
     /** 语速 key：跟随系统时无法感知系统内部语速，退化为常量标记。 */

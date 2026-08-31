@@ -17,6 +17,7 @@ import io.legado.app.data.appDb
 import io.legado.app.databinding.DialogReadAloudBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.tts.BookTtsCastingCoordinator
+import io.legado.app.help.tts.TtsEngineStore
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.bottomBackground
@@ -194,27 +195,21 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
     private fun initEvent() = binding.run {
         ivCatalog.gone()
         llMainMenu.visible(AppConfig.readAloudHideFloatingWindow && BaseReadAloudService.isRun)
-        // TTS 缓存入口：仅系统 TTS 引擎；TTS-Wav 模式关闭时置灰不可点（合成产物前置）
-        llTtsCache.visible(ReadAloud.selectedEngineType == ReadAloudEngineType.SYSTEM_TTS)
-        llTtsCache.isEnabled = AppConfig.ttsWavMode
-        llTtsCache.alpha = if (AppConfig.ttsWavMode) 1f else 0.45f
-        llCatalog.setOnClickListener {
-            SpeakEngineDialog().show(childFragmentManager, "speakEngineDialog")
-        }
-        // AI分角色入口：本构建注册了发音人目录或当前选择 V2 脚本引擎时显示；
-        // 开源构建无内置引擎与发音人，入口一并隐藏，目录随插件注册自动出现。
-        // 按多角色门控结果置灰：当前引擎不支持分角色朗读时不可点。
         upAiRoleEntry()
         llAiRole.setOnClickListener {
             if (llAiRole.isEnabled) {
                 AiMultiVoiceDialog.show(childFragmentManager)
             }
         }
+        upTtsCacheEntry()
         llTtsCache.setOnClickListener {
             ReadBook.book?.let { book ->
                 TtsCacheChapterDialog.newInstance(book)
                     .show(childFragmentManager, "ttsCacheChapterDialog")
             }
+        }
+        llCatalog.setOnClickListener {
+            SpeakEngineDialog().show(childFragmentManager, "speakEngineDialog")
         }
         llMainMenu.setOnClickListener {
             showMainMenuOnDismiss = true
@@ -334,11 +329,30 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
         })
     }
 
+    /**
+     * AI分角色入口：注册了发音人目录（自有构建）或当前选择 V2 脚本引擎时显示；
+     * 开源构建无内置引擎与发音人，入口随脚本引擎选择出现。
+     * 按多角色门控结果置灰：当前引擎不支持分角色朗读时不可点。
+     */
     private fun upAiRoleEntry() = binding.llAiRole.run {
         visible(TtsVoiceDirectories.active != null || ReadAloud.currentScriptTtsEngine() != null)
         val unsupportedReason = BookTtsCastingCoordinator.multiRoleUnsupportedReason()
         isEnabled = unsupportedReason == null
         alpha = if (unsupportedReason == null) 1f else 0.45f
+    }
+
+    /**
+     * TTS 缓存入口常显（置灰代替隐藏，避免看起来像没有这个功能）：
+     * - 书源音频引擎：媒体书有各自的下载入口，置灰；
+     * - 系统引擎 + TTS-Wav 模式关闭：系统播放走直连管线不消费缓存文件，置灰；
+     * - 其余引擎（HTTP / V2 脚本 / 内置插件）：播放天然按缓存文件命中，恒可点。
+     */
+    private fun upTtsCacheEntry() = binding.llTtsCache.run {
+        visible()
+        val enabled = !isSourceAudioSelected &&
+                (ReadAloud.selectedEngineType != ReadAloudEngineType.SYSTEM_TTS || AppConfig.ttsWavMode)
+        isEnabled = enabled
+        alpha = if (enabled) 1f else 0.45f
     }
 
     override fun upSpeakEngineSummary() {
@@ -531,6 +545,7 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
             upSpeakEngineSummary()
             upReadProgress()
             upAiRoleEntry()
+            upTtsCacheEntry()
         }
     }
 

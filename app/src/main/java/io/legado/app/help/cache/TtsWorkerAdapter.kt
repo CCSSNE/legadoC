@@ -3,8 +3,8 @@ package io.legado.app.help.cache
 import io.legado.app.data.appDb
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isVideo
-import io.legado.app.help.config.AppConfig
 import io.legado.app.help.tts.TtsCacheManager
+import io.legado.app.help.tts.TtsCacheParams
 import io.legado.app.service.TtsCacheService
 import java.util.concurrent.ConcurrentHashMap
 
@@ -21,7 +21,6 @@ internal class TtsWorkerAdapter(
         require(task.phase == CachePhase.TTS && task.kind.ttsPrerequisitePhase() != null) {
             "tts adapter received ${task.kind}/${task.phase}"
         }
-        require(AppConfig.ttsWavMode) { "tts cache requires TTS-Wav mode" }
         val runnableUnits = task.runnableUnits()
         if (runnableUnits.isEmpty()) {
             workerPort.finish(lease, CacheResult.SUCCEEDED)
@@ -39,6 +38,8 @@ internal class TtsWorkerAdapter(
         require(!book.isAudio && !book.isVideo) {
             "tts task requires a text book: ${task.bookUrl}"
         }
+        // 前置校验统一入口：媒体书拒绝；系统引擎要求 TTS-Wav 模式，其他引擎放行
+        TtsCacheParams.requireCacheSupported(book)
         runnableUnits
             .forEach { unit ->
                 workerPort.updateUnit(lease, unit.key, CacheUnitStatus.RUNNING)

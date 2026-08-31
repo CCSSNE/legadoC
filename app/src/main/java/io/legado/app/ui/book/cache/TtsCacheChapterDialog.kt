@@ -14,6 +14,7 @@ import io.legado.app.databinding.DialogTtsCacheChaptersBinding
 import io.legado.app.help.cache.CacheCoordinator
 import io.legado.app.help.cache.CacheRequestSource
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.tts.TtsCacheParams
 import io.legado.app.lib.permission.NotificationPermission
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.toastOnUi
@@ -79,7 +80,8 @@ class TtsCacheChapterDialog :
     private fun startCache() {
         val indexes = adapter.selectedIndexes()
         if (indexes.isEmpty()) return
-        if (!AppConfig.ttsWavMode) {
+        // 前置与提交端同源：媒体书走各自下载；系统引擎依赖 TTS-Wav 模式
+        if (TtsCacheParams.kind(book) == TtsCacheParams.Kind.SYSTEM && !AppConfig.ttsWavMode) {
             toastOnUi(R.string.tts_cache_requires_wav)
             return
         }
