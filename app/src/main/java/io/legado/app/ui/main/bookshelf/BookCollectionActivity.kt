@@ -89,6 +89,9 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
         binding.rvBooks.applyMainBottomBarPadding(usePaddingForRecyclerView = true)
         binding.rvBooks.adapter = adapter
         initBookActionBar()
+        binding.titleBar.toolbar.setOnClickListener {
+            showRenameCollectionDialog()
+        }
         binding.btnSelectCurrentPage.setOnClickListener {
             selectAllCurrentPage()
         }
@@ -181,6 +184,34 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
             }
         }
         bookActionBar.gone()
+    }
+
+    private fun showRenameCollectionDialog() {
+        if (collectionId <= 0L) return
+        lifecycleScope.launch {
+            val collection = withContext(Dispatchers.IO) {
+                appDb.bookCollectionDao.getCollection(collectionId)
+            } ?: return@launch
+            val editText = EditText(this@BookCollectionActivity).apply {
+                hint = getString(R.string.book_collection_name_hint)
+                setSingleLine()
+                setText(collection.name)
+            }
+            alert(titleResource = R.string.rename) {
+                customView { editText }
+                okButton {
+                    val name = editText.text?.toString()?.trim().orEmpty()
+                    if (name.isBlank() || name == collection.name) return@okButton
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        appDb.bookCollectionDao.update(collection.copy(name = name))
+                        withContext(Dispatchers.Main) {
+                            postEvent(EventBus.BOOKSHELF_REFRESH, "")
+                        }
+                    }
+                }
+                cancelButton()
+            }
+        }
     }
 
     private fun sortBooks(books: List<Book>): List<Book> {

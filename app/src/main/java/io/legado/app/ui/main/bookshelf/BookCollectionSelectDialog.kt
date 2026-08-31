@@ -206,6 +206,30 @@ class BookCollectionSelectDialog() : BaseBottomSheetDialogFragment(R.layout.dial
         }
     }
 
+    private fun renameCollection(item: CollectionSelectItem) {
+        val collection = item.source.collection
+        val editText = EditText(requireContext()).apply {
+            hint = getString(R.string.book_collection_name_hint)
+            setSingleLine()
+            setText(collection.name)
+        }
+        alert(titleResource = R.string.rename) {
+            customView { editText }
+            okButton {
+                val name = editText.text?.toString()?.trim().orEmpty()
+                if (name.isBlank() || name == collection.name) return@okButton
+                lifecycleScope.launch(Dispatchers.IO) {
+                    appDb.bookCollectionDao.update(collection.copy(name = name))
+                    withContext(Dispatchers.Main) {
+                        postEvent(EventBus.BOOKSHELF_REFRESH, "")
+                        dismissAllowingStateLoss()
+                    }
+                }
+            }
+            cancelButton()
+        }
+    }
+
     private fun addToCollection(item: CollectionSelectItem) {
         lifecycleScope.launch(Dispatchers.IO) {
             appDb.bookCollectionDao.addBookUrls(item.source.collection.collectionId, bookUrls)
@@ -256,6 +280,10 @@ class BookCollectionSelectDialog() : BaseBottomSheetDialogFragment(R.layout.dial
         ) {
             binding.root.setOnClickListener {
                 getItem(holder.layoutPosition)?.let(::addToCollection)
+            }
+            binding.root.setOnLongClickListener {
+                getItem(holder.layoutPosition)?.let(::renameCollection)
+                true
             }
         }
     }

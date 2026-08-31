@@ -5,6 +5,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.EditText
 import androidx.core.view.isGone
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -17,6 +18,7 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.DialogBookGroupSelectBinding
 import io.legado.app.databinding.ItemBookGroupSelectBinding
+import io.legado.app.lib.dialogs.alert
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.toastOnUi
@@ -129,6 +131,29 @@ class BookGroupSelectDialog() : BaseBottomSheetDialogFragment(R.layout.dialog_bo
         }
     }
 
+    private fun renameGroup(group: BookGroup) {
+        val editText = EditText(requireContext()).apply {
+            hint = getString(R.string.group_name)
+            setSingleLine()
+            setText(group.groupName)
+        }
+        alert(titleResource = R.string.rename) {
+            customView { editText }
+            okButton {
+                val name = editText.text?.toString()?.trim().orEmpty()
+                if (name.isBlank() || name == group.groupName) return@okButton
+                lifecycleScope.launch(Dispatchers.IO) {
+                    appDb.bookGroupDao.update(group.copy(groupName = name))
+                    withContext(Dispatchers.Main) {
+                        postEvent(EventBus.BOOKSHELF_REFRESH, "")
+                        dismissAllowingStateLoss()
+                    }
+                }
+            }
+            cancelButton()
+        }
+    }
+
     private inner class GroupAdapter :
         RecyclerAdapter<BookGroup, ItemBookGroupSelectBinding>(requireContext()) {
 
@@ -151,6 +176,10 @@ class BookGroupSelectDialog() : BaseBottomSheetDialogFragment(R.layout.dialog_bo
         ) {
             binding.root.setOnClickListener {
                 getItem(holder.layoutPosition)?.let(::addToGroup)
+            }
+            binding.root.setOnLongClickListener {
+                getItem(holder.layoutPosition)?.let(::renameGroup)
+                true
             }
         }
     }
