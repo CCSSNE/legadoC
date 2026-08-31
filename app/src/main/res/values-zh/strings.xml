@@ -138,6 +138,7 @@
     <string name="tts_cache_failed">TTS 缓存任务提交失败：%1$s</string>
     <string name="tts_cache_chapters_empty">没有可缓存的章节</string>
     <string name="tts_cache_requires_wav">TTS 缓存需要先开启 TTS-Wav 模式</string>
+    <string name="tts_cache_media_book_download">有声书使用各自的下载功能，不使用 TTS 缓存</string>
     <string name="read_aloud_tts_realtime_cache">实时缓存</string>
     <string name="read_aloud_tts_realtime_cache_summary">开启后边播边把后面的段预先合成进 TTS 缓存。依赖 TTS-Wav 模式；朗读中切换会重新开始朗读。</string>
     <string name="tts_cache_prefetch_count">实时预取段数</string>

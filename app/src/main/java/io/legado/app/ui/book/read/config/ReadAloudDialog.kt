@@ -49,6 +49,9 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
     private var dialogPresentationReady = false
     private var displayedReadProgress: ReadAloudProgress? = null
     private var trackingReadProgress = false
+
+    /** TTS 缓存入口当前不可用的原因（字符串资源 id）；null = 可用。 */
+    private var ttsCacheUnavailableReason: Int? = null
     private val menuLayoutChangeListener =
         View.OnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
             publishMenuTopOnScreen(view)
@@ -203,6 +206,11 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
         }
         upTtsCacheEntry()
         llTtsCache.setOnClickListener {
+            // 不可用不再静默：点击弹底部通知说明原因
+            ttsCacheUnavailableReason?.let { reason ->
+                toastOnUi(reason)
+                return@setOnClickListener
+            }
             ReadBook.book?.let { book ->
                 TtsCacheChapterDialog.newInstance(book)
                     .show(childFragmentManager, "ttsCacheChapterDialog")
@@ -343,16 +351,20 @@ class ReadAloudDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_aloud
 
     /**
      * TTS 缓存入口常显（置灰代替隐藏，避免看起来像没有这个功能）：
-     * - 书源音频引擎：媒体书有各自的下载入口，置灰；
-     * - 系统引擎 + TTS-Wav 模式关闭：系统播放走直连管线不消费缓存文件，置灰；
-     * - 其余引擎（HTTP / V2 脚本 / 内置插件）：播放天然按缓存文件命中，恒可点。
+     * - 书源音频引擎：媒体书有各自的下载入口；
+     * - 系统引擎 + TTS-Wav 模式关闭：系统播放走直连管线不消费缓存文件；
+     * - 其余引擎（HTTP / V2 脚本 / 内置插件）：播放天然按缓存文件命中，恒可用。
+     * 置灰只是视觉提示，按钮保持可点：点击弹底部通知说明不可用原因，不静默。
      */
     private fun upTtsCacheEntry() = binding.llTtsCache.run {
         visible()
-        val enabled = !isSourceAudioSelected &&
-                (ReadAloud.selectedEngineType != ReadAloudEngineType.SYSTEM_TTS || AppConfig.ttsWavMode)
-        isEnabled = enabled
-        alpha = if (enabled) 1f else 0.45f
+        ttsCacheUnavailableReason = when {
+            isSourceAudioSelected -> R.string.tts_cache_media_book_download
+            ReadAloud.selectedEngineType == ReadAloudEngineType.SYSTEM_TTS &&
+                    !AppConfig.ttsWavMode -> R.string.tts_cache_requires_wav
+            else -> null
+        }
+        alpha = if (ttsCacheUnavailableReason == null) 1f else 0.45f
     }
 
     override fun upSpeakEngineSummary() {
