@@ -38,32 +38,12 @@ android {
     }
 
     signingConfigs {
-        // 正式签名（myConfig）是唯一允许的签名。自用版（appC）与公开版（oss）共用同一把，
-        // 必须走正式签名，绝不允许回退 debug 签名（AGENTS.md 明文规则）。
-        // 构建时必须传入 RELEASE_STORE_FILE/RELEASE_STORE_PASSWORD/RELEASE_KEY_ALIAS/
-        // RELEASE_KEY_PASSWORD；任一缺失即配置阶段报错，杜绝默认产出 debug 签名包。
-        if (!(project.hasProperty("RELEASE_STORE_FILE") &&
-                project.hasProperty("RELEASE_STORE_PASSWORD") &&
-                project.hasProperty("RELEASE_KEY_ALIAS") &&
-                project.hasProperty("RELEASE_KEY_PASSWORD"))) {
-            throw new GradleException(
-                "============================================================\n" +
-                "RELEASE SIGNING REQUIRED. See AGENTS.md\n" +
-                "正式签名缺失！本项目所有构建（自用版 appC 与公开版 oss）一律要求正式签名 myConfig，\n" +
-                "绝对禁止 debug 签名。构建时必须同时传入：\n" +
-                "  -PRELEASE_STORE_FILE -PRELEASE_STORE_PASSWORD -PRELEASE_KEY_ALIAS -PRELEASE_KEY_PASSWORD\n" +
-                "============================================================"
-            )
-        }
-        myConfig {
-            storeFile file(RELEASE_STORE_FILE)
-            storePassword RELEASE_STORE_PASSWORD
-            keyAlias RELEASE_KEY_ALIAS
-            keyPassword RELEASE_KEY_PASSWORD
-            enableV1Signing = true
-            enableV2Signing = true
-            enableV3Signing = true
-            enableV4Signing = true
+        // 签名策略（AGENTS.md 明文规则）：正式/交付构建只需 assembleAppC 与 assembleOssRelease，
+        // 两者都是 release 系构建类型，一律使用 SDK 自带 debug 签名（无需任何密钥/口令）。
+        // 与源集/包名无关，自用版（appC）与公开版（oss）用同一把 debug 签名，可互相覆盖安装。
+        // 严禁 debug 构建类型产物；buildTypes 已强制拦截，见文件尾部 guard。
+        debug {
+            // 使用 Android SDK 自动生成的默认 debug.keystore，keyAlias=android
         }
     }
     defaultConfig {
@@ -100,7 +80,7 @@ android {
     }
     buildTypes {
         release {
-            signingConfig signingConfigs.myConfig
+            signingConfig signingConfigs.debug
             applicationIdSuffix '.c'
             manifestPlaceholders.put("app_name", "@string/app_name")
 
@@ -109,7 +89,7 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro', 'cronet-proguard-rules.pro'
         }
         beta {
-            signingConfig signingConfigs.myConfig
+            signingConfig signingConfigs.debug
             applicationIdSuffix '.c'
             versionNameSuffix '.beta'
             manifestPlaceholders.put("app_name", "@string/app_name")
@@ -121,7 +101,7 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro', 'cronet-proguard-rules.pro'
         }
         debug {
-            signingConfig signingConfigs.myConfig
+            signingConfig signingConfigs.debug
             manifestPlaceholders.put("app_name", "@string/app_name")
 
             applicationIdSuffix '.debug'
@@ -131,7 +111,7 @@ android {
         }
         c {
             initWith debug
-            signingConfig signingConfigs.myConfig
+            signingConfig signingConfigs.debug
             manifestPlaceholders.put("app_name", "@string/app_name")
 
             applicationIdSuffix '.dev'
