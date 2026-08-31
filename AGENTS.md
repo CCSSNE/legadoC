@@ -205,6 +205,7 @@ $versionName = '3.26.<MMddHH>' # <MMddHH> uses UTC; appC automatically appends c
 - 发布统一走仓库根 `publish-oss-source.ps1`：临时克隆 → `git filter-repo --invert-paths` 按剥离清单改写全历史 → 全历史校验剥离路径零命中 → 末尾注入确定性"空壳插件引导"提交（固定时间戳，保证公开树 app/oss 两 flavor 均可编译）→ 从临时克隆 `--force` 推 `refs/heads/own` → 把本地完整历史快进推送到私有备份仓 `private`（CCSSNE/legadoC-private）。清洗是确定性的：未受污染的旧提交哈希不变，后续同步通常为快进，仅本地历史重排时才真正强推。
 - 已有 fork 与 GitHub 服务端缓存可能仍留存清洗前的旧对象；需要彻底清除时联系 GitHub Support（remove sensitive data）。
 - 剥离清单改动必须同步脚本头部注释与本节；新增专有功能若不放进剥离清单所列路径（新专有功能一律放 `app/src/app`），必须先更新剥离清单再发布。
+- README 等随公开镜像全文公开：更新记录只写开源构建（oss flavor）也包含的主代码功能，专有功能（百度引擎等）一律不得写入 README；写入前按功能对应源码是否在 `app/src/main` 判定，不确定时先查源码位置再落笔。
 
 ### 产物验证
 
