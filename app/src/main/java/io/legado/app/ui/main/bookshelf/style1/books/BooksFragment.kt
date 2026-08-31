@@ -31,14 +31,11 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.FragmentBooksBinding
-import io.legado.app.help.book.AudioTextFusion
-import io.legado.app.help.book.isAudio
-import io.legado.app.help.book.isImage
+import io.legado.app.help.book.BookFusionAction
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isShortcut
 import io.legado.app.help.book.shelfKey
 import io.legado.app.help.book.BookShortcutHelp
-import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.lib.dialogs.alert
@@ -66,7 +63,6 @@ import io.legado.app.utils.startActivity
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -580,128 +576,29 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
      * 书名/作者不需一致（书源别名常见），章节配对由引擎按标题/章节号匹配；
      * 仅处理双方已缓存的章节，不联网下载。融合结果单独保存为 overlay，
      * 不覆盖有声书原始字幕，支持重新融合与取消融合。
+     * 判定与执行统一走 [BookFusionAction]，与合集详情页选择模式共用。
      */
-    fun fuseSelectedBooks() {
-        if (selectedCollections.isNotEmpty()) {
-            toastOnUi(R.string.fusion_need_two_books)
-            return
-        }
-        when (selectedBooks.size) {
-            2 -> {
-                val books = selectedBookList()
-                val audioBook = books.singleOrNull { it.isAudio }
-                val textBook = books.singleOrNull { !it.isAudio && !it.isVideo && !it.isImage }
-                if (audioBook == null || textBook == null) {
-                    val typeTag = { book: Book ->
-                        when {
-                            book.isAudio -> "音频"
-                            book.isVideo -> "视频"
-                            book.isImage -> "漫画"
-                            else -> "文本"
-                        }
-                    }
-                    toastOnUi(
-                        getString(R.string.fusion_type_invalid) +
-                            "\n" + books.joinToString(" / ") { "${it.name}（${typeTag(it)}）" }
-                    )
-                    return
+    private val fusionAction by lazy {
+        BookFusionAction(
+            context = requireContext(),
+            scope = viewLifecycleOwner.lifecycleScope,
+            confirm = { titleRes, messageRes, onOk ->
+                alert(titleResource = titleRes, messageResource = messageRes) {
+                    okButton { onOk() }
+                    noButton()
                 }
-                confirmFusion(audioBook, textBook)
-            }
+            },
+            onFinish = { clearSelection() }
+        )
+    }
 
-            1 -> confirmCancelFusion(selectedBookList().single().takeIf { it.isAudio })
-
-            else -> toastOnUi(R.string.fusion_need_two_books)
-        }
+    fun fuseSelectedBooks() {
+        fusionAction.run(selectedBookList(), selectedCollections.size)
     }
 
     /** 当前选择能否触发有效操作：只需选中书籍（无合集），具体错误在点击后提示 */
     fun fusionActionAvailable(): Boolean {
-        if (selectedCollections.isNotEmpty() || selectedBooks.isEmpty()) return false
-        if (selectedBooks.values.any { it.isShortcut }) return false
-        return true
-    }
-
-    private fun confirmFusion(audioBook: Book, textBook: Book) {
-        alert(
-            titleResource = R.string.fusion_confirm_title,
-            messageResource = R.string.fusion_confirm_message
-        ) {
-            okButton { fuseAudioWithComments(audioBook, textBook) }
-            noButton()
-        }
-    }
-
-    private fun fuseAudioWithComments(audioBook: Book, textBook: Book) {
-        viewLifecycleOwner.lifecycleScope.launch {
-            val result = try {
-                withContext(Dispatchers.IO) {
-                    AudioTextFusion.fuseBooks(textBook, audioBook)
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                AppLog.put("融合评论失败 ${textBook.name} -> ${audioBook.name}", e)
-                toastOnUi(getString(R.string.fusion_failed, e.localizedMessage ?: "unknown"))
-                return@launch
-            }
-            // 一次融合在 AppLog 只落一条多行诊断（章节配对、每章匹配成功/失败、统计）
-            AppLog.put(result.detail)
-            if (result.migratedAnything) {
-                toastOnUi(
-                    getString(
-                        R.string.fusion_done,
-                        result.pairedChapters,
-                        result.fusedChapters,
-                        result.migratedEntries,
-                    )
-                )
-            } else {
-                toastOnUi(R.string.fusion_nothing)
-            }
-            clearSelection()
-        }
-    }
-
-    /** 单个有声书：已有融合 overlay 时确认取消；否则提示需要两本书 */
-    private fun confirmCancelFusion(audioBook: Book?) {
-        if (audioBook == null) {
-            toastOnUi(R.string.fusion_need_two_books)
-            return
-        }
-        viewLifecycleOwner.lifecycleScope.launch {
-            val hasOverlay = withContext(Dispatchers.IO) {
-                appDb.bookChapterDao.getChapterList(audioBook.bookUrl)
-                    .any { it.getVariable(AudioTextFusion.OVERLAY_KEY).isNotBlank() }
-            }
-            if (!hasOverlay) {
-                toastOnUi(R.string.fusion_need_two_books)
-                return@launch
-            }
-            alert(
-                titleResource = R.string.fusion_cancel_confirm_title,
-                messageResource = R.string.fusion_cancel_confirm_message
-            ) {
-                okButton {
-                    viewLifecycleOwner.lifecycleScope.launch {
-                        val removed = try {
-                            withContext(Dispatchers.IO) {
-                                AudioTextFusion.removeFusionOverlay(audioBook)
-                            }
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (e: Exception) {
-                            AppLog.put("取消融合失败 ${audioBook.name}", e)
-                            toastOnUi(getString(R.string.fusion_failed, e.localizedMessage ?: "unknown"))
-                            return@launch
-                        }
-                        toastOnUi(getString(R.string.fusion_cancel_done, removed))
-                        clearSelection()
-                    }
-                }
-                noButton()
-            }
-        }
+        return fusionAction.available(selectedBooks.values, selectedCollections.size)
     }
 
     fun upBookSort(sort: Int) {

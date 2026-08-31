@@ -1237,7 +1237,7 @@
     <string name="plus">Plus</string>
     <string name="system_typeface">System typeface</string>
     <string name="delete_book_file">Delete source file</string>
-    <string name="add_book_shortcut">Add shortcut</string>
+    <string name="add_book_shortcut">Shortcut</string>
     <string name="delete_book_body">Delete book body</string>
     <string name="delete_book_cache">Delete cache</string>
     <string name="text_default">Default</string>

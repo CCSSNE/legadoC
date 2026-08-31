@@ -22,6 +22,7 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookCollectionWithItems
 import io.legado.app.databinding.ActivityBookCollectionBinding
+import io.legado.app.help.book.BookFusionAction
 import io.legado.app.help.book.BookShortcutHelp
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isNotShelf
@@ -95,7 +96,13 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
         binding.btnSelectCurrentPage.setOnClickListener {
             selectAllCurrentPage()
         }
-        binding.btnSelectCurrentPage.addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
+        binding.btnShortcut.setOnClickListener {
+            createShortcuts()
+        }
+        binding.btnFusion.setOnClickListener {
+            fusionAction.run(selectedBookList(), selectedCollections.size)
+        }
+        binding.selectionTopBar.addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
             val toolbar = binding.titleBar.toolbar
             view.y = toolbar.y + (toolbar.height - view.height) / 2f
         }
@@ -214,6 +221,35 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
         }
     }
 
+    private val fusionAction by lazy {
+        BookFusionAction(
+            context = this,
+            scope = lifecycleScope,
+            confirm = { titleRes, messageRes, onOk ->
+                alert(titleResource = titleRes, messageResource = messageRes) {
+                    okButton { onOk() }
+                    noButton()
+                }
+            },
+            onFinish = { clearSelection() }
+        )
+    }
+
+    private fun canCreateShortcuts(): Boolean {
+        return selectedBooks.isNotEmpty() && selectedCollections.isEmpty()
+    }
+
+    private fun createShortcuts() {
+        if (!canCreateShortcuts()) return
+        lifecycleScope.launch(Dispatchers.IO) {
+            BookShortcutHelp.create(selectedBookList(), 0L)
+            withContext(Dispatchers.Main) {
+                clearSelection()
+                postEvent(EventBus.BOOKSHELF_REFRESH, "")
+            }
+        }
+    }
+
     private fun sortBooks(books: List<Book>): List<Book> {
         return when (AppConfig.bookshelfSort) {
             1 -> books.sortedByDescending { it.latestChapterTime }
@@ -276,6 +312,8 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
         selectedCollections.clear()
         binding.bookActionBar.gone()
         binding.btnSelectCurrentPage.gone()
+        binding.btnShortcut.gone()
+        binding.btnFusion.gone()
         notifySelectionChanged()
     }
 
@@ -318,6 +356,14 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
         val hasSelection = hasSelection()
         binding.bookActionBar.isGone = !hasSelection || !showActionBar
         binding.btnSelectCurrentPage.isGone = !hasSelection
+        binding.btnShortcut.isGone = !hasSelection
+        val shortcutAvailable = canCreateShortcuts()
+        binding.btnShortcut.isEnabled = shortcutAvailable
+        binding.btnShortcut.alpha = if (shortcutAvailable) 1f else 0.38f
+        binding.btnFusion.isGone = !hasSelection
+        val fusionAvailable = fusionAction.available(selectedBookList(), selectedCollections.size)
+        binding.btnFusion.isEnabled = fusionAvailable
+        binding.btnFusion.alpha = if (fusionAvailable) 1f else 0.38f
         if (hasSelection && showActionBar) {
             binding.bookActionBar.bringToFront()
             binding.btnSelectCurrentPage.bringToFront()
