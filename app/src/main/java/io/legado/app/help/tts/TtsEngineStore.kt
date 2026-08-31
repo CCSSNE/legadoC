@@ -34,7 +34,7 @@ import java.util.concurrent.ConcurrentHashMap
  * - 移除 NG 专属的默认脚本升级机制（OLD_* URL、withUpdatedDefaultScript、
  *   shouldReplaceDefaultScriptWith、updateDefaultScriptForTest）；
  * - 移除 NG 捆绑的厂商引擎常量（next_edge_proxy / mimo / stepaudio / mossland），
- *   内置脚本资产仅保留通用三项（本机转发器 + 两个模板示例）；
+ *   内置脚本资产仅保留 MultiTTS 转发器（两个模板示例已移除）；
  * - 移除 NG 首次使用角色默认绑定逻辑（TtsRoleDefaultPreferences、
  *   resolveFirstUseTtsRoleDefaults、applyFirstUseRoleDefaults）；
  * - 移除 NG 专属首选发音人分支（preferredVoiceId）；
@@ -190,9 +190,7 @@ object TtsEngineStore {
     private const val SYSTEM_ENGINE_PREFIX = "system_engine_"
     private const val DEFAULT_TTS_ASSET_DIR = "defaultData/tts"
     private val DEFAULT_SCRIPT_ASSETS = listOf(
-        "multitts_forwarder.js",
-        "script_options_example.js",
-        "static_voices_example.js"
+        "multitts_forwarder.js"
     )
     private val defaultScriptEngineSnapshots by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         loadDefaultScriptEngines()
