@@ -941,7 +941,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
         }
     }
 
-    /** 视频槽位：首帧做缩略图，点击调系统播放器，长按保存到相册 */
+    /** 视频槽位：首帧做缩略图，点击内置播放器播放，长按保存到相册 */
     private fun bindVideoResult(
         itemBinding: ItemAiPreviewBinding,
         slot: AiCreationImageSlot
@@ -972,20 +972,12 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation) {
             }
         }
         ivPhoto.setOnClickListener {
-            runCatching {
-                val intent = Intent(Intent.ACTION_VIEW).apply {
-                    val uri = androidx.core.content.FileProvider.getUriForFile(
-                        requireContext(),
-                        io.legado.app.constant.AppConst.authority,
-                        AiCreationImageFile.fileOf(slot.fileName)
-                    )
-                    setDataAndType(uri, "video/mp4")
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
-                startActivity(intent)
-            }.onFailure { throwable ->
-                toastOnUi(throwable.message ?: throwable.javaClass.simpleName)
-            }
+            val doneFiles = previewAdapter.slots
+                .filter { it.state == AiCreationImageSlotState.DONE }
+                .map { it.fileName }
+            val position = doneFiles.indexOf(slot.fileName)
+            AiCreationPhotoDialog.newInstance(doneFiles, position)
+                .show(childFragmentManager, "creationPhoto")
         }
         ivPhoto.setOnLongClickListener {
             val ok = AiCreationImageFile.saveToAlbum(requireContext(), slot.fileName)
