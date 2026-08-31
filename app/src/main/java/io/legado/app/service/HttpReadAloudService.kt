@@ -48,6 +48,7 @@ import io.legado.app.help.tts.ChapterStoryboard
 import io.legado.app.help.tts.ReadAloudTtsRouter
 import io.legado.app.help.tts.TtsEngineSetting
 import io.legado.app.help.tts.TtsEngineStore
+import io.legado.app.help.tts.TtsCacheParams
 import io.legado.app.help.tts.TtsCacheStore
 import io.legado.app.help.tts.TtsScriptEngineClient
 import io.legado.app.help.tts.TtsSpeedPolicy
@@ -819,7 +820,7 @@ class HttpReadAloudService : BaseReadAloudService(),
 
     /**
      * 批量 TTS 缓存命中（整段单元）：缓存文件直接作为播放数据源，不再请求网络。
-     * key 与批量缓存/实时缓存同源（[TtsCacheStore.playbackUnitKey]，音色维度按
+     * key 与批量缓存/实时缓存同源（[TtsCacheParams.playbackUnitKey]，音色维度按
      * 引擎种类解析）。多角色分镜子段与段内续读（paragraphStartPos 偏移后的文本）
      * 与缓存单元文本不同，自然不命中，仍走现场合成。
      */
@@ -831,7 +832,7 @@ class HttpReadAloudService : BaseReadAloudService(),
 
     private fun ttsCacheUnitFile(book: Book, chapter: BookChapter, text: String): File? {
         if (text.isEmpty()) return null
-        val key = TtsCacheStore.playbackUnitKey(book, chapter, text)
+        val key = TtsCacheParams.playbackUnitKey(book, chapter, text)
         if (!TtsCacheStore.has(book, key)) return null
         return TtsCacheStore.unitFile(book, key)
     }
