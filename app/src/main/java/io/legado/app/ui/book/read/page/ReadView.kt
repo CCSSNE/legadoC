@@ -124,6 +124,8 @@ class ReadView(context: Context, attrs: AttributeSet) :
     private var crossPageFlipped = false
     // 上次 MOVE 时手指是否仍在角落：翻页后仍在角落则直接续上下一轮计时
     private var crossPageInCorner = false
+    // 本次触摸开始时已有选区：拖动=延续扩展（落点决定方向，只扩不缩），不重新长按
+    private var selectResumeGesture = false
     private val crossPageTimeout = 500L
     private val crossPageRepeatTimeout = 1000L
     // 跨页复制：翻页前各页已选文本的累计缓冲（按翻页顺序追加）。
@@ -314,15 +316,15 @@ class ReadView(context: Context, attrs: AttributeSet) :
                 // 记录按下时是否已处于选区：选区状态下手势一律不触发下拉标签
                 val wasTextSelected = isTextSelected
                 if (isTextSelected) {
-                    curPage.cancelSelect()
-                    crossPageTextBuffer.clear()
-                    isTextSelected = false
+                    // 选区存在：按下不取消选区，拖动直接延续扩展（起点无关，无长按）
                     pressOnTextSelected = true
+                    selectResumeGesture = true
                 } else {
                     pressOnTextSelected = false
+                    selectResumeGesture = false
+                    longPressed = false
+                    postDelayed(longPressRunnable, longPressTimeout)
                 }
-                longPressed = false
-                postDelayed(longPressRunnable, longPressTimeout)
                 pressDown = true
                 isMove = false
                 pullDownTriggered = false
@@ -412,6 +414,9 @@ class ReadView(context: Context, attrs: AttributeSet) :
                         if (crossPageFlipped) {
                             //跨页后：起点固定新页页首，只移动终点继续扩展选择
                             curPage.selectEndMove(event.x, event.y)
+                        } else if (selectResumeGesture) {
+                            //选区延续：按下时已有选区，拖动直接扩展，落点决定方向，只扩不缩，与起点无关
+                            curPage.selectContinueMove(event.x, event.y)
                         } else {
                             selectText(event.x, event.y)
                         }
@@ -436,6 +441,7 @@ class ReadView(context: Context, attrs: AttributeSet) :
                 crossPageArmed = false
                 crossPageFlipped = false
                 crossPageInCorner = false
+                selectResumeGesture = false
                 removeCallbacks(crossPageRunnable)
                 if (pullDownArmed && pullDownTriggered) {
                     val deltaY = (event.y - pullDownStartY).coerceAtLeast(0f)
@@ -492,6 +498,7 @@ class ReadView(context: Context, attrs: AttributeSet) :
                 crossPageArmed = false
                 crossPageFlipped = false
                 crossPageInCorner = false
+                selectResumeGesture = false
                 removeCallbacks(crossPageRunnable)
                 if (pullDownArmed && pullDownTriggered) {
                     pullDownArmed = false
@@ -523,6 +530,7 @@ class ReadView(context: Context, attrs: AttributeSet) :
         crossPageArmed = false
         crossPageFlipped = false
         crossPageInCorner = false
+        selectResumeGesture = false
         removeCallbacks(crossPageRunnable)
         crossPageTextBuffer.clear()
         if (isTextSelected) {
@@ -583,6 +591,8 @@ class ReadView(context: Context, attrs: AttributeSet) :
             val handled = curPage.longPress(startX, startY) { textPos: TextPos ->
                 isTextSelected = true
                 pressOnTextSelected = true
+                // 长按新建选区=新选择周期开始，跨页缓冲随旧选区一起作废
+                crossPageTextBuffer.clear()
                 initialTextPos.upData(textPos)
                 val startPos = textPos.copy()
                 val endPos = textPos.copy()
@@ -649,6 +659,8 @@ class ReadView(context: Context, attrs: AttributeSet) :
             if (handled && curPage.hasNativeSelection()) {
                 isTextSelected = true
                 pressOnTextSelected = true
+                // 长按新建选区=新选择周期开始，跨页缓冲随旧选区一起作废
+                crossPageTextBuffer.clear()
                 post { callBack.showTextActionMenu() }
             }
         }
@@ -841,6 +853,13 @@ class ReadView(context: Context, attrs: AttributeSet) :
      * @param direction 翻页方向
      */
     fun fillPage(direction: PageDirection): Boolean {
+        if (!crossPageFlipped && isTextSelected) {
+            // 正常翻页会使当前页选区失效，统一在此收口；
+            // 跨页复制经 onCrossPageFlip 自己延续选区（crossPageFlipped 已置位，不进此分支）
+            curPage.cancelSelect()
+            crossPageTextBuffer.clear()
+            isTextSelected = false
+        }
         return when (direction) {
             PageDirection.PREV -> {
                 pageFactory.moveToPrev(true)

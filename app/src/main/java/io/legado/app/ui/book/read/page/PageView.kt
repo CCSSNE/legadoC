@@ -696,6 +696,10 @@ class PageView(context: Context) : FrameLayout(context) {
         binding.contentTextView.selectEndMove(x - imgBgPaddingStart, y - headerHeight)
     }
 
+    fun selectContinueMove(x: Float, y: Float) {
+        binding.contentTextView.selectContinueMove(x - imgBgPaddingStart, y - headerHeight)
+    }
+
     fun selectEndMoveIndex(
         relativePagePos: Int,
         lineIndex: Int,
