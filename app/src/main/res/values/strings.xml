@@ -437,7 +437,7 @@
     <string name="ai_creation_slot_failed">Failed: %1$s</string>
     <string name="ai_creation_image_request_template">Image request template</string>
     <string name="ai_creation_image_add_provider">Add image provider</string>
-    <string name="ai_creation_image_add_provider_summary">Add a custom provider; built-in: SiliconFlow, Zhipu</string>
+    <string name="ai_creation_image_add_provider_summary">Add a custom provider; built-in: free providers</string>
     <string name="ai_creation_image_manage_providers">Manage image providers</string>
     <string name="ai_creation_image_api_key_jump">Get API key</string>
     <string name="ai_creation_image_add_model">Add image model</string>
@@ -449,7 +449,7 @@
     <string name="ai_creation_image_test_success">Test succeeded, image returned</string>
     <string name="ai_creation_video_add_provider">Add video provider</string>
     <string name="ai_creation_generate_video">Generate video</string>
-    <string name="ai_creation_video_add_provider_summary">Add a custom provider; built-in: Zhipu</string>
+    <string name="ai_creation_video_add_provider_summary">Add a custom provider; built-in: free providers</string>
     <string name="ai_creation_video_manage_providers">Manage video providers</string>
     <string name="ai_creation_video_add_model">Add video model</string>
     <string name="ai_creation_video_add_model_summary">Add a model to the current video provider</string>

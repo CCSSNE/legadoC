@@ -436,7 +436,7 @@
     <string name="ai_creation_slot_failed">生成失败：%1$s</string>
     <string name="ai_creation_image_request_template">图片请求模板</string>
     <string name="ai_creation_image_add_provider">添加图片供应商</string>
-    <string name="ai_creation_image_add_provider_summary">添加自定义图片供应商，内置硅基流动与智谱</string>
+    <string name="ai_creation_image_add_provider_summary">添加自定义图片供应商，内置免费供应商</string>
     <string name="ai_creation_image_manage_providers">管理图片供应商</string>
     <string name="ai_creation_image_api_key_jump">申请 API Key</string>
     <string name="ai_creation_image_add_model">添加图片模型</string>
@@ -448,7 +448,7 @@
     <string name="ai_creation_image_test_success">测试成功，已返回图片</string>
     <string name="ai_creation_video_add_provider">添加视频供应商</string>
     <string name="ai_creation_generate_video">生成视频</string>
-    <string name="ai_creation_video_add_provider_summary">添加自定义视频供应商，内置智谱</string>
+    <string name="ai_creation_video_add_provider_summary">添加自定义视频供应商，内置免费供应商</string>
     <string name="ai_creation_video_manage_providers">管理视频供应商</string>
     <string name="ai_creation_video_add_model">添加视频模型</string>
     <string name="ai_creation_video_add_model_summary">为当前视频供应商添加模型</string>
