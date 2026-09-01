@@ -124,7 +124,9 @@ class ReadView(context: Context, attrs: AttributeSet) :
     private var crossPageFlipped = false
     // 上次 MOVE 时手指是否仍在角落：翻页后仍在角落则直接续上下一轮计时
     private var crossPageInCorner = false
-    // 本次触摸开始时已有选区：拖动=延续扩展（落点决定方向，只扩不缩），不重新长按
+    // 本次触摸开始时已有选区：拖动=延续扩展（落点决定方向，只扩不缩）。
+    // 选区手势契约：DOWN 无法预知意图，只登记不决断；单击在 UP 判定取消，
+    // 拖动在 MOVE 判定延续扩展（右下角驻留=跨页复制），长按在超时判定新建选区。
     private var selectResumeGesture = false
     private val crossPageTimeout = 500L
     private val crossPageRepeatTimeout = 1000L
@@ -316,15 +318,17 @@ class ReadView(context: Context, attrs: AttributeSet) :
                 // 记录按下时是否已处于选区：选区状态下手势一律不触发下拉标签
                 val wasTextSelected = isTextSelected
                 if (isTextSelected) {
-                    // 选区存在：按下不取消选区，拖动直接延续扩展（起点无关，无长按）
+                    // 选区手势契约：DOWN 只登记不决断，禁止在 DOWN 抢先取消选区——
+                    // 单击在 UP 判定取消，拖动在 MOVE 判定延续扩展（右下角驻留=跨页复制），
+                    // 长按在超时判定新建选区；三者互斥且互补，覆盖选区状态下全部手势
                     pressOnTextSelected = true
                     selectResumeGesture = true
                 } else {
                     pressOnTextSelected = false
                     selectResumeGesture = false
-                    longPressed = false
-                    postDelayed(longPressRunnable, longPressTimeout)
                 }
+                longPressed = false
+                postDelayed(longPressRunnable, longPressTimeout)
                 pressDown = true
                 isMove = false
                 pullDownTriggered = false
@@ -477,6 +481,13 @@ class ReadView(context: Context, attrs: AttributeSet) :
                 if (!pageDelegate!!.isMoved && !isMove) {
                     if (!longPressed && !pressOnTextSelected) {
                         handleTapUp()
+                        return true
+                    }
+                    if (!longPressed && pressOnTextSelected) {
+                        // 选区手势契约：选区存在时单击=退出选区，不触发其他点击行为；
+                        // 悬浮菜单按钮由菜单自身消费事件，不会走到这里
+                        pressOnTextSelected = false
+                        cancelSelect()
                         return true
                     }
                 }
