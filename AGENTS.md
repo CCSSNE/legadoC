@@ -316,6 +316,6 @@ uiautomator2 / ADB
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- `3.26.090111` / `10798`，2026-09-01（UTC 11 时），`own` 主线，**公开版 oss 单编译交付**。本次为用户点名"编译公开版本并发布 release"。`-Pabi=arm64-v8a -PVERSION_CODE=10798 -PVERSION_NAME=3.26.090111`，daemon 编译 `assembleOssRelease` BUILD SUCCESSFUL。`aapt` 确认包名 `io.legado.app.c`、versionName `3.26.090111`（oss 无后缀）、versionCode `10798`、arm64-v8a、中文名 `阅读`（繁中「閱讀」）；产物 `app\build\outputs\apk\oss\release\legado_oss_3.26.090111_10798.apk`（34.75 MB）。`apksigner` 退出码 0，证书 `CN=Android Debug`、SHA-256 `70cb88ca...`（debug 签名，符合只允许 release 系构建 + 统一 debug 签名的签名铁律）。构建后 `gradlew --stop` 确认无残留 Gradle 进程；已发布 GitHub Release，未安装到模拟器、未做正式回归。
+- `3.26.090116` / `10799`，2026-09-01（UTC 17 时），`own` 主线，**自用版 appC 编译交付**。本次为用户点名"编译自用版本"。`-Pabi=arm64-v8a -PVERSION_CODE=10799 -PVERSION_NAME=3.26.090116`，冷编译（`--no-daemon --max-workers=1 -Dkotlin.incremental=false -Dksp.incremental=false -Dkotlin.compiler.execution.strategy=in-process`，`GRADLE_OPTS=-Xmx4096m`）`assembleAppC` BUILD SUCCESSFUL。编译期间 daemon 两次因本机内存不足（native OOM）崩溃，清理进程并降堆后冷编译成功。`aapt` 确认包名 `io.legado.app.dev`、versionName `3.26.090116c`、versionCode `10799`、arm64-v8a；产物 `app\build\outputs\apk\app\c\legado_app_3.26.090116_10799.apk`（约 46.2 MB）。`apksigner` 退出码 0，证书 `CN=Android Debug`、SHA-256 `70cb88ca...`（debug 签名，符合签名铁律）。构建后 `gradlew --stop` 确认无残留 Gradle 进程；未安装到模拟器、未做正式回归。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
