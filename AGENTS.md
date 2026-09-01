@@ -316,6 +316,6 @@ uiautomator2 / ADB
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- `3.26.090118` / `10800`，2026-09-01（UTC 18 时），`own` 主线，**自用版 appC 编译交付**。本次为用户点名"编译自用版本"。`-Pabi=arm64-v8a -PVERSION_CODE=10800 -PVERSION_NAME=3.26.090118`，冷编译（`--no-daemon --max-workers=1 -Dkotlin.incremental=false -Dksp.incremental=false -Dkotlin.compiler.execution.strategy=in-process`，`GRADLE_OPTS=-Xmx4096m`）`assembleAppC` BUILD SUCCESSFUL（4m43s），首次即一次成功。`aapt` 确认包名 `io.legado.app.dev`、versionName `3.26.090118c`、versionCode `10800`、arm64-v8a；产物 `app\build\outputs\apk\app\c\legado_app_3.26.090118_10800.apk`（约 46.2 MB）。`apksigner` 退出码 0，证书 `CN=Android Debug`、SHA-256 `70cb88ca...`（debug 签名，符合签名铁律）。构建后 `gradlew --stop` 确认无残留 Gradle 进程；未安装到模拟器、未做正式回归。
+- `3.26.090119` / `10801`，2026-09-01（UTC 19 时），`own` 主线，**自用版 appC 编译交付**。本次为用户点名"编译自用版本"。`-Pabi=arm64-v8a -PVERSION_CODE=10801 -PVERSION_NAME=3.26.090119`，冷编译（`--no-daemon --max-workers=1 -Dkotlin.incremental=false -Dksp.incremental=false -Dkotlin.compiler.execution.strategy=in-process`，`GRADLE_OPTS=-Xmx4096m`）`assembleAppC` BUILD SUCCESSFUL（2m53s），首次即一次成功。`aapt` 确认包名 `io.legado.app.dev`、versionName `3.26.090119c`、versionCode `10801`、arm64-v8a；产物 `app\build\outputs\apk\app\c\legado_app_3.26.090119_10801.apk`（约 46.2 MB）。`apksigner` 退出码 0，证书 `CN=Android Debug`、SHA-256 `70cb88ca...`（debug 签名，符合签名铁律）。构建后 `gradlew --stop` 确认无残留 Gradle 进程；未安装到模拟器、未做正式回归。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
