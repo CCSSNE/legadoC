@@ -106,9 +106,11 @@ class ReadView(context: Context, attrs: AttributeSet) :
     }
     var isTextSelected = false
     // ACTION_DOWN 时刻选区已存在：单击在 UP 判定取消，非光标处拖动走翻页；
-    // 光标拖动由悬浮 ImageView 通路处理，不进入本 View
+    // 光标拖动由悬浮 ImageView 通路处理（位置经 updateCursorDragCrossPage 喂跨页驻留判定），
+    // 触摸事件不进入本 View
     private var pressOnTextSelected = false
-    // 本次手势经长按新建了选区：拖动扩展与跨页复制仅对新建周期生效
+    // 本次手势经长按新建了选区：MOVE 扩展仅对新建周期生效；
+    // 跨页复制在长按拖动与光标拖动两条通路均可触发
     private var selectionCreatedByGesture = false
     private val initialTextPos = TextPos(0, 0, 0)
 
@@ -165,6 +167,45 @@ class ReadView(context: Context, attrs: AttributeSet) :
             })
             start()
         }
+    }
+
+    /**
+     * 跨页驻留判定：手指进入右下角物理正方形区域（边长=长边/8）并停留后自动翻页（滚动模式无跨页概念）。
+     * 手指持续停在角落持续跨页，移出角落即停，再进入再次开始。
+     * 长按拖动与光标拖动（悬浮 ImageView 通路）共用同一机制
+     */
+    private fun updateCrossPageCorner(x: Float, y: Float) {
+        if (isScroll || !context.getPrefBoolean(PreferKey.crossPageCopy, true)) return
+        val cornerSize = max(width, height) / 8f
+        val inCorner = x > width - cornerSize && y > height - cornerSize
+        crossPageInCorner = inCorner
+        if (inCorner) {
+            if (!crossPageArmed) {
+                crossPageArmed = true
+                postDelayed(crossPageRunnable, crossPageTimeout)
+            }
+        } else {
+            crossPageArmed = false
+            removeCallbacks(crossPageRunnable)
+        }
+    }
+
+    /**
+     * 光标拖动通路（悬浮 ImageView）：手指位置喂给跨页驻留判定，
+     * 与长按拖动共用同一跨页机制（驻留右下角触发翻页，选区延续到新页顶部）
+     */
+    fun updateCursorDragCrossPage(x: Float, y: Float) {
+        if (isTextSelected) {
+            updateCrossPageCorner(x, y)
+        }
+    }
+
+    /** 光标拖动抬手：结束跨页驻留判定并复位跨页状态（该通路不经过本 View 的 UP） */
+    fun stopCursorDragCrossPage() {
+        crossPageArmed = false
+        crossPageInCorner = false
+        crossPageFlipped = false
+        removeCallbacks(crossPageRunnable)
     }
 
     /**
@@ -397,24 +438,8 @@ class ReadView(context: Context, attrs: AttributeSet) :
                     longPressed = false
                     removeCallbacks(longPressRunnable)
                     if (isTextSelected && !pressOnTextSelected) {
-                        //本次手势长按新建的选区：拖动继续扩展；跨页复制仅在此路径生效
-                        //跨页复制：手指进入右下角物理正方形区域（边长=长边/8）并停留后自动翻页（滚动模式无跨页概念）。
-                        // 手指持续停在角落持续跨页，移出角落即停，再进入再次开始
-                        if (!isScroll && context.getPrefBoolean(PreferKey.crossPageCopy, true)) {
-                            val cornerSize = max(width, height) / 8f
-                            val inCorner = event.x > width - cornerSize &&
-                                event.y > height - cornerSize
-                            crossPageInCorner = inCorner
-                            if (inCorner) {
-                                if (!crossPageArmed) {
-                                    crossPageArmed = true
-                                    postDelayed(crossPageRunnable, crossPageTimeout)
-                                }
-                            } else {
-                                crossPageArmed = false
-                                removeCallbacks(crossPageRunnable)
-                            }
-                        }
+                        //本次手势长按新建的选区：拖动继续扩展
+                        updateCrossPageCorner(event.x, event.y)
                         if (crossPageFlipped) {
                             //跨页后：起点固定新页页首，只移动终点继续扩展选择
                             curPage.selectEndMove(event.x, event.y)

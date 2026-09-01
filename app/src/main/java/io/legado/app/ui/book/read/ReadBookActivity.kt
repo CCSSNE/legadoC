@@ -910,6 +910,13 @@ class ReadBookActivity : BaseReadBookActivity(),
                 if (getPrefBoolean(PreferKey.selectionMagnifier, true)) {
                     binding.selectionMagnifierView.setFinger(event.rawX, event.rawY)
                 }
+                // 光标拖动与长按拖动共用跨页驻留判定：拖住光标停在右下角=跨页复制
+                val readViewLoc = IntArray(2)
+                binding.readView.getLocationOnScreen(readViewLoc)
+                binding.readView.updateCursorDragCrossPage(
+                    event.rawX - readViewLoc[0],
+                    event.rawY - readViewLoc[1]
+                )
                 val handleX = selectionHandleTouchX(v.id, event.rawX)
                 val handleY = event.rawY - selectionHandleDragOffset()
                 when (v.id) {
@@ -928,6 +935,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             }
 
             MotionEvent.ACTION_UP -> {
+                binding.readView.stopCursorDragCrossPage()
                 readView.curPage.resetReverseCursor()
                 dismissSelectionMagnifier()
                 showTextActionMenu()
