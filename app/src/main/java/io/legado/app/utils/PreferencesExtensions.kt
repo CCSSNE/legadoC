@@ -40,11 +40,8 @@ fun Context.getSharedPreferences(
         // 返回修改路径以后的 SharedPreferences :%FILE_PATH%/%fileName%.xml
         return getSharedPreferences(fileName, Activity.MODE_PRIVATE)
     } catch (e: NoSuchFieldException) {
-        e.printOnDebug()
     } catch (e: IllegalArgumentException) {
-        e.printOnDebug()
     } catch (e: IllegalAccessException) {
-        e.printOnDebug()
     }
     return null
 }

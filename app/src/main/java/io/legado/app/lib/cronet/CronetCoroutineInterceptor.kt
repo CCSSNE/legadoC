@@ -1,7 +1,6 @@
 package io.legado.app.lib.cronet
 
 import androidx.annotation.Keep
-import io.legado.app.utils.printOnDebug
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeout
@@ -65,7 +64,6 @@ class CronetCoroutineInterceptor(private val cookieJar: CookieJar) : Interceptor
             if (!e.message.toString().contains("ERR_CERT_", true)
                 && !e.message.toString().contains("ERR_SSL_", true)
             ) {
-                e.printOnDebug()
             }
             chain.proceed(original)
         }

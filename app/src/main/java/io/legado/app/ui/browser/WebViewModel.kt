@@ -20,7 +20,6 @@ import io.legado.app.utils.ACache
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.createFileIfNotExist
 import io.legado.app.utils.openOutputStream
-import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.toastOnUi
 import org.apache.commons.text.StringEscapeUtils
 import java.util.Date
@@ -79,7 +78,6 @@ class WebViewModel(application: Application) : BaseViewModel(application) {
             success.invoke()
         }.onError {
             context.toastOnUi("error\n${it.localizedMessage}")
-            it.printOnDebug()
         }
     }
 

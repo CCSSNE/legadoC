@@ -29,8 +29,6 @@ fun WebSettings.setDarkeningAllowed(allow: Boolean) {
         kotlin.runCatching {
             WebSettingsCompat.setAlgorithmicDarkeningAllowed(this, allow)
             return
-        }.onFailure {
-            it.printOnDebug()
         }
     }
     if (allow) {

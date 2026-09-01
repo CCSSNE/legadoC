@@ -1,8 +1,6 @@
 package io.legado.app.model
 
 import android.annotation.SuppressLint
-import android.util.Log
-import io.legado.app.BuildConfig
 import io.legado.app.constant.AppPattern
 import io.legado.app.data.entities.*
 import io.legado.app.help.book.isWebFile
@@ -39,9 +37,6 @@ object Debug {
         showTime: Boolean = true,
         state: Int = 1
     ) {
-        if (BuildConfig.DEBUG) {
-            Log.d("sourceDebug", msg)
-        }
         //调试信息始终要执行
         callback?.let {
             if ((debugSource != sourceUrl || !print)) return

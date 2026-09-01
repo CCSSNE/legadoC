@@ -33,7 +33,6 @@ class FileAssociationViewModel(application: Application) : BaseAssociationViewMo
                 onLineImportLive.postValue(uri)
             }
         }.onError {
-            it.printOnDebug()
             val msg = "无法打开文件\n${it.localizedMessage}"
             errorLive.postValue(msg)
             AppLog.put(msg, it)
@@ -47,7 +46,6 @@ class FileAssociationViewModel(application: Application) : BaseAssociationViewMo
                 return
             }
         }.onFailure {
-            it.printOnDebug()
             AppLog.put("尝试导入为JSON文件失败\n${it.localizedMessage}", it)
         }
         if (fileDoc.name.matches(bookFileRegex)) {

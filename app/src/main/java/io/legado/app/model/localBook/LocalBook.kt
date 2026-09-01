@@ -69,7 +69,6 @@ import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.isDataUrl
 import io.legado.app.utils.postEvent
-import io.legado.app.utils.printOnDebug
 import kotlinx.coroutines.runBlocking
 import org.apache.commons.text.StringEscapeUtils
 import splitties.init.appCtx
@@ -242,7 +241,6 @@ object LocalBook {
                 }
             }
         } catch (e: Exception) {
-            e.printOnDebug()
             AppLog.put("获取本地书籍内容失败\n${e.localizedMessage}", e)
             "获取本地书籍内容失败\n${e.localizedMessage}"
         }
@@ -1422,7 +1420,6 @@ object LocalBook {
             }
             return true
         } catch (e: Exception) {
-            e.printOnDebug()
             AppLog.put("自动下载webDav书籍失败", e)
             return false
         }

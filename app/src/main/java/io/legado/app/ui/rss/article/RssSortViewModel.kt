@@ -55,8 +55,6 @@ class RssSortViewModel(application: Application) : BaseViewModel(application) {
                 appDb.rssArticleDao.delete(it)
             }
             order = System.currentTimeMillis()
-        }.onSuccess {
-
         }
     }
 

@@ -10,7 +10,6 @@ import android.view.WindowManager.BadTokenException
 import androidx.annotation.RequiresApi
 import io.legado.app.R
 import io.legado.app.constant.IntentAction
-import io.legado.app.utils.printOnDebug
 
 
 /**
@@ -33,7 +32,6 @@ class WebTileService : TileService() {
                 }
             }
         } catch (e: Exception) {
-            e.printOnDebug()
         }
         return super.onStartCommand(intent, flags, startId)
     }

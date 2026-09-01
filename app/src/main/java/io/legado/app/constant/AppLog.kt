@@ -1,8 +1,6 @@
 package io.legado.app.constant
 
-import android.util.Log
 import android.util.Base64
-import io.legado.app.BuildConfig
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.toastOnUi
@@ -68,10 +66,6 @@ object AppLog {
         mLogs.add(0, entry)
         persist(entry)
         postEvent(EventBus.APP_LOG_CHANGED, mLogs.size)
-        if (BuildConfig.DEBUG) {
-            val stackTrace = Thread.currentThread().stackTrace
-            Log.e(stackTrace[3].className, message, throwable)
-        }
     }
 
     fun putAi(message: String?, throwable: Throwable? = null) {
@@ -103,10 +97,6 @@ object AppLog {
             mLogs.removeLastOrNull()
         }
         mLogs.add(0, Entry(System.currentTimeMillis(), message, throwable, module ?: callerModule()))
-        if (BuildConfig.DEBUG) {
-            val stackTrace = Thread.currentThread().stackTrace
-            Log.e(stackTrace[3].className, message, throwable)
-        }
     }
 
     @Synchronized

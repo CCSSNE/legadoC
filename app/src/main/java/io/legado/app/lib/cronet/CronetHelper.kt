@@ -11,7 +11,6 @@ import io.legado.app.help.http.CookieManager.cookieJarHeader
 import io.legado.app.help.http.SSLHelper
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.model.analyzeRule.AnalyzeUrl.Companion.customIp
-import io.legado.app.utils.DebugLog
 import io.legado.app.utils.externalCache
 import okhttp3.Headers
 import okhttp3.MediaType
@@ -43,7 +42,6 @@ val cronetEngine: ExperimentalCronetEngine? by lazy {
     }
     try {
         val engine = builder.build()
-        DebugLog.d("Cronet Version:", engine.versionString)
         return@lazy engine
     } catch (e: Throwable) {
         AppLog.put("初始化cronetEngine出错", e)

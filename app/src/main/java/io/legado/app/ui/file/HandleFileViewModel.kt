@@ -27,7 +27,6 @@ class HandleFileViewModel(application: Application) : BaseViewModel(application)
             success.invoke(it)
         }.onError {
             AppLog.put("上传文件失败\n${it.localizedMessage}", it)
-            it.printOnDebug()
             errorLiveData.postValue(it.localizedMessage)
         }
     }
@@ -53,7 +52,6 @@ class HandleFileViewModel(application: Application) : BaseViewModel(application)
                 Uri.fromFile(newFile)
             }
         }.onError {
-            it.printOnDebug()
             errorLiveData.postValue(it.localizedMessage)
         }.onSuccess {
             success.invoke(it)

@@ -2,9 +2,7 @@ package io.legado.app.model.localBook
 
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
-import io.legado.app.utils.DebugLog
 import io.legado.app.utils.FileUtils
-import io.legado.app.utils.printOnDebug
 import me.ag2s.umdlib.domain.UmdBook
 import me.ag2s.umdlib.umd.UmdReader
 import java.io.File
@@ -81,7 +79,6 @@ class UmdFile(var book: Book) {
                 FileUtils.writeBytes(book.coverUrl!!, it.cover.coverData)
             }
         } catch (e: Exception) {
-            e.printOnDebug()
         }
     }
 
@@ -111,7 +108,6 @@ class UmdFile(var book: Book) {
             chapter.index = index
             chapter.bookUrl = book.bookUrl
             chapter.url = index.toString()
-            DebugLog.d(javaClass.name, chapter.url)
             chapterList.add(chapter)
         }
         return chapterList

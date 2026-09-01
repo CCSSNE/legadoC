@@ -25,7 +25,6 @@ import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isJsonArray
 import io.legado.app.utils.isJsonObject
 import io.legado.app.utils.jsonPath
-import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers
 
@@ -80,7 +79,6 @@ class BookSourceEditViewModel(application: Application) : BaseViewModel(applicat
             success?.invoke(it)
         }.onError {
             context.toastOnUi(it.localizedMessage)
-            it.printOnDebug()
         }
     }
 
@@ -94,7 +92,6 @@ class BookSourceEditViewModel(application: Application) : BaseViewModel(applicat
             }
         }.onError {
             context.toastOnUi(it.localizedMessage ?: "Error")
-            it.printOnDebug()
         }
     }
 
@@ -105,7 +102,6 @@ class BookSourceEditViewModel(application: Application) : BaseViewModel(applicat
             finally.invoke(it)
         }.onError {
             context.toastOnUi(it.localizedMessage ?: "Error")
-            it.printOnDebug()
         }
     }
 

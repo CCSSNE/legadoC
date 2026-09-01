@@ -13,7 +13,6 @@ import io.legado.app.utils.InfoMap
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.isJsonArray
-import io.legado.app.utils.printOnDebug
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -119,7 +118,6 @@ suspend fun BookSource.exploreKinds(): List<ExploreKind> {
                 }
             }.onFailure {
                 kinds.add(ExploreKind("ERROR:${it.localizedMessage}", it.stackTraceToString()))
-                it.printOnDebug()
             }
         }
         exploreKindsMap[exploreKindsKey] = kinds

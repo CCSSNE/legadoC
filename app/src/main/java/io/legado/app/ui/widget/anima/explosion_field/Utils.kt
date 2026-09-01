@@ -22,7 +22,6 @@ import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import android.view.View
 import android.widget.ImageView
-import io.legado.app.utils.printOnDebug
 
 
 import kotlin.math.roundToInt
@@ -68,7 +67,6 @@ object Utils {
         try {
             return Bitmap.createBitmap(width, height, config)
         } catch (e: OutOfMemoryError) {
-            e.printOnDebug()
             if (retryCount > 0) {
                 System.gc()
                 return createBitmapSafely(width, height, config, retryCount - 1)

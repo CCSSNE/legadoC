@@ -581,11 +581,6 @@ class ReadBookActivity : BaseReadBookActivity(),
                     R.id.menu_re_segment -> item.isChecked = book.getReSegment()
                     R.id.menu_offline_review_mode ->
                         item.isChecked = AppConfig.offlineReviewMode
-//                    R.id.menu_enable_review -> {
-//                        item.isVisible = BuildConfig.DEBUG
-//                        item.isChecked = AppConfig.enableReview
-//                    }
-
                     R.id.menu_reverse_content -> item.isVisible = onLine
                     R.id.menu_del_ruby_tag -> item.isChecked = book.getDelTag(Book.rubyTag)
                     R.id.menu_del_h_tag -> item.isChecked = book.getDelTag(Book.hTag)
@@ -693,12 +688,6 @@ class ReadBookActivity : BaseReadBookActivity(),
                 item.isChecked = it.getReSegment()
                 ReadBook.loadContent(false)
             }
-
-//            R.id.menu_enable_review -> {
-//                AppConfig.enableReview = !AppConfig.enableReview
-//                item.isChecked = AppConfig.enableReview
-//                ReadBook.loadContent(false)
-//            }
 
             R.id.menu_del_ruby_tag -> ReadBook.book?.let {
                 item.isChecked = !item.isChecked

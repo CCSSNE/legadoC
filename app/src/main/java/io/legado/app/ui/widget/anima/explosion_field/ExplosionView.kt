@@ -25,7 +25,6 @@ import android.graphics.Rect
 import android.media.MediaPlayer
 import android.util.AttributeSet
 import android.view.View
-import io.legado.app.utils.DebugLog
 
 import java.util.*
 
@@ -126,11 +125,9 @@ class ExplosionView @JvmOverloads constructor(context: Context, attrs: Attribute
             }
 
             override fun onAnimationCancel(animator: Animator) {
-                DebugLog.i(javaClass.name, "CANCEL")
             }
 
             override fun onAnimationRepeat(animator: Animator) {
-                DebugLog.i(javaClass.name, "REPEAT")
             }
         })
 

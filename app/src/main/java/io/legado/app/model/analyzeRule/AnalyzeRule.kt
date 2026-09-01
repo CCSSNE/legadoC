@@ -33,7 +33,6 @@ import io.legado.app.utils.getOrPutLimit
 import io.legado.app.utils.isDataUrl
 import io.legado.app.utils.isJson
 import io.legado.app.utils.isMainThread
-import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.splitNotBlank
 import io.legado.app.utils.stackTraceStr
 import kotlinx.coroutines.ensureActive
@@ -973,7 +972,6 @@ class AnalyzeRule(
         }.onFailure {
             coroutineContext.ensureActive()
             log("ajax(${urlStr}) error\n${it.stackTraceToString()}")
-            it.printOnDebug()
         }.getOrElse {
             it.stackTraceStr
         }

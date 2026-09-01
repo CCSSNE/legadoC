@@ -22,7 +22,6 @@ import io.legado.app.utils.compressPreservingAlpha
 import io.legado.app.utils.decodeBase64DataUrlBytes
 import io.legado.app.utils.encodeURI
 import io.legado.app.utils.isXml
-import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.preferredCoverExtension
 import io.legado.app.ui.book.read.page.provider.ChapterProvider
 import me.ag2s.epublib.domain.EpubBook
@@ -302,7 +301,6 @@ class EpubFile(var book: Book) {
         }.onFailure {
             invalidateBookCache(closeDescriptor = true)
             AppLog.put("读取Epub文件失败\n${it.localizedMessage}", it)
-            it.printOnDebug()
         }.getOrThrow()
     }
 
@@ -2222,7 +2220,6 @@ class EpubFile(var book: Book) {
             false
         } catch (e: Exception) {
             AppLog.put("加载书籍封面失败\n${e.localizedMessage}", e)
-            e.printOnDebug()
             false
         }
     }

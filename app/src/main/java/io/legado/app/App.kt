@@ -264,13 +264,4 @@ class App : Application() {
             private const val TAG = "[LiveEventBus]"
         }
     }
-
-    companion object {
-        init {
-            if (BuildConfig.DEBUG) {
-                System.setProperty("kotlinx.coroutines.debug", "on")
-            }
-        }
-    }
-
 }

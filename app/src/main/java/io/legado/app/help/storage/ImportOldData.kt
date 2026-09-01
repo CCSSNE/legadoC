@@ -130,7 +130,6 @@ object ImportOldData {
             if (book.bookUrl.isBlank()) continue
             book.name = jsonItem.readString("$.bookInfoBean.name") ?: ""
             if (book.bookUrl in existingBooks) {
-                DebugLog.d(javaClass.name, "Found existing book: " + book.name)
                 continue
             }
             book.origin = jsonItem.readString("$.tag") ?: ""

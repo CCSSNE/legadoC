@@ -32,7 +32,6 @@ import io.legado.app.utils.dpToPx
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.openUrl
-import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.setLayoutWrapMaxHeight
 import io.legado.app.utils.showDialogFragment
@@ -530,7 +529,6 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true),
                 } catch (e: Exception) {
                     AppLog.put("登录出错\n${e.localizedMessage}", e)
                     context?.toastOnUi("登录出错\n${e.localizedMessage}")
-                    e.printOnDebug()
                 }
             }
         }

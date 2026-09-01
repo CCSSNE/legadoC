@@ -26,7 +26,6 @@ import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isJsonArray
-import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -200,8 +199,6 @@ class BookshelfViewModel(application: Application) : BaseViewModel(application) 
                     }
                 }
             }
-        }.onError {
-            it.printOnDebug()
         }.onFinally {
             context.toastOnUi(R.string.success)
         }

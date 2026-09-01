@@ -5,7 +5,6 @@ import android.os.Build
 import androidx.annotation.Keep
 import io.legado.app.help.http.CookieManager
 import io.legado.app.help.http.CookieManager.cookieJarHeader
-import io.legado.app.utils.printOnDebug
 import okhttp3.Call
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
@@ -59,7 +58,6 @@ class CronetInterceptor(private val cookieJar: CookieJar) : Interceptor {
             if (!e.message.toString().contains("ERR_CERT_", true)
                 && !e.message.toString().contains("ERR_SSL_", true)
             ) {
-                e.printOnDebug()
             }
         }
         try {

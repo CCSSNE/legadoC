@@ -91,8 +91,6 @@ object StringUtils {
                     convertFormat.format(date)
                 }
             }
-        }.onFailure {
-            it.printOnDebug()
         }
         return ""
     }

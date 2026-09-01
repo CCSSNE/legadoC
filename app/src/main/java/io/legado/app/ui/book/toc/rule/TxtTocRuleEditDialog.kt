@@ -166,7 +166,6 @@ class TxtTocRuleEditDialog() : BaseDialogFragment(R.layout.dialog_toc_regex_edit
                 success.invoke(it)
             }.onError {
                 context.toastOnUi(it.localizedMessage ?: "Error")
-                it.printOnDebug()
             }
         }
 

@@ -24,7 +24,6 @@ import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.utils.dpToPx
-import io.legado.app.utils.printOnDebug
 
 
 class SearchView @JvmOverloads constructor(
@@ -75,7 +74,6 @@ class SearchView @JvmOverloads constructor(
             updateQueryHint()
             styleApplied = true
         } catch (e: Exception) {
-            e.printOnDebug()
         }
     }
 

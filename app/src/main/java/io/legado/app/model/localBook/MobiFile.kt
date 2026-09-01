@@ -16,7 +16,6 @@ import io.legado.app.utils.FileUtils
 import io.legado.app.utils.HtmlFormatter
 import io.legado.app.utils.compressPreservingAlpha
 import io.legado.app.utils.preferredCoverExtension
-import io.legado.app.utils.printOnDebug
 import org.jsoup.Jsoup
 import java.io.File
 import java.io.FileOutputStream
@@ -86,7 +85,6 @@ class MobiFile(var book: Book) {
             }
         }.onFailure {
             AppLog.put("读取Mobi文件失败\n${it.localizedMessage}", it)
-            it.printOnDebug()
         }.getOrThrow()
     }
 
@@ -300,7 +298,6 @@ class MobiFile(var book: Book) {
             }
         } catch (e: Exception) {
             AppLog.put("加载书籍封面失败\n${e.localizedMessage}", e)
-            e.printOnDebug()
         }
     }
 

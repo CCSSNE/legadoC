@@ -1,6 +1,5 @@
 package io.legado.app.help.coroutine
 
-import io.legado.app.utils.printOnDebug
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -180,7 +179,6 @@ class Coroutine<T>(
                 ensureActive()
                 success?.let { dispatchCallback(this, value, it) }
             } catch (e: Throwable) {
-                e.printOnDebug()
                 val consume: Boolean = errorReturn?.value?.let { value ->
                     success?.let { dispatchCallback(this, value, it) }
                     true

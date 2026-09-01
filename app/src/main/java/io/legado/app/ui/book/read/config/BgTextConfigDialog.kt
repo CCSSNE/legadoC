@@ -59,7 +59,6 @@ import io.legado.app.utils.openInputStream
 import io.legado.app.utils.openOutputStream
 import io.legado.app.utils.outputStream
 import io.legado.app.utils.postEvent
-import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.readBytes
 import io.legado.app.utils.readUri
 import io.legado.app.utils.stackTraceStr
@@ -377,7 +376,6 @@ class BgTextConfigDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_bg
         }.onSuccess {
             toastOnUi("导出成功, 文件名为 $exportFileName")
         }.onError {
-            it.printOnDebug()
             AppLog.put("导出失败:${it.localizedMessage}", it)
             longToast("导出失败:${it.localizedMessage}")
         }
@@ -427,7 +425,6 @@ class BgTextConfigDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_bg
         execute {
             importConfig(uri.readBytes(requireContext()))
         }.onError {
-            it.printOnDebug()
             longToast("导入失败:${it.localizedMessage}")
         }
     }
@@ -440,7 +437,6 @@ class BgTextConfigDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_bg
             postEvent(EventBus.UP_CONFIG, arrayListOf(1, 2, 5))
             toastOnUi("导入成功")
         }.onError {
-            it.printOnDebug()
             longToast("导入失败:${it.localizedMessage}")
         }
     }

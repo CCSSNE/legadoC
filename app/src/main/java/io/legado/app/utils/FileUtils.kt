@@ -45,7 +45,6 @@ object FileUtils {
                 file.createNewFile()
             }
         } catch (e: IOException) {
-            e.printOnDebug()
         }
         return file
     }
@@ -98,7 +97,6 @@ object FileUtils {
         try {
             sdCardDirectory = File(sdCardDirectory).canonicalPath
         } catch (e: IOException) {
-            e.printOnDebug()
         }
         return sdCardDirectory
     }

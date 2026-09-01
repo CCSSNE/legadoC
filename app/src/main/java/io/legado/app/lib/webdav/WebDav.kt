@@ -13,7 +13,6 @@ import io.legado.app.model.analyzeRule.CustomUrl
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.findNS
 import io.legado.app.utils.findNSPrefix
-import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.toRequestBody
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.currentCoroutineContext
@@ -239,7 +238,6 @@ open class WebDav(
                 )
                 list.add(webDavFile)
             } catch (e: MalformedURLException) {
-                e.printOnDebug()
             }
         }
         return list

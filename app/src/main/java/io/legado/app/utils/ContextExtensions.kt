@@ -299,8 +299,6 @@ val Context.sysScreenOffTime: Int
     get() {
         return kotlin.runCatching {
             Settings.System.getInt(contentResolver, Settings.System.SCREEN_OFF_TIMEOUT)
-        }.onFailure {
-            it.printOnDebug()
         }.getOrDefault(0)
     }
 
@@ -460,7 +458,6 @@ fun Context.openUrl(url: String) {
         startActivity(IntentHelp.getBrowserIntent(url))
     } catch (e: Exception) {
         toastOnUi(e.localizedMessage ?: "open url error")
-        e.printOnDebug()
     }
 }
 
@@ -469,7 +466,6 @@ fun Context.openUrl(uri: Uri) {
         startActivity(IntentHelp.getBrowserIntent(uri))
     } catch (e: Exception) {
         toastOnUi(e.localizedMessage ?: "open url error")
-        e.printOnDebug()
     }
 }
 
@@ -489,7 +485,6 @@ fun Context.openFileUri(uri: Uri, type: String? = null) {
         startActivity(intent)
     } catch (e: Exception) {
         toastOnUi(e.stackTraceStr)
-        e.printOnDebug()
     }
 }
 
@@ -516,7 +511,6 @@ val Context.channel: String
             val appInfo = pm.getApplicationInfo(packageName, PackageManager.GET_META_DATA)
             return appInfo.metaData.getString("channel") ?: ""
         } catch (e: Exception) {
-            e.printOnDebug()
         }
         return ""
     }

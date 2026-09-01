@@ -2,7 +2,6 @@ package io.legado.app.help.http
 
 import android.annotation.SuppressLint
 import android.net.http.X509TrustManagerExtensions
-import io.legado.app.utils.printOnDebug
 
 
 import java.io.IOException
@@ -137,9 +136,7 @@ object SSLHelper {
             sslParams.trustManager = manager
             return sslParams
         } catch (e: NoSuchAlgorithmException) {
-            e.printOnDebug()
         } catch (e: KeyManagementException) {
-            e.printOnDebug()
         }
         return null
     }
@@ -153,7 +150,6 @@ object SSLHelper {
             kmf.init(clientKeyStore, password.toCharArray())
             return kmf.keyManagers
         } catch (e: Exception) {
-            e.printOnDebug()
         }
         return null
     }
@@ -172,7 +168,6 @@ object SSLHelper {
             try {
                 certStream.close()
             } catch (e: IOException) {
-                e.printOnDebug()
             }
         }
         //我们创建一个默认类型的TrustManagerFactory

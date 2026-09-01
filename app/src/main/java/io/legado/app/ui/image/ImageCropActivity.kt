@@ -27,7 +27,6 @@ import io.legado.app.help.http.okHttpClient
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.utils.ImageProcessUtils
 import io.legado.app.utils.applyNavigationBarPadding
-import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.setLightStatusBar
 import io.legado.app.utils.setNavigationBarColorAuto
 import io.legado.app.utils.toastOnUi
@@ -106,8 +105,6 @@ class ImageCropActivity : BaseActivity<ActivityImageCropBinding>(
             val bitmap = withContext(Dispatchers.IO) {
                 kotlin.runCatching {
                     decodeBitmapFromStableFile(uri)
-                }.onFailure {
-                    it.printOnDebug()
                 }.getOrNull()
             }
             if (bitmap == null) {
@@ -280,8 +277,6 @@ class ImageCropActivity : BaseActivity<ActivityImageCropBinding>(
                     } finally {
                         cropped.recycle()
                     }
-                }.onFailure {
-                    it.printOnDebug()
                 }.getOrNull()
             }
             if (resultPath.isNullOrBlank()) {

@@ -18,7 +18,6 @@ import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.applyTint
-import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -92,7 +91,6 @@ abstract class BaseImportBookActivity<VM : ViewModel> :
             books.firstOrNull()?.let(onSuccess)
                 ?: toastOnUi(R.string.unsupport_archivefile_entry)
         }.onFailure { e ->
-            e.printOnDebug()
             toastOnUi("导入压缩包失败：${e.localizedMessage}")
         }
     }

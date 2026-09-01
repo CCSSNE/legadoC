@@ -129,7 +129,6 @@ object RealPathUtil {
                 return cursor.getString(index)
             }
         } catch (e: IllegalArgumentException) {
-            e.printOnDebug()
             val file = File(context.cacheDir, "tmp")
             val filePath = file.absolutePath
             try {

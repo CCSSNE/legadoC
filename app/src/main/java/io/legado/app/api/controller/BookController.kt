@@ -24,7 +24,6 @@ import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.GSON
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.fromJsonObject
-import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.stackTraceStr
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
@@ -253,7 +252,6 @@ object BookController {
     suspend fun saveBookProgress(postData: String?): ReturnData {
         val returnData = ReturnData()
         GSON.fromJsonObject<BookProgress>(postData)
-            .onFailure { it.printOnDebug() }
             .getOrNull()?.let { bookProgress ->
                 appDb.bookDao.getBook(
                     bookProgress.name,

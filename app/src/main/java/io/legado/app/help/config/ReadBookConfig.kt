@@ -28,7 +28,6 @@ import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.hexString
 import io.legado.app.utils.isContentScheme
-import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.putPrefInt
 import io.legado.app.utils.resizeAndRecycle
@@ -176,7 +175,6 @@ object ReadBookConfig {
                 val json = configFile.readText()
                 c = GSON.fromJsonObject<Config>(json).getOrThrow()
             } catch (e: Exception) {
-                e.printOnDebug()
             }
         }
         shareConfig = c ?: getConfig(5).copy()
@@ -1221,9 +1219,7 @@ object ReadBookConfig {
                     }
                 }
             } catch (e: OutOfMemoryError) {
-                e.printOnDebug()
             } catch (e: Exception) {
-                e.printOnDebug()
             }
             return bgDrawable ?: appCtx.getCompatColor(R.color.background).toDrawable()
         }

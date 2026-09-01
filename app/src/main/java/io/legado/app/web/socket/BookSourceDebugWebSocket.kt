@@ -93,8 +93,6 @@ class BookSourceDebugWebSocket(handshakeRequest: NanoHTTPD.IHTTPSession) :
                     Debug.cancelDebug(true)
                     close(NanoWSD.WebSocketFrame.CloseCode.NormalClosure, "调试结束", false)
                 }
-            }.onFailure {
-                it.printOnDebug()
             }
         }
     }

@@ -11,7 +11,6 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.model.webBook.WebBook
-import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.stackTraceStr
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -86,7 +85,6 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
                 appDb.searchBookDao.insert(*searchBooks.toTypedArray())
                 pageLiveData.postValue(page)
             }.onError {
-                it.printOnDebug()
                 errorTopLiveData.postValue(it.stackTraceStr)
             }
     }
@@ -110,7 +108,6 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
                 pageLiveData.postValue(page)
                 page++
             }.onError {
-                it.printOnDebug()
                 errorLiveData.postValue(it.stackTraceStr)
             }
     }

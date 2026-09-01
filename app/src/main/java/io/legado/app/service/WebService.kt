@@ -19,7 +19,6 @@ import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.postEvent
-import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.servicePendingIntent
 import io.legado.app.utils.startForegroundServiceCompat
@@ -173,7 +172,6 @@ class WebService : BaseService() {
                 startForegroundNotification()
             } catch (e: IOException) {
                 toastOnUi(e.localizedMessage ?: "")
-                e.printOnDebug()
                 stopSelf()
             }
         } else {

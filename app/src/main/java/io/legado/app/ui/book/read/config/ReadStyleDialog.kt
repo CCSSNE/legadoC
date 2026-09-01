@@ -87,7 +87,6 @@ import io.legado.app.utils.openOutputStream
 import io.legado.app.utils.outputStream
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.postEvent
-import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.readBytes
 import io.legado.app.utils.readUri
 import io.legado.app.utils.setSelectionSafely
@@ -1157,7 +1156,6 @@ class ReadStyleDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_book_
         }.onSuccess {
             toastOnUi("导出成功, 文件名为 $exportFileName")
         }.onError {
-            it.printOnDebug()
             longToast("导出失败:${it.localizedMessage}")
         }
     }
@@ -1226,7 +1224,6 @@ class ReadStyleDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_book_
         }.onSuccess {
             saveImportedStyle(it)
         }.onError {
-            it.printOnDebug()
             longToast("导入失败:${it.localizedMessage}")
         }
     }
@@ -1237,7 +1234,6 @@ class ReadStyleDialog : BaseReaderSheetDialogFragment(R.layout.dialog_read_book_
         }.onSuccess {
             saveImportedStyle(it)
         }.onError {
-            it.printOnDebug()
             longToast("导入失败:${it.localizedMessage}")
         }
     }

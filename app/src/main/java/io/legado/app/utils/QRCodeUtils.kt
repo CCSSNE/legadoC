@@ -102,7 +102,6 @@ object QRCodeUtils {
             }
             return bitmap
         } catch (e: WriterException) {
-            e.printOnDebug()
         }
         return null
     }
@@ -160,7 +159,6 @@ object QRCodeUtils {
             canvas.restore()
         } catch (e: Exception) {
             bitmap = null
-            e.printOnDebug()
         }
         return bitmap
     }
@@ -221,7 +219,6 @@ object QRCodeUtils {
                 }
             }
         } catch (e: java.lang.Exception) {
-            e.printOnDebug()
         } finally {
             reader.reset()
         }
@@ -294,7 +291,6 @@ object QRCodeUtils {
                 result = decodeInternal(reader, source.rotateCounterClockwise())
             }
         } catch (e: Exception) {
-            e.printOnDebug()
         } finally {
             reader.reset()
         }
@@ -415,7 +411,6 @@ object QRCodeUtils {
                 addCode(bitmap, content, textSize, codeColor, textSize / 2)
             } else bitmap
         } catch (e: WriterException) {
-            e.printOnDebug()
         }
         return null
     }
@@ -470,7 +465,6 @@ object QRCodeUtils {
             canvas.restore()
         } catch (e: Exception) {
             bitmap = null
-            e.printOnDebug()
         }
         return bitmap
     }
