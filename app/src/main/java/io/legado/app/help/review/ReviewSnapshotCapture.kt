@@ -1301,13 +1301,15 @@ object ReviewSnapshotCapture {
             CSS_URL_REF_REGEX.findAll(text).forEach { match ->
                 val value = match.groupValues[2]
                 if (value.isNotBlank()) {
-                    refs += cssRefOccurrence(base, value, match.start(2), match.end(2))
+                    val g = match.groups[2]!!
+                    refs += cssRefOccurrence(base, value, g.range.first, g.range.last + 1)
                 }
             }
             CSS_IMPORT_REF_REGEX.findAll(text).forEach { match ->
                 val value = match.groupValues[1]
                 if (value.isNotBlank()) {
-                    refs += cssRefOccurrence(base, value, match.start(1), match.end(1))
+                    val g = match.groups[1]!!
+                    refs += cssRefOccurrence(base, value, g.range.first, g.range.last + 1)
                 }
             }
             return StagedCss(cssUrl, text, refs)
@@ -1646,10 +1648,10 @@ object ReviewSnapshotCapture {
                             diagnostics?.stageFail("SANITIZE", error)
                             fail(error)
                         } else {
-                            val completeHtml = outcome.html
+                            val completeHtml = outcome!!.html
                             // 部分成功：页面 HTML 已抓到，下载失败的资源只能剔除或以 #
                             // 占位；快照照常落盘渲染，按钮仍按失败计，等待重试补全。
-                            val dropped = outcome.dropped + inline.droppedResources
+                            val dropped = outcome!!.dropped + inline.droppedResources
                             if (dropped > 0) {
                                 diagnostics?.mark(
                                     "SANITIZE_PARTIAL",
