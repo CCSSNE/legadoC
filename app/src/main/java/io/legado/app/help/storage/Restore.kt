@@ -7,7 +7,6 @@ import androidx.documentfile.provider.DocumentFile
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
-import io.legado.app.BuildConfig
 import io.legado.app.R
 import io.legado.app.constant.AppConst.androidId
 import io.legado.app.constant.EventBus
@@ -351,9 +350,7 @@ object Restore {
         appCtx.toastOnUi(R.string.restore_success)
         withContext(Main) {
             delay(100)
-            if (!BuildConfig.DEBUG) {
-                LauncherIconHelp.changeIcon(appCtx.getPrefString(PreferKey.launcherIcon))
-            }
+            LauncherIconHelp.changeIcon(appCtx.getPrefString(PreferKey.launcherIcon))
             ThemeConfig.applyDayNight(appCtx)
         }
     }

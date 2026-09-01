@@ -6,7 +6,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.widget.Toast
 import androidx.fragment.app.Fragment
-import io.legado.app.BuildConfig
 import io.legado.app.databinding.ViewToastBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.bottomBackground
@@ -53,7 +52,7 @@ fun Context.toastOnUiLegacy(message: CharSequence) {
     runOnUI {
         if (cancelToastsWhenDisabled()) return@runOnUI
         kotlin.runCatching {
-            if (toastLegacy == null || BuildConfig.DEBUG || AppConfig.debugLogEnabled) {
+            if (toastLegacy == null || AppConfig.debugLogEnabled) {
                 toastLegacy = Toast.makeText(this, message, Toast.LENGTH_SHORT)
             } else {
                 toastLegacy?.setText(message)
@@ -76,7 +75,7 @@ fun Context.longToastOnUiLegacy(message: CharSequence) {
     runOnUI {
         if (cancelToastsWhenDisabled()) return@runOnUI
         kotlin.runCatching {
-            if (toastLegacy == null || BuildConfig.DEBUG || AppConfig.debugLogEnabled) {
+            if (toastLegacy == null || AppConfig.debugLogEnabled) {
                 toastLegacy = Toast.makeText(this, message, Toast.LENGTH_LONG)
             } else {
                 toastLegacy?.setText(message)

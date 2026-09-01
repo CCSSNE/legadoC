@@ -4,7 +4,6 @@ import android.app.Application
 import android.content.Intent
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
-import io.legado.app.BuildConfig
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
@@ -77,7 +76,7 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
         val url = exploreUrl
         if (source == null || url == null) return
         WebBook.exploreBook(viewModelScope, source, url, page)
-            .timeout(if (BuildConfig.DEBUG) 0L else 60000L)
+            .timeout(60000L)
             .onSuccess(IO) { searchBooks ->
                 val newBooks = linkedSetOf<SearchBook>()
                 newBooks.addAll(searchBooks)
@@ -103,7 +102,7 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
         val url = exploreUrl
         if (source == null || url == null) return
         WebBook.exploreBook(viewModelScope, source, url, page)
-            .timeout(if (BuildConfig.DEBUG) 0L else 60000L)
+            .timeout(60000L)
             .onSuccess(IO) { searchBooks ->
                 books.addAll(searchBooks)
                 booksData.postValue(books.toList())

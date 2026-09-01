@@ -97,7 +97,7 @@ class App : Application() {
             LiveEventBus.config()
                 .lifecycleObserverAlwaysActive(true)
                 .autoClear(false)
-                .enableLogger(BuildConfig.DEBUG || AppConfig.debugLogEnabled)
+                .enableLogger(AppConfig.debugLogEnabled)
                 .setLogger(EventLogger())
             DefaultData.upVersion()
             AppFreezeMonitor.init(this@App)

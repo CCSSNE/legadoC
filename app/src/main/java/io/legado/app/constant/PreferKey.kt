@@ -165,7 +165,6 @@ object PreferKey {
     const val aiApiKey = "aiApiKey"
     const val aiCurrentModel = "aiCurrentModel"
     const val aiModelList = "aiModelList"
-    const val enableReview = "enableReview"
     const val syncCacheReview = "syncCacheReview"
     const val autoDownloadReview = "autoDownloadReview"
     const val downloadChapterIntervalMillis = "downloadChapterIntervalMillis"

@@ -31,7 +31,6 @@ import androidx.core.view.size
 import androidx.lifecycle.lifecycleScope
 import com.jaredrummler.android.colorpicker.ColorPickerDialogListener
 import com.google.android.material.snackbar.Snackbar
-import io.legado.app.BuildConfig
 import io.legado.app.R
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
@@ -494,16 +493,14 @@ class ReadBookActivity : BaseReadBookActivity(),
         ReadBook.cancelPreDownloadTask()
         unregisterReceiver(timeBatteryReceiver)
         upSystemUiVisibility()
-        if (!BuildConfig.DEBUG && ReadBook.inBookshelf) {
+        if (ReadBook.inBookshelf) {
             if (AppConfig.syncBookProgressPlus) {
                 ReadBook.syncProgress()
             } else {
                 ReadBook.uploadProgress()
             }
         }
-        if (!BuildConfig.DEBUG) {
-            Backup.autoBack(this)
-        }
+        Backup.autoBack(this)
         justInitData = false
         networkChangedListener.unRegister()
     }
@@ -3423,9 +3420,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         if (!ReadBook.inBookshelf && !isChangingConfigurations) {
             viewModel.removeFromBookshelf(null)
         }
-        if (!BuildConfig.DEBUG) {
-            Backup.autoBack(this)
-        }
+        Backup.autoBack(this)
     }
 
     override fun observeLiveBus() = binding.run {

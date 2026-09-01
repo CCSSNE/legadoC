@@ -1084,12 +1084,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val onlyUpdateRead: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.onlyUpdateRead)
 
-    var enableReview: Boolean
-        get() = BuildConfig.DEBUG && appCtx.getPrefBoolean(PreferKey.enableReview, false)
-        set(value) {
-            appCtx.putPrefBoolean(PreferKey.enableReview, value)
-        }
-
     /** 缓存评论时抓取评论页快照 */
     var syncCacheReview: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.syncCacheReview, true)

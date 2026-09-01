@@ -1,6 +1,5 @@
 package io.legado.app.utils
 
-import io.legado.app.BuildConfig
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern.semicolonRegex
 import io.legado.app.help.config.AppConfig
@@ -78,7 +77,7 @@ object UrlUtil {
         conn.instanceFollowRedirects = false
         conn.connect()
 
-        if (AppConfig.debugLogEnabled || BuildConfig.DEBUG) {
+        if (AppConfig.debugLogEnabled) {
             val headers = conn.headerFields
             val headersString = buildString {
                 headers.forEach { (key, value) ->

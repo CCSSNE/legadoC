@@ -20,7 +20,6 @@ import com.bumptech.glide.Glide
 import com.bumptech.glide.integration.recyclerview.RecyclerViewPreloader
 import com.bumptech.glide.request.target.Target.SIZE_ORIGINAL
 import com.bumptech.glide.util.FixedPreloadSizeProvider
-import io.legado.app.BuildConfig
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.BookType
@@ -412,17 +411,13 @@ class ReadMangaActivity : VMBaseActivity<ActivityMangaBinding, ReadMangaViewMode
         super.onPause()
         if (ReadManga.inBookshelf) {
             ReadManga.saveRead()
-            if (!BuildConfig.DEBUG) {
-                if (AppConfig.syncBookProgressPlus) {
-                    ReadManga.syncProgress()
-                } else {
-                    ReadManga.uploadProgress()
-                }
+            if (AppConfig.syncBookProgressPlus) {
+                ReadManga.syncProgress()
+            } else {
+                ReadManga.uploadProgress()
             }
         }
-        if (!BuildConfig.DEBUG) {
-            Backup.autoBack(this)
-        }
+        Backup.autoBack(this)
         ReadManga.cancelPreDownloadTask()
         networkChangedListener.unRegister()
         mScrollTimer.isEnabledPage = false
