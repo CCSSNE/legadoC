@@ -11,9 +11,7 @@ import io.legado.app.constant.LogModule
 import io.legado.app.data.entities.PendingReviewComment
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -80,13 +78,9 @@ class ReviewReplaySession(
             }
 
             val failure = withTimeoutOrNull(PAGE_LOAD_TIMEOUT_MS) {
-                coroutineScope {
-                    val okJob = launch { pageFinished.await() }
-                    val failJob = launch { pageFailed.await() }
-                    select<String?> {
-                        okJob.onJoin { null }
-                        failJob.onJoin { pageFailed.getCompleted() }
-                    }
+                select<String?> {
+                    pageFinished.onAwait { null }
+                    pageFailed.onAwait { it }
                 }
             }
             if (failure != null) return@withContext ReplayResult(false, failure)
@@ -110,7 +104,8 @@ class ReviewReplaySession(
                 if (!raw.isNullOrBlank() && raw != "null" && raw != "\"null\"") {
                     val result = parseResult(raw)
                     AppLog.putDebug(
-                        "${ReviewOutboxStore.LogTag} 回放结果 ok=${result.ok} msg=${result.message}",
+                        "${ReviewOutboxStore.LogTag} 回放结果 ok=${result.ok} msg=${result.message} " +
+                            "resp=${result.responseSnippet ?: ""}",
                         module = LogModule.REVIEW_OFFLINE
                     )
                     return@withContext result

@@ -843,22 +843,28 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     private fun launchOfflineReviewSend() {
-        lifecycleScope.launch {
-            val summary = ReviewOutboxDispatcher.sendAll()
-                ?: run {
-                    toastOnUi(R.string.offline_review_send_running)
-                    return@launch
-                }
-            if (summary.total == 0) {
-                toastOnUi(R.string.offline_review_no_records)
-                return@launch
+        ReviewOutboxDispatcher.sendInBackground { summary ->
+            // 批次独立于页面生命周期，回调统一用全局资源，不引用 Activity
+            val summary = summary ?: run {
+                splitties.init.appCtx.toastOnUi(R.string.offline_review_send_running)
+                return@sendInBackground
             }
-            toastOnUi(getString(R.string.offline_review_send_done, summary.success, summary.failures.size))
+            if (summary.total == 0) {
+                splitties.init.appCtx.toastOnUi(R.string.offline_review_no_records)
+                return@sendInBackground
+            }
+            splitties.init.appCtx.toastOnUi(
+                splitties.init.appCtx.getString(
+                    R.string.offline_review_send_done, summary.success, summary.failures.size
+                )
+            )
             if (summary.failures.isNotEmpty()) {
                 val detail = summary.failures.joinToString("\n") { failure ->
                     "《${failure.item.bookName}》${failure.item.kindText()}：${failure.message}"
                 }
-                toastOnUi(getString(R.string.offline_review_send_failed_detail, detail))
+                splitties.init.appCtx.toastOnUi(
+                    splitties.init.appCtx.getString(R.string.offline_review_send_failed_detail, detail)
+                )
             }
         }
     }

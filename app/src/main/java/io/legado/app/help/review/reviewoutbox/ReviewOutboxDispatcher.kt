@@ -9,7 +9,10 @@ import io.legado.app.help.book.BookImgClick
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.review.ReviewSnapshotManager
 import io.legado.app.model.analyzeRule.AnalyzeUrl
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -23,10 +26,27 @@ object ReviewOutboxDispatcher {
 
     private val running = AtomicBoolean(false)
 
+    /**
+     * 批次独立作用域：发送与页面生命周期解耦，用户退出阅读页不会取消批次。
+     * 回放需要主线程（WebView），回调用全局 toast 通知，不持有 Activity。
+     */
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
     data class ItemResult(val item: PendingReviewComment, val ok: Boolean, val message: String)
 
     data class Summary(val total: Int, val success: Int, val failures: List<ItemResult>) {
         val ok: Boolean get() = failures.isEmpty()
+    }
+
+    /**
+     * 后台启动批次（唯一发送入口），结束时回调结果。
+     * 回调参数为 null 表示已有批次进行中，本次未启动。
+     * 回调在主线程执行，内部不得引用 Activity。
+     */
+    fun sendInBackground(result: (Summary?) -> Unit) {
+        scope.launch {
+            result(sendAll())
+        }
     }
 
     /** 发送全部待发送与失败记录；已在发送中返回 null（调用方提示进行中） */
@@ -83,9 +103,11 @@ object ReviewOutboxDispatcher {
             )
             replay(sending, resolved.first, resolved.second, resolved.third)
         } catch (e: kotlinx.coroutines.CancellationException) {
-            ReviewOutboxStore.markFailed(
-                sending,
-                "发送被取消：${e.message ?: "unknown"}"
+            val error = "发送被取消：${e.message ?: "unknown"}"
+            ReviewOutboxStore.markFailed(sending, error)
+            AppLog.putDebug(
+                "${ReviewOutboxStore.LogTag} 发送取消 id=${sending.id}：$error",
+                module = LogModule.REVIEW_OFFLINE
             )
             throw e
         } catch (e: Throwable) {
@@ -97,6 +119,17 @@ object ReviewOutboxDispatcher {
                 module = LogModule.REVIEW_OFFLINE
             )
             ItemResult(sending, false, error)
+        }
+        if (result.ok) {
+            AppLog.putDebug(
+                "${ReviewOutboxStore.LogTag} 发送成功 id=${item.id}：${result.message}",
+                module = LogModule.REVIEW_OFFLINE
+            )
+        } else {
+            AppLog.putDebug(
+                "${ReviewOutboxStore.LogTag} 发送失败 id=${item.id}：${result.message}",
+                module = LogModule.REVIEW_OFFLINE
+            )
         }
         return result
     }
