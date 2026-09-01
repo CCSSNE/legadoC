@@ -316,6 +316,6 @@ uiautomator2 / ADB
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- `3.26.090107` / `10796`，2026-09-01（UTC 07 时），`own` 主线，**自用版 appC 单编译交付**。本次为用户点名"编译自用版"，确认按新版本交付（versionCode 递增 10796）。首次编译 `compileAppCKotlin` 失败：`ReviewSnapshotCapture.kt` 有 6 个编译错误——`MatchResult.start(groupIdx)` / `end(groupIdx)` 不存在（改用 `groups[i]!!.range.first` / `range.last + 1`），以及 `outcome` 可空类型在 `when` 后的 `else` 分支未被 smart cast（加 `!!`）。修复后重编 `-Pabi=arm64-v8a -PVERSION_CODE=10796 -PVERSION_NAME=3.26.090107`，daemon 编译 `assembleAppC` BUILD SUCCESSFUL。`aapt` 确认包名 `io.legado.app.dev`、versionName `3.26.090107c`（appC 自动加 `c` 后缀）、versionCode `10796`、arm64-v8a、中文名 `阅读 C`；产物 `app\build\outputs\apk\app\c\legado_app_3.26.090107_10796.apk`（46.16 MB）。`apksigner` 退出码 0，证书 `CN=Android Debug`、SHA-256 `70cb88ca...`（debug 签名，符合只允许 release 系构建 + 统一 debug 签名的签名铁律）。构建后 `gradlew --stop` 确认无残留 Gradle 进程；未安装到模拟器、未做正式回归。
+- `3.26.090110` / `10797`，2026-09-01（UTC 10 时），`own` 主线，**自用版 appC 单编译交付**。本次为用户点名"编译自用版"，确认按新版本交付（versionCode 递增 10797）。`-Pabi=arm64-v8a -PVERSION_CODE=10797 -PVERSION_NAME=3.26.090110`，daemon 编译 `assembleAppC` BUILD SUCCESSFUL。`aapt` 确认包名 `io.legado.app.dev`、versionName `3.26.090110c`（appC 自动加 `c` 后缀）、versionCode `10797`、arm64-v8a、中文名 `阅读 C`；产物 `app\build\outputs\apk\app\c\legado_app_3.26.090110_10797.apk`（46.16 MB）。`apksigner` 退出码 0，证书 `CN=Android Debug`、SHA-256 `70cb88ca...`（debug 签名，符合只允许 release 系构建 + 统一 debug 签名的签名铁律）。构建后 `gradlew --stop` 确认无残留 Gradle 进程；未安装到模拟器、未做正式回归。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
