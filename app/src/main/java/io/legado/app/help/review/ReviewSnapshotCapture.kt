@@ -35,6 +35,7 @@ import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.utils.GSON
 import io.legado.app.utils.configureOfflineResourceLoading
 import io.legado.app.utils.runOnUI
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.apache.commons.text.StringEscapeUtils
@@ -397,6 +398,8 @@ object ReviewSnapshotCapture {
         private enum class ResourceKind {
             IMAGE,
             CSS,
+            /** CSS 文本内的 url()/@import 子资源（字体、背景图等）；失败按非关键资源跳过。 */
+            SUB_RESOURCE,
         }
 
         private data class CollectedImage(
@@ -437,6 +440,27 @@ object ReviewSnapshotCapture {
             val url: String,
             val kind: ResourceKind,
             val compressionMaxBytes: Long? = null,
+        )
+
+        /** 已暂存 CSS 的文本与其解析出的子资源引用。 */
+        private data class StagedCss(
+            val url: String,
+            val text: String,
+            val refs: List<CssRefOccurrence>,
+        )
+
+        /** CSS 文本内一个 url()/@import 引用；absolute 非空才会尝试下载。 */
+        private data class CssRefOccurrence(
+            val valueStart: Int,
+            val valueEnd: Int,
+            val absolute: String?,
+            val keepAsIs: Boolean,
+        )
+
+        /** CSS 子资源入库结果：绝对地址 → review-resource: 引用与入库字节总数。 */
+        private data class CssSubStageResult(
+            val references: Map<String, String>,
+            val storedBytes: Long,
         )
 
         private data class StagedResource(
@@ -976,6 +1000,8 @@ object ReviewSnapshotCapture {
         private data class InlineResources(
             val imgMap: Map<String, String> = emptyMap(),
             val cssMap: Map<String, String> = emptyMap(),
+            /** CSS 子资源（字体、背景图等）入库后的资源库 key，必须进快照 resourceKeys。 */
+            val subResourceKeys: List<String> = emptyList(),
             val resourceBytes: Long = 0L,
             val cacheAvatars: Boolean = false,
             val cacheCommentImages: Boolean = false,
@@ -986,9 +1012,11 @@ object ReviewSnapshotCapture {
 
             /** 本快照 HTML 引用的全部资源库 key（imgMap 的 value 即 review-resource://<key>）。 */
             val resourceKeys: List<String>
-                get() = imgMap.values.mapNotNull { value ->
-                    ReviewSnapshotResourceStore.keyFromReference(value)
-                }.distinct()
+                get() = (
+                    imgMap.values.mapNotNull { value ->
+                        ReviewSnapshotResourceStore.keyFromReference(value)
+                    } + subResourceKeys
+                    ).distinct()
         }
 
         private fun parseResourceUrls(json: String?): ResourceUrls {
@@ -1103,8 +1131,9 @@ object ReviewSnapshotCapture {
             check(stagingDir.mkdirs() || stagingDir.isDirectory) {
                 "无法创建评论快照资源暂存目录"
             }
+            val budget = ResourceStagingBudget()
             try {
-                val stagedResources = stageResources(targets, stagingDir)
+                val stagedResources = stageResources(targets, stagingDir, budget)
                 val imgMap = linkedMapOf<String, String>()
                 val cssMap = linkedMapOf<String, String>()
                 var embeddedTextBytes = 0L
@@ -1113,25 +1142,15 @@ object ReviewSnapshotCapture {
                     imgMap[imageUrl] = ReviewSnapshotResourceStore.referenceFor(entry.key)
                     resourceBytes += entry.byteCount
                 }
+                val stagedCss = mutableListOf<StagedCss>()
                 for (staged in stagedResources) {
                     ensureHeavyActive()
                     when (staged.target.kind) {
                         ResourceKind.IMAGE -> {
                             val image = prepareImage(staged)
                             resourceBytes += image.byteCount
-                            var stored: ReviewSnapshotResourceEntry? = null
-                            val committedLease = commitIfLeaseActive.invoke {
-                                stored = ReviewSnapshotResourceStore.put(
-                                    book = book,
-                                    url = staged.target.url,
-                                    mimeType = image.mimeType,
-                                    source = image.file,
-                                )
-                            }
-                            if (!committedLease) {
-                                throw CancellationException("review lease is no longer active at resource commit")
-                            }
-                            val committed = checkNotNull(stored)
+                            val committed =
+                                putResource(staged.target.url, image.mimeType, image.file)
                             imgMap[staged.target.url] =
                                 ReviewSnapshotResourceStore.referenceFor(committed.key)
                         }
@@ -1143,17 +1162,35 @@ object ReviewSnapshotCapture {
                             }
                             val text = bytes.toString(Charsets.UTF_8).takeIf { it.isNotBlank() }
                                 ?: continue
-                            val nextTotal = embeddedTextBytes + text.toByteArray(Charsets.UTF_8).size
-                            if (nextTotal > MAX_TOTAL_RESOURCE_BYTES) {
-                                throw ResourceBudgetExceededException(
-                                    "评论快照样式 $nextTotal B 超过总预算 $MAX_TOTAL_RESOURCE_BYTES B",
-                                )
-                            }
-                            embeddedTextBytes = nextTotal
-                            resourceBytes += bytes.size
-                            cssMap[staged.target.url] = text
+                            stagedCss += parseCssSubResources(staged.target.url, text)
                         }
+
+                        ResourceKind.SUB_RESOURCE -> Unit
                     }
+                }
+                // CSS 文本内的 url()/@import 子资源（字体、背景图、@import 样式等）此前
+                // 既不收集也不改写，却会被序列化完整性检查判死（凡样式带字体的评论页
+                // 必失败）。统一入库并把引用改写为 review-resource:；下载失败的子资源
+                // 按非关键资源策略改写为 #，stageResources 已留 RESOURCE_DOWNLOAD_SKIPPED
+                // 诊断，不静默丢弃。
+                val subStage = stageCssSubResources(stagedCss, stagingDir, budget)
+                val subReferences = subStage.references
+                resourceBytes += subStage.storedBytes
+                val subResourceKeys = subReferences.values.mapNotNull { reference ->
+                    ReviewSnapshotResourceStore.keyFromReference(reference)
+                }
+                for (css in stagedCss) {
+                    val rewritten = rewriteCssSubResources(css, subReferences)
+                    val textBytes = rewritten.toByteArray(Charsets.UTF_8).size.toLong()
+                    val nextTotal = embeddedTextBytes + textBytes
+                    if (nextTotal > MAX_TOTAL_RESOURCE_BYTES) {
+                        throw ResourceBudgetExceededException(
+                            "评论快照样式 $nextTotal B 超过总预算 $MAX_TOTAL_RESOURCE_BYTES B",
+                        )
+                    }
+                    embeddedTextBytes = nextTotal
+                    resourceBytes += textBytes
+                    cssMap[css.url] = rewritten
                 }
                 return InlineResources(
                     imgMap = imgMap,
@@ -1161,11 +1198,124 @@ object ReviewSnapshotCapture {
                     resourceBytes = resourceBytes,
                     cacheAvatars = urls.cacheAvatars,
                     cacheCommentImages = urls.cacheCommentImages,
+                    subResourceKeys = subResourceKeys,
                     removeUnstagedExternalResources = true,
                 )
             } finally {
                 stagingDir.deleteRecursively()
             }
+        }
+
+        /**
+         * 把所有 CSS 文本引用的子资源批量下载入库（跨 CSS 按绝对地址去重），
+         * 返回 绝对地址 → review-resource: 引用与入库字节总数；下载失败的地址不在
+         * 引用表中，由 [rewriteCssSubResources] 改写为 #。
+         */
+        private fun stageCssSubResources(
+            stagedCss: List<StagedCss>,
+            stagingDir: File,
+            budget: ResourceStagingBudget,
+        ): CssSubStageResult {
+            val subUrls = stagedCss.asSequence()
+                .flatMap { css -> css.refs.asSequence() }
+                .mapNotNull { it.absolute }
+                .distinct()
+                .toList()
+            if (subUrls.isEmpty()) return CssSubStageResult(emptyMap(), 0L)
+            if (subUrls.size > MAX_SNAPSHOT_RESOURCES) {
+                throw ResourceBudgetExceededException(
+                    "评论快照 CSS 子资源数 ${subUrls.size} 超过预算 $MAX_SNAPSHOT_RESOURCES",
+                )
+            }
+            val subTargets = subUrls.mapIndexed { index, url ->
+                ResourceTarget(index, url, ResourceKind.SUB_RESOURCE)
+            }
+            val stagedSubs = stageResources(subTargets, stagingDir, budget)
+            val subReferences = linkedMapOf<String, String>()
+            var storedBytes = 0L
+            for (staged in stagedSubs) {
+                ensureHeavyActive()
+                val committed = putResource(
+                    staged.target.url,
+                    cssSubResourceMime(staged.target.url),
+                    staged.file,
+                )
+                subReferences[staged.target.url] =
+                    ReviewSnapshotResourceStore.referenceFor(committed.key)
+                storedBytes += staged.byteCount
+            }
+            return CssSubStageResult(subReferences, storedBytes)
+        }
+
+        /** 按解析结果改写 CSS 文本：入库引用 → review-resource:，失败引用 → #，本地形式保留。 */
+        private fun rewriteCssSubResources(
+            css: StagedCss,
+            subReferences: Map<String, String>,
+        ): String {
+            if (css.refs.isEmpty()) return css.text
+            val builder = StringBuilder(css.text)
+            for (ref in css.refs.sortedByDescending { it.valueStart }) {
+                val replacement = when {
+                    ref.keepAsIs -> null
+                    ref.absolute != null -> subReferences[ref.absolute] ?: "#"
+                    else -> "#"
+                } ?: continue
+                builder.replace(ref.valueStart, ref.valueEnd, replacement)
+            }
+            return builder.toString()
+        }
+
+        /** 解析 CSS 文本内的 url() 与 @import 字符串引用，文法与序列化完整性检查一致。 */
+        private fun parseCssSubResources(cssUrl: String, text: String): StagedCss {
+            val base = cssUrl.toHttpUrlOrNull()
+            val refs = mutableListOf<CssRefOccurrence>()
+            CSS_URL_REF_REGEX.findAll(text).forEach { match ->
+                val value = match.groupValues[2]
+                if (value.isNotBlank()) {
+                    refs += cssRefOccurrence(base, value, match.start(2), match.end(2))
+                }
+            }
+            CSS_IMPORT_REF_REGEX.findAll(text).forEach { match ->
+                val value = match.groupValues[1]
+                if (value.isNotBlank()) {
+                    refs += cssRefOccurrence(base, value, match.start(1), match.end(1))
+                }
+            }
+            return StagedCss(cssUrl, text, refs)
+        }
+
+        private fun cssRefOccurrence(
+            base: okhttp3.HttpUrl?,
+            value: String,
+            valueStart: Int,
+            valueEnd: Int,
+        ): CssRefOccurrence {
+            if (CSS_LOCAL_REF_PREFIX_REGEX.containsMatchIn(value)) {
+                return CssRefOccurrence(valueStart, valueEnd, absolute = null, keepAsIs = true)
+            }
+            val absolute = base?.resolve(value)?.toString()
+            return CssRefOccurrence(valueStart, valueEnd, absolute, keepAsIs = false)
+        }
+
+        /** 单个资源入库统一走 lease 提交：lease 失效即取消整个 Capture，不落半套资源。 */
+        private fun putResource(
+            url: String,
+            mimeType: String,
+            file: File,
+        ): ReviewSnapshotResourceEntry {
+            var stored: ReviewSnapshotResourceEntry? = null
+            val committedLease = commitIfLeaseActive.invoke {
+                stored = ReviewSnapshotResourceStore.put(
+                    book = book,
+                    url = url,
+                    mimeType = mimeType,
+                    source = file,
+                )
+            }
+            if (!committedLease) {
+                throw CancellationException("review lease is no longer active at resource commit")
+            }
+            return checkNotNull(stored)
         }
 
         /**
@@ -1175,12 +1325,12 @@ object ReviewSnapshotCapture {
         private fun stageResources(
             targets: List<ResourceTarget>,
             stagingDir: File,
+            budget: ResourceStagingBudget,
         ): List<StagedResource> {
             val threadCount = AppConfig.reviewResourceDownloadConcurrency.coerceIn(1, 32)
             val executor = Executors.newFixedThreadPool(threadCount) { runnable ->
                 Thread(runnable, "ReviewSnapshotResource").apply { isDaemon = true }
             }
-            val budget = ResourceStagingBudget()
             val futures = targets.map { target ->
                 target to executor.submit(Callable { stageResource(target, stagingDir, budget) })
             }
@@ -1395,6 +1545,25 @@ object ReviewSnapshotCapture {
             }
         }
 
+        /** CSS 子资源入库 MIME：按扩展名判定，浏览器以此决定字体/图片如何消费。 */
+        private fun cssSubResourceMime(url: String): String {
+            val lower = url.substringBefore('?').substringBefore('#').lowercase()
+            return when {
+                lower.endsWith(".woff2") -> "font/woff2"
+                lower.endsWith(".woff") -> "font/woff"
+                lower.endsWith(".ttf") -> "font/ttf"
+                lower.endsWith(".otf") -> "font/otf"
+                lower.endsWith(".eot") -> "application/vnd.ms-fontobject"
+                lower.endsWith(".svg") -> "image/svg+xml"
+                lower.endsWith(".css") -> "text/css"
+                lower.endsWith(".png") -> "image/png"
+                lower.endsWith(".webp") -> "image/webp"
+                lower.endsWith(".gif") -> "image/gif"
+                lower.endsWith(".jpg") || lower.endsWith(".jpeg") -> "image/jpeg"
+                else -> "application/octet-stream"
+            }
+        }
+
         private fun applyInline(inline: InlineResources) {
             if (destroyed) return
             // 内联完成后立即记录本快照引用的资源 key；终态回调据此携带 resourceKeys。
@@ -1601,4 +1770,16 @@ object ReviewSnapshotCapture {
     private const val SNAPSHOT_ROOT_MISSING = "__LEGADO_REVIEW_SNAPSHOT_ROOT_MISSING__"
     private const val SNAPSHOT_RESOURCE_INCOMPLETE_PREFIX =
         "__LEGADO_REVIEW_SNAPSHOT_RESOURCE_INCOMPLETE__:"
+
+    /** 与序列化完整性检查一致的 CSS 引用文法：url() 形式，值不含空白/引号/括号。 */
+    private val CSS_URL_REF_REGEX =
+        Regex("url\\s*\\(\\s*([\"']?)([^\"')\\s]+)\\1\\s*\\)", RegexOption.IGNORE_CASE)
+
+    /** 序列化完整性检查同样判死的 @import 字符串形式。 */
+    private val CSS_IMPORT_REF_REGEX =
+        Regex("@import\\s*[\"']([^\"']+)[\"']", RegexOption.IGNORE_CASE)
+
+    /** 完整性检查认可的本地引用前缀，命中者原样保留。 */
+    private val CSS_LOCAL_REF_PREFIX_REGEX =
+        Regex("^(?:data:|review-resource:|#|about:blank)", RegexOption.IGNORE_CASE)
 }
