@@ -2064,10 +2064,13 @@ class ReadBookActivity : BaseReadBookActivity(),
                 applyAloudPositionToReader(position)
             }
             if (!opened) {
+                // 朗读位置指向的章节越界（书籍不足该章，或播放期间书被换），无“读哪里”可对齐：
+                // 不回退崩溃，保持当前显示章不动，仅暴露数据不一致，朗读由引擎自行继续。
                 ReadBook.skipReadAloudSyncOnce = false
-                error(
-                    "Cannot return to read aloud position: chapter=${position.chapterIndex}, " +
-                        "position=${position.chapterPosition}"
+                AppLog.putDebug(
+                    "[朗读] 回原进度目标章越界，保持当前显示章 ch:${ReadBook.durChapterIndex} " +
+                        "朗读位置章:${position.chapterIndex} 位置:${position.chapterPosition}",
+                    module = LogModule.READ_ALOUD
                 )
             }
         } else {
