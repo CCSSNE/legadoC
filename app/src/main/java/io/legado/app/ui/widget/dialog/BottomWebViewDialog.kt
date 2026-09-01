@@ -129,6 +129,9 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
     /** Set only for review snapshots that may contain review-resource:// references. */
     private var reviewResourceBook: Book? = null
 
+    /** 离线评论入队上下文：非空时页面加载完成后注入离线评论接管脚本 */
+    private var outboxContext: io.legado.app.help.review.reviewoutbox.ReviewOutboxContext? = null
+
     private val mHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
     constructor(
@@ -142,6 +145,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         fallbackHtml: String? = null,
         offlineOnly: Boolean = false,
         reviewResourceBook: Book? = null,
+        outboxContext: io.legado.app.help.review.reviewoutbox.ReviewOutboxContext? = null,
     ) : this() {
         this.networkRefresher = networkRefresher
         this.fallbackHtml = fallbackHtml
@@ -149,6 +153,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         fallbackHtmlFileReference = fallbackHtml?.let(WebViewHtmlStore::write)
         this.offlineMode = offlineOnly
         this.reviewResourceBook = reviewResourceBook
+        this.outboxContext = outboxContext
         arguments = Bundle().apply {
             putString("sourceKey", sourceKey)
             putInt("bookType", bookType)
@@ -160,6 +165,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
             putString("preloadJs", preloadJs)
             putString("config", config)
             putParcelable(ARG_REVIEW_RESOURCE_BOOK, reviewResourceBook)
+            outboxContext?.putTo(this)
         }
     }
 
@@ -213,6 +219,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
             @Suppress("DEPRECATION")
             arguments?.getParcelable(ARG_REVIEW_RESOURCE_BOOK)
         }
+        outboxContext = io.legado.app.help.review.reviewoutbox.ReviewOutboxContext.fromBundle(arguments)
     }
 
     override fun onAttach(context: Context) {
@@ -766,6 +773,12 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         currentWebView.webChromeClient = CustomWebChromeClient()
         currentWebView.addJavascriptInterface(JSInterface(this), nameBasic)
         currentWebView.webViewClient = CustomWebViewClient()
+        outboxContext?.let { context ->
+            currentWebView.addJavascriptInterface(
+                io.legado.app.help.review.reviewoutbox.ReviewOutboxBridge(context),
+                io.legado.app.help.review.reviewoutbox.ReviewOutboxWireUp.bridgeName
+            )
+        }
         currentWebView.settings.userAgentString = headerMap.get(AppConst.UA_NAME, true)
         // 离线快照禁止 http/https，但必须让 review-resource:// 图片进入资源拦截器。
         currentWebView.settings.configureOfflineResourceLoading(offlineMode)
@@ -1065,6 +1078,20 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
             super.onPageFinished(view, url)
             // 页面加载成功：取消超时定时任务
             cancelFallbackTimeout()
+            // 离线评论模式：页面加载完成后注入接管脚本（快照=全接管，在线=拦截发评请求），
+            // 快照优先的在线覆盖页同样生效；注入幂等，脚本内部自带安装标记
+            val context = outboxContext
+            if (context != null && AppConfig.offlineReviewMode) {
+                view?.evaluateJavascript(
+                    io.legado.app.help.review.reviewoutbox.ReviewOutboxWireUp.buildJs(),
+                    null
+                )
+                io.legado.app.constant.AppLog.putDebug(
+                    "${io.legado.app.help.review.reviewoutbox.ReviewOutboxStore.LogTag} 接管脚本已注入 " +
+                        "url=${url ?: ""} 书=${context.bookName} 章=${context.chapterTitle}",
+                    module = io.legado.app.constant.LogModule.REVIEW_OFFLINE
+                )
+            }
         }
 
         @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION", "KotlinRedundantDiagnosticSuppress")

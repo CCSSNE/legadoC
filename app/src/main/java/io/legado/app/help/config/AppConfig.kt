@@ -1164,6 +1164,17 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         get() = appCtx.getPrefString(PreferKey.reviewOpenMode, ReviewOpenMode.NETWORK)
             ?: ReviewOpenMode.NETWORK
 
+    /**
+     * 离线评论模式：只控制发送策略，不代表真实网络状态。
+     * 开启后，评论弹窗内的发表动作一律拦截记录为离线评论，不立即发送（无论有无网络）；
+     * 关闭后不拦截，走书源原有发送流程，真实无网时由原流程自行失败。
+     */
+    var offlineReviewMode: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.offlineReviewMode, false)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.offlineReviewMode, value)
+        }
+
     /** TXT-ZIP 导出时附带评论页快照 */
     var exportReviews: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.exportReviews, true)

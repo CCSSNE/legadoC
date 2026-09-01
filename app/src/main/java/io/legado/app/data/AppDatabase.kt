@@ -28,6 +28,7 @@ import io.legado.app.data.dao.DictRuleDao
 import io.legado.app.data.dao.HighlightRuleDao
 import io.legado.app.data.dao.HttpTTSDao
 import io.legado.app.data.dao.KeyboardAssistsDao
+import io.legado.app.data.dao.PendingReviewCommentDao
 import io.legado.app.data.dao.ReadRecentBookDao
 import io.legado.app.data.dao.ReadRecordDao
 import io.legado.app.data.dao.ReadRecordDailyDao
@@ -66,6 +67,7 @@ import io.legado.app.data.entities.DictRule
 import io.legado.app.data.entities.HighlightRule
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.data.entities.KeyboardAssist
+import io.legado.app.data.entities.PendingReviewComment
 import io.legado.app.data.entities.ReadRecentBook
 import io.legado.app.data.entities.ReadRecord
 import io.legado.app.data.entities.ReadRecordDaily
@@ -96,7 +98,7 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 113,
+    version = 114,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
         BookCollection::class, BookCollectionItem::class, BookCollectionChild::class,
@@ -106,7 +108,7 @@ val appDb by lazy {
         HttpTTS::class, Cache::class, BookIllustration::class,
         RuleSub::class, DictRule::class, KeyboardAssist::class, Server::class,
         ReadRecentBook::class, AiChapterPurifyRecord::class, BookShortcut::class,
-        CreationCard::class, CreationResult::class,
+        CreationCard::class, CreationResult::class, PendingReviewComment::class,
         BookRole::class, BookTtsCastRole::class, BookTtsVoiceBinding::class,
         TtsEngineRuntimeEntity::class, TtsVoiceEntity::class],
     views = [BookSourcePart::class],
@@ -192,6 +194,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract val ruleSubDao: RuleSubDao
     abstract val dictRuleDao: DictRuleDao
     abstract val keyboardAssistsDao: KeyboardAssistsDao
+    abstract val pendingReviewCommentDao: PendingReviewCommentDao
     abstract val serverDao: ServerDao
     abstract val ttsEngineRuntimeDao: TtsEngineRuntimeDao
     abstract val ttsVoiceDao: TtsVoiceDao

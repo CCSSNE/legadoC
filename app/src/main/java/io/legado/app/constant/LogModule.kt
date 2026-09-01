@@ -25,6 +25,7 @@ enum class LogModule(val labelRes: Int) {
     AI_CAST(R.string.log_module_ai_cast),
     AI(R.string.log_module_ai),
     DOWNLOAD_CACHE(R.string.log_module_download_cache),
+    REVIEW_OFFLINE(R.string.log_module_review_offline),
     READING(R.string.log_module_reading),
     SOURCE_NETWORK(R.string.log_module_source_network),
     BACKUP(R.string.log_module_backup),
@@ -44,6 +45,7 @@ enum class LogModule(val labelRes: Int) {
                 AI_CAST,
                 AI,
                 DOWNLOAD_CACHE,
+                REVIEW_OFFLINE,
                 READING,
                 SOURCE_NETWORK,
                 BACKUP,
@@ -73,6 +75,8 @@ enum class LogModule(val labelRes: Int) {
             // 本地书 TXT 目录规则的 JS 执行环境（TextFile$JsExtensions）双命中
             // READING（localbook）+ SOURCE_NETWORK（jsextensions），唯一归属阅读
             "io.legado.app.model.localbook.textfile\$jsextensions" to LogModule.READING,
+            // 离线评论：reviewoutbox 前缀含 review 关键词（会命中 DOWNLOAD_CACHE），钉定唯一归属
+            "io.legado.app.help.review.reviewoutbox" to LogModule.REVIEW_OFFLINE,
             // AI：help.ai 包与聊天界面、AI 配置页；裸 "ai" 关键词会误伤 main 等类名，必须钉定
             "io.legado.app.help.ai." to LogModule.AI,
             "io.legado.app.ui.main.ai." to LogModule.AI,

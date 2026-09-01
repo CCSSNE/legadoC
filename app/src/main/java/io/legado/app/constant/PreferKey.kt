@@ -180,6 +180,7 @@ object PreferKey {
     const val exportReviews = "exportReviews"
     const val exportTtsCache = "exportTtsCache"
     const val reviewOpenMode = "reviewOpenMode"
+    const val offlineReviewMode = "offlineReviewMode"
     const val showRss = "showRss"
     const val showRssPageInSettings = "showRssPageInSettings"
     const val bookshelfLayout = "bookshelfLayout"

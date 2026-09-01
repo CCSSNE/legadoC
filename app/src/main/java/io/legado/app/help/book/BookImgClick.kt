@@ -18,6 +18,7 @@ import io.legado.app.help.review.ReviewSnapshot
 import io.legado.app.help.review.ReviewSnapshotCapture
 import io.legado.app.help.review.ReviewSnapshotManager
 import io.legado.app.help.review.ReviewSnapshotStore
+import io.legado.app.help.review.reviewoutbox.ReviewOutboxContext
 import io.legado.app.help.source.SourceVerificationHelp
 import io.legado.app.model.ReadBook
 import io.legado.app.model.analyzeRule.AnalyzeRule
@@ -140,6 +141,16 @@ object BookImgClick {
                     networkRefresher = networkRefresher,
                     offlineOnly = offlineOnly,
                     reviewResourceBook = cached.book,
+                    outboxContext = ReviewOutboxContext(
+                        bookUrl = cached.book.bookUrl,
+                        bookName = cached.book.name,
+                        chapterUrl = cached.chapter.url,
+                        chapterIndex = cached.chapter.index,
+                        chapterTitle = cached.chapter.title,
+                        origin = source?.getKey() ?: cached.book.origin,
+                        buttonSrc = cached.snapshot.buttonSrc.ifBlank { null },
+                        pageUrl = cached.snapshot.url,
+                    ),
                 )
             )
         }
@@ -323,6 +334,8 @@ object BookImgClick {
                                 BookType.text,
                                 it.snapshot.html,
                                 execution.book,
+                                execution.chapter,
+                                src,
                             )
                         }
                         executeClick(
@@ -475,6 +488,8 @@ object BookImgClick {
         bookType: Int,
         private val fallbackHtml: String,
         private val reviewResourceBook: Book,
+        private val chapter: BookChapter?,
+        private val buttonSrc: String?,
     ) : SourceLoginJsExtensions(context, source, bookType) {
 
         var browserRequested = false
@@ -552,6 +567,16 @@ object BookImgClick {
                         networkRefresher = null,
                         fallbackHtml = fallbackHtml,
                         reviewResourceBook = reviewResourceBook,
+                        outboxContext = ReviewOutboxContext(
+                            bookUrl = reviewResourceBook.bookUrl,
+                            bookName = reviewResourceBook.name,
+                            chapterUrl = chapter?.url.orEmpty(),
+                            chapterIndex = chapter?.index ?: 0,
+                            chapterTitle = chapter?.title.orEmpty(),
+                            origin = getSource()?.getKey(),
+                            buttonSrc = buttonSrc,
+                            pageUrl = url,
+                        ),
                     )
                 )
             }

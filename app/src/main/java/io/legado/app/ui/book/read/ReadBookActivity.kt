@@ -76,6 +76,8 @@ import io.legado.app.help.illustration.AudioBlockPlayer
 import io.legado.app.help.illustration.IllustrationHelp
 import io.legado.app.help.illustration.imageSrcsFromJson
 import io.legado.app.help.source.getSourceType
+import io.legado.app.help.review.reviewoutbox.ReviewOutboxDispatcher
+import io.legado.app.help.review.reviewoutbox.ReviewOutboxStore
 import io.legado.app.help.storage.Backup
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
@@ -370,6 +372,9 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
         window.setBackgroundDrawable(null)
         upScreenTimeOut()
+        lifecycleScope.launch {
+            withContext(IO) { ReviewOutboxStore.recoverSendingOnStart() }
+        }
         ReadBook.register(this)
         updateReadAloudPageFloating()
         updateReadAloudPanels()
@@ -577,6 +582,8 @@ class ReadBookActivity : BaseReadBookActivity(),
                     R.id.menu_enable_ai_chapter_purify ->
                         item.isChecked = book.getAiChapterPurifyEnabled()
                     R.id.menu_re_segment -> item.isChecked = book.getReSegment()
+                    R.id.menu_offline_review_mode ->
+                        item.isChecked = AppConfig.offlineReviewMode
 //                    R.id.menu_enable_review -> {
 //                        item.isVisible = BuildConfig.DEBUG
 //                        item.isChecked = AppConfig.enableReview
@@ -778,9 +785,152 @@ class ReadBookActivity : BaseReadBookActivity(),
 
             R.id.menu_effective_replaces -> showDialogFragment<EffectiveReplacesDialog>()
 
+            R.id.menu_offline_review_mode -> {
+                AppConfig.offlineReviewMode = !AppConfig.offlineReviewMode
+                item.isChecked = AppConfig.offlineReviewMode
+                if (AppConfig.offlineReviewMode) {
+                    toastOnUi(R.string.offline_review_mode_on)
+                } else {
+                    toastOnUi(R.string.offline_review_mode_off)
+                }
+                AppLog.putDebug(
+                    "${ReviewOutboxStore.LogTag} 离线评论模式切换 → ${AppConfig.offlineReviewMode}",
+                    module = LogModule.REVIEW_OFFLINE
+                )
+            }
+
+            R.id.menu_send_offline_reviews -> {
+                binding.readMenu.runMenuOut()
+                sendOfflineReviews()
+            }
+
+            R.id.menu_export_offline_reviews -> {
+                binding.readMenu.runMenuOut()
+                exportOfflineReviews()
+            }
+
+            R.id.menu_clear_offline_reviews -> {
+                binding.readMenu.runMenuOut()
+                clearOfflineReviews()
+            }
+
             R.id.menu_help -> showHelp()
         }
         return super.onCompatOptionsItemSelected(item)
+    }
+
+    private val offlineReviewExport = registerForActivityResult(HandleFileContract()) { result ->
+        val uri = result.uri ?: return@registerForActivityResult
+        val json = offlineReviewExportCache ?: return@registerForActivityResult
+        lifecycleScope.launch {
+            withContext(IO) {
+                contentResolver.openOutputStream(uri)?.use { stream ->
+                    stream.write(json.toByteArray(Charsets.UTF_8))
+                } ?: error("无法写入导出文件: $uri")
+            }
+            val total = offlineReviewExportCount
+            toastOnUi(getString(R.string.offline_review_export_done, total))
+            AppLog.putDebug(
+                "${ReviewOutboxStore.LogTag} 导出离线评论 $total 条 → $uri",
+                module = LogModule.REVIEW_OFFLINE
+            )
+        }
+    }
+
+    private var offlineReviewExportCache: String? = null
+    private var offlineReviewExportCount = 0
+
+    private fun sendOfflineReviews() {
+        lifecycleScope.launch {
+            val unknown = withContext(IO) { ReviewOutboxStore.unknownCount() }
+            if (unknown > 0) {
+                AlertDialog.Builder(this@ReadBookActivity)
+                    .setTitle(R.string.menu_send_offline_reviews)
+                    .setMessage(getString(R.string.offline_review_send_confirm_unknown, unknown))
+                    .setPositiveButton(R.string.sure) { _, _ -> launchOfflineReviewSend() }
+                    .setNegativeButton(R.string.cancel, null)
+                    .show()
+            } else {
+                launchOfflineReviewSend()
+            }
+        }
+    }
+
+    private fun launchOfflineReviewSend() {
+        lifecycleScope.launch {
+            if (!NetworkUtils.isAvailable()) {
+                toastOnUi(R.string.offline_review_send_no_network)
+                return@launch
+            }
+            val summary = ReviewOutboxDispatcher.sendAll()
+                ?: run {
+                    toastOnUi(R.string.offline_review_send_running)
+                    return@launch
+                }
+            if (summary.total == 0) {
+                toastOnUi(R.string.offline_review_no_records)
+                return@launch
+            }
+            toastOnUi(getString(R.string.offline_review_send_done, summary.success, summary.failures.size))
+            if (summary.failures.isNotEmpty()) {
+                val detail = summary.failures.joinToString("\n") { failure ->
+                    "《${failure.item.bookName}》${failure.item.kindText()}：${failure.message}"
+                }
+                toastOnUi(getString(R.string.offline_review_send_failed_detail, detail))
+            }
+        }
+    }
+
+    private fun exportOfflineReviews() {
+        lifecycleScope.launch {
+            val json = withContext(IO) {
+                val items = ReviewOutboxStore.all()
+                if (items.isEmpty()) {
+                    null
+                } else {
+                    ReviewOutboxStore.buildExportJson(items).also {
+                        offlineReviewExportCount = items.size
+                    }
+                }
+            }
+            if (json == null) {
+                toastOnUi(R.string.offline_review_export_empty)
+                return@launch
+            }
+            offlineReviewExportCache = json
+            val fileName = "离线评论_" +
+                java.text.SimpleDateFormat("yyyyMMdd_HHmm", java.util.Locale.US)
+                    .format(java.util.Date()) + ".json"
+            offlineReviewExport.launch {
+                mode = HandleFileContract.EXPORT
+                fileData = HandleFileContract.FileData(
+                    fileName,
+                    json.toByteArray(Charsets.UTF_8),
+                    "application/json"
+                )
+            }
+        }
+    }
+
+    private fun clearOfflineReviews() {
+        lifecycleScope.launch {
+            val total = withContext(IO) { ReviewOutboxStore.countAll() }
+            if (total == 0) {
+                toastOnUi(R.string.offline_review_no_records)
+                return@launch
+            }
+            AlertDialog.Builder(this@ReadBookActivity)
+                .setTitle(R.string.offline_review_clear_confirm_title)
+                .setMessage(getString(R.string.offline_review_clear_confirm_message, total))
+                .setPositiveButton(R.string.sure) { _, _ ->
+                    lifecycleScope.launch {
+                        val cleared = withContext(IO) { ReviewOutboxStore.clearAll() }
+                        toastOnUi(getString(R.string.offline_review_clear_done, cleared))
+                    }
+                }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
+        }
     }
 
     private fun refreshContentAll(book: Book) {
