@@ -23,6 +23,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookIllustration
 import io.legado.app.data.entities.Bookmark
+import io.legado.app.data.entities.HighlightRule
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
@@ -523,6 +524,17 @@ class ExportBookService : BaseService() {
         } else {
             null
         }
+        // 高亮规则同样作为外挂数据写入 zip：按该书 scope 命中的启用规则收集，
+        // 导入时还原规则数据，显示效果在排版时重新计算，不影响导出正文
+        val tmpHighlightRules = run {
+            File(tmpRoot, IllustrationHelp.EXPORT_HIGHLIGHT_RULES_NAME).also { f ->
+                val rules: List<HighlightRule> =
+                    appDb.highlightRuleDao.findEnabledByScope(book.name, book.origin)
+                if (rules.isNotEmpty()) {
+                    f.writeText(GSON.toJson(rules), Charsets.UTF_8)
+                }
+            }
+        }
         // 评论页快照：按存储原样导出 reviews/*.json，导入时原样还原
         val tmpReviewsDir = if (config.exportReviews) {
             File(tmpRoot, ReviewSnapshotStore.REVIEWS_DIR_NAME).also { dir ->
@@ -603,6 +615,7 @@ class ExportBookService : BaseService() {
             tmpJson.takeIf { it.exists() }?.let { zipEntries.add(it) }
             tmpBookmarks?.takeIf { it.exists() }?.let { zipEntries.add(it) }
             tmpReplaceRules?.takeIf { it.exists() }?.let { zipEntries.add(it) }
+            tmpHighlightRules.takeIf { it.exists() }?.let { zipEntries.add(it) }
             tmpAudioManifest?.let { manifest ->
                 zipEntries.add(manifest)
                 zipEntries.add(File(tmpRoot, AudioBookArchive.MEDIA_DIR_NAME))

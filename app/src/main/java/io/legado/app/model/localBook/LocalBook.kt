@@ -9,12 +9,14 @@ import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.BookType
+import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookIllustration
 import io.legado.app.data.entities.Bookmark
+import io.legado.app.data.entities.HighlightRule
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.exception.EmptyFileException
 import io.legado.app.help.illustration.IllustrationHelp
@@ -66,6 +68,7 @@ import io.legado.app.utils.inputStream
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.isDataUrl
+import io.legado.app.utils.postEvent
 import io.legado.app.utils.printOnDebug
 import kotlinx.coroutines.runBlocking
 import org.apache.commons.text.StringEscapeUtils
@@ -853,6 +856,7 @@ object LocalBook {
                     name == IllustrationHelp.EXPORT_JSON_NAME ||
                         name == IllustrationHelp.EXPORT_BOOKMARKS_NAME ||
                         name == IllustrationHelp.EXPORT_REPLACE_RULES_NAME ||
+                        name == IllustrationHelp.EXPORT_HIGHLIGHT_RULES_NAME ||
                         name.startsWith("${IllustrationHelp.EXPORT_IMAGES_DIR}/") ||
                         name.startsWith("reviews/") ||
                         name.matches(AppPattern.bookFileRegex)
@@ -886,6 +890,19 @@ object LocalBook {
                     }
                 }.onFailure { e ->
                     AppLog.put("导入替换规则失败\n${e.localizedMessage}", e)
+                }
+            }
+            // 压缩包内含高亮规则时同步导入规则数据：显示效果在排版时按规则现算，
+            // 不影响导入的 txt 正文，发事件通知阅读界面刷新高亮
+            files.firstOrNull { it.name == IllustrationHelp.EXPORT_HIGHLIGHT_RULES_NAME }?.let { rulesFile ->
+                kotlin.runCatching {
+                    val rules = GSON.fromJsonArray<HighlightRule>(rulesFile.inputStream()).getOrNull()
+                    if (!rules.isNullOrEmpty()) {
+                        appDb.highlightRuleDao.insert(*rules.toTypedArray())
+                        postEvent(EventBus.HIGHLIGHT_RULE_CHANGED, true)
+                    }
+                }.onFailure { e ->
+                    AppLog.put("导入高亮规则失败\n${e.localizedMessage}", e)
                 }
             }
             // 评论页快照：reviews/r_*.json 还原进该书缓存目录，之后点击评论按钮即可离线打开。

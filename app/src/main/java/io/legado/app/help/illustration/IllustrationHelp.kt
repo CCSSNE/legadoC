@@ -45,6 +45,7 @@ object IllustrationHelp {
     const val EXPORT_JSON_NAME = "illustrations.json"
     const val EXPORT_BOOKMARKS_NAME = "bookmarks.json"
     const val EXPORT_REPLACE_RULES_NAME = "replace_rules.json"
+    const val EXPORT_HIGHLIGHT_RULES_NAME = "highlight_rules.json"
     const val EPUB_SIDECAR_NAME = "legado_illustrations.json"
     const val EPUB_BOOKMARKS_NAME = "legado_bookmarks.json"
     const val EXPORT_IMAGES_DIR = "images"
