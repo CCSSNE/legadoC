@@ -1276,6 +1276,11 @@ class ReadBookActivity : BaseReadBookActivity(),
                 return true
             }
 
+            R.id.menu_web_search -> {
+                showDialogFragment(SelectionWebSearchDialog(selectedText))
+                return true
+            }
+
             R.id.menu_search_content -> {
                 viewModel.searchContentQuery = selectedText
                 openSearchActivity(selectedText)

@@ -322,6 +322,8 @@ object PreferKey {
     const val contentSelectActions = "contentSelectActions"
     const val contentSelectActionsOrder = "contentSelectActionsOrder"
     const val contentSelectDefaultOpen = "contentSelectDefaultOpen"
+    const val contentSelectSearchEngines = "contentSelectSearchEngines"
+    const val contentSelectSearchEngineId = "contentSelectSearchEngineId"
     const val advancedTitleConfig = "advancedTitleConfig"
     const val advancedTitleLottieJson = "advancedTitleLottieJson"
     const val advancedTitleLottiePath = "advancedTitleLottiePath"

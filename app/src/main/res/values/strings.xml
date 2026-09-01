@@ -299,8 +299,16 @@
     <string name="content_select_actions">Long-press actions</string>
     <string name="content_select_default_open">Default open</string>
     <string name="default_none">No default action</string>
+    <string name="default_search">Search</string>
     <string name="default_dict">Dictionary</string>
     <string name="default_ask_ai">Ask AI</string>
+    <string name="selection_search_engine_manage">Search engines</string>
+    <string name="selection_search_engine_name">Engine name</string>
+    <string name="selection_search_engine_url">Search URL</string>
+    <string name="selection_search_engine_url_hint">Use {query} as selected text, or {queryPath} in URL path</string>
+    <string name="selection_search_engine_url_error">Search URL must start with http:// or https://</string>
+    <string name="selection_search_engine_hide_css_enabled">CSS blocker enabled</string>
+    <string name="selection_search_engine_hide_css_hint">CSS blocker, optional. Example: header, form[role=&quot;search&quot;] { display:none!important; }</string>
     <string name="ai_create">AI Create</string>
     <string name="stage_text">Stage</string>
     <string name="ai_creation">AI Creation</string>

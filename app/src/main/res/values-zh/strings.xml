@@ -298,8 +298,16 @@
     <string name="content_select_actions">长按动作</string>
     <string name="content_select_default_open">默认打开</string>
     <string name="default_none">不默认打开</string>
+    <string name="default_search">搜索</string>
     <string name="default_dict">字典</string>
     <string name="default_ask_ai">问AI</string>
+    <string name="selection_search_engine_manage">搜索引擎</string>
+    <string name="selection_search_engine_name">引擎名称</string>
+    <string name="selection_search_engine_url">搜索 URL</string>
+    <string name="selection_search_engine_url_hint">使用 {query} 代表选中文字，URL 路径中可用 {queryPath}</string>
+    <string name="selection_search_engine_url_error">搜索 URL 必须以 http:// 或 https:// 开头</string>
+    <string name="selection_search_engine_hide_css_enabled">已启用 CSS 屏蔽</string>
+    <string name="selection_search_engine_hide_css_hint">CSS 屏蔽规则，可选。示例：header, form[role=&quot;search&quot;] { display:none!important; }</string>
     <string name="ai_create">AI 创作</string>
     <string name="stage_text">暂存</string>
     <string name="ai_creation">AI 创作</string>

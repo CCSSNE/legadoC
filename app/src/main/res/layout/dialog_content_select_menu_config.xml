@@ -65,6 +65,12 @@
                     android:text="@string/default_none" />
 
                 <io.legado.app.lib.theme.view.ThemeRadioButton
+                    android:id="@+id/rb_default_search"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/default_search" />
+
+                <io.legado.app.lib.theme.view.ThemeRadioButton
                     android:id="@+id/rb_default_dict"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"

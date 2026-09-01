@@ -71,7 +71,7 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
     private val configuredActionIds: Set<String>
         get() = context.getPrefStringSet(
             PreferKey.contentSelectActions,
-            mutableSetOf("replace", "copy", "bookmark", "paragraph_bookmark", "aloud", "ai_create", "stage")
+            mutableSetOf("web_search", "replace", "copy", "bookmark", "paragraph_bookmark", "aloud", "ai_create", "stage")
         )?.filterNot { it == "generate_image" }?.toSet() ?: emptySet()
 
     private val defaultOpenActionId: String
@@ -87,6 +87,7 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
     private fun menuItemToActionId(itemId: Int): String? = when (itemId) {
         R.id.menu_replace -> "replace"
         R.id.menu_copy -> "copy"
+        R.id.menu_web_search -> ContentSelectConfig.ACTION_WEB_SEARCH
         R.id.menu_bookmark -> "bookmark"
         R.id.menu_paragraph_bookmark -> "paragraph_bookmark"
         R.id.menu_aloud -> "aloud"
