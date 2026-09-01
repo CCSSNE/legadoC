@@ -14,8 +14,6 @@ import splitties.init.appCtx
 object LocalConfig : SharedPreferences
 by appCtx.getSharedPreferences("local", Context.MODE_PRIVATE) {
 
-    private const val versionCodeKey = "appVersionCode"
-
     /**
      * 本地密码,用来对需要备份的敏感信息加密,如 webdav 配置等
      */
@@ -33,12 +31,6 @@ by appCtx.getSharedPreferences("local", Context.MODE_PRIVATE) {
         get() = getLong("lastBackup", 0)
         set(value) {
             putLong("lastBackup", value)
-        }
-
-    var privacyPolicyOk: Boolean
-        get() = getBoolean("privacyPolicyOk")
-        set(value) {
-            putBoolean("privacyPolicyOk", value)
         }
 
     val readHelpVersionIsLast: Boolean
@@ -64,20 +56,6 @@ by appCtx.getSharedPreferences("local", Context.MODE_PRIVATE) {
     fun markDefaultDataVersion(versionKey: String, version: Int) {
         edit { putInt(versionKey, version) }
     }
-
-    var versionCode
-        get() = getLong(versionCodeKey, 0)
-        set(value) {
-            edit { putLong(versionCodeKey, value) }
-        }
-    val isFirstOpenApp: Boolean
-        get() {
-            val value = getBoolean("firstOpen", true)
-            if (value) {
-                edit { putBoolean("firstOpen", false) }
-            }
-            return value
-        }
 
     @Suppress("SameParameterValue")
     private fun isLastVersion(

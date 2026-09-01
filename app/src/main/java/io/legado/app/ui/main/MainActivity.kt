@@ -45,13 +45,11 @@ import com.google.android.material.bottomnavigation.BottomNavigationView
 import io.legado.app.BuildConfig
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
-import io.legado.app.constant.AppConst.appInfo
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.ActivityMainBinding
-import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.config.AppConfig
@@ -83,7 +81,6 @@ import io.legado.app.ui.main.explore.ExploreFragment
 import io.legado.app.ui.main.my.MyFragment
 import io.legado.app.ui.main.readrecord.ReadRecordFragment
 import io.legado.app.ui.main.rss.RssFragment
-import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.ui.widget.text.BadgeView
 import io.legado.app.utils.isCreated
 import io.legado.app.utils.BitmapUtils
@@ -102,11 +99,9 @@ import io.legado.app.utils.ColorUtils as AppColorUtils
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import splitties.views.bottomPadding
 import java.util.WeakHashMap
-import kotlin.coroutines.resume
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.utils.dpToPx
 import kotlin.math.abs
@@ -131,8 +126,6 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     private val idMy = 4
     private var exitTime: Long = 0
     private var bookshelfReselected: Long = 0
-    private val isLegadoCBuild: Boolean
-        get() = BuildConfig.BUILD_TYPE == "c"
     private var exploreReselected: Long = 0
     private var pagePosition = 0
     private var transientRssPage = false
@@ -293,16 +286,10 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     override fun onPostCreate(savedInstanceState: Bundle?) {
         super.onPostCreate(savedInstanceState)
         lifecycleScope.launch {
-            //隐私协议
-            if (!privacyPolicy()) return@launch
-            //版本更新
-            upVersion()
             //自动检查更新
             if (getPrefBoolean(PreferKey.updateCheckOnStart, true)) {
                 UpdateManager.checkUpdate(this@MainActivity)
             }
-            //设置本地密码
-            setLocalPassword()
             notifyAppCrash()
             //备份同步
             backupSync()
@@ -1734,96 +1721,6 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             }
         }
         mergedDiscoveryLongClickView = itemView
-    }
-
-    /**
-     * 用户隐私与协议
-     */
-    private suspend fun privacyPolicy(): Boolean = suspendCancellableCoroutine sc@{ block ->
-        if (isLegadoCBuild) {
-            LocalConfig.privacyPolicyOk = true
-            block.resume(true)
-            return@sc
-        }
-        if (LocalConfig.privacyPolicyOk) {
-            block.resume(true)
-            return@sc
-        }
-        val privacyPolicy = String(assets.open("privacyPolicy.md").readBytes())
-        alert(getString(R.string.privacy_policy), privacyPolicy) {
-            positiveButton(R.string.agree) {
-                LocalConfig.privacyPolicyOk = true
-                block.resume(true)
-            }
-            negativeButton(R.string.refuse) {
-                finish()
-                block.resume(false)
-            }
-        }
-    }
-
-    /**
-     * 版本更新日志
-     */
-    private suspend fun upVersion() = suspendCancellableCoroutine sc@{ block ->
-        if (LocalConfig.versionCode == appInfo.versionCode) {
-            block.resume(null)
-            return@sc
-        }
-        LocalConfig.versionCode = appInfo.versionCode
-        if (isLegadoCBuild) {
-            block.resume(null)
-            return@sc
-        }
-        if (LocalConfig.isFirstOpenApp) {
-            val help = String(assets.open("web/help/md/appHelp.md").readBytes())
-            val dialog = TextDialog(getString(R.string.help), help, TextDialog.Mode.MD)
-            dialog.setOnDismissListener {
-                block.resume(null)
-            }
-            showDialogFragment(dialog)
-        } else if (!BuildConfig.DEBUG) {
-            val log = String(assets.open("README.md").readBytes())
-            val dialog = TextDialog(getString(R.string.update_log), log, TextDialog.Mode.MD)
-            dialog.setOnDismissListener {
-                block.resume(null)
-            }
-            showDialogFragment(dialog)
-        } else {
-            block.resume(null)
-        }
-    }
-
-    /**
-     * 设置本地密码
-     */
-    private suspend fun setLocalPassword() = suspendCancellableCoroutine sc@{ block ->
-        if (LocalConfig.password != null) {
-            block.resume(null)
-            return@sc
-        }
-        if (isLegadoCBuild) {
-            LocalConfig.password = ""
-            block.resume(null)
-            return@sc
-        }
-        alert(R.string.set_local_password, R.string.set_local_password_summary) {
-            val editTextBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = "password"
-            }
-            customView {
-                editTextBinding.root
-            }
-            onDismiss {
-                block.resume(null)
-            }
-            okButton {
-                LocalConfig.password = editTextBinding.editView.text.toString()
-            }
-            cancelButton {
-                LocalConfig.password = ""
-            }
-        }
     }
 
     private fun notifyAppCrash() {
