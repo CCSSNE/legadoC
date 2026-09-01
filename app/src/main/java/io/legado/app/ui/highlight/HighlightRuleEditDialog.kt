@@ -41,14 +41,10 @@ class HighlightRuleEditDialog() : BaseDialogFragment(R.layout.dialog_highlight_r
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.toolBar.background = null
-        val arguments = arguments ?: let {
-            dismiss()
-            return
-        }
-
+        // 新建规则时无 arguments，直接用默认新规则；编辑时 arguments 携带待编辑规则
         @Suppress("DEPRECATION")
-        val rule = arguments.getParcelable<HighlightRule>("rule") ?: HighlightRule()
-        val editPos = arguments.getInt("editPos", -1)
+        val rule = arguments?.getParcelable<HighlightRule>("rule") ?: HighlightRule()
+        val editPos = arguments?.getInt("editPos", -1) ?: -1
         binding.editName.setText(rule.name)
         binding.editPattern.setText(rule.pattern)
         binding.editScope.setText(rule.scope)
