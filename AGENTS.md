@@ -181,6 +181,7 @@ $versionName = '3.26.<MMddHH>' # <MMddHH> uses UTC; appC automatically appends c
 - 2026-08-24：Kotlin 字符串模板 `$total章` 报 `Unresolved reference 'total章'`——Kotlin 标识符允许 Unicode 字母，模板变量后紧跟 CJK 字符会被并入标识符解析；非 ASCII 后缀前必须用 `${var}` 显式终止引用。
 - 2026-08-24：用 PowerShell 字符串拼接生成后台构建 `.bat` 时，含拼接表达式的行被拆成多行、重定向路径断裂，进程秒退且无任何日志文件。此类"启动器损坏"一律按未启动处理，不得等待或误判为编译卡死；生成脚本改用纯字面量 here-string（长路径经 `%VAR%` 间接引用），且必须先回读校验行数与内容再 `Start-Process` 启动。
 - 2026-08-24：后台构建 `.bat` 用 `echo %EXIT_CODE%> "file"` 记录退出码，`%EXIT_CODE%` 为纯数字（如 0）时该行被 cmd 解析为句柄 `0>` 重定向，退出码文件为 0 字节空文件（构建本身正常，成功以 out.log 的 BUILD SUCCESSFUL 与空 err.log 为准，此问题不触发重编译）。记录退出码必须把重定向写在行首：`> "file" echo %EXIT_CODE%`。
+- 2026-09-01：`compileAppCKotlin` 报 `Unresolved reference 'start'` / `end'`——Kotlin `MatchResult` 没有 `start(groupIdx)` / `end(groupIdx)` 方法；需用 `match.groups[groupIdx]!!.range.first` 和 `range.last + 1`。同文件 `outcome` 为可空类型，在 `when` 后的 `else` 分支不会被 smart cast（lambda 捕获），需显式 `!!`。
 
 ### 双构建路线（自有 / 开源）
 
@@ -315,6 +316,6 @@ uiautomator2 / ADB
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- `3.26.090106` / `10795`，2026-09-01（UTC 06 时），`own` 主线，**自用版 appC 单编译交付**。本次为用户点名"编译自用版"，确认按新版本交付（versionCode 递增 10795）。`-Pabi=arm64-v8a -PVERSION_CODE=10795 -PVERSION_NAME=3.26.090106`，常规 daemon 编译 `assembleAppC` BUILD SUCCESSFUL in 2m 39s。`aapt` 确认包名 `io.legado.app.dev`、versionName `3.26.090106c`（appC 自动加 `c` 后缀）、versionCode `10795`、arm64-v8a、中文名 `阅读 C`；产物 `app\build\outputs\apk\app\c\legado_app_3.26.090106_10795.apk`（46.15 MB）。`apksigner` 退出码 0，证书 `CN=Android Debug`、SHA-256 `70cb88ca...`（debug 签名，符合只允许 release 系构建 + 统一 debug 签名的签名铁律）。构建后 `gradlew --stop` 确认无残留 Gradle 进程；未安装到模拟器、未做正式回归。沿用此前批次设定的 `GRADLE_USER_HOME=D:\AI\audio\android-gradle-user-home`（与项目同盘），未再触发 KSP 跨盘 bug。`compileAppCKotlin` 仅有若干良性告警（Elvis 恒左、非空冗余 safe call、非空 `!!`、表达式体 return），均为既有源码，不影响交付。
+- `3.26.090107` / `10796`，2026-09-01（UTC 07 时），`own` 主线，**自用版 appC 单编译交付**。本次为用户点名"编译自用版"，确认按新版本交付（versionCode 递增 10796）。首次编译 `compileAppCKotlin` 失败：`ReviewSnapshotCapture.kt` 有 6 个编译错误——`MatchResult.start(groupIdx)` / `end(groupIdx)` 不存在（改用 `groups[i]!!.range.first` / `range.last + 1`），以及 `outcome` 可空类型在 `when` 后的 `else` 分支未被 smart cast（加 `!!`）。修复后重编 `-Pabi=arm64-v8a -PVERSION_CODE=10796 -PVERSION_NAME=3.26.090107`，daemon 编译 `assembleAppC` BUILD SUCCESSFUL。`aapt` 确认包名 `io.legado.app.dev`、versionName `3.26.090107c`（appC 自动加 `c` 后缀）、versionCode `10796`、arm64-v8a、中文名 `阅读 C`；产物 `app\build\outputs\apk\app\c\legado_app_3.26.090107_10796.apk`（46.16 MB）。`apksigner` 退出码 0，证书 `CN=Android Debug`、SHA-256 `70cb88ca...`（debug 签名，符合只允许 release 系构建 + 统一 debug 签名的签名铁律）。构建后 `gradlew --stop` 确认无残留 Gradle 进程；未安装到模拟器、未做正式回归。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
