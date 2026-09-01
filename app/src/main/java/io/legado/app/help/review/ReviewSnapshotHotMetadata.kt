@@ -12,6 +12,7 @@ internal data class ReviewSnapshotHotMetadata(
     val buttonSrc: String,
     val resourceKeys: List<String>?,
     val htmlPresent: Boolean,
+    val partial: Boolean,
 )
 
 internal fun readReviewSnapshotHotMetadata(input: Reader): ReviewSnapshotHotMetadata {
@@ -22,6 +23,7 @@ internal fun readReviewSnapshotHotMetadata(input: Reader): ReviewSnapshotHotMeta
         var buttonSrc = ""
         var resourceKeys: List<String>? = null
         var htmlPresent = false
+        var partial = false
         reader.beginObject()
         while (reader.hasNext()) {
             when (reader.nextName()) {
@@ -40,6 +42,7 @@ internal fun readReviewSnapshotHotMetadata(input: Reader): ReviewSnapshotHotMeta
                         resourceKeys = keys
                     }
                 }
+                "partial" -> partial = reader.nextBoolean()
                 "html" -> {
                     htmlPresent = reader.peek() != JsonToken.NULL
                     reader.skipValue()
@@ -55,6 +58,7 @@ internal fun readReviewSnapshotHotMetadata(input: Reader): ReviewSnapshotHotMeta
             buttonSrc = buttonSrc,
             resourceKeys = resourceKeys,
             htmlPresent = htmlPresent,
+            partial = partial,
         )
     }
 }

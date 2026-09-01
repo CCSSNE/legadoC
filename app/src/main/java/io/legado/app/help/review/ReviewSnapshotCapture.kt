@@ -142,7 +142,9 @@ object ReviewSnapshotCapture {
         /** 展开检测轮询轮数（包含“没点按钮”的稳定轮） */
         val expandRounds: Int,
         /** 实际点击“展开/回复/加载更多”按钮的次数（stats.clicked 累计） */
-        val expandClickCount: Int
+        val expandClickCount: Int,
+        /** 未能入库、以 # 占位或从快照中剔除的资源数；>0 时快照为部分成功 */
+        val droppedResources: Int = 0
     )
 
     /**
@@ -227,10 +229,12 @@ object ReviewSnapshotCapture {
                     title = "",
                     html = page.html,
                     resourceKeys = page.resourceKeys,
+                    partial = page.droppedResources > 0,
                     savedAt = System.currentTimeMillis()
                 ),
                 expandRounds = page.expandRounds,
-                expandClickCount = page.expandClickCount
+                expandClickCount = page.expandClickCount,
+                droppedResources = page.droppedResources
             ).also {
                 trace?.done(CacheOperationDiagnostics.Metrics(outputChars = page.html.length))
             }
@@ -246,6 +250,8 @@ object ReviewSnapshotCapture {
         val expandRounds: Int,
         val expandClickCount: Int,
         val resourceKeys: List<String>,
+        /** 序列化时被剔除/占位的资源数；>0 表示快照为部分成功 */
+        val droppedResources: Int = 0,
     )
 
     /**
@@ -311,12 +317,20 @@ object ReviewSnapshotCapture {
                         diagnostics,
                         commitIfLeaseActive,
                     ) {
-                        result, error, rounds, clicks, discardWebView, resourceKeys ->
+                        result, error, rounds, clicks, discardWebView, resourceKeys, droppedResources ->
                         sessionRef.set(null)
                         releaseOnce(discardWebView)
                         if (block.isActive) {
                             if (error != null) block.resumeWithException(error)
-                            else block.resume(SnapshotPageResult(result ?: "", rounds, clicks, resourceKeys))
+                            else block.resume(
+                                SnapshotPageResult(
+                                    result ?: "",
+                                    rounds,
+                                    clicks,
+                                    resourceKeys,
+                                    droppedResources
+                                )
+                            )
                         }
                     }
                     sessionRef.set(session)
@@ -376,7 +390,7 @@ object ReviewSnapshotCapture {
         private val jsBridge: PageJsBridge?,
         private val diagnostics: CacheOperationDiagnostics.Operation?,
         private val commitIfLeaseActive: ((() -> Unit) -> Boolean),
-        private val done: (String?, Throwable?, Int, Int, Boolean, List<String>) -> Unit
+        private val done: (String?, Throwable?, Int, Int, Boolean, List<String>, Int) -> Unit
     ) {
 
         private data class TerminalResult(
@@ -384,6 +398,8 @@ object ReviewSnapshotCapture {
             val error: Throwable?,
             val discardWebView: Boolean,
             val resourceKeys: List<String> = emptyList(),
+            /** 序列化阶段剔除/占位的资源数；>0 表示快照为部分成功 */
+            val droppedResources: Int = 0,
         )
 
         /** 内联资源完成后记录的 key 列表；终态回调时随 [TerminalResult] 带出。 */
@@ -461,6 +477,8 @@ object ReviewSnapshotCapture {
         private data class CssSubStageResult(
             val references: Map<String, String>,
             val storedBytes: Long,
+            /** 下载失败（按非关键资源跳过、引用以 # 占位）的子资源数 */
+            val failedCount: Int,
         )
 
         private data class StagedResource(
@@ -643,13 +661,14 @@ object ReviewSnapshotCapture {
             fail(error, discardWebView = true)
         }
 
-        private fun finish(html: String?) {
+        private fun finish(html: String?, droppedResources: Int = 0) {
             val cleanup = acceptTerminal(
                 TerminalResult(
                     html = html,
                     error = null,
                     discardWebView = false,
                     resourceKeys = capturedResourceKeys,
+                    droppedResources = droppedResources,
                 )
             ) ?: return
             completeActiveStage(CacheOperationDiagnostics.Metrics(outputChars = html?.length))
@@ -726,6 +745,7 @@ object ReviewSnapshotCapture {
                     totalExpandClicks,
                     terminal.discardWebView,
                     terminal.resourceKeys,
+                    terminal.droppedResources,
                 )
                 releaseHeavyStagePermit()
             }
@@ -1002,6 +1022,8 @@ object ReviewSnapshotCapture {
             val cssMap: Map<String, String> = emptyMap(),
             /** CSS 子资源（字体、背景图等）入库后的资源库 key，必须进快照 resourceKeys。 */
             val subResourceKeys: List<String> = emptyList(),
+            /** 下载阶段未能入库的资源数（下载失败或内容为空）；>0 表示快照为部分成功。 */
+            val droppedResources: Int = 0,
             val resourceBytes: Long = 0L,
             val cacheAvatars: Boolean = false,
             val cacheCommentImages: Boolean = false,
@@ -1199,6 +1221,9 @@ object ReviewSnapshotCapture {
                     cacheAvatars = urls.cacheAvatars,
                     cacheCommentImages = urls.cacheCommentImages,
                     subResourceKeys = subResourceKeys,
+                    droppedResources = urls.images.count { imgMap[it.url] == null } +
+                        urls.css.count { cssMap[it] == null } +
+                        subStage.failedCount,
                     removeUnstagedExternalResources = true,
                 )
             } finally {
@@ -1221,7 +1246,7 @@ object ReviewSnapshotCapture {
                 .mapNotNull { it.absolute }
                 .distinct()
                 .toList()
-            if (subUrls.isEmpty()) return CssSubStageResult(emptyMap(), 0L)
+            if (subUrls.isEmpty()) return CssSubStageResult(emptyMap(), 0L, 0)
             if (subUrls.size > MAX_SNAPSHOT_RESOURCES) {
                 throw ResourceBudgetExceededException(
                     "评论快照 CSS 子资源数 ${subUrls.size} 超过预算 $MAX_SNAPSHOT_RESOURCES",
@@ -1244,7 +1269,11 @@ object ReviewSnapshotCapture {
                     ReviewSnapshotResourceStore.referenceFor(committed.key)
                 storedBytes += staged.byteCount
             }
-            return CssSubStageResult(subReferences, storedBytes)
+            return CssSubStageResult(
+                subReferences,
+                storedBytes,
+                failedCount = subUrls.size - stagedSubs.size,
+            )
         }
 
         /** 按解析结果改写 CSS 文本：入库引用 → review-resource:，失败引用 → #，本地形式保留。 */
@@ -1340,7 +1369,9 @@ object ReviewSnapshotCapture {
                         future.get()
                     } catch (error: java.util.concurrent.ExecutionException) {
                         val cause = error.cause ?: error
-                        if (cause is ResourceDownloadException && target.kind != ResourceKind.CSS) {
+                        // 资源下载失败一律按非关键资源跳过（CSS 也一样）：快照以部分
+                        // 成功落盘，剔除/占位数量计入 partial，等待重试补全。
+                        if (cause is ResourceDownloadException) {
                             diagnostics?.warn("RESOURCE_DOWNLOAD_SKIPPED", cause)
                             null
                         } else {
@@ -1592,7 +1623,7 @@ object ReviewSnapshotCapture {
 
         private fun serialize(inline: InlineResources) {
             if (destroyed) return
-            // 在冻结 DOM 内原子完成完整性校验、脚本清理和 outerHTML，避免活页面在资源
+            // 在冻结 DOM 内完成引用清理、完整性收口和 outerHTML，避免活页面在资源
             // 下载期间继续改变。JSON 解码移出主线程，不能在回调中阻塞 UI。
             diagnostics?.stageStart("SANITIZE")
             webView.evaluateJavascript(buildSerializeSnapshotJs(inline)) { raw ->
@@ -1602,14 +1633,12 @@ object ReviewSnapshotCapture {
                 )
                 launchHeavyWorker(
                     name = "ReviewSnapshotDecode",
-                    work = { decodeJavascriptString(raw) },
-                    onSuccess = { html ->
+                    work = { decodeSerializedSnapshot(raw) },
+                    onSuccess = { outcome ->
                         val failureMessage = when {
-                            html == null || html.isBlank() -> "评论页快照序列化为空 $url"
-                            html == SNAPSHOT_ROOT_MISSING -> "评论页快照冻结 DOM 丢失 $url"
-                            html != null && html.startsWith(SNAPSHOT_RESOURCE_INCOMPLETE_PREFIX) ->
-                                "评论页快照资源不完整: " +
-                                    html.removePrefix(SNAPSHOT_RESOURCE_INCOMPLETE_PREFIX)
+                            outcome == null -> "评论页快照序列化为空 $url"
+                            outcome.rootMissing -> "评论页快照冻结 DOM 丢失 $url"
+                            outcome.html.isBlank() -> "评论页快照序列化为空 $url"
                             else -> null
                         }
                         if (failureMessage != null) {
@@ -1617,12 +1646,21 @@ object ReviewSnapshotCapture {
                             diagnostics?.stageFail("SANITIZE", error)
                             fail(error)
                         } else {
-                            val completeHtml = checkNotNull(html)
+                            val completeHtml = outcome.html
+                            // 部分成功：页面 HTML 已抓到，下载失败的资源只能剔除或以 #
+                            // 占位；快照照常落盘渲染，按钮仍按失败计，等待重试补全。
+                            val dropped = outcome.dropped + inline.droppedResources
+                            if (dropped > 0) {
+                                diagnostics?.mark(
+                                    "SANITIZE_PARTIAL",
+                                    CacheOperationDiagnostics.Metrics(resourceCount = dropped),
+                                )
+                            }
                             diagnostics?.stageDone(
                                 "SANITIZE",
                                 CacheOperationDiagnostics.Metrics(outputChars = completeHtml.length),
                             )
-                            finish(completeHtml)
+                            finish(completeHtml, dropped)
                         }
                     },
                     onFailure = { error ->
@@ -1631,6 +1669,34 @@ object ReviewSnapshotCapture {
                     },
                 )
             }
+        }
+
+        private data class SerializedSnapshot(
+            val html: String,
+            val dropped: Int,
+            val rootMissing: Boolean,
+        )
+
+        private data class SerializedSnapshotJs(
+            val h: String? = null,
+            val d: Int = 0,
+        )
+
+        /**
+         * 解码序列化 JS 的返回值：JSON {h: outerHTML, d: 剔除资源数}，或冻结 DOM
+         * 丢失哨兵。返回 null 表示序列化为空。
+         */
+        private fun decodeSerializedSnapshot(raw: String?): SerializedSnapshot? {
+            val value = decodeJavascriptString(raw) ?: return null
+            if (value == SNAPSHOT_ROOT_MISSING) {
+                return SerializedSnapshot(html = "", dropped = 0, rootMissing = true)
+            }
+            val parsed = GSON.fromJson(value, SerializedSnapshotJs::class.java) ?: return null
+            return SerializedSnapshot(
+                html = parsed.h.orEmpty(),
+                dropped = parsed.d.coerceAtLeast(0),
+                rootMissing = false,
+            )
         }
 
         private fun decodeJavascriptString(raw: String?): String? {
@@ -1687,30 +1753,31 @@ object ReviewSnapshotCapture {
                 "var scripts=root.querySelectorAll('script');" +
                 "for(var i=scripts.length-1;i>=0;i--){var e=scripts[i];" +
                 "if(e.parentNode)e.parentNode.removeChild(e);}" +
-                "var unresolved=[];" +
-                "function unresolvedCss(css){" +
-                "var cssUrl=/url\\s*\\(\\s*([\"']?)([^\"')\\s]+)\\1\\s*\\)/ig;var match;" +
-                "while((match=cssUrl.exec(css))!==null){var value=match[2];" +
-                "if(!/^(data:|review-resource:|#|about:blank)/i.test(value))return value;}" +
-                "var cssImport=/@import\\s*[\"']([^\"']+)[\"']/ig;" +
-                "while((match=cssImport.exec(css))!==null){var imported=match[1];" +
-                "if(!/^(data:|review-resource:|#|about:blank)/i.test(imported))return imported;}" +
-                "return null;}" +
+                // 部分成功收口：无法入库的外部引用不再判死整份快照，而是剔除或以 #
+                // 占位；剔除数量随结果带出，快照照常落盘渲染，按钮仍计失败等待重试。
+                "var dropped=0;" +
+                "function acceptedRef(v){return /^(data:|review-resource:|#|about:blank)/i.test(v);}" +
                 "root.querySelectorAll('img').forEach(function(el){" +
                 "if(!(isAvatarImage(el)?cacheAvatars:cacheCommentImages))return;" +
                 "var source=el.getAttribute('src');" +
-                "if(source&&/^(https?|blob):/i.test(el.src))unresolved.push(el.src);" +
-                "var set=el.getAttribute('srcset')||'';set.split(',').forEach(function(part){" +
+                "if(source&&/^(https?|blob):/i.test(el.src)){el.removeAttribute('src');dropped++;}" +
+                "var set=el.getAttribute('srcset')||'';" +
+                "if(set){var bad=false;set.split(',').forEach(function(part){" +
                 "var raw=part.trim().split(/\\s+/)[0];if(!raw)return;var resolved=raw;" +
                 "try{resolved=new URL(raw,document.baseURI).href;}catch(e){}" +
-                "if(!/^(data:|review-resource:|#|about:blank)/i.test(resolved))unresolved.push(resolved);});});" +
+                "if(!acceptedRef(resolved))bad=true;});" +
+                "if(bad){el.removeAttribute('srcset');dropped++;}}});" +
                 "root.querySelectorAll('link[rel=\"stylesheet\"][href]').forEach(function(el){" +
-                "if(!/^(data:|review-resource:|about:blank)/i.test(el.href))unresolved.push(el.href);});" +
+                "if(!/^(data:|review-resource:|about:blank)/i.test(el.href)){" +
+                "el.parentNode.removeChild(el);dropped++;}});" +
                 "root.querySelectorAll('style').forEach(function(el){" +
-                "var bad=unresolvedCss(el.textContent||'');if(bad)unresolved.push(bad);});" +
-                "if(unresolved.length)return '$SNAPSHOT_RESOURCE_INCOMPLETE_PREFIX'+" +
-                "unresolved.length+' 个外部资源未入库，首个: '+unresolved[0];" +
-                "return root.outerHTML;" +
+                "var text=el.textContent||'';var changed=false;" +
+                "text=text.replace(/url\\s*\\(\\s*([\"']?)([^\"'\\)\\s]+)\\1\\s*\\)/ig,function(m,q,v){" +
+                "if(acceptedRef(v))return m;changed=true;return \"url('#')\";});" +
+                "text=text.replace(/@import\\s*[\"']([^\"']+)[\"']/ig,function(m,v){" +
+                "if(acceptedRef(v))return m;changed=true;return '@import \"#\"';});" +
+                "if(changed){el.textContent=text;dropped++;}});" +
+                "return JSON.stringify({h:root.outerHTML,d:dropped});" +
                 "})()"
         }
     }
@@ -1768,8 +1835,6 @@ object ReviewSnapshotCapture {
             "})()"
 
     private const val SNAPSHOT_ROOT_MISSING = "__LEGADO_REVIEW_SNAPSHOT_ROOT_MISSING__"
-    private const val SNAPSHOT_RESOURCE_INCOMPLETE_PREFIX =
-        "__LEGADO_REVIEW_SNAPSHOT_RESOURCE_INCOMPLETE__:"
 
     /** 与序列化完整性检查一致的 CSS 引用文法：url() 形式，值不含空白/引号/括号。 */
     private val CSS_URL_REF_REGEX =

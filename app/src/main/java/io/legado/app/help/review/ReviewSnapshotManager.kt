@@ -599,8 +599,8 @@ object ReviewSnapshotManager {
                 require(selected.size == requestedRetrySources.size) {
                     "review retry button is no longer present in chapter content: ${chapter.url}"
                 }
-                require(selected.none { ReviewSnapshotStore.has(book, chapter, it.src) }) {
-                    "review retry button already has a snapshot: ${chapter.url}"
+                require(selected.none { ReviewSnapshotStore.hasComplete(book, chapter, it.src) }) {
+                    "review retry button already has a complete snapshot: ${chapter.url}"
                 }
             }
         } else {
@@ -609,7 +609,9 @@ object ReviewSnapshotManager {
         val existingSnapshots = if (force) {
             0
         } else {
-            snapshotButtons.count { ReviewSnapshotStore.has(book, chapter, it.src) }
+            // 只有完整快照才算“已处理”基线；部分成功快照会在本轮重新抓取，
+            // 由其本轮结果计数，不得预计入 processed。
+            snapshotButtons.count { ReviewSnapshotStore.hasComplete(book, chapter, it.src) }
         }
         // "已处理" and "成功" are different counters. Existing snapshots count as
         // already processed for an ordinary cache run, while a forced retry starts
@@ -779,8 +781,8 @@ object ReviewSnapshotManager {
     ): ButtonOutcome {
         if (!button.hasAction) return ButtonOutcome(buttonIndex, button.src, "")
         val sb = StringBuilder()
-        // 普通触发有快照可跳过；force（明确重新缓存/刷新）必须重抓覆盖
-        if (!force && ReviewSnapshotStore.has(book, chapter, button.src)) {
+        // 普通触发只跳过完整快照；部分成功快照不完整，必须重新抓取覆盖
+        if (!force && ReviewSnapshotStore.hasComplete(book, chapter, button.src)) {
             sb.append("3. 按钮").append(buttonIndex + 1).append("：src=").append(button.src)
                 .append("\n   已有有效快照，跳过\n")
             return ButtonOutcome(buttonIndex, button.src, sb.toString())
@@ -864,6 +866,14 @@ object ReviewSnapshotManager {
             if (error is CancellationException) throw error
         }
         if (putResult.isSuccess) {
+            if (capture.snapshot.partial) {
+                // 部分成功：快照已落盘可离线渲染，但缺失资源，仍按失败计，
+                // 进入失败身份列表等待重试；onSnapshotSaved 只归属完整成功。
+                sb.append("7. SnapshotStore.put：部分成功（快照已保存可渲染，")
+                    .append(capture.droppedResources)
+                    .append(" 个资源缺失已剔除/占位，计入失败等待重试）\n")
+                return ButtonOutcome(buttonIndex, button.src, sb.toString(), failed = true)
+            }
             onSnapshotSaved()
             sb.append("7. SnapshotStore.put：成功\n")
             return ButtonOutcome(buttonIndex, button.src, sb.toString(), success = true)

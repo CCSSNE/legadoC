@@ -37,6 +37,12 @@ data class ReviewSnapshot(
      * null = 旧格式快照（写入时没有该字段），引用未知，GC 必须放弃本次回收。
      */
     val resourceKeys: List<String>? = null,
+    /**
+     * 部分成功快照：页面 HTML 已抓到并落盘，但存在下载失败的资源（缺失引用以
+     * # 占位）。部分快照可离线渲染，但在计数与重试判定中不等同于完整快照，
+     * 对应按钮仍计为失败，等待重新抓取覆盖。
+     */
+    val partial: Boolean = false,
     val savedAt: Long = 0L
 )
 
@@ -222,9 +228,27 @@ object ReviewSnapshotStore {
     }
 
     fun has(book: Book, chapter: BookChapter, buttonSrc: String): Boolean {
+        return readOwnSnapshotMetadata(book, chapter, buttonSrc) != null
+    }
+
+    /**
+     * 该按钮是否已有完整快照。部分成功快照（partial）可离线渲染但不完整，
+     * 在跳过/重试/进度基线判定中必须视为未完成，等待重新抓取覆盖。
+     */
+    fun hasComplete(book: Book, chapter: BookChapter, buttonSrc: String): Boolean {
+        val metadata = readOwnSnapshotMetadata(book, chapter, buttonSrc) ?: return false
+        return !metadata.partial
+    }
+
+    /** 读取并校验属于 [chapter]/[buttonSrc] 的快照热元数据；文件不存在返回 null。 */
+    private fun readOwnSnapshotMetadata(
+        book: Book,
+        chapter: BookChapter,
+        buttonSrc: String,
+    ): ReviewSnapshotHotMetadata? {
         requireCurrentFormatIfReviewData(book)
         val file = File(reviewsDir(book), fileName(chapter.url, buttonSrc))
-        if (!file.isFile) return false
+        if (!file.isFile) return null
         val metadata = readHotMetadata(book, file)
         require(metadata.chapterUrl.trim() == chapter.url.trim()) {
             "review snapshot chapterUrl mismatch: ${file.absolutePath}"
@@ -232,7 +256,7 @@ object ReviewSnapshotStore {
         require(metadata.buttonSrc.trim() == buttonSrc.trim()) {
             "review snapshot buttonSrc mismatch: ${file.absolutePath}"
         }
-        return true
+        return metadata
     }
 
     fun delete(book: Book, chapter: BookChapter, buttonSrc: String) {
