@@ -578,7 +578,7 @@ object ReviewSnapshotManager {
         val buttons = extraction.buttons
         val snapshotButtons = buttons.filter { it.hasAction }
         val requestedRetrySources = retryButtonSources?.map(String::trim)?.toSet()
-        val retryFailedSources = if (requestedRetrySources != null) {
+        if (requestedRetrySources != null) {
             val persisted = ReviewSnapshotStore.chapterStatus(book, chapter)
                 ?.failedButtonSourcesForRetry()
                 ?.toSet()
@@ -586,9 +586,6 @@ object ReviewSnapshotManager {
             require(persisted == requestedRetrySources) {
                 "review retry no longer matches persisted failed button identities: ${chapter.url}"
             }
-            persisted
-        } else {
-            emptySet()
         }
         if (snapshotButtons.isNotEmpty()) {
             // A capture with no image resources still belongs to the one resource-library
@@ -616,10 +613,12 @@ object ReviewSnapshotManager {
         }
         // "已处理" and "成功" are different counters. Existing snapshots count as
         // already processed for an ordinary cache run, while a forced retry starts
-        // a complete new attempt from zero.
+        // a complete new attempt from zero. "失败" always counts failures observed in
+        // this run (0 at start): the progress port requires failed <= processed, so a
+        // retry must not pre-accumulate persisted failures into the counter.
         val successfulSnapshots = AtomicInteger(if (force) 0 else existingSnapshots)
         val processedSnapshots = AtomicInteger(if (force) 0 else existingSnapshots)
-        val failedSnapshots = AtomicInteger(retryFailedSources.size)
+        val failedSnapshots = AtomicInteger(0)
         val progressLock = Any()
         fun reportChapterProgress() {
             synchronized(progressLock) {
@@ -655,11 +654,6 @@ object ReviewSnapshotManager {
                             processedSnapshots.updateAndGet { value ->
                                 (value + 1).coerceAtMost(snapshotButtons.size)
                             }
-                            if (requestedRetrySources != null) {
-                                failedSnapshots.updateAndGet { value ->
-                                    (value - 1).coerceAtLeast(0)
-                                }
-                            }
                             reportProgress(
                                 processedSnapshots.get(),
                                 snapshotButtons.size,
@@ -670,9 +664,7 @@ object ReviewSnapshotManager {
                 )
                 if (outcome.failed) {
                     synchronized(progressLock) {
-                        if (requestedRetrySources == null) {
-                            failedSnapshots.incrementAndGet()
-                        }
+                        failedSnapshots.incrementAndGet()
                         processedSnapshots.updateAndGet { value ->
                             (value + 1).coerceAtMost(snapshotButtons.size)
                         }
