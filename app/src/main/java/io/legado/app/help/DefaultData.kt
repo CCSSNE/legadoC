@@ -3,10 +3,12 @@ package io.legado.app.help
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.DictRule
+import io.legado.app.data.entities.HighlightRule
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.data.entities.KeyboardAssist
 import io.legado.app.data.entities.RssSource
 import io.legado.app.data.entities.TxtTocRule
+import io.legado.app.data.entities.BookmarkStyle
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ThemeConfig
@@ -30,6 +32,8 @@ object DefaultData {
     private const val RSS_SOURCE_VERSION = 8
     private const val DICT_RULE_VERSION_KEY = "needUpDictRule"
     private const val DICT_RULE_VERSION = 2
+    private const val HIGHLIGHT_RULE_VERSION_KEY = "highlightRuleVersion"
+    private const val HIGHLIGHT_RULE_VERSION = 1
 
     fun upVersion() {
         Coroutine.async {
@@ -44,6 +48,9 @@ object DefaultData {
             }
             migrateDefaultData("字典规则", DICT_RULE_VERSION_KEY, DICT_RULE_VERSION) {
                 importDefaultDictRules()
+            }
+            migrateDefaultData("高亮规则", HIGHLIGHT_RULE_VERSION_KEY, HIGHLIGHT_RULE_VERSION) {
+                importDefaultHighlightRules()
             }
         }.onError {
             AppLog.put("启动默认数据升级任务失败\n${it.localizedMessage}", it)
@@ -161,6 +168,46 @@ object DefaultData {
 
     fun importDefaultDictRules() {
         appDb.dictRuleDao.insert(*dictRules.toTypedArray())
+    }
+
+    /**
+     * 默认高亮规则：取自阅读 NG 默认排版包"秋山书意"的对白规则
+     * （对白-波浪线启用、对白-高亮停用，正则与颜色原样保留；NG 的夜间色本模型不区分，取日间色）
+     */
+    private const val dialoguePattern =
+        "(?:\\u201c[^\\u201d\\n]{1,1200}\\u201d|\"[^\"\\n]{1,1200}\"|「[^」\\n]{1,1200}」|『[^』\\n]{1,1200}』)"
+    private val dialogueTextColor = 0xff904e0c.toInt()
+
+    val highlightRules: List<HighlightRule> = listOf(
+        HighlightRule(
+            id = 1L,
+            name = "对白-波浪线",
+            pattern = dialoguePattern,
+            isEnabled = true,
+            order = 0,
+            style = BookmarkStyle.WAVE_UNDERLINE or BookmarkStyle.TEXT_COLOR,
+            styleColors = BookmarkStyle.toStyleColorsJson(
+                mapOf(
+                    BookmarkStyle.WAVE_UNDERLINE to dialogueTextColor,
+                    BookmarkStyle.TEXT_COLOR to dialogueTextColor
+                )
+            )
+        ),
+        HighlightRule(
+            id = 2L,
+            name = "对白-高亮",
+            pattern = dialoguePattern,
+            isEnabled = false,
+            order = 1,
+            style = BookmarkStyle.TEXT_COLOR,
+            styleColors = BookmarkStyle.toStyleColorsJson(
+                mapOf(BookmarkStyle.TEXT_COLOR to dialogueTextColor)
+            )
+        )
+    )
+
+    fun importDefaultHighlightRules() {
+        appDb.highlightRuleDao.insert(*highlightRules.toTypedArray())
     }
 
 }
