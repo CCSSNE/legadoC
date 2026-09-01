@@ -34,6 +34,8 @@ object DefaultData {
     private const val DICT_RULE_VERSION = 2
     private const val HIGHLIGHT_RULE_VERSION_KEY = "highlightRuleVersion"
     private const val HIGHLIGHT_RULE_VERSION = 1
+    private const val MAX_HIGHLIGHT_RULE_VERSION_KEY = "maxHighlightRuleVersion"
+    private const val MAX_HIGHLIGHT_RULE_VERSION = 1
 
     fun upVersion() {
         Coroutine.async {
@@ -51,6 +53,9 @@ object DefaultData {
             }
             migrateDefaultData("高亮规则", HIGHLIGHT_RULE_VERSION_KEY, HIGHLIGHT_RULE_VERSION) {
                 importDefaultHighlightRules()
+            }
+            migrateDefaultData("Max高亮规则", MAX_HIGHLIGHT_RULE_VERSION_KEY, MAX_HIGHLIGHT_RULE_VERSION) {
+                importDefaultMaxHighlightRules()
             }
         }.onError {
             AppLog.put("启动默认数据升级任务失败\n${it.localizedMessage}", it)
@@ -172,7 +177,8 @@ object DefaultData {
 
     /**
      * 默认高亮规则：取自阅读 NG 默认排版包"秋山书意"的对白规则
-     * （对白-波浪线启用、对白-高亮停用，正则与颜色原样保留；NG 的夜间色本模型不区分，取日间色）
+     * （正则与颜色原样保留；NG 的夜间色本模型不区分，取日间色）。
+     * 按统一口径，默认高亮规则全部为关闭状态。
      */
     private const val dialoguePattern =
         "(?:\\u201c[^\\u201d\\n]{1,1200}\\u201d|\"[^\"\\n]{1,1200}\"|「[^」\\n]{1,1200}」|『[^』\\n]{1,1200}』)"
@@ -183,7 +189,7 @@ object DefaultData {
             id = 1L,
             name = "对白-波浪线",
             pattern = dialoguePattern,
-            isEnabled = true,
+            isEnabled = false,
             order = 0,
             style = BookmarkStyle.WAVE_UNDERLINE or BookmarkStyle.TEXT_COLOR,
             styleColors = BookmarkStyle.toStyleColorsJson(
@@ -208,6 +214,155 @@ object DefaultData {
 
     fun importDefaultHighlightRules() {
         appDb.highlightRuleDao.insert(*highlightRules.toTypedArray())
+    }
+
+    /**
+     * 默认高亮规则（Max 预置）：移植自阅读 Max 版内置预置规则（HighlightRuleDefaultRules），
+     * 全部默认关闭。Max 的"对话高亮"与上面 NG 对白规则重复，未移植；
+     * Max 的虚线下划线本效果体系无对应，按单下划线移植；
+     * "标题强调"在 Max 中仅作用于标题行，本模型无标题范围限定，正则原样保留。
+     */
+    val maxHighlightRules: List<HighlightRule> = listOf(
+        HighlightRule(
+            id = 3L,
+            name = "书名号高亮",
+            pattern = "《[^》\\n]{1,80}》",
+            isEnabled = false,
+            order = 2,
+            style = BookmarkStyle.WAVE_UNDERLINE,
+            styleColors = BookmarkStyle.toStyleColorsJson(
+                mapOf(BookmarkStyle.WAVE_UNDERLINE to 0xFF63C37D.toInt())
+            )
+        ),
+        HighlightRule(
+            id = 4L,
+            name = "括号标注高亮",
+            pattern = "（[^（）\\n]{1,80}）|\\([^()\\n]{1,80}\\)|【[^】\\n]{1,80}】|\\[[^\\]\\n]{1,80}]",
+            isEnabled = false,
+            order = 3,
+            style = BookmarkStyle.TEXT_COLOR or BookmarkStyle.SINGLE_UNDERLINE,
+            styleColors = BookmarkStyle.toStyleColorsJson(
+                mapOf(
+                    BookmarkStyle.TEXT_COLOR to 0xFF8F959E.toInt(),
+                    BookmarkStyle.SINGLE_UNDERLINE to 0xFF5A8DEE.toInt()
+                )
+            )
+        ),
+        HighlightRule(
+            id = 5L,
+            name = "标题强调",
+            pattern = "(?m)^\\s{0,2}(?:第[0-9零〇一二两三四五六七八九十百千万IVXLCDMivxlcdm]{1,12}[章节卷回部篇集幕]|序章|楔子|引子|终章|尾声|后记|番外)[^\\n]{0,40}$",
+            isEnabled = false,
+            order = 4,
+            style = BookmarkStyle.TEXT_COLOR or BookmarkStyle.DOUBLE_UNDERLINE,
+            styleColors = BookmarkStyle.toStyleColorsJson(
+                mapOf(
+                    BookmarkStyle.TEXT_COLOR to 0xFF333333.toInt(),
+                    BookmarkStyle.DOUBLE_UNDERLINE to 0xFF7C5634.toInt()
+                )
+            )
+        ),
+        HighlightRule(
+            id = 6L,
+            name = "心理活动",
+            pattern = "（[^）\\n]{0,40}(?:心想|暗道|心道|想到|寻思着|琢磨|嘀咕)[^）\\n]{0,40}）",
+            isEnabled = false,
+            order = 5,
+            style = BookmarkStyle.TEXT_COLOR or BookmarkStyle.SINGLE_UNDERLINE,
+            styleColors = BookmarkStyle.toStyleColorsJson(
+                mapOf(
+                    BookmarkStyle.TEXT_COLOR to 0xFF9370DB.toInt(),
+                    BookmarkStyle.SINGLE_UNDERLINE to 0xFF9370DB.toInt()
+                )
+            )
+        ),
+        HighlightRule(
+            id = 7L,
+            name = "旁白说明",
+            pattern = "(?:未完待续|待续|下文再表|按：|注：)[^\\n]{0,40}|（(?:注|旁白|作者有话说)[:：][^）\\n]{0,40}）",
+            isEnabled = false,
+            order = 6,
+            style = BookmarkStyle.TEXT_COLOR,
+            styleColors = BookmarkStyle.toStyleColorsJson(
+                mapOf(BookmarkStyle.TEXT_COLOR to 0xFF708090.toInt())
+            )
+        ),
+        HighlightRule(
+            id = 8L,
+            name = "重点强调",
+            pattern = "(?:\\*\\*|__)[^\\n*_]{1,40}(?:\\*\\*|__)|(?:!!!|！？|\\?!)[^\\n]{0,20}",
+            isEnabled = false,
+            order = 7,
+            style = BookmarkStyle.TEXT_COLOR or BookmarkStyle.SINGLE_UNDERLINE,
+            styleColors = BookmarkStyle.toStyleColorsJson(
+                mapOf(
+                    BookmarkStyle.TEXT_COLOR to 0xFFDC143C.toInt(),
+                    BookmarkStyle.SINGLE_UNDERLINE to 0xFFDC143C.toInt()
+                )
+            )
+        ),
+        HighlightRule(
+            id = 9L,
+            name = "诗词引用",
+            pattern = "(?m)^[\\p{IsHan}，。！？；：、]{5,24}$",
+            isEnabled = false,
+            order = 8,
+            style = BookmarkStyle.TEXT_COLOR or BookmarkStyle.WAVE_UNDERLINE,
+            styleColors = BookmarkStyle.toStyleColorsJson(
+                mapOf(
+                    BookmarkStyle.TEXT_COLOR to 0xFF2F4F4F.toInt(),
+                    BookmarkStyle.WAVE_UNDERLINE to 0xFF2F4F4F.toInt()
+                )
+            )
+        ),
+        HighlightRule(
+            id = 10L,
+            name = "省略停顿",
+            pattern = "…{2,}|\\.{3,}|—{2,}|-{3,}",
+            isEnabled = false,
+            order = 9,
+            style = BookmarkStyle.TEXT_COLOR,
+            styleColors = BookmarkStyle.toStyleColorsJson(
+                mapOf(BookmarkStyle.TEXT_COLOR to 0xFF8B8B8B.toInt())
+            )
+        ),
+        HighlightRule(
+            id = 11L,
+            name = "数字金额",
+            pattern = "(?:¥|￥)?\\d+(?:\\.\\d+)?(?:元|块|万|千|百|亿|%|％)|[零〇一二两三四五六七八九十百千万亿]+(?:元|块|万|千|百|亿)",
+            isEnabled = false,
+            order = 10,
+            style = BookmarkStyle.TEXT_COLOR,
+            styleColors = BookmarkStyle.toStyleColorsJson(
+                mapOf(BookmarkStyle.TEXT_COLOR to 0xFF4169E1.toInt())
+            )
+        ),
+        HighlightRule(
+            id = 12L,
+            name = "英文单词",
+            pattern = "\\b[A-Za-z]{2,}[A-Za-z0-9'-]*\\b",
+            isEnabled = false,
+            order = 11,
+            style = BookmarkStyle.TEXT_COLOR,
+            styleColors = BookmarkStyle.toStyleColorsJson(
+                mapOf(BookmarkStyle.TEXT_COLOR to 0xFF4169E1.toInt())
+            )
+        ),
+        HighlightRule(
+            id = 13L,
+            name = "时间日期",
+            pattern = "(?:\\d{2,4}|[零〇一二两三四五六七八九十]{2,4})年(?:\\d{1,2}|[正一二三四五六七八九十冬腊])月(?:\\d{1,2}|[一二三四五六七八九十廿三])?[日号]?|\\b\\d{1,2}:\\d{2}\\b|(?:[0-1]?\\d|2[0-3])点(?:[0-5]?\\d分?)?",
+            isEnabled = false,
+            order = 12,
+            style = BookmarkStyle.TEXT_COLOR,
+            styleColors = BookmarkStyle.toStyleColorsJson(
+                mapOf(BookmarkStyle.TEXT_COLOR to 0xFF20B2AA.toInt())
+            )
+        )
+    )
+
+    fun importDefaultMaxHighlightRules() {
+        appDb.highlightRuleDao.insert(*maxHighlightRules.toTypedArray())
     }
 
 }
