@@ -1464,19 +1464,6 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     }
 
     /**
-     * 选区延续扩展：已有选区时按下拖动，手指是动端，落点决定方向。
-     * 落点在终点之后扩展终点；在起点之前反向扩展起点；落在选区内保持不变（只扩不缩）。
-     */
-    fun selectContinueMove(x: Float, y: Float) {
-        touchRough(x, y) { _, textPos, _, _, _ ->
-            when {
-                textPos.compare(selectEnd) > 0 -> selectEndMoveIndex(textPos)
-                textPos.compare(selectStart) < 0 -> selectStartMoveIndex(textPos)
-            }
-        }
-    }
-
-    /**
      * 触碰位置信息
      * @param touched 回调
      */

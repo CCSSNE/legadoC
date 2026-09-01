@@ -105,7 +105,11 @@ class ReadView(context: Context, attrs: AttributeSet) :
         onLongPress()
     }
     var isTextSelected = false
+    // ACTION_DOWN 时刻选区已存在：单击在 UP 判定取消，非光标处拖动走翻页；
+    // 光标拖动由悬浮 ImageView 通路处理，不进入本 View
     private var pressOnTextSelected = false
+    // 本次手势经长按新建了选区：拖动扩展与跨页复制仅对新建周期生效
+    private var selectionCreatedByGesture = false
     private val initialTextPos = TextPos(0, 0, 0)
 
     //下拉添加整页书签手势（跟手位移 + 回弹动效）
@@ -124,10 +128,6 @@ class ReadView(context: Context, attrs: AttributeSet) :
     private var crossPageFlipped = false
     // 上次 MOVE 时手指是否仍在角落：翻页后仍在角落则直接续上下一轮计时
     private var crossPageInCorner = false
-    // 本次触摸开始时已有选区：拖动=延续扩展（落点决定方向，只扩不缩）。
-    // 选区手势契约：DOWN 无法预知意图，只登记不决断；单击在 UP 判定取消，
-    // 拖动在 MOVE 判定延续扩展（右下角驻留=跨页复制），长按在超时判定新建选区。
-    private var selectResumeGesture = false
     private val crossPageTimeout = 500L
     private val crossPageRepeatTimeout = 1000L
     // 跨页复制：翻页前各页已选文本的累计缓冲（按翻页顺序追加）。
@@ -318,15 +318,14 @@ class ReadView(context: Context, attrs: AttributeSet) :
                 // 记录按下时是否已处于选区：选区状态下手势一律不触发下拉标签
                 val wasTextSelected = isTextSelected
                 if (isTextSelected) {
-                    // 选区手势契约：DOWN 只登记不决断，禁止在 DOWN 抢先取消选区——
-                    // 单击在 UP 判定取消，拖动在 MOVE 判定延续扩展（右下角驻留=跨页复制），
-                    // 长按在超时判定新建选区；三者互斥且互补，覆盖选区状态下全部手势
+                    // 选区手势契约：DOWN 无法预知意图，只登记不决断，禁止在 DOWN 抢先取消选区——
+                    // 单击在 UP 判定取消；非光标处拖动在 MOVE 走翻页；长按在超时判定新建选区；
+                    // 光标拖动由悬浮 ImageView 通路处理，不进入本 View
                     pressOnTextSelected = true
-                    selectResumeGesture = true
                 } else {
                     pressOnTextSelected = false
-                    selectResumeGesture = false
                 }
+                selectionCreatedByGesture = false
                 longPressed = false
                 postDelayed(longPressRunnable, longPressTimeout)
                 pressDown = true
@@ -397,7 +396,8 @@ class ReadView(context: Context, attrs: AttributeSet) :
                 if (isMove) {
                     longPressed = false
                     removeCallbacks(longPressRunnable)
-                    if (isTextSelected) {
+                    if (isTextSelected && !pressOnTextSelected) {
+                        //本次手势长按新建的选区：拖动继续扩展；跨页复制仅在此路径生效
                         //跨页复制：手指进入右下角物理正方形区域（边长=长边/8）并停留后自动翻页（滚动模式无跨页概念）。
                         // 手指持续停在角落持续跨页，移出角落即停，再进入再次开始
                         if (!isScroll && context.getPrefBoolean(PreferKey.crossPageCopy, true)) {
@@ -418,14 +418,12 @@ class ReadView(context: Context, attrs: AttributeSet) :
                         if (crossPageFlipped) {
                             //跨页后：起点固定新页页首，只移动终点继续扩展选择
                             curPage.selectEndMove(event.x, event.y)
-                        } else if (selectResumeGesture) {
-                            //选区延续：按下时已有选区，拖动直接扩展，落点决定方向，只扩不缩，与起点无关
-                            curPage.selectContinueMove(event.x, event.y)
                         } else {
                             selectText(event.x, event.y)
                         }
                         callBack.updateSelectionFinger(event.x, event.y)
                     } else {
+                        //无选区，或按下时已有选区（光标由悬浮 ImageView 拖动，非光标处按下）：普通翻页手势
                         pageDelegate?.onTouch(event)
                     }
                 }
@@ -445,7 +443,6 @@ class ReadView(context: Context, attrs: AttributeSet) :
                 crossPageArmed = false
                 crossPageFlipped = false
                 crossPageInCorner = false
-                selectResumeGesture = false
                 removeCallbacks(crossPageRunnable)
                 if (pullDownArmed && pullDownTriggered) {
                     val deltaY = (event.y - pullDownStartY).coerceAtLeast(0f)
@@ -491,12 +488,14 @@ class ReadView(context: Context, attrs: AttributeSet) :
                         return true
                     }
                 }
-                if (isTextSelected) {
+                if (selectionCreatedByGesture) {
+                    //本次手势长按新建了选区：抬手显示操作菜单
                     callBack.showTextActionMenu()
                 } else if (pageDelegate!!.isMoved) {
                     pageDelegate?.onTouch(event)
                 }
                 pressOnTextSelected = false
+                selectionCreatedByGesture = false
             }
 
             MotionEvent.ACTION_CANCEL -> {
@@ -509,7 +508,6 @@ class ReadView(context: Context, attrs: AttributeSet) :
                 crossPageArmed = false
                 crossPageFlipped = false
                 crossPageInCorner = false
-                selectResumeGesture = false
                 removeCallbacks(crossPageRunnable)
                 if (pullDownArmed && pullDownTriggered) {
                     pullDownArmed = false
@@ -525,12 +523,14 @@ class ReadView(context: Context, attrs: AttributeSet) :
                 removeCallbacks(longPressRunnable)
                 if (!pressDown) return true
                 pressDown = false
-                if (isTextSelected) {
+                if (selectionCreatedByGesture) {
+                    //本次手势长按新建了选区：抬手显示操作菜单
                     callBack.showTextActionMenu()
                 } else if (pageDelegate!!.isMoved) {
                     pageDelegate?.onTouch(event)
                 }
                 pressOnTextSelected = false
+                selectionCreatedByGesture = false
                 autoPager.resume()
             }
         }
@@ -541,7 +541,7 @@ class ReadView(context: Context, attrs: AttributeSet) :
         crossPageArmed = false
         crossPageFlipped = false
         crossPageInCorner = false
-        selectResumeGesture = false
+        selectionCreatedByGesture = false
         removeCallbacks(crossPageRunnable)
         crossPageTextBuffer.clear()
         if (isTextSelected) {
@@ -601,8 +601,8 @@ class ReadView(context: Context, attrs: AttributeSet) :
         kotlin.runCatching {
             val handled = curPage.longPress(startX, startY) { textPos: TextPos ->
                 isTextSelected = true
-                pressOnTextSelected = true
-                // 长按新建选区=新选择周期开始，跨页缓冲随旧选区一起作废
+                //长按新建选区=新选择周期开始，跨页缓冲随旧选区一起作废
+                selectionCreatedByGesture = true
                 crossPageTextBuffer.clear()
                 initialTextPos.upData(textPos)
                 val startPos = textPos.copy()
@@ -669,8 +669,8 @@ class ReadView(context: Context, attrs: AttributeSet) :
             }
             if (handled && curPage.hasNativeSelection()) {
                 isTextSelected = true
-                pressOnTextSelected = true
-                // 长按新建选区=新选择周期开始，跨页缓冲随旧选区一起作废
+                //长按新建选区=新选择周期开始，跨页缓冲随旧选区一起作废
+                selectionCreatedByGesture = true
                 crossPageTextBuffer.clear()
                 post { callBack.showTextActionMenu() }
             }
