@@ -89,6 +89,11 @@
         app:showAsAction="never" />
 
     <item
+        android:id="@+id/menu_highlight_rule"
+        android:title="@string/highlight_rule"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/menu_enable_ai_chapter_purify"
         android:checkable="true"
         android:checked="false"

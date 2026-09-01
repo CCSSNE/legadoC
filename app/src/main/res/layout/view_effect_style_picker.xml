@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<merge xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:parentTag="io.legado.app.ui.widget.EffectStylePickerView">
+
+    <io.legado.app.lib.theme.view.ThemeCheckBox
+        android:id="@+id/cb_style_none"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/bookmark_style_none" />
+
+    <io.legado.app.lib.theme.view.ThemeCheckBox
+        android:id="@+id/cb_style_single"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/bookmark_style_single" />
+
+    <io.legado.app.lib.theme.view.ThemeCheckBox
+        android:id="@+id/cb_style_double"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/bookmark_style_double" />
+
+    <io.legado.app.lib.theme.view.ThemeCheckBox
+        android:id="@+id/cb_style_wave"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/bookmark_style_wave" />
+
+    <io.legado.app.lib.theme.view.ThemeCheckBox
+        android:id="@+id/cb_style_highlight"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/bookmark_style_highlight" />
+
+    <io.legado.app.lib.theme.view.ThemeCheckBox
+        android:id="@+id/cb_style_text_color"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/bookmark_style_text_color" />
+
+    <io.legado.app.lib.theme.view.ThemeCheckBox
+        android:id="@+id/cb_style_strikethrough"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/bookmark_style_strikethrough" />
+
+    <LinearLayout
+        android:id="@+id/ll_effect_colors"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical" />
+
+</merge>

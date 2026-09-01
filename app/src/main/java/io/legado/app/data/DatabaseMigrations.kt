@@ -33,7 +33,30 @@ object DatabaseMigrations {
             migration_109_110,
             migration_110_111,
             migration_111_112,
+            migration_112_113,
         )
+    }
+
+    private val migration_112_113 = object : Migration(112, 113) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // 高亮规则：正则命中的正文文字应用显示效果（效果体系与书签一致，仅显示，无书签语义）
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `highlight_rules` (
+                    `id` INTEGER NOT NULL,
+                    `name` TEXT NOT NULL,
+                    `pattern` TEXT NOT NULL,
+                    `scope` TEXT,
+                    `excludeScope` TEXT,
+                    `isEnabled` INTEGER NOT NULL,
+                    `sortOrder` INTEGER NOT NULL,
+                    `style` INTEGER NOT NULL,
+                    `styleColors` TEXT NOT NULL,
+                    PRIMARY KEY(`id`)
+                )
+                """.trimIndent()
+            )
+        }
     }
 
     private val migration_111_112 = object : Migration(111, 112) {

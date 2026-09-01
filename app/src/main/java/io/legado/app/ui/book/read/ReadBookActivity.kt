@@ -134,6 +134,7 @@ import io.legado.app.ui.dict.DictDialog
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.replace.ReplaceRuleActivity
+import io.legado.app.ui.highlight.HighlightRuleActivity
 import io.legado.app.ui.replace.edit.ReplaceEditActivity
 import io.legado.app.ui.widget.PopupAction
 import io.legado.app.ui.widget.dialog.PhotoDialog
@@ -222,6 +223,13 @@ class ReadBookActivity : BaseReadBookActivity(),
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             if (it.resultCode == RESULT_OK) {
                 viewModel.replaceRuleChanged()
+            }
+        }
+    private val highlightRuleActivity =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            if (it.resultCode == RESULT_OK) {
+                // 高亮规则变更与书签变更共用当前章重排
+                reloadCurrentChapterForBookmark()
             }
         }
     private val searchContentActivity =
@@ -672,6 +680,9 @@ class ReadBookActivity : BaseReadBookActivity(),
             }
 
             R.id.menu_enable_replace -> changeReplaceRuleState()
+            R.id.menu_highlight_rule -> highlightRuleActivity.launch(
+                Intent(this, HighlightRuleActivity::class.java)
+            )
             R.id.menu_enable_ai_chapter_purify -> changeAiChapterPurifyState()
             R.id.menu_re_segment -> ReadBook.book?.let {
                 it.setReSegment(!it.getReSegment())
@@ -3269,6 +3280,10 @@ class ReadBookActivity : BaseReadBookActivity(),
         observeEvent<Boolean>(EventBus.BOOKMARK_CHANGED) {
             bookmarkLoadChapterIndex = -1
             upChapterBookmarks()
+            reloadCurrentChapterForBookmark()
+        }
+        observeEvent<Boolean>(EventBus.HIGHLIGHT_RULE_CHANGED) {
+            // 高亮规则变更与书签变更共用当前章重排
             reloadCurrentChapterForBookmark()
         }
         observeEvent<Boolean>(EventBus.MEDIA_BUTTON) {

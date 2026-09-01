@@ -26,6 +26,7 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookIllustration
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.data.entities.BookmarkStyle
+import io.legado.app.data.entities.HighlightRule
 import io.legado.app.help.book.BookContent
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.getBookSource
@@ -163,12 +164,29 @@ class TextChapterLayout(
     private val chapterBookmarks: List<Bookmark> by lazy {
         runCatching {
             appDb.bookmarkDao.getByBook(book.name, book.author)
-                // 整页书签只是页面位置标记，绝不能参与正文样式命中；
-                // 否则它会覆盖同位置普通书签的效果。
-                .filter { !it.isPageBookmark && it.chapterIndex == bookChapter.index }
-                .sortedBy { it.chapterPos }
+            // 整页书签只是页面位置标记，绝不能参与正文样式命中；
+            // 否则它会覆盖同位置普通书签的效果。
+            .filter { !it.isPageBookmark && it.chapterIndex == bookChapter.index }
+            .sortedBy { it.chapterPos }
         }.getOrDefault(emptyList())
     }
+
+    // 高亮规则：按排序取生效规则（scope/excludeScope 过滤与替换规则一致）
+    private val highlightRules: List<HighlightRule> by lazy {
+        runCatching {
+            appDb.highlightRuleDao.findEnabledByScope(book.name, book.origin)
+        }.getOrDefault(emptyList())
+    }
+
+    // 当前文字块的高亮规则命中区间（书签同坐标系：块首字符的章节绝对位置）
+    private var currentRuleHits: List<RuleHit> = emptyList()
+
+    private data class RuleHit(
+        val start: Int,
+        val end: Int,
+        val style: Int,
+        val styleColors: Map<Int, Int>
+    )
 
     var exception: Throwable? = null
 
@@ -2397,6 +2415,7 @@ class TextChapterLayout(
         val styledText = parseEpubReadableInlineStyles(text)
         val plainText = styledText.text
         if (plainText.isBlank()) return
+        upRuleHits(plainText)
         val widthsArray = allocateFloatArray(plainText.length)
         textPaint.getTextWidthsCompat(plainText, widthsArray, reviewCharWidth)
         val layout = if (useZhLayout) {
@@ -2513,6 +2532,7 @@ class TextChapterLayout(
             }
             calcTextLinePosition(textPages, textLine, stringBuilder.length)
             applyBookmarksToLine(textLine)
+            applyHighlightRulesToLine(textLine)
             stringBuilder.append(lineText)
             textLine.upTopBottom(durY, textHeight, fontMetrics)
             val textPage = pendingTextPage
@@ -2865,6 +2885,94 @@ class TextChapterLayout(
                     if (hit.style != 0) {
                         textLine.bookmarkColumnCount++
                     }
+                }
+            }
+            offset += colLen
+        }
+    }
+
+    /**
+     * 当前文字块在虚拟章节全文中的起始位置。
+     * 与 calcTextLinePosition 的公式完全一致：上一已完成页末位置 + 当前待排版页 stringBuilder 长度。
+     */
+    private fun currentChapterPosition(): Int {
+        val lastPageEnd = textPages.lastOrNull()?.let { lastPage ->
+            lastPage.lines.lastOrNull()?.let {
+                it.chapterPosition + it.charSize + if (it.isParagraphEnd) 1 else 0
+            } ?: (lastPage.chapterPosition + lastPage.charSize)
+        } ?: 0
+        return lastPageEnd + stringBuilder.length
+    }
+
+    /**
+     * 对当前文字块匹配高亮规则，得到块内绝对位置命中区间。
+     * 在 setTypeText 的行循环之前调用，保证逐行应用效果时命中区间已就绪。
+     */
+    private fun upRuleHits(plainText: String) {
+        currentRuleHits = if (highlightRules.isEmpty()) {
+            emptyList()
+        } else {
+            val base = currentChapterPosition()
+            val hits = ArrayList<RuleHit>()
+            for (rule in highlightRules) {
+                runCatching {
+                    rule.regex.findAll(plainText).forEach { matcher ->
+                        if (matcher.value.isNotEmpty()) {
+                            hits.add(
+                                RuleHit(
+                                    base + matcher.range.first,
+                                    base + matcher.range.last + 1,
+                                    rule.style,
+                                    rule.styleColorsMap
+                                )
+                            )
+                        }
+                    }
+                }.onFailure {
+                    AppLog.put("高亮规则 ${rule.name} 匹配出错", it)
+                }
+            }
+            hits.sortedBy { it.start }
+        }
+    }
+
+    /**
+     * 根据高亮规则命中区间，为当前行的文本列叠加效果。
+     * 效果叠加：多个命中（或书签）共具的效果位，先到先得（排序靠前的规则优先）；未占用的效果位由后续命中补充。
+     * 不写 bookmarkTime，保持纯显示效果，不触发书签点击交互。
+     */
+    private fun applyHighlightRulesToLine(textLine: TextLine) {
+        if (currentRuleHits.isEmpty()) return
+        val lineStart = textLine.chapterPosition
+        var offset = 0
+        for (column in textLine.columns) {
+            val colLen = if (column is TextBaseColumn) column.charData.length else 1
+            val colStartAbs = lineStart + offset
+            val colEndAbs = colStartAbs + colLen
+            if (column is TextColumn) {
+                val hadStyle = column.bookmarkStyle != 0
+                for (hit in currentRuleHits) {
+                    if (hit.end <= colStartAbs) {
+                        continue
+                    }
+                    if (hit.start >= colEndAbs) {
+                        break
+                    }
+                    val newBits = hit.style and column.bookmarkStyle.inv()
+                    if (newBits == 0) continue
+                    column.bookmarkStyle = column.bookmarkStyle or newBits
+                    if (hit.styleColors.isNotEmpty()) {
+                        val merged = HashMap(column.bookmarkStyleColors)
+                        hit.styleColors.forEach { (bit, color) ->
+                            if (newBits and bit != 0 && color != 0) {
+                                merged[bit] = color
+                            }
+                        }
+                        column.bookmarkStyleColors = merged
+                    }
+                }
+                if (!hadStyle && column.bookmarkStyle != 0) {
+                    textLine.bookmarkColumnCount++
                 }
             }
             offset += colLen

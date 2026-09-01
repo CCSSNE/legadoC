@@ -57,6 +57,7 @@ object EventBus {
     const val REFRESH_BOOK_CONTENT = "refreshBookContent"
     const val REFRESH_BOOK_TOC = "refreshBookToc"
     const val BOOKMARK_CHANGED = "bookmarkChanged"
+    const val HIGHLIGHT_RULE_CHANGED = "highlightRuleChanged"
     const val UP_VIDEO_INFO = "upVideoInfo"
     const val AI_LOGS_CHANGED = "aiLogsChanged"
     const val CONTENT_SELECT_MENU_CONFIG_CHANGED = "contentSelectMenuConfigChanged"

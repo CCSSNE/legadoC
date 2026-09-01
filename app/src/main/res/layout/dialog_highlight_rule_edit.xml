@@ -21,16 +21,8 @@
             android:layout_height="wrap_content"
             android:theme="?attr/actionBarStyle"
             app:popupTheme="@style/AppTheme.PopupOverlay"
-            app:title="@string/bookmark"
+            app:title="@string/highlight_rule"
             app:titleTextAppearance="@style/ToolbarTitle" />
-
-        <TextView
-            android:id="@+id/tv_chapter_name"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingLeft="16dp"
-            android:paddingRight="16dp"
-            android:textColor="@color/primaryText" />
 
         <androidx.core.widget.NestedScrollView
             android:layout_width="match_parent"
@@ -50,10 +42,10 @@
                     android:paddingTop="3dp">
 
                     <io.legado.app.lib.theme.view.ThemeEditText
-                        android:id="@+id/edit_book_text"
+                        android:id="@+id/edit_name"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:hint="@string/content"
+                        android:hint="@string/name"
                         tools:ignore="SpeakableTextPresentCheck,TouchTargetSizeCheck" />
 
                 </io.legado.app.ui.widget.text.TextInputLayout>
@@ -64,16 +56,44 @@
                     android:paddingTop="3dp">
 
                     <io.legado.app.lib.theme.view.ThemeEditText
-                        android:id="@+id/edit_content"
+                        android:id="@+id/edit_pattern"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:hint="@string/note_content"
+                        android:hint="@string/highlight_rule_pattern_hint"
+                        tools:ignore="SpeakableTextPresentCheck,TouchTargetSizeCheck" />
+
+                </io.legado.app.ui.widget.text.TextInputLayout>
+
+                <io.legado.app.ui.widget.text.TextInputLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingTop="3dp">
+
+                    <io.legado.app.lib.theme.view.ThemeEditText
+                        android:id="@+id/edit_scope"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:hint="@string/highlight_rule_scope"
+                        tools:ignore="SpeakableTextPresentCheck,TouchTargetSizeCheck" />
+
+                </io.legado.app.ui.widget.text.TextInputLayout>
+
+                <io.legado.app.ui.widget.text.TextInputLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingTop="3dp">
+
+                    <io.legado.app.lib.theme.view.ThemeEditText
+                        android:id="@+id/edit_exclude_scope"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:hint="@string/highlight_rule_exclude_scope"
                         tools:ignore="SpeakableTextPresentCheck,TouchTargetSizeCheck" />
 
                 </io.legado.app.ui.widget.text.TextInputLayout>
 
                 <TextView
-                    android:id="@+id/tv_bookmark_style"
+                    android:id="@+id/tv_effect_style"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:paddingTop="8dp"

@@ -25,6 +25,7 @@ import io.legado.app.data.dao.BookmarkDao
 import io.legado.app.data.dao.CacheDao
 import io.legado.app.data.dao.CookieDao
 import io.legado.app.data.dao.DictRuleDao
+import io.legado.app.data.dao.HighlightRuleDao
 import io.legado.app.data.dao.HttpTTSDao
 import io.legado.app.data.dao.KeyboardAssistsDao
 import io.legado.app.data.dao.ReadRecentBookDao
@@ -62,6 +63,7 @@ import io.legado.app.data.entities.Bookmark
 import io.legado.app.data.entities.Cache
 import io.legado.app.data.entities.Cookie
 import io.legado.app.data.entities.DictRule
+import io.legado.app.data.entities.HighlightRule
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.data.entities.KeyboardAssist
 import io.legado.app.data.entities.ReadRecentBook
@@ -94,11 +96,11 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 112,
+    version = 113,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
         BookCollection::class, BookCollectionItem::class, BookCollectionChild::class,
-        ReplaceRule::class, SearchBook::class, SearchKeyword::class, Cookie::class,
+        ReplaceRule::class, HighlightRule::class, SearchBook::class, SearchKeyword::class, Cookie::class,
         RssSource::class, Bookmark::class, RssArticle::class, RssReadRecord::class,
         RssStar::class, TxtTocRule::class, ReadRecord::class, ReadRecordDaily::class,
         HttpTTS::class, Cache::class, BookIllustration::class,
@@ -172,6 +174,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract val bookChapterDao: BookChapterDao
     abstract val aiChapterPurifyRecordDao: AiChapterPurifyRecordDao
     abstract val replaceRuleDao: ReplaceRuleDao
+    abstract val highlightRuleDao: HighlightRuleDao
     abstract val searchBookDao: SearchBookDao
     abstract val searchKeywordDao: SearchKeywordDao
     abstract val rssSourceDao: RssSourceDao
