@@ -29,6 +29,7 @@ import io.legado.app.constant.AppConst.imagePathKey
 import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ActivityWebViewBinding
 import io.legado.app.help.http.CookieStore
+import io.legado.app.help.config.AppConfig
 import io.legado.app.help.review.ReviewSnapshotManager
 import io.legado.app.help.review.ReviewSnapshotResourceStore
 import io.legado.app.help.source.SourceVerificationHelp
@@ -158,6 +159,18 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
         @Suppress("DEPRECATION")
         run {
             fallbackReviewResourceBook = intent.getParcelableExtra("fallbackReviewResourceBook")
+        }
+        outboxContext = fallbackReviewResourceBook?.let { book ->
+            io.legado.app.help.review.reviewoutbox.ReviewOutboxContext(
+                bookUrl = book.bookUrl,
+                bookName = book.name,
+                chapterUrl = "",
+                chapterIndex = 0,
+                chapterTitle = "",
+                origin = intent.getStringExtra("sourceOrigin"),
+                buttonSrc = null,
+                pageUrl = intent.getStringExtra("url").orEmpty(),
+            )
         }
         viewModel.initData(intent) {
             val url = viewModel.baseUrl
@@ -292,12 +305,21 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
     }
 
     @SuppressLint("SetJavaScriptEnabled")
+    /** 离线评论入队上下文：评论“网络优先”兜底打开时由 fallback 书籍构建 */
+    private var outboxContext: io.legado.app.help.review.reviewoutbox.ReviewOutboxContext? = null
+
     private fun initWebView(url: String, headerMap: HashMap<String, String>) {
         binding.progressBar.fontColor = accentColor
         currentWebView.webChromeClient = CustomWebChromeClient()
         // 添加 JavaScript 接口
         currentWebView.addJavascriptInterface(JSInterface(this), nameBasic)
         currentWebView.webViewClient = CustomWebViewClient()
+        outboxContext?.let { context ->
+            currentWebView.addJavascriptInterface(
+                io.legado.app.help.review.reviewoutbox.ReviewOutboxBridge(context),
+                io.legado.app.help.review.reviewoutbox.ReviewOutboxWireUp.bridgeName
+            )
+        }
         currentWebView.settings.apply {
             useWideViewPort = true
             loadWithOverviewMode = true
@@ -528,6 +550,19 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
             super.onPageFinished(view, url)
             // 页面加载成功：取消超时定时任务
             cancelFallbackTimeout()
+            // 离线评论模式：评论兜底打开的页面注入接管脚本（在线形态拦截发评请求）
+            val context = outboxContext
+            if (context != null && AppConfig.offlineReviewMode) {
+                view?.evaluateJavascript(
+                    io.legado.app.help.review.reviewoutbox.ReviewOutboxWireUp.buildJs(),
+                    null
+                )
+                io.legado.app.constant.AppLog.putDebug(
+                    "${io.legado.app.help.review.reviewoutbox.ReviewOutboxStore.LogTag} 接管脚本已注入(浏览器页) " +
+                        "url=${url ?: ""} 书=${context.bookName}",
+                    module = io.legado.app.constant.LogModule.REVIEW_OFFLINE
+                )
+            }
             val cookieManager = CookieManager.getInstance()
             url?.let {
                 CookieStore.setCookie(it, cookieManager.getCookie(it))

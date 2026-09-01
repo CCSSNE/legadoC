@@ -1460,7 +1460,6 @@
     <string name="offline_review_send_start">开始发送 %1$d 条离线评论…</string>
     <string name="offline_review_send_done">离线评论发送完成：成功 %1$d 条，失败 %2$d 条</string>
     <string name="offline_review_send_failed_detail">失败明细：\n%1$s</string>
-    <string name="offline_review_send_no_network">当前无网络，无法发送离线评论</string>
     <string name="offline_review_send_running">已有发送批次正在进行</string>
     <string name="offline_review_book_unsupported_title">离线评论</string>
     <string name="offline_review_book_unsupported_message">当前书源页面不支持发表章评，是否按段评记录？</string>

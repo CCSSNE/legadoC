@@ -46,7 +46,7 @@ class ReviewReplaySession(
 
     @SuppressLint("SetJavaScriptEnabled")
     suspend fun run(): ReplayResult = withContext(Dispatchers.Main) {
-        val webView = WebView(appContext())
+        val webView = WebView(appCtx)
         try {
             webView.settings.javaScriptEnabled = true
             webView.settings.domStorageEnabled = true

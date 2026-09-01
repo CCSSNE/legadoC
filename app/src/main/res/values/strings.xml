@@ -1709,7 +1709,6 @@
     <string name="offline_review_send_start">Sending %1$d offline review(s)…</string>
     <string name="offline_review_send_done">Offline reviews sent: %1$d succeeded, %2$d failed</string>
     <string name="offline_review_send_failed_detail">Failed items:\n%1$s</string>
-    <string name="offline_review_send_no_network">No network available, cannot send offline reviews</string>
     <string name="offline_review_send_running">A batch send is already running</string>
     <string name="offline_review_book_unsupported_title">Offline review</string>
     <string name="offline_review_book_unsupported_message">The current source page does not support chapter comments. Record as paragraph comment instead?</string>

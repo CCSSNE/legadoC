@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.webkit.JavascriptInterface
 import io.legado.app.R
 import io.legado.app.data.entities.PendingReviewComment
+import io.legado.app.utils.toastOnUi
 import splitties.init.appCtx
 
 /**

@@ -327,24 +327,23 @@ object BookImgClick {
                     ?: error("评论书源不存在，无法执行评论网络打开")
                 when {
                     !click.isNullOrBlank() -> {
-                        val fallbackExtensions = fallback?.let {
-                            SnapshotFallbackJsExtensions(
-                                context,
-                                execSource,
-                                BookType.text,
-                                it.snapshot.html,
-                                execution.book,
-                                execution.chapter,
-                                src,
-                            )
-                        }
+                        // 评论 click 统一宿主：有无快照兜底都走本宿主，保证
+                        // showBrowser 弹窗路径统一携带离线评论上下文
+                        val host = SnapshotFallbackJsExtensions(
+                            context,
+                            execSource,
+                            BookType.text,
+                            fallback?.snapshot?.html,
+                            execution.book,
+                            execution.chapter,
+                            src,
+                        )
                         executeClick(
                             execution.book, execSource, execution.chapter, click, src
                         ) {
-                            fallbackExtensions
-                                ?: SourceLoginJsExtensions(context, execSource, BookType.text)
+                            host
                         }
-                        if (fallbackExtensions != null && !fallbackExtensions.browserRequested) {
+                        if (!host.browserRequested) {
                             error("评论 click 未发起浏览器打开")
                         }
                     }
@@ -486,7 +485,7 @@ object BookImgClick {
         context: AppCompatActivity?,
         source: BookSource?,
         bookType: Int,
-        private val fallbackHtml: String,
+        private val fallbackHtml: String?,
         private val reviewResourceBook: Book,
         private val chapter: BookChapter?,
         private val buttonSrc: String?,

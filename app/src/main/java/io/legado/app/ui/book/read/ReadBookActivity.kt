@@ -858,10 +858,6 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     private fun launchOfflineReviewSend() {
         lifecycleScope.launch {
-            if (!NetworkUtils.isAvailable()) {
-                toastOnUi(R.string.offline_review_send_no_network)
-                return@launch
-            }
             val summary = ReviewOutboxDispatcher.sendAll()
                 ?: run {
                     toastOnUi(R.string.offline_review_send_running)
