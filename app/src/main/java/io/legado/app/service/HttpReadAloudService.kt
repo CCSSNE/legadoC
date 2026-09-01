@@ -172,6 +172,7 @@ class HttpReadAloudService : BaseReadAloudService(),
     override fun play() {
         pageChanged = false
         exoPlayer.stop()
+        applyPlaybackRate()
         if (!requestFocus()) return
         httpTtsSnapshot = ReadAloud.httpTTS
         if (ReadAloud.currentScriptTtsEngine() != null) {
@@ -203,6 +204,20 @@ class HttpReadAloudService : BaseReadAloudService(),
                 downloadAndPlayAudios()
             }
         }
+    }
+
+    /**
+     * 播放端变速（对齐 legado_NG）：V2 脚本引擎的合成速度只取引擎自身配置，
+     * 用户调节的朗读语速经 ExoPlayer 播放变速生效；经典 HTTP TTS 的语速已
+     * 编码进合成 URL，播放速度必须保持 1.0，否则双重加速。
+     */
+    private fun applyPlaybackRate() {
+        val rate = if (ReadAloud.currentScriptTtsEngine() != null) {
+            TtsSpeedPolicy.playbackRate(AppConfig.speechRatePlay)
+        } else {
+            1f
+        }
+        exoPlayer.setPlaybackSpeed(rate)
     }
 
     override fun playStop() {
@@ -1071,13 +1086,17 @@ class HttpReadAloudService : BaseReadAloudService(),
                 return@launch
             }
             val duration = exoPlayer.duration
-            val sleep = if (duration > 0) {
+            // 步长按媒体时长除以当前播放速度换算成墙钟时间（对齐 legado_NG），
+            // V2 脚本引擎语速经播放变速生效，轮询必须随速度加快
+            val playbackRate = exoPlayer.playbackParameters.speed.coerceAtLeast(0.1f)
+            val charDurationMs = if (duration > 0) {
                 (duration / speakTextLength).also {
                     lastCharDurationMs = it
                 }
             } else {
                 lastCharDurationMs
-            }.coerceAtLeast(1L)
+            }
+            val sleep = (charDurationMs / playbackRate).toLong().coerceAtLeast(1L)
             val start = if (duration > 0) {
                 (speakTextLength.toLong() * exoPlayer.currentPosition / duration).toInt()
             } else {
@@ -1102,6 +1121,14 @@ class HttpReadAloudService : BaseReadAloudService(),
      * 更新朗读速度
      */
     override fun upSpeechRate(reset: Boolean) {
+        if (ReadAloud.currentScriptTtsEngine() != null) {
+            // V2 脚本引擎：语速经播放端变速即时生效，不重新合成
+            applyPlaybackRate()
+            if (!pause) {
+                upPlayPos()
+            }
+            return
+        }
         if (!isRun || contentList.isEmpty() || httpTtsSnapshot == null) {
             return
         }
