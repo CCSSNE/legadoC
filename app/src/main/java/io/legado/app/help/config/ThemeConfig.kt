@@ -246,22 +246,31 @@ object ThemeConfig {
         return MD5Utils.md5Encode16(url) + suffix
     }
 
+    /**
+     * 背景图路径统一解析入口：偏好里可能存 URL、绝对路径或备份/主题配置残留的裸缓存文件名，
+     * 统一解析为真实存在的文件路径；文件不存在时视为无背景返回 null，不允许把失效路径带进解码。
+     */
+    private fun resolveBgImagePath(context: Context, preferenceKey: String): String? {
+        val path = context.getPrefString(preferenceKey)?.takeIf { it.isNotBlank() } ?: return null
+        if (path.startsWith("http", ignoreCase = true)) {
+            val filePath = FileUtils.getPath(context.externalFiles, preferenceKey, getUrlToFile(path))
+            return filePath.takeIf { FileUtils.exist(it) }
+        }
+        if (!File(path).isAbsolute) {
+            val filePath = FileUtils.getPath(context.externalFiles, preferenceKey, path)
+            return filePath.takeIf { FileUtils.exist(it) }
+        }
+        return path.takeIf { isReadableThemeFile(it) }
+    }
+
     fun getBgImage(context: Context, metrics: DisplayMetrics): Drawable? {
         val themeMode = getTheme()
         val preferenceKey = when (themeMode) {
             Theme.Light -> PreferKey.bgImage
             Theme.Dark -> PreferKey.bgImageN
-            else -> return  null
+            else -> return null
         }
-        var path = context.getPrefString(preferenceKey)
-        if (path.isNullOrBlank()) return null
-        if (path.startsWith("http")) {
-            val name = getUrlToFile(path)
-            val fileRoot = context.externalFiles
-            val filePath = FileUtils.getPath(fileRoot, preferenceKey, name)
-            if (!FileUtils.exist(filePath)) return null
-            path = filePath
-        }
+        val path = resolveBgImagePath(context, preferenceKey) ?: return null
         if (path.endsWith(".9.png")) {
             val bgDrawable = BitmapUtils.decodeNinePatchDrawable(path)
             return bgDrawable
@@ -285,7 +294,7 @@ object ThemeConfig {
             Theme.Dark -> PreferKey.bookInfoBgImageN
             else -> return null
         }
-        val path = context.getPrefString(preferenceKey)?.takeIf { it.isNotBlank() } ?: return null
+        val path = resolveBgImagePath(context, preferenceKey) ?: return null
         val bgImgBlur = when (themeMode) {
             Theme.Light -> context.getPrefInt(
                 PreferKey.bookInfoBgImageBlurring,
@@ -314,14 +323,7 @@ object ThemeConfig {
         if (usableBgImageCacheKey == cacheKey) {
             return usableBgImageCacheValue
         }
-        if (path.startsWith("http", ignoreCase = true)) {
-            val filePath = FileUtils.getPath(context.externalFiles, preferenceKey, getUrlToFile(path))
-            return FileUtils.exist(filePath).also {
-                usableBgImageCacheKey = cacheKey
-                usableBgImageCacheValue = it
-            }
-        }
-        return isReadableThemeFile(path).also {
+        return (resolveBgImagePath(context, preferenceKey) != null).also {
             usableBgImageCacheKey = cacheKey
             usableBgImageCacheValue = it
         }
