@@ -129,7 +129,15 @@ object ReviewSnapshotResourceStore {
         }
     }
 
-    /** Validate every resource referenced by one snapshot before it is treated as complete. */
+    /**
+     * Validate every resource referenced by one snapshot before it is treated as complete.
+     *
+     * 不变式：HTML 中出现的每个 review-resource 引用都必须有入库资源（危险方向，
+     * 缺失即渲染损坏，必须拒绝落盘）；resourceKeys 允许包含 HTML 未引用的多余 key
+     * （无害：仅让对应 blob 多保留一轮 GC、导出多拷贝一份）。要求精确相等会让
+     * 生产侧的良性超额（如 srcset 个别变体缺失导致同组引用整体剔除）错误地丢弃
+     * 整份已抓好的快照。
+     */
     internal fun validateSnapshot(book: Book, snapshot: ReviewSnapshot) = synchronized(lock) {
         val keys = requireNotNull(snapshot.resourceKeys) {
             "review snapshot is missing resourceKeys: ${snapshot.chapterUrl}|${snapshot.buttonSrc}"
@@ -137,12 +145,14 @@ object ReviewSnapshotResourceStore {
         val dir = ReviewSnapshotStore.reviewsDir(book)
         val database = requireDatabase(book)
         validateResourceKeys(dir, database, keys, verifyHash = true)
-        val htmlKeys = RESOURCE_REFERENCE_PATTERN.findAll(snapshot.html)
+        val keySet = keys.toSet()
+        val missing = RESOURCE_REFERENCE_PATTERN.findAll(snapshot.html)
             .map { it.groupValues[1] }
+            .filterNot(keySet::contains)
             .toSet()
-        require(htmlKeys == keys.toSet()) {
-            "review snapshot resource references do not match resourceKeys: " +
-                "${snapshot.chapterUrl}|${snapshot.buttonSrc}"
+        require(missing.isEmpty()) {
+            "review snapshot resource references missing from resourceKeys: " +
+                "$missing (${snapshot.chapterUrl}|${snapshot.buttonSrc})"
         }
     }
 

@@ -1727,16 +1727,19 @@ object ReviewSnapshotCapture {
                 "if(source&&/^https?:\\/\\//i.test(el.src)){var d=m[el.src]||m[source];" +
                 "if(d)el.src=d;else if(removeUnstaged)el.removeAttribute('src');}" +
                 "var set=el.getAttribute('srcset');if(!set)return;" +
-                "var rewritten=[],unresolved=false;" +
+                // srcset 逐变体处理：已入库变体改写为引用，未命中的外部变体只丢弃该
+                // 部分；不得因个别变体失败丢弃整个 srcset——那会让已入库变体的
+                // resource key 失去 HTML 引用，与 resourceKeys 校验冲突。
+                "var rewritten=[];" +
                 "set.split(',').forEach(function(part){var bits=part.trim().split(/\\s+/);" +
                 "var raw=bits.shift();if(!raw)return;var resolved=raw;" +
                 "try{resolved=new URL(raw,document.baseURI).href;}catch(e){}" +
                 "var mapped=m[resolved];" +
                 "if(mapped)rewritten.push(mapped+(bits.length?' '+bits.join(' '):''));" +
                 "else if(/^(data:|review-resource:|#|about:blank)/i.test(resolved))rewritten.push(part.trim());" +
-                "else unresolved=true;});" +
-                "if(unresolved){if(removeUnstaged)el.removeAttribute('srcset');}" +
-                "else if(rewritten.length)el.setAttribute('srcset',rewritten.join(', '));});" +
+                "});" +
+                "if(rewritten.length)el.setAttribute('srcset',rewritten.join(', '));" +
+                "else if(removeUnstaged)el.removeAttribute('srcset');});" +
                 "root.querySelectorAll('link[rel=\"stylesheet\"]').forEach(function(el){" +
                 "if(!/^https?:\\/\\//i.test(el.href))return;var d=c[el.href];" +
                 "if(d){var s=document.createElement('style');" +
