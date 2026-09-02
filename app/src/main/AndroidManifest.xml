@@ -137,6 +137,19 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- 图标8 -->
+        <activity
+            android:name=".ui.welcome.Launcher8"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/launcher8"
+            android:theme="@style/AppTheme.Welcome">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
         <!-- 主界面 -->
         <activity
             android:name=".ui.main.MainActivity"
