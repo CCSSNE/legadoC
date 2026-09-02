@@ -30,7 +30,7 @@ object ReviewSupplementInjector {
      * 优先取 id=contentArea（书山聚合等评论页形态），否则回退到
      * 第一张评论卡片的父容器；提取失败/无卡片返回 null，该 tab 不注入。
      */
-    fun extractList(snapshot: ReviewSnapshot): SupplementPayload? {
+    private fun extractList(snapshot: ReviewSnapshot): SupplementPayload? {
         if (snapshot.html.isBlank()) return null
         return runCatching {
             val doc = Jsoup.parse(snapshot.html)
