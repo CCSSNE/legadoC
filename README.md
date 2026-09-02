@@ -55,15 +55,13 @@
 
 [阅读R --- 直接继承](https://github.com/refgd/legado)
 
-[i阅读 --- 角色分配代码](https://github.com/legado-backup/iyuedu)
+[i阅读 --- 角色分配](https://github.com/legado-backup/iyuedu)
 
-[阅读NG --- 角色分配 听书引擎](https://github.com/joestar817/legado_NG)
+[阅读NG --- 角色分配 听书引擎 高亮规则](https://github.com/joestar817/legado_NG)
 
-[阅读Max-sum --- 发现页 一些ui](https://github.com/Suml-1/Legado_Max)
+[阅读Max-sum --- 发现页 高亮规则](https://github.com/Suml-1/Legado_Max)
 
-[阅读Archive 发现页](https://github.com/Rimchars/legado)
-
-[Max原版](https://github.com/youfengknight/Legado_Max)
+[阅读Archive 发现页 浏览器搜索](https://github.com/Rimchars/legado)
 
 ### 阅读C 独有支持的书源能力
 
