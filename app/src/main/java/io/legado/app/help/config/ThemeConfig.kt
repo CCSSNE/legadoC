@@ -69,8 +69,11 @@ object ThemeConfig {
         }
     }
 
-    private const val DEFAULT_BACKGROUND_ASSET = "defaultData/pre_default_background.png"
-    private const val DEFAULT_BACKGROUND_FILE = "pre_default_background.png"
+    private const val DEFAULT_DAY_BACKGROUND_ASSET = "defaultData/pre_default_background_day.jpg"
+    private const val DEFAULT_DAY_BACKGROUND_FILE = "pre_default_background_day.jpg"
+    private const val DEFAULT_NIGHT_BACKGROUND_ASSET = "defaultData/pre_default_background_night.png"
+    private const val DEFAULT_NIGHT_BACKGROUND_FILE = "pre_default_background_night.png"
+    private const val LEGACY_DEFAULT_BACKGROUND_FILE = "pre_default_background.png"
     private const val MISAPPLIED_READER_DAY_BACKGROUND_FILE = "护眼漫绿.jpg"
     private const val MISAPPLIED_READER_NIGHT_BACKGROUND_FILE = "宁静夜色.jpg"
     private const val DEFAULT_DAY_PRIMARY = 0xFFF1F2F6.toInt()
@@ -91,12 +94,14 @@ object ThemeConfig {
     private var needClearImg = true
 
     /**
-     * Installs the packaged Pre wallpaper only for theme slots that have never
-     * been configured. An explicit empty value means the user removed it.
+     * Installs the packaged default wallpapers only for theme slots that have
+     * never been configured or still carry a legacy default. An explicit empty
+     * value means the user removed it and must not be overwritten.
      */
     fun installDefaultBackgrounds(context: Context) {
         val preferences = context.defaultSharedPreferences
         val defaultDir = File(context.filesDir, "defaultData")
+        val legacyPath = File(defaultDir, LEGACY_DEFAULT_BACKGROUND_FILE).absolutePath
         val misappliedDayPath = File(
             defaultDir,
             MISAPPLIED_READER_DAY_BACKGROUND_FILE
@@ -106,27 +111,46 @@ object ThemeConfig {
             MISAPPLIED_READER_NIGHT_BACKGROUND_FILE
         ).absolutePath
         val needsDayBackground = !preferences.contains(PreferKey.bgImage) ||
+            preferences.getString(PreferKey.bgImage, null) == legacyPath ||
             preferences.getString(PreferKey.bgImage, null) == misappliedDayPath
         val needsNightBackground = !preferences.contains(PreferKey.bgImageN) ||
+            preferences.getString(PreferKey.bgImageN, null) == legacyPath ||
             preferences.getString(PreferKey.bgImageN, null) == misappliedNightPath
         if (!needsDayBackground && !needsNightBackground) return
 
-        val backgroundFile = File(context.filesDir, "defaultData/$DEFAULT_BACKGROUND_FILE")
-        if (!backgroundFile.isFile || backgroundFile.length() == 0L) {
-            runCatching {
-                backgroundFile.parentFile?.mkdirs()
-                context.assets.open(DEFAULT_BACKGROUND_ASSET).use { input ->
-                    backgroundFile.outputStream().use(input::copyTo)
-                }
-            }.onFailure {
-                AppLog.put("Install default theme background failed", it, true)
-            }
+        val dayBackgroundFile = File(defaultDir, DEFAULT_DAY_BACKGROUND_FILE)
+        val nightBackgroundFile = File(defaultDir, DEFAULT_NIGHT_BACKGROUND_FILE)
+        if (needsDayBackground) {
+            installBackgroundAsset(context, DEFAULT_DAY_BACKGROUND_ASSET, dayBackgroundFile)
         }
-        if (!backgroundFile.isFile || backgroundFile.length() == 0L) return
+        if (needsNightBackground) {
+            installBackgroundAsset(context, DEFAULT_NIGHT_BACKGROUND_ASSET, nightBackgroundFile)
+        }
+        if (needsDayBackground && !dayBackgroundFile.isFile) return
+        if (needsNightBackground && !nightBackgroundFile.isFile) return
 
         preferences.edit {
-            if (needsDayBackground) putString(PreferKey.bgImage, backgroundFile.absolutePath)
-            if (needsNightBackground) putString(PreferKey.bgImageN, backgroundFile.absolutePath)
+            if (needsDayBackground && dayBackgroundFile.isFile) {
+                putString(PreferKey.bgImage, dayBackgroundFile.absolutePath)
+            }
+            if (needsNightBackground && nightBackgroundFile.isFile) {
+                putString(PreferKey.bgImageN, nightBackgroundFile.absolutePath)
+            }
+        }
+        if (dayBackgroundFile.isFile || nightBackgroundFile.isFile) {
+            FileUtils.delete(legacyPath)
+        }
+    }
+
+    private fun installBackgroundAsset(context: Context, asset: String, target: File) {
+        if (target.isFile && target.length() > 0L) return
+        runCatching {
+            target.parentFile?.mkdirs()
+            context.assets.open(asset).use { input ->
+                target.outputStream().use(input::copyTo)
+            }
+        }.onFailure {
+            AppLog.put("Install default theme background failed", it, true)
         }
     }
 
