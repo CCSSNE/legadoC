@@ -8,6 +8,8 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.LogModule
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
+import io.legado.app.help.AppFreezeMonitor
+import io.legado.app.help.DispatchersMonitor
 import io.legado.app.utils.GSON
 import io.legado.app.utils.canvasrecorder.CanvasRecorderFactory
 import io.legado.app.utils.defaultSharedPreferences
@@ -19,6 +21,7 @@ import io.legado.app.utils.getPrefLong
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.getPrefStringSet
 import io.legado.app.utils.isNightMode
+import io.legado.app.utils.LogUtils
 import io.legado.app.utils.parseIpsFromString
 import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.putPrefInt
@@ -172,7 +175,13 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             PreferKey.optimizeRender -> optimizeRender = CanvasRecorderFactory.isSupport
                     && appCtx.getPrefBoolean(PreferKey.optimizeRender, false)
 
-            PreferKey.logShownModules -> logShownModules = readLogShownModules()
+            PreferKey.logShownModules -> {
+                logShownModules = readLogShownModules()
+                LogUtils.upLevel()
+                LogUtils.logDeviceInfo()
+                AppFreezeMonitor.init(appCtx)
+                DispatchersMonitor.init()
+            }
 
         }
     }

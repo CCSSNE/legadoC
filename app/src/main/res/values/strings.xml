@@ -2069,6 +2069,9 @@
     <string name="clear_webview_data_success">Cleared successfully, automatically restarts the application after 3 seconds</string>
     <string name="key_page_on_long_press">Press and hold the key to turn the page</string>
     <string name="save_log">Save logs</string>
+    <string name="show_crash_log">Show crash logs</string>
+    <string name="save_crash_log">Save crash logs</string>
+    <string name="save_normal_log">Save normal logs</string>
     <string name="create_heap_dump">Create heap dump</string>
     <string name="record_heap_dump_s">Saving a heap dump when the application crashes by OOM</string>
     <string name="record_heap_dump_t">Capture heap dump</string>

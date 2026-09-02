@@ -46,7 +46,6 @@ import io.legado.app.ui.main.MainActivity
 import io.legado.app.ui.main.MainFragmentInterface
 import io.legado.app.ui.replace.ReplaceRuleActivity
 import io.legado.app.ui.rss.source.manage.RssSourceActivity
-import io.legado.app.utils.LogUtils
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.applyMainBottomBarPadding
 import io.legado.app.utils.dpToPx
@@ -265,7 +264,6 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
                     }
                 }
 
-                PreferKey.logShownModules -> LogUtils.upLevel()
                 PreferKey.showRssPageInSettings -> updateSettingsEntryVisibility()
             }
         }

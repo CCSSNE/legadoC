@@ -7,7 +7,6 @@ import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.View
-import androidx.appcompat.app.AlertDialog
 import androidx.core.view.postDelayed
 import androidx.fragment.app.activityViewModels
 import androidx.preference.ListPreference
@@ -16,12 +15,9 @@ import androidx.preference.SwitchPreferenceCompat
 import io.legado.app.R
 import io.legado.app.base.BaseActivity
 import io.legado.app.constant.EventBus
-import io.legado.app.constant.LogModule
 import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.DialogEditCodeBinding
 import io.legado.app.databinding.DialogEditTextBinding
-import io.legado.app.help.AppFreezeMonitor
-import io.legado.app.help.DispatchersMonitor
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.lib.dialogs.alert
@@ -38,13 +34,11 @@ import io.legado.app.ui.book.read.config.ContentSelectMenuConfigDialog
 import io.legado.app.ui.video.config.SettingsDialog
 import io.legado.app.ui.widget.code.addJsonPattern
 import io.legado.app.ui.widget.number.NumberPickerDialog
-import io.legado.app.utils.LogUtils
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.isJsonObject
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.putPrefString
-import io.legado.app.utils.putPrefStringSet
 import io.legado.app.utils.removePref
 import io.legado.app.utils.restart
 import io.legado.app.utils.setEdgeEffectColor
@@ -235,43 +229,8 @@ class OtherConfigFragment : PreferenceFragment(),
             PreferKey.clearWebViewData -> clearWebViewData()
             "localPassword" -> alertLocalPassword()
             PreferKey.shrinkDatabase -> shrinkDatabase()
-            PreferKey.logShownModules -> showLogShownModulesDialog()
         }
         return super.onPreferenceTreeClick(preference)
-    }
-
-    /** 勾选普通日志中显示的模块；全部模块均可勾选，全不勾选时普通日志为空 */
-    private fun showLogShownModulesDialog() {
-        val modules = LogModule.selectable
-        val labels = modules.map { getString(it.labelRes) }.toTypedArray()
-        val shown = AppConfig.logShownModules
-        val checked = BooleanArray(modules.size) { modules[it].name in shown }
-        alert(getString(R.string.log_shown_modules_t)) {
-            multiChoiceItems(labels, checked) { _, which, isChecked ->
-                checked[which] = isChecked
-            }
-            okButton {
-                val selected = (0 until modules.size)
-                    .filter { checked[it] }
-                    .mapTo(mutableSetOf()) { modules[it].name }
-                putPrefStringSet(PreferKey.logShownModules, selected)
-            }
-            negativeButton(R.string.select_all) { dialog ->
-                repeat(checked.size) { index ->
-                    checked[index] = true
-                    (dialog as AlertDialog).listView.setItemChecked(index, true)
-                }
-                putPrefStringSet(PreferKey.logShownModules, LogModule.selectableNames.toMutableSet())
-            }
-            neutralButton(R.string.restore_default) { dialog ->
-                repeat(checked.size) { index ->
-                    checked[index] = false
-                    (dialog as AlertDialog).listView.setItemChecked(index, false)
-                }
-                removePref(PreferKey.logShownModules)
-            }
-            cancelButton()
-        }
     }
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
@@ -303,13 +262,6 @@ class OtherConfigFragment : PreferenceFragment(),
 
             PreferKey.defaultBookTreeUri -> {
                 upPreferenceSummary(key, AppConfig.defaultBookTreeUri)
-            }
-
-            PreferKey.logShownModules -> {
-                LogUtils.upLevel()
-                LogUtils.logDeviceInfo()
-                AppFreezeMonitor.init(appCtx)
-                DispatchersMonitor.init()
             }
 
             PreferKey.processText -> sharedPreferences?.let {

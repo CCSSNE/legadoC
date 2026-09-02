@@ -246,12 +246,6 @@
             android:title="@string/add_to_text_context_menu_t"
             app:iconSpaceReserved="false" />
 
-        <io.legado.app.lib.prefs.Preference
-            android:key="logShownModules"
-            android:summary="@string/log_shown_modules_s"
-            android:title="@string/log_shown_modules_t"
-            app:iconSpaceReserved="false" />
-
         <io.legado.app.lib.prefs.SwitchPreference
             android:defaultValue="false"
             android:key="recordHeapDump"

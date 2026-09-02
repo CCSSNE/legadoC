@@ -32,12 +32,23 @@
 
         <io.legado.app.lib.prefs.Preference
             android:key="crashLog"
-            android:title="@string/crash_log"
+            android:title="@string/show_crash_log"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="saveCrashLog"
+            android:title="@string/save_crash_log"
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
             android:key="saveLog"
-            android:title="@string/save_log"
+            android:title="@string/save_normal_log"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="logShownModules"
+            android:summary="@string/log_shown_modules_s"
+            android:title="@string/log_shown_modules_t"
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
