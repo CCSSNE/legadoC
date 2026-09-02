@@ -182,6 +182,7 @@ $versionName = '3.26.<MMddHH>' # <MMddHH> uses UTC; appC automatically appends c
 - 2026-08-24：用 PowerShell 字符串拼接生成后台构建 `.bat` 时，含拼接表达式的行被拆成多行、重定向路径断裂，进程秒退且无任何日志文件。此类"启动器损坏"一律按未启动处理，不得等待或误判为编译卡死；生成脚本改用纯字面量 here-string（长路径经 `%VAR%` 间接引用），且必须先回读校验行数与内容再 `Start-Process` 启动。
 - 2026-08-24：后台构建 `.bat` 用 `echo %EXIT_CODE%> "file"` 记录退出码，`%EXIT_CODE%` 为纯数字（如 0）时该行被 cmd 解析为句柄 `0>` 重定向，退出码文件为 0 字节空文件（构建本身正常，成功以 out.log 的 BUILD SUCCESSFUL 与空 err.log 为准，此问题不触发重编译）。记录退出码必须把重定向写在行首：`> "file" echo %EXIT_CODE%`。
 - 2026-09-01：`compileAppCKotlin` 报 `Unresolved reference 'start'` / `end'`——Kotlin `MatchResult` 没有 `start(groupIdx)` / `end(groupIdx)` 方法；需用 `match.groups[groupIdx]!!.range.first` 和 `range.last + 1`。同文件 `outcome` 为可空类型，在 `when` 后的 `else` 分支不会被 smart cast（lambda 捕获），需显式 `!!`。
+- 2026-09-02：`assembleAppC` 冷编译三次才成功。第一次 Gradle daemon 原生 OOM（hs_err malloc 失败，同 2026-08-19）；第二次改用 `-Dkotlin.compiler.execution.strategy=in-process` 但 Kotlin 编译仍走守护进程（堆栈 `compileWithDaemon`），守护进程崩溃报 "Connection to the Kotlin daemon has been unexpectedly lost"——**`-D` 形式在当前 Kotlin 版本下不被读取**；第三次改用 `-Pkotlin.compiler.execution.strategy=in-process`（Gradle property 形式）才真正 in-process，编译成功。规则：冷编译参数中 Kotlin 编译策略一律用 `-P` 而非 `-D`；低内存环境下 Gradle daemon 原生 OOM 与 Kotlin daemon 崩溃可能交替出现，需区分处理。
 
 ### 双构建路线（自有 / 开源）
 
@@ -293,6 +294,6 @@ uiautomator2 / ADB
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- 最近一次自用版交付为 `3.26.090209` / `10808`，2026-09-02 UTC 09 时，使用 `assembleAppC` 冷编译成功。产物包名 `io.legado.app.dev`、versionName `3.26.090209c`、versionCode `10808`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C-自用`（label-zh 逐字匹配）、`apksigner` 验证通过；APK 位于 `app\build\outputs\apk\app\c\legado_app_3.26.090209_10808.apk`。同轮公开版交付为 `3.26.090209` / `10804`（包名 `io.legado.app.c`、应用名 `阅读C`、产物 `app\build\outputs\apk\oss\release\legado_oss_3.26.090209_10804.apk`）。本次未安装模拟器、未做正式回归。上一公开版为 `3.26.090202` / `10803`。
+- 最近一次自用版交付为 `3.26.090216` / `10809`，2026-09-02 UTC 16 时，使用 `assembleAppC` 冷编译成功。产物包名 `io.legado.app.dev`、versionName `3.26.090216c`、versionCode `10809`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C-自用`（label-zh 逐字匹配）、`apksigner` 验证通过；APK 位于 `app\build\outputs\apk\app\c\legado_app_3.26.090216_10809.apk`。本次未安装模拟器、未做正式回归。上一自用版为 `3.26.090209` / `10808`；最近公开版仍为 `3.26.090209` / `10804`。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
