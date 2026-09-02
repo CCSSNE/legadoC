@@ -102,6 +102,23 @@ object ReviewSnapshotStore {
     private const val STATUS_FILE_PREFIX = "s_"
     private const val FILE_SUFFIX = ".json"
 
+    /**
+     * 章评 tab 补充快照的保留 buttonSrc：主键 = (真实章节 url, CHAPTER_TAB_SRC)，
+     * 每章只存一份，与该章评论按钮的段评快照互不覆盖。
+     */
+    const val CHAPTER_TAB_SRC = "__chapter_tab__"
+
+    /**
+     * 书评 tab 补充快照的保留伪章节 url 与 buttonSrc：主键 = (BOOK_TAB_CHAPTER_URL,
+     * BOOK_TAB_SRC)，整本书只存一份。伪章节 url 不对应任何真实章节，
+     * 章节统计与按章导出必须排除。
+     */
+    const val BOOK_TAB_CHAPTER_URL = "__book_tab__"
+    const val BOOK_TAB_SRC = "__book_tab__"
+
+    /** 该 chapterUrl 是否为书评补充快照的伪章节身份 */
+    fun isSupplementChapterUrl(url: String): Boolean = url.trim() == BOOK_TAB_CHAPTER_URL
+
     fun reviewsDir(book: Book): File {
         return File(BookHelp.getCacheDir(book), REVIEWS_DIR_NAME)
     }
@@ -196,6 +213,19 @@ object ReviewSnapshotStore {
         return snapshot
     }
 
+    /** 读取该章的章评 tab 补充快照；缺失或校验失败返回 null */
+    fun getChapterTab(book: Book, chapter: BookChapter): ReviewSnapshot? {
+        return runCatching { get(book, chapter, CHAPTER_TAB_SRC) }.getOrNull()
+    }
+
+    /** 读取该书的书评 tab 补充快照（伪章节主键）；缺失或校验失败返回 null */
+    fun getBookTab(book: Book): ReviewSnapshot? {
+        requireCurrentFormatIfReviewData(book)
+        val file = File(reviewsDir(book), fileName(BOOK_TAB_CHAPTER_URL, BOOK_TAB_SRC))
+        if (!file.isFile) return null
+        return runCatching { readCompleteSnapshot(book, file) }.getOrNull()
+    }
+
     /** Validate an extracted snapshot against the already-imported resource database. */
     internal fun validateImportedSnapshot(book: Book, file: File): ReviewSnapshot {
         require(isSnapshotFile(file)) { "not a review snapshot file: ${file.absolutePath}" }
@@ -240,6 +270,42 @@ object ReviewSnapshotStore {
         return !metadata.partial
     }
 
+    /**
+     * 补充快照（章评/书评 tab）按显式 (chapterUrl, buttonSrc) 按键读取元数据。
+     * 与 [readOwnSnapshotMetadata] 的差异仅在于不需要 BookChapter 实体：
+     * 书评补充快照挂在伪章节 url 上，整本书只有一份。
+     */
+    private fun readSupplementMetadata(
+        book: Book,
+        chapterUrl: String,
+        buttonSrc: String,
+    ): ReviewSnapshotHotMetadata? {
+        requireCurrentFormatIfReviewData(book)
+        val file = File(reviewsDir(book), fileName(chapterUrl, buttonSrc))
+        if (!file.isFile) return null
+        val metadata = readHotMetadata(book, file)
+        require(metadata.chapterUrl.trim() == chapterUrl.trim()) {
+            "review snapshot chapterUrl mismatch: ${file.absolutePath}"
+        }
+        require(metadata.buttonSrc.trim() == buttonSrc.trim()) {
+            "review snapshot buttonSrc mismatch: ${file.absolutePath}"
+        }
+        return metadata
+    }
+
+    /** 该章的章评 tab 补充快照是否已完整存在 */
+    fun hasCompleteChapterTab(book: Book, chapter: BookChapter): Boolean {
+        val metadata = readSupplementMetadata(book, chapter.url, CHAPTER_TAB_SRC) ?: return false
+        return !metadata.partial
+    }
+
+    /** 该书的书评 tab 补充快照是否已完整存在 */
+    fun hasCompleteBookTab(book: Book): Boolean {
+        val metadata = readSupplementMetadata(book, BOOK_TAB_CHAPTER_URL, BOOK_TAB_SRC)
+            ?: return false
+        return !metadata.partial
+    }
+
     /** 读取并校验属于 [chapter]/[buttonSrc] 的快照热元数据；文件不存在返回 null。 */
     private fun readOwnSnapshotMetadata(
         book: Book,
@@ -280,6 +346,7 @@ object ReviewSnapshotStore {
     /**
      * 只读取统计所需的章节字段。JsonReader.skipValue 会流式越过超大的 html 字段，
      * 缓存页统计不会把整书所有快照同时留在 heap 中。
+     * 书评补充快照的伪章节 url 不代表章节，必须排除。
      */
     fun chapterUrls(book: Book): Set<String> {
         requireCurrentFormatIfReviewData(book)
@@ -291,6 +358,7 @@ object ReviewSnapshotStore {
                     require(chapterUrl.isNotBlank()) { "评论快照缺少 chapterUrl" }
                 }
             }
+            .filterNot(::isSupplementChapterUrl)
             .toSet()
     }
 
@@ -302,6 +370,7 @@ object ReviewSnapshotStore {
             readHotMetadata(book, file).let { metadata ->
                 val key = metadata.chapterUrl.trim()
                 require(key.isNotBlank()) { "评论快照缺少 chapterUrl: ${file.absolutePath}" }
+                if (isSupplementChapterUrl(key)) return@let
                 byChapterUrl[key] = (byChapterUrl[key] ?: 0) + 1
             }
         }
@@ -431,7 +500,15 @@ object ReviewSnapshotStore {
             }.chapterUrl.trim() in selectedChapterUrls
         }
         if (snapshots.isEmpty() && statuses.isEmpty()) return
-        check(snapshots.isEmpty() || statuses.isNotEmpty()) {
+        // 章评/书评补充快照没有（也不需要有）章节状态文件；完整性检查只针对段评快照
+        val hasPrimarySnapshots = snapshots.any { file ->
+            !isSupplementChapterUrl(
+                requireNotNull(readMetadata(file)) {
+                    "无法读取评论快照元数据: ${file.absolutePath}"
+                }.chapterUrl
+            )
+        }
+        check(!hasPrimarySnapshots || statuses.isNotEmpty()) {
             "评论缓存缺少章节状态文件，无法完整导出: ${reviewsDir(book).absolutePath}"
         }
         check(targetDir.isDirectory || targetDir.mkdirs()) {

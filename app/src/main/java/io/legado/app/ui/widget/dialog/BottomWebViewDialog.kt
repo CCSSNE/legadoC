@@ -129,6 +129,13 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
     /** Set only for review snapshots that may contain review-resource:// references. */
     private var reviewResourceBook: Book? = null
 
+    /**
+     * 当前 WebView 显示的是否为评论快照内容（初始快照或网络失败后的兜底快照）。
+     * 仅此时注入章评/书评补充 section；在线页自身的 tab 可用，无需注入。
+     */
+    @Volatile
+    private var displayingSnapshotHtml = false
+
     /** 离线评论入队上下文：非空时页面加载完成后注入离线评论接管脚本 */
     private var outboxContext: io.legado.app.help.review.reviewoutbox.ReviewOutboxContext? = null
 
@@ -602,6 +609,9 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
                     WebViewHtmlStore.read(reference)
                         ?: throw NoStackTraceException("WebView HTML file is missing: $reference")
                 }
+                if (htmlArgument != null) {
+                    displayingSnapshotHtml = true
+                }
                 val fallbackReference = args.getString(ARG_FALLBACK_HTML_FILE)
                 if (fallbackReference != null) {
                     fallbackHtmlFileReference = fallbackReference
@@ -690,6 +700,8 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
                             val refreshed = runCatching { refresher() }.getOrNull()
                             if (refreshed != null && isAdded && !isHidden) {
                                 withContext(Dispatchers.Main) {
+                                    // 在线覆盖页加载后不再是快照内容，撤回注入标记
+                                    displayingSnapshotHtml = false
                                     currentWebView.loadDataWithBaseURL(
                                         refreshed.first.ifBlank { analyzeUrl.url },
                                         refreshed.second,
@@ -818,6 +830,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         cancelFallbackTimeout()
         // 兜底快照属于离线内容：切换后禁止一切网络请求
         offlineMode = true
+        displayingSnapshotHtml = true
         currentWebView.settings.configureOfflineResourceLoading(true)
         currentWebView.loadDataWithBaseURL(
             currentWebView.url ?: "https://localhost/",
@@ -1091,6 +1104,45 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
                         "url=${url ?: ""} 书=${context.bookName} 章=${context.chapterTitle}",
                     module = io.legado.app.constant.LogModule.REVIEW_OFFLINE
                 )
+            }
+            // 快照显示中：注入章评/书评补充 section 与离线 tab/楼中楼交互
+            if (displayingSnapshotHtml && view != null) {
+                injectReviewSupplements(view)
+            }
+        }
+
+        /**
+         * 读取本章章评、本书书评补充快照并注入当前快照页：
+         * 章评/书评 tab 从死链变成离线可切换的 section，楼中楼可离线收起/展开。
+         * 异步读取数据库与磁盘，evaluateJavascript 回到主线程执行。
+         */
+        private fun injectReviewSupplements(view: WebView) {
+            val context = outboxContext ?: return
+            val book = reviewResourceBook ?: return
+            viewLifecycleOwner.lifecycleScope.launch(IO) {
+                val js = runCatching {
+                    val chapter = context.chapterUrl.takeIf { it.isNotBlank() }?.let { chapterUrl ->
+                        appDb.bookChapterDao.getChapterByUrl(book.bookUrl, chapterUrl)
+                    }
+                    val chapterTab = chapter?.let {
+                        io.legado.app.help.review.ReviewSnapshotStore.getChapterTab(book, it)
+                    }
+                    val bookTab = io.legado.app.help.review.ReviewSnapshotStore.getBookTab(book)
+                    io.legado.app.help.review.ReviewSupplementInjector.buildInjectionJs(
+                        chapterTab,
+                        bookTab,
+                    )
+                }.getOrNull() ?: return@launch
+                withContext(Dispatchers.Main) {
+                    if (!isAdded || isHidden) return@withContext
+                    view.evaluateJavascript(js) { result ->
+                        AppLog.putDebug(
+                            "[评论快照] 章评/书评补充注入：${result ?: "null"} " +
+                                "书=${context.bookName} 章=${context.chapterTitle}",
+                            module = io.legado.app.constant.LogModule.DOWNLOAD_CACHE
+                        )
+                    }
+                }
             }
         }
 

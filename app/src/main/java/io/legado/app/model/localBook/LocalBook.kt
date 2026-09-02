@@ -941,6 +941,18 @@ object LocalBook {
                                 GSON.fromJsonObject<io.legado.app.help.review.ReviewSnapshot>(
                                     snapshotFile.readText()
                             ).getOrNull() ?: error("invalid review snapshot JSON: ${snapshotFile.name}")
+                            // 书评补充快照挂在伪章节 url 上（整本书一份），无需章节映射，
+                            // 换个 bookUrl 原样落盘即可
+                            if (io.legado.app.help.review.ReviewSnapshotStore.isSupplementChapterUrl(
+                                    snapshot.chapterUrl
+                                )
+                            ) {
+                                io.legado.app.help.review.ReviewSnapshotStore.put(
+                                    importedBook,
+                                    snapshot.copy(bookUrl = importedBook.bookUrl)
+                                )
+                                return@forEach
+                            }
                             matchImportedChapter(
                                 importedBook,
                                 localChapters,

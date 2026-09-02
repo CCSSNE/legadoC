@@ -90,6 +90,10 @@ object ReviewSnapshotCapture {
     private const val EXPAND_ROUND_INTERVAL_MS = 800L
     /** 连续几轮稳定才判定完成（含慢加载评论） */
     private const val STABLE_ROUNDS_TO_FINISH = 3
+    /** 楼中楼兜底强展轮数上限（每轮点击后可能出现新的“加载更多回复”） */
+    private const val MAX_FORCE_EXPAND_PASSES = 12
+    /** 章评/书评 tab 点击校验重试上限 */
+    private const val MAX_TAB_CLICK_ATTEMPTS = 5
     /** Resource budget for one complete offline snapshot. Budget excess is a visible failure. */
     private const val MAX_SNAPSHOT_RESOURCES = 200
     private const val MAX_TOTAL_RESOURCE_BYTES = 30L * 1024 * 1024
@@ -194,9 +198,136 @@ object ReviewSnapshotCapture {
         diagnostics: CacheOperationDiagnostics.Context? = null,
         commitIfLeaseActive: ((() -> Unit) -> Boolean) = { action -> action(); true },
     ): CaptureOutcome {
+        return captureImpl(
+            bookSource,
+            book,
+            url,
+            initialHtml,
+            preloadJs,
+            tab = null,
+            traceChapterIndex = chapter.index,
+            diagnostics = diagnostics,
+            commitIfLeaseActive = commitIfLeaseActive,
+        ) { page ->
+            ReviewSnapshot(
+                bookUrl = book.bookUrl,
+                chapterUrl = chapter.url,
+                chapterIndex = chapter.index,
+                chapterTitle = chapter.title,
+                buttonSrc = buttonSrc,
+                url = url,
+                title = "",
+                html = page.html,
+                resourceKeys = page.resourceKeys,
+                partial = page.droppedResources > 0,
+                savedAt = System.currentTimeMillis()
+            )
+        }
+    }
+
+    /**
+     * 章评 tab 补充快照：加载与段评相同的评论页后先点击“章评” tab
+     * （页面自身 JS 完成切换与加载），再穷尽展开并序列化。每章只存一份，
+     * 主键 = (章节 url, [ReviewSnapshotStore.CHAPTER_TAB_SRC])。
+     */
+    internal suspend fun captureChapterTab(
+        bookSource: BookSource,
+        book: Book,
+        chapter: BookChapter,
+        url: String,
+        initialHtml: String?,
+        preloadJs: String?,
+        diagnostics: CacheOperationDiagnostics.Context? = null,
+        commitIfLeaseActive: ((() -> Unit) -> Boolean) = { action -> action(); true },
+    ): CaptureOutcome {
+        return captureImpl(
+            bookSource,
+            book,
+            url,
+            initialHtml,
+            preloadJs,
+            tab = ReviewTab.CHAPTER,
+            traceChapterIndex = chapter.index,
+            diagnostics = diagnostics,
+            commitIfLeaseActive = commitIfLeaseActive,
+        ) { page ->
+            ReviewSnapshot(
+                bookUrl = book.bookUrl,
+                chapterUrl = chapter.url,
+                chapterIndex = chapter.index,
+                chapterTitle = chapter.title,
+                buttonSrc = ReviewSnapshotStore.CHAPTER_TAB_SRC,
+                url = url,
+                title = ReviewTab.CHAPTER.label,
+                html = page.html,
+                resourceKeys = page.resourceKeys,
+                partial = page.droppedResources > 0,
+                savedAt = System.currentTimeMillis()
+            )
+        }
+    }
+
+    /**
+     * 书评 tab 补充快照：与 [captureChapterTab] 同型，但内容整本书共享一份，
+     * 主键 = ([ReviewSnapshotStore.BOOK_TAB_CHAPTER_URL], [ReviewSnapshotStore.BOOK_TAB_SRC])。
+     */
+    internal suspend fun captureBookTab(
+        bookSource: BookSource,
+        book: Book,
+        url: String,
+        initialHtml: String?,
+        preloadJs: String?,
+        diagnostics: CacheOperationDiagnostics.Context? = null,
+        commitIfLeaseActive: ((() -> Unit) -> Boolean) = { action -> action(); true },
+    ): CaptureOutcome {
+        return captureImpl(
+            bookSource,
+            book,
+            url,
+            initialHtml,
+            preloadJs,
+            tab = ReviewTab.BOOK,
+            traceChapterIndex = -1,
+            diagnostics = diagnostics,
+            commitIfLeaseActive = commitIfLeaseActive,
+        ) { page ->
+            ReviewSnapshot(
+                bookUrl = book.bookUrl,
+                chapterUrl = ReviewSnapshotStore.BOOK_TAB_CHAPTER_URL,
+                chapterIndex = -1,
+                chapterTitle = ReviewTab.BOOK.label,
+                buttonSrc = ReviewSnapshotStore.BOOK_TAB_SRC,
+                url = url,
+                title = ReviewTab.BOOK.label,
+                html = page.html,
+                resourceKeys = page.resourceKeys,
+                partial = page.droppedResources > 0,
+                savedAt = System.currentTimeMillis()
+            )
+        }
+    }
+
+    /** 评论页内的评论分类 tab；tab 切换由页面自身 JS 完成，抓取端只负责点击与校验 */
+    internal enum class ReviewTab(val label: String, val keywords: List<String>) {
+        CHAPTER("章评", listOf("章评", "本章说", "章节评论")),
+        BOOK("书评", listOf("书评", "本书评论", "作品评论")),
+    }
+
+    private suspend fun captureImpl(
+        bookSource: BookSource,
+        book: Book,
+        url: String,
+        initialHtml: String?,
+        preloadJs: String?,
+        tab: ReviewTab?,
+        traceChapterIndex: Int,
+        diagnostics: CacheOperationDiagnostics.Context?,
+        commitIfLeaseActive: ((() -> Unit) -> Boolean),
+        buildSnapshot: (SnapshotPageResult) -> ReviewSnapshot,
+    ): CaptureOutcome {
         val trace = diagnostics?.let {
             CacheOperationDiagnostics.begin(
-                it.forChapter(chapter.index),
+                it.forChapter(traceChapterIndex),
                 "CAPTURE",
                 CacheOperationDiagnostics.Metrics(inputChars = initialHtml?.length),
                 startAlways = true,
@@ -215,23 +346,12 @@ object ReviewSnapshotCapture {
                 book,
                 initialHtml,
                 preloadJs,
+                tab,
                 trace,
                 commitIfLeaseActive,
             )
             CaptureOutcome(
-                snapshot = ReviewSnapshot(
-                    bookUrl = book.bookUrl,
-                    chapterUrl = chapter.url,
-                    chapterIndex = chapter.index,
-                    chapterTitle = chapter.title,
-                    buttonSrc = buttonSrc,
-                    url = url,
-                    title = "",
-                    html = page.html,
-                    resourceKeys = page.resourceKeys,
-                    partial = page.droppedResources > 0,
-                    savedAt = System.currentTimeMillis()
-                ),
+                snapshot = buildSnapshot(page),
                 expandRounds = page.expandRounds,
                 expandClickCount = page.expandClickCount,
                 droppedResources = page.droppedResources
@@ -257,6 +377,7 @@ object ReviewSnapshotCapture {
     /**
      * 无头加载页面并穷尽展开后返回最终 HTML 与展开诊断数据。
      *
+     * @param tab 非 null 时页面加载完成后先切换到目标评论 tab 再展开（章评/书评补充抓取）
      * @return [SnapshotPageResult]：html、展开轮数、点击次数、本快照引用的资源 key 列表
      */
     private suspend fun snapshotPage(
@@ -265,6 +386,7 @@ object ReviewSnapshotCapture {
         book: Book,
         initialHtml: String? = null,
         preloadJs: String? = null,
+        tab: ReviewTab? = null,
         diagnostics: CacheOperationDiagnostics.Operation? = null,
         commitIfLeaseActive: ((() -> Unit) -> Boolean),
     ): SnapshotPageResult {
@@ -314,6 +436,7 @@ object ReviewSnapshotCapture {
                         url,
                         book,
                         jsBridge,
+                        tab,
                         diagnostics,
                         commitIfLeaseActive,
                     ) {
@@ -388,6 +511,7 @@ object ReviewSnapshotCapture {
         private val url: String,
         private val book: Book,
         private val jsBridge: PageJsBridge?,
+        private val tab: ReviewTab?,
         private val diagnostics: CacheOperationDiagnostics.Operation?,
         private val commitIfLeaseActive: ((() -> Unit) -> Boolean),
         private val done: (String?, Throwable?, Int, Int, Boolean, List<String>, Int) -> Unit
@@ -541,6 +665,22 @@ object ReviewSnapshotCapture {
         private var lastHeight = -1
         private var lastNodes = -1
 
+        /**
+         * 展开循环重入防护：onPageFinished 可能多次回调，并发多轮 EXPAND_JS
+         * 会在同一轮里把同一个“展开 N 条回复”toggle 点两次（展开→收起），
+         * 快照里就留下永久收起的楼中楼。整条循环必须单实例串行。
+         */
+        private var expandLoopActive = false
+
+        /** 楼中楼兜底强展已执行的轮数 */
+        private var forceExpandPasses = 0
+
+        /** 章评/书评 tab 点击尝试次数 */
+        private var tabClickAttempts = 0
+
+        /** 展开循环结束后、重内存阶段前的楼中楼兜底强展轮数上限 */
+        private val cacheReplies = AppConfig.cacheReviewReplies
+
         private var jsInjectedForPage = false
         private val heavyStagePermitHeld = AtomicBoolean(false)
         private val lifecycleLock = Any()
@@ -565,7 +705,12 @@ object ReviewSnapshotCapture {
         val client = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, finishedUrl: String?) {
                 if (destroyed) return
-                mHandler.postDelayed({ expandRound() }, 1500L)
+                if (tab == null) {
+                    mHandler.postDelayed({ expandRound() }, 1500L)
+                } else {
+                    // 章评/书评补充抓取：先点目标 tab，切换校验通过后再进入展开循环
+                    mHandler.postDelayed({ clickTargetTab() }, 1200L)
+                }
             }
 
             @SuppressLint("WebViewClientOnReceivedSslError")
@@ -810,15 +955,18 @@ object ReviewSnapshotCapture {
 
         private fun expandRound() {
             if (destroyed) return
-            webView.evaluateJavascript(EXPAND_JS) { json ->
+            if (expandLoopActive) return
+            expandLoopActive = true
+            webView.evaluateJavascript(expandJs(cacheReplies)) { json ->
                 mHandler.post {
                     if (destroyed) return@post
+                    expandLoopActive = false
                     val stats = parseStats(json)
                     if (stats == null) {
                         // 页面还未就绪：下一轮再试
                         expandRounds++
                         if (expandRounds >= MAX_EXPAND_ROUNDS) {
-                            inlineResources()
+                            afterExpandLoop()
                         } else {
                             mHandler.postDelayed({ expandRound() }, EXPAND_ROUND_INTERVAL_MS)
                         }
@@ -837,12 +985,106 @@ object ReviewSnapshotCapture {
                     stableRounds = if (stable) stableRounds + 1 else 0
                     expandRounds++
                     if (stableRounds >= STABLE_ROUNDS_TO_FINISH || expandRounds >= MAX_EXPAND_ROUNDS) {
-                        inlineResources()
+                        afterExpandLoop()
                     } else {
                         mHandler.postDelayed({ expandRound() }, EXPAND_ROUND_INTERVAL_MS)
                     }
                 }
             }
+        }
+
+        /**
+         * 展开循环结束后的收口：开启“缓存楼中楼”时先做穷尽式强展兜底，
+         * 消除懒加载 + 每轮限量点击漏掉的楼中楼；关闭开关时直接进入重内存阶段
+         * （回复层在冻结 DOM 时统一剥离）。
+         */
+        private fun afterExpandLoop() {
+            if (destroyed) return
+            if (!cacheReplies) {
+                inlineResources()
+                return
+            }
+            forceExpandReplies()
+        }
+
+        /**
+         * 楼中楼兜底强展：逐一点击全部未展开的回复 toggle（不限每轮数量），
+         * 直到页面再无“展开 N 条回复”类元素。点击后可能出现新的“加载更多回复”，
+         * 因此按轮收敛；轮数有上限，绝不无限循环。
+         */
+        private fun forceExpandReplies() {
+            if (destroyed) return
+            forceExpandPasses++
+            webView.evaluateJavascript(FORCE_EXPAND_JS) { json ->
+                mHandler.post {
+                    if (destroyed) return@post
+                    val clicked = parseForceClicked(json) ?: 0
+                    diagnostics?.mark(
+                        "FORCE_EXPAND_PASS",
+                        CacheOperationDiagnostics.Metrics(resourceCount = clicked),
+                    )
+                    if (clicked > 0 && forceExpandPasses < MAX_FORCE_EXPAND_PASSES) {
+                        mHandler.postDelayed({ forceExpandReplies() }, EXPAND_ROUND_INTERVAL_MS)
+                    } else {
+                        inlineResources()
+                    }
+                }
+            }
+        }
+
+        /** 章评/书评补充抓取：点击目标 tab 并校验切换生效；失败显式暴露，绝不冒充 */
+        private fun clickTargetTab() {
+            if (destroyed || tab == null) return
+            tabClickAttempts++
+            diagnostics?.mark("TAB_CLICK_${tab.name}")
+            webView.evaluateJavascript(tabClickJs(tab)) { json ->
+                mHandler.post {
+                    if (destroyed) return@post
+                    val state = parseTabClickState(json)
+                    when {
+                        state == null || !state.found ->
+                            fail(
+                                NoStackTraceException(
+                                    "评论页未找到“${tab.label}”入口，无法抓取该 tab 快照"
+                                )
+                            )
+                        state.active -> mHandler.postDelayed({ expandRound() }, 800L)
+                        tabClickAttempts >= MAX_TAB_CLICK_ATTEMPTS ->
+                            fail(
+                                NoStackTraceException(
+                                    "评论页“${tab.label}”tab 点击 ${tabClickAttempts} 次仍未切换生效，" +
+                                        "无法抓取该 tab 快照"
+                                )
+                            )
+                        else -> mHandler.postDelayed({ clickTargetTab() }, 800L)
+                    }
+                }
+            }
+        }
+
+        private data class TabClickState(val found: Boolean, val active: Boolean)
+
+        private fun parseTabClickState(json: String?): TabClickState? {
+            json ?: return null
+            return runCatching {
+                val s = StringEscapeUtils.unescapeJson(json).trim('"')
+                if (s == "null") return null
+                val obj = GSON.fromJson(s, Map::class.java)
+                TabClickState(
+                    found = (obj?.get("f") as? Boolean) ?: false,
+                    active = (obj?.get("a") as? Boolean) ?: false,
+                )
+            }.getOrNull()
+        }
+
+        private fun parseForceClicked(json: String?): Int? {
+            json ?: return null
+            return runCatching {
+                val s = StringEscapeUtils.unescapeJson(json).trim('"')
+                if (s == "null") return null
+                val obj = GSON.fromJson(s, Map::class.java)
+                (obj?.get("c") as? Double)?.toInt() ?: 0
+            }.getOrNull()
         }
 
         private fun parseStats(json: String?): PageStats? {
@@ -900,7 +1142,9 @@ object ReviewSnapshotCapture {
 
         private fun collectAndInlineResources() {
             if (destroyed) return
-            webView.evaluateJavascript(COLLECT_RESOURCES_JS) { json ->
+            webView.evaluateJavascript(
+                collectResourcesJs(stripReplies = !cacheReplies)
+            ) { json ->
                 mHandler.post {
                     if (destroyed) return@post
                     val urls = parseResourceUrls(json)
@@ -1787,12 +2031,31 @@ object ReviewSnapshotCapture {
         }
     }
 
-    private const val EXPAND_JS =
-        "(function(){" +
-            "var pat=/(展开|更多回复|查看回复|加载更多|查看更多|查看全部|显示全部|点击查看|继续阅读|load\\s*more|show\\s*more|view\\s*more|expand)/i;" +
+    /**
+     * 展开循环脚本。每轮点击文本命中“展开/加载更多”等模式的元素（每轮限量），
+     * 并滚动到页底触发懒加载。
+     *
+     * @param includeReplies false = 关闭“缓存楼中楼”：正则不再匹配回复 toggle，
+     *        并跳过一切位于回复容器内的元素（含“加载更多回复”），回复内容不参与展开；
+     *        序列化时回复层会统一剥离。
+     */
+    private fun expandJs(includeReplies: Boolean): String {
+        val pattern = if (includeReplies) {
+            "(展开|更多回复|查看回复|加载更多|查看更多|查看全部|显示全部|点击查看|继续阅读|load\\s*more|show\\s*more|view\\s*more|expand)"
+        } else {
+            "(加载更多|查看更多|查看全部|显示全部|点击查看|继续阅读|load\\s*more|show\\s*more|view\\s*more)"
+        }
+        val replySkip = if (includeReplies) {
+            ""
+        } else {
+            "if(el.closest&&el.closest('.reply-section'))continue;"
+        }
+        return "(function(){" +
+            "var pat=/$pattern/i;" +
             "var clicked=0;" +
             "var els=document.querySelectorAll('a,button,[role=\"button\"],[onclick],div,span,p');" +
             "for(var i=0;i<els.length;i++){var el=els[i];" +
+            replySkip +
             "var t=(el.innerText||'').trim();" +
             "if(!t||t.length>24||!pat.test(t))continue;" +
             "var r=el.getBoundingClientRect();" +
@@ -1809,6 +2072,56 @@ object ReviewSnapshotCapture {
             "var n=document.getElementsByTagName('*').length;" +
             "return JSON.stringify({c:clicked,t:document.body?document.body.innerText.length:0,h:h,n:n});" +
             "})()"
+    }
+
+    /**
+     * 楼中楼兜底强展脚本：不限每轮数量地点击全部未展开的回复 toggle。
+     * 展开循环受“每轮 6 个 + 轮数上限”约束，懒加载页面的尾部楼中楼会漏点，
+     * 序列化后离线永远打不开；本脚本在序列化前穷尽兜底，由页面自身 JS
+     * 完成展开（不操作 DOM 结构，通用书源均适用）。
+     */
+    private const val FORCE_EXPAND_JS =
+        "(function(){" +
+            "var pat=/(展开\\s*\\d*\\s*条回复|展开回复|查看回复|全部回复|更多回复|共\\s*\\d+\\s*条回复|load\\s*more\\s*repl)/i;" +
+            "var clicked=0;" +
+            "var els=document.querySelectorAll('a,button,[role=\"button\"],[onclick],div,span,p');" +
+            "for(var i=0;i<els.length;i++){var el=els[i];" +
+            "var t=(el.innerText||'').trim();" +
+            "if(!t||t.length>30||!pat.test(t))continue;" +
+            "var r=el.getBoundingClientRect();" +
+            "if(r.width<1||r.height<1)continue;" +
+            "if(el.children.length>2)continue;" +
+            "el.scrollIntoView({block:'center'});" +
+            "try{el.click();}catch(e){}" +
+            "try{el.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));" +
+            "el.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));}catch(e){}" +
+            "clicked++;}" +
+            "return JSON.stringify({c:clicked});" +
+            "})()"
+
+    /**
+     * 章评/书评 tab 点击脚本：按关键词定位 tab 元素并点击，返回
+     * {f: 是否找到, a: 点击后是否处于激活态}。切换由页面自身 JS 完成。
+     */
+    private fun tabClickJs(tab: ReviewTab): String {
+        val keywords = GSON.toJson(tab.keywords)
+        return "(function(){" +
+            "var kws=$keywords;" +
+            "var els=document.querySelectorAll('.tab,[role=\"tab\"],[data-tab]');" +
+            "var target=null;" +
+            "for(var i=0;i<els.length;i++){var el=els[i];" +
+            "var t=(el.innerText||'').trim();" +
+            "if(!t||t.length>12)continue;" +
+            "for(var k=0;k<kws.length;k++){if(t.indexOf(kws[k])>=0){target=el;break;}}" +
+            "if(target)break;}" +
+            "if(!target)return JSON.stringify({f:false,a:false});" +
+            "try{target.click();}catch(e){}" +
+            "var cls=(target.className||'')+' '+(target.getAttribute('data-state')||'');" +
+            "var active=/active|checked|selected|current/i.test(cls)||" +
+            "target.getAttribute('aria-selected')==='true';" +
+            "return JSON.stringify({f:true,a:active});" +
+            "})()"
+    }
 
     /** Shared DOM classifier for collection and inlining so each image obeys the same switch. */
     private const val IMAGE_CLASSIFIER_HELPER_JS =
@@ -1819,12 +2132,26 @@ object ReviewSnapshotCapture {
             "if(/avatar|profile[-_]?image|head[-_]?img|头像/i.test(v))return true;" +
             "}return false;}"
 
-    private val COLLECT_RESOURCES_JS =
-        "(function(){" +
+    /**
+     * 资源收集脚本：冻结当前 DOM 克隆供后续异步下载与序列化使用。
+     *
+     * @param stripReplies true = 关闭“缓存楼中楼”：从冻结 DOM 中剥离回复层
+     *        （.reply-section，含其内部的回复头像/图片），回复内容不进快照、
+     *        其图片不进资源库。章节/书评 tab 同样适用。
+     */
+    private fun collectResourcesJs(stripReplies: Boolean): String {
+        val strip = if (stripReplies) {
+            "root.querySelectorAll('.reply-section').forEach(function(el){" +
+                "if(el.parentNode)el.parentNode.removeChild(el);});"
+        } else {
+            ""
+        }
+        return "(function(){" +
             // 后续异步下载期间只操作这份脱离活页面的 DOM，页面脚本无法再改变快照内容。
             "var root=document.documentElement.cloneNode(true);" +
             "window.__legadoReviewSnapshotRoot=root;" +
             IMAGE_CLASSIFIER_HELPER_JS +
+            strip +
             "var img=[],css=[];" +
             "function addImage(el,raw){" +
             "var value=(raw||'').trim();if(!value)return;" +
@@ -1838,6 +2165,7 @@ object ReviewSnapshotCapture {
             "root.querySelectorAll('link[rel=\"stylesheet\"][href]').forEach(function(el){css.push(el.href);});" +
             "return JSON.stringify({img:img,css:css});" +
             "})()"
+    }
 
     private const val SNAPSHOT_ROOT_MISSING = "__LEGADO_REVIEW_SNAPSHOT_ROOT_MISSING__"
 
