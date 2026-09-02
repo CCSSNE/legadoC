@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:layout_marginEnd="10dp"
+    android:background="@drawable/bg_explore_book_grid_card"
+    android:clickable="true"
+    android:focusable="true">
+
+    <io.legado.app.ui.widget.image.CoverImageView
+        android:id="@+id/iv_cover"
+        android:layout_width="200dp"
+        android:layout_height="110dp"
+        android:contentDescription="@string/img_cover"
+        android:scaleType="centerCrop"
+        android:src="@drawable/image_cover_default"
+        tools:ignore="UnusedAttribute" />
+
+    <View
+        android:layout_width="200dp"
+        android:layout_height="48dp"
+        android:layout_gravity="bottom"
+        android:background="@drawable/bg_homepage_banner_mask" />
+
+    <TextView
+        android:id="@+id/tv_name"
+        android:layout_width="184dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|start"
+        android:layout_marginStart="8dp"
+        android:layout_marginBottom="8dp"
+        android:ellipsize="end"
+        android:maxLines="2"
+        android:shadowColor="#aa000000"
+        android:shadowDy="1"
+        android:shadowRadius="3"
+        android:textColor="@color/white"
+        android:textSize="13sp"
+        android:textStyle="bold"
+        tools:text="Banner 书名" />
+
+    <io.legado.app.ui.widget.image.CircleImageView
+        android:id="@+id/iv_in_bookshelf"
+        android:layout_width="8dp"
+        android:layout_height="8dp"
+        android:layout_gravity="top|end"
+        android:layout_margin="8dp"
+        android:src="@color/md_green_600"
+        android:visibility="invisible" />
+
+</FrameLayout>

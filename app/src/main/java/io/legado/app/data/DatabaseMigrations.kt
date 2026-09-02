@@ -35,7 +35,55 @@ object DatabaseMigrations {
             migration_111_112,
             migration_112_113,
             migration_113_114,
+            migration_114_115,
         )
+    }
+
+    private val migration_114_115 = object : Migration(114, 115) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // 聚合主页：模块配置表 + 集（分组）表 + 书源表新增 homepageModules 列
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `homepage_modules` (
+                    `id` TEXT NOT NULL PRIMARY KEY,
+                    `sourceUrl` TEXT NOT NULL,
+                    `moduleKey` TEXT NOT NULL,
+                    `type` TEXT NOT NULL,
+                    `title` TEXT NOT NULL,
+                    `args` TEXT,
+                    `layoutConfig` TEXT,
+                    `url` TEXT,
+                    `isEnabled` INTEGER NOT NULL DEFAULT 1,
+                    `sortOrder` INTEGER NOT NULL DEFAULT 0,
+                    `customSetId` TEXT,
+                    `isUserCreated` INTEGER NOT NULL DEFAULT 0,
+                    `customTitle` TEXT,
+                    `customSetTitle` TEXT,
+                    `sourceJsonHash` TEXT,
+                    `syncedAt` INTEGER NOT NULL DEFAULT 0
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `homepage_custom_sets` (
+                    `id` TEXT NOT NULL PRIMARY KEY,
+                    `name` TEXT NOT NULL,
+                    `sortOrder` INTEGER NOT NULL DEFAULT 0
+                )
+                """.trimIndent()
+            )
+            var hasHomepageModules = false
+            try {
+                db.query("SELECT name FROM pragma_table_info('book_sources') WHERE name='homepageModules'").use { cursor ->
+                    hasHomepageModules = cursor.moveToFirst()
+                }
+            } catch (_: Exception) {
+            }
+            if (!hasHomepageModules) {
+                db.execSQL("ALTER TABLE book_sources ADD COLUMN homepageModules TEXT DEFAULT ''")
+            }
+        }
     }
 
     private val migration_113_114 = object : Migration(113, 114) {

@@ -366,6 +366,15 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val showDiscovery: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.showDiscovery, true)
 
+    /** 聚合主页：默认关闭，需在界面设置中手动开启 */
+    val showHomepage: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.showHomepage, false)
+
+    /** 聚合主页中隐藏的集 URL 列表（GSON 序列化的 Set<String>） */
+    var homepageSourceHidden: String
+        get() = appCtx.getPrefString(PreferKey.homepageSourceHidden, "") ?: ""
+        set(value) = appCtx.putPrefString(PreferKey.homepageSourceHidden, value)
+
     val modernDiscoveryPage: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.modernDiscoveryPage, true)
 

@@ -16,6 +16,12 @@ import io.legado.app.help.book.isNotShelf
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
+data class ShelfKey(
+    val bookUrl: String,
+    val name: String,
+    val author: String?
+)
+
 data class BookReadRecordInfo(
     val bookUrl: String,
     val name: String,
@@ -73,6 +79,9 @@ interface BookDao {
 
     @Query("SELECT * FROM books order by durChapterTime desc")
     fun flowAll(): Flow<List<Book>>
+
+    @Query("SELECT bookUrl, name, author FROM books")
+    fun flowShelfKeys(): Flow<List<ShelfKey>>
 
     @Query("SELECT * FROM books WHERE type & ${BookType.text} > 0")
     fun flowText(): Flow<List<Book>>

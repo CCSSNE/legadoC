@@ -10,6 +10,7 @@
 
     <item name="menu_1" type="id" />
     <item name="menu_rss" type="id" />
+    <item name="menu_homepage" type="id" />
     <item name="menu_ai" type="id" />
 
     <item name="fast_scroller" type="id" />

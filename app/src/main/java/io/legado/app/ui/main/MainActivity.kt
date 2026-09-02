@@ -77,6 +77,7 @@ import io.legado.app.ui.main.bookshelf.style1.BookshelfFragment1
 import io.legado.app.ui.main.bookshelf.style2.BookshelfFragment2
 import io.legado.app.ui.main.ai.AiChatActivity
 import io.legado.app.ui.main.explore.ExploreFragment
+import io.legado.app.ui.main.homepage.HomepageFragment
 import io.legado.app.ui.main.my.MyFragment
 import io.legado.app.ui.main.readrecord.ReadRecordFragment
 import io.legado.app.ui.main.rss.RssFragment
@@ -123,9 +124,11 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     private val idRss = 2
     private val idReadRecord = 3
     private val idMy = 4
+    private val idHomepage = 5
     private var exitTime: Long = 0
     private var bookshelfReselected: Long = 0
     private var exploreReselected: Long = 0
+    private var homepageReselected: Long = 0
     private var pagePosition = 0
     private var transientRssPage = false
     private var pendingMainPageId: Int? = null
@@ -142,6 +145,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     private var sideNavigationBackgroundKey: String? = null
     private var sideNavigationBackgroundBitmap: Bitmap? = null
     private var bottomNavigationConfigSignature: String? = null
+    private var bottomBarMergedDiscovery = false
     private var bookshelfActionMode = false
     private val sidebarTouchSlop by lazy {
         ViewConfiguration.get(this).scaledTouchSlop
@@ -149,7 +153,9 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     private val fragmentMap = hashMapOf<Int, Fragment>()
     private var bottomMenuCount = 4
     private val EXIT_INTERVAL = 2000L
-    private val realPositions = arrayOf(idBookshelf, idExplore, idRss, idReadRecord, idMy)
+    private val realPositions = arrayOf(
+        idBookshelf, idHomepage, idExplore, idRss, idReadRecord, idMy
+    )
     private val adapter by lazy {
         TabFragmentPageAdapter(supportFragmentManager)
     }
@@ -351,6 +357,11 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             R.id.menu_rss ->
                 viewPagerMain.setCurrentItem(realPositions.indexOf(idRss), false)
 
+            R.id.menu_homepage ->
+                realPositions.indexOf(idHomepage).takeIf { it >= 0 }?.let {
+                    viewPagerMain.setCurrentItem(it, true)
+                }
+
             R.id.menu_read_record ->
                 realPositions.indexOf(idReadRecord).takeIf { it >= 0 }?.let {
                     viewPagerMain.setCurrentItem(it, false)
@@ -383,6 +394,14 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                         idExplore -> (fragmentMap[idExplore] as? ExploreFragment)?.compressExplore()
                         idRss -> (fragmentMap[idRss] as? RssFragment)?.gotoTop()
                     }
+                }
+            }
+
+            R.id.menu_homepage -> {
+                if (System.currentTimeMillis() - homepageReselected > 300) {
+                    homepageReselected = System.currentTimeMillis()
+                } else {
+                    (fragmentMap[idHomepage] as? HomepageFragment)?.gotoTop()
                 }
             }
         }
@@ -713,6 +732,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     private fun sideNavigationButtonMap(): Map<Int, AppCompatImageButton> = binding.run {
         linkedMapOf(
             R.id.menu_bookshelf to sideNavBookshelf,
+            R.id.menu_homepage to sideNavHomepage,
             R.id.menu_discovery to sideNavDiscovery,
             R.id.menu_rss to sideNavRss,
             R.id.menu_read_record to sideNavReadRecord,
@@ -723,6 +743,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     private fun sideNavigationRowMap(): Map<Int, View> = binding.run {
         linkedMapOf(
             R.id.menu_bookshelf to sideNavBookshelfRow,
+            R.id.menu_homepage to sideNavHomepageRow,
             R.id.menu_discovery to sideNavDiscoveryRow,
             R.id.menu_rss to sideNavRssRow,
             R.id.menu_read_record to sideNavReadRecordRow,
@@ -733,6 +754,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     private fun sideNavigationTextMap(): Map<Int, TextView> = binding.run {
         linkedMapOf(
             R.id.menu_bookshelf to sideNavBookshelfText,
+            R.id.menu_homepage to sideNavHomepageText,
             R.id.menu_discovery to sideNavDiscoveryText,
             R.id.menu_rss to sideNavRssText,
             R.id.menu_read_record to sideNavReadRecordText,
@@ -742,16 +764,22 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
     private fun updateSideNavigationItems() = binding.run {
         val selectedItemId = getBottomNavigationItemId(pagePosition)
-        val mergedDiscovery = AppConfig.mergeDiscoveryRss && AppConfig.showDiscovery && AppConfig.showRSS
+        val mergedDiscovery = mergedDiscoveryEnabled()
         sideNavigationButtonMap().forEach { (itemId, button) ->
             val menuItem = bottomNavigationView.menu.findItem(itemId)
-            val visible = menuItem?.isVisible == true && !(mergedDiscovery && itemId == R.id.menu_rss)
+            val visible = when {
+                // 阅读记录可能因底栏 5 项上限被挤出，侧边栏仍按配置显示
+                itemId == R.id.menu_read_record -> AppConfig.showReadRecord
+                else -> menuItem != null && !(mergedDiscovery && itemId == R.id.menu_rss)
+            }
             sideNavigationRowMap()[itemId]?.isVisible = visible
             button.isVisible = visible
             button.isSelected = itemId == selectedItemId
             val title = sideNavigationTitle(itemId, menuItem?.title)
             button.contentDescription = title
-            button.setImageDrawable(menuItem?.icon?.constantState?.newDrawable()?.mutate() ?: menuItem?.icon)
+            val icon = menuItem?.icon?.constantState?.newDrawable()?.mutate() ?: menuItem?.icon
+                ?: sideNavigationFallbackIcon(itemId)
+            button.setImageDrawable(icon)
             button.imageTintList = null
             sideNavigationTextMap()[itemId]?.let {
                 it.text = title
@@ -774,6 +802,17 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             R.id.menu_read_record -> getString(R.string.side_nav_stats)
             else -> fallback ?: ""
         }
+    }
+
+    /** 底栏菜单因 5 项上限缺项时，侧边栏按钮的兜底图标 */
+    private fun sideNavigationFallbackIcon(itemId: Int) = when (itemId) {
+        R.id.menu_bookshelf -> NavigationBarIconConfig.currentDrawable(this, "bookshelf", false)
+        R.id.menu_homepage -> NavigationBarIconConfig.currentDrawable(this, "homepage", false)
+        R.id.menu_discovery -> NavigationBarIconConfig.currentDrawable(this, "discovery", false)
+        R.id.menu_rss -> NavigationBarIconConfig.currentDrawable(this, "rss", false)
+        R.id.menu_read_record -> NavigationBarIconConfig.currentDrawable(this, "readRecord", false)
+        R.id.menu_my_config -> NavigationBarIconConfig.currentDrawable(this, "my", false)
+        else -> null
     }
 
     private fun renderSideBookshelfGroups() = binding.run {
@@ -1668,11 +1707,17 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         return null
     }
 
+    /** 底部导航"发现订阅合并"是否生效：用户配置开启，或主页导致页面溢出时强制启用 */
+    private fun mergedDiscoveryEnabled(): Boolean =
+        (AppConfig.mergeDiscoveryRss || bottomBarMergedDiscovery)
+                && AppConfig.showDiscovery && AppConfig.showRSS
+
     private fun getBottomNavigationItemId(position: Int): Int {
         return when (realPositions[position]) {
             idBookshelf -> R.id.menu_bookshelf
+            idHomepage -> R.id.menu_homepage
             idExplore -> R.id.menu_discovery
-            idRss -> if (AppConfig.mergeDiscoveryRss && AppConfig.showDiscovery && AppConfig.showRSS) {
+            idRss -> if (mergedDiscoveryEnabled()) {
                 R.id.menu_discovery
             } else {
                 R.id.menu_rss
@@ -1685,7 +1730,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     private fun resolveDiscoveryNavTarget(): Int {
         val showDiscovery = AppConfig.showDiscovery
         val showRss = AppConfig.showRSS
-        if (!(AppConfig.mergeDiscoveryRss && showDiscovery && showRss)) {
+        if (!(mergedDiscoveryEnabled() && showDiscovery && showRss)) {
             return when {
                 showDiscovery -> idExplore
                 showRss -> idRss
@@ -1696,7 +1741,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     }
 
     private fun toggleMergedDiscoveryNavTarget() {
-        if (!(AppConfig.mergeDiscoveryRss && AppConfig.showDiscovery && AppConfig.showRSS)) return
+        if (!(mergedDiscoveryEnabled() && AppConfig.showDiscovery && AppConfig.showRSS)) return
         AppConfig.mergedDiscoveryRssTarget =
             if (resolveDiscoveryNavTarget() == idRss) "explore" else "rss"
         val pageIds = upBottomMenu()
@@ -1712,7 +1757,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         if (mergedDiscoveryLongClickView === itemView) return
         mergedDiscoveryLongClickView?.setOnLongClickListener(null)
         itemView.setOnLongClickListener {
-            if (AppConfig.mergeDiscoveryRss && AppConfig.showDiscovery && AppConfig.showRSS) {
+            if (mergedDiscoveryEnabled() && AppConfig.showDiscovery && AppConfig.showRSS) {
                 toggleMergedDiscoveryNavTarget()
                 true
             } else {
@@ -1801,9 +1846,6 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         observeEvent<Boolean>(EventBus.NOTIFY_MAIN) {
             binding.apply {
                 if (it) {
-                    bottomNavigationView.menu.clear()
-                    bottomNavigationView.inflateMenu(R.menu.main_bnv)
-                    applyBottomNavigationIcons()
                     onUpBooksBadgeView = null
                 }
                 upBottomMenu()
@@ -1824,38 +1866,52 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
     private fun upBottomMenu(): List<Int> {
         val showDiscovery = AppConfig.showDiscovery
-        val showRss = AppConfig.showRSS &&
-            binding.bottomNavigationView.menu.findItem(R.id.menu_rss) != null
+        val showRss = AppConfig.showRSS
         if (showRss) {
             transientRssPage = false
         }
         val includeRssPage = showRss || transientRssPage
         val showReadRecord = AppConfig.showReadRecord
-        val mergedDiscovery = AppConfig.mergeDiscoveryRss && showDiscovery && showRss
-        binding.bottomNavigationView.menu.let { menu ->
-            menu.findItem(R.id.menu_discovery).isVisible = showDiscovery || (mergedDiscovery && showRss)
-            menu.findItem(R.id.menu_rss)?.isVisible = showRss && !mergedDiscovery
-            menu.findItem(R.id.menu_read_record)?.isVisible = showReadRecord
-            if (mergedDiscovery) {
-                if (resolveDiscoveryNavTarget() == idRss) {
-                    menu.findItem(R.id.menu_discovery).setIcon(R.drawable.ic_bottom_rss_feed)
-                    menu.findItem(R.id.menu_discovery).setTitle(R.string.rss)
-                } else {
-                    menu.findItem(R.id.menu_discovery).setIcon(R.drawable.ic_bottom_explore)
-                    menu.findItem(R.id.menu_discovery).setTitle(R.string.discovery)
-                }
-            } else {
-                menu.findItem(R.id.menu_discovery).setIcon(R.drawable.ic_bottom_explore)
-                menu.findItem(R.id.menu_discovery).setTitle(R.string.discovery)
-            }
-        }
-        val pageIds = buildList(realPositions.size) {
+        val showHomepage = AppConfig.showHomepage
+        // 底部导航最多 5 项：主页开启后若与发现/订阅/阅读记录同时全开，则复用"发现订阅合并"机制保住第 5 个槽位
+        val pageOverflow = showHomepage && showDiscovery && showRss && showReadRecord
+        val mergedDiscovery = (AppConfig.mergeDiscoveryRss || pageOverflow) && showDiscovery && showRss
+        bottomBarMergedDiscovery = mergedDiscovery
+        val pageIds = buildList {
             add(idBookshelf)
+            if (showHomepage) add(idHomepage)
             if (showDiscovery) add(idExplore)
             if (includeRssPage) add(idRss)
             if (showReadRecord) add(idReadRecord)
             add(idMy)
         }
+        // BottomNavigationView 硬性上限 5 个 item，菜单只放实际可见项
+        binding.bottomNavigationView.menu.let { menu ->
+            menu.clear()
+            var index = 0
+            menu.add(0, R.id.menu_bookshelf, index++, R.string.bookshelf)
+                .setIcon(R.drawable.ic_bottom_books)
+            if (showHomepage) {
+                menu.add(0, R.id.menu_homepage, index++, R.string.homepage)
+                    .setIcon(R.drawable.ic_bottom_home)
+            }
+            if (showDiscovery) {
+                menu.add(0, R.id.menu_discovery, index++, R.string.discovery)
+                    .setIcon(R.drawable.ic_bottom_explore)
+            }
+            if (includeRssPage && !mergedDiscovery) {
+                menu.add(0, R.id.menu_rss, index++, R.string.rss)
+                    .setIcon(R.drawable.ic_bottom_rss_feed)
+            }
+            if (showReadRecord) {
+                menu.add(0, R.id.menu_read_record, index++, R.string.read_record)
+                    .setIcon(R.drawable.ic_bottom_read_record)
+            }
+            menu.add(0, R.id.menu_my_config, index++, R.string.my)
+                .setIcon(R.drawable.ic_bottom_person)
+        }
+        // 菜单重建后书架角标视图失效，待下次角标事件重建
+        onUpBooksBadgeView = null
         pageIds.forEachIndexed { index, pageId ->
             realPositions[index] = pageId
         }
@@ -1875,11 +1931,22 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     private fun applyMergedDiscoveryIcon() {
         binding.run {
         val showDiscovery = AppConfig.showDiscovery
-        val showRss = AppConfig.showRSS && bottomNavigationView.menu.findItem(R.id.menu_rss) != null
-        if (!(AppConfig.mergeDiscoveryRss && showDiscovery && showRss)) return@run
-        val key = if (resolveDiscoveryNavTarget() == idRss) "rss" else "discovery"
-        NavigationBarIconConfig.currentMenuDrawable(this@MainActivity, key)?.let { icon ->
-            bottomNavigationView.menu.findItem(R.id.menu_discovery)?.icon = icon
+        val showRss = AppConfig.showRSS
+        if (!(mergedDiscoveryEnabled() && showDiscovery && showRss)) return@run
+        val menu = bottomNavigationView.menu
+        val discoveryItem = menu.findItem(R.id.menu_discovery) ?: return@run
+        if (resolveDiscoveryNavTarget() == idRss) {
+            discoveryItem.setTitle(R.string.rss)
+            discoveryItem.setIcon(R.drawable.ic_bottom_rss_feed)
+        } else {
+            discoveryItem.setTitle(R.string.discovery)
+            discoveryItem.setIcon(R.drawable.ic_bottom_explore)
+        }
+        NavigationBarIconConfig.currentMenuDrawable(
+            this@MainActivity,
+            if (resolveDiscoveryNavTarget() == idRss) "rss" else "discovery"
+        )?.let { icon ->
+            discoveryItem.icon = icon
         }
         }
     }
@@ -1899,6 +1966,8 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     private fun resolveHomePagePosition(): Int {
         val visiblePositions = realPositions.take(bottomMenuCount)
         return when (AppConfig.defaultHomePage) {
+            "homepage" -> if (AppConfig.showHomepage) visiblePositions.indexOf(idHomepage)
+                .takeIf { it >= 0 } else 0
             "explore" -> if (AppConfig.showDiscovery || AppConfig.mergeDiscoveryRss) visiblePositions.indexOf(idExplore).takeIf { it >= 0 }
                 ?: visiblePositions.indexOf(resolveDiscoveryNavTarget()) else 0
             "rss" -> visiblePositions.indexOf(idRss).takeIf { it >= 0 }
@@ -1956,6 +2025,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             val fragmentId = getId(position)
             if ((fragmentId == idBookshelf1 && any is BookshelfFragment1)
                 || (fragmentId == idBookshelf2 && any is BookshelfFragment2)
+                || (fragmentId == idHomepage && any is HomepageFragment)
                 || (fragmentId == idExplore && any is ExploreFragment)
                 || (fragmentId == idRss && any is RssFragment)
                 || (fragmentId == idReadRecord && any is ReadRecordFragment)
@@ -1970,6 +2040,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             return when (getId(position)) {
                 idBookshelf1 -> BookshelfFragment1(position)
                 idBookshelf2 -> BookshelfFragment2(position)
+                idHomepage -> HomepageFragment(position)
                 idExplore -> ExploreFragment(position)
                 idRss -> RssFragment(position)
                 idReadRecord -> ReadRecordFragment(position)

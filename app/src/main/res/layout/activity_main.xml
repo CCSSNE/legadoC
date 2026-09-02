@@ -310,6 +310,40 @@
                         android:visibility="gone" />
 
                     <LinearLayout
+                        android:id="@+id/side_nav_homepage_row"
+                        android:layout_width="match_parent"
+                        android:layout_height="@dimen/main_sidebar_row_height"
+                        android:layout_marginBottom="@dimen/main_sidebar_spacing"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingStart="@dimen/main_sidebar_item_padding_horizontal"
+                        android:paddingEnd="@dimen/main_sidebar_item_padding_horizontal">
+
+                        <androidx.appcompat.widget.AppCompatImageButton
+                            android:id="@+id/side_nav_homepage"
+                            android:layout_width="@dimen/main_sidebar_item_icon_size"
+                            android:layout_height="@dimen/main_sidebar_item_icon_size"
+                            android:background="@drawable/bg_more_icon_button_clear"
+                            android:contentDescription="@string/homepage"
+                            android:padding="@dimen/main_sidebar_item_icon_padding"
+                            android:scaleType="centerInside" />
+
+                        <TextView
+                            android:id="@+id/side_nav_homepage_text"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="@dimen/main_sidebar_item_text_margin_start"
+                            android:layout_weight="1"
+                            android:ellipsize="end"
+                            android:singleLine="true"
+                            android:text="@string/homepage"
+                            android:textColor="@color/primaryText"
+                            android:textSize="18sp"
+                            android:textStyle="bold" />
+
+                    </LinearLayout>
+
+                    <LinearLayout
                         android:id="@+id/side_nav_discovery_row"
                         android:layout_width="match_parent"
                         android:layout_height="@dimen/main_sidebar_row_height"
