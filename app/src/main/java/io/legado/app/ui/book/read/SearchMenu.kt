@@ -197,7 +197,7 @@ class SearchMenu @JvmOverloads constructor(
         SurfaceBackdrop.refresh(
             hostWindow = hostWindow,
             target = binding.llBottomMenu,
-            clearSameWindowSurfaceBeforeCapture = true,
+            layerOwner = this@SearchMenu,
             onReady = onReady
         )
     }

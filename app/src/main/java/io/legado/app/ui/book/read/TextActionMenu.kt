@@ -252,6 +252,7 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
             SurfaceBackdrop.refresh(
                 hostWindow = hostWindow,
                 target = contentView,
+                layerOwner = contentView,
                 onReady = {
                     if (generation == blurGeneration && isShowing) {
                         contentView.alpha = originalAlpha

@@ -268,7 +268,7 @@ class SurfacePopupMenu(
             if (generation == surfaceGeneration && popupWindow.isShowing) surface.alpha = 1f
             return
         }
-        SurfaceBackdrop.refresh(hostWindow, surface) {
+        SurfaceBackdrop.refresh(hostWindow, surface, layerOwner = surface) {
             if (generation == surfaceGeneration && popupWindow.isShowing) {
                 surface.alpha = 1f
             }

@@ -41,6 +41,7 @@ import io.legado.app.ui.book.read.config.PageKeyDialog
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.FileDoc
+import io.legado.app.utils.SurfaceBackdrop
 import io.legado.app.utils.find
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.gone
@@ -89,10 +90,8 @@ abstract class BaseReadBookActivity :
         setOrientation()
         upLayoutInDisplayCutoutMode()
         super.onCreate(savedInstanceState)
-        // 纸模糊背景采集时按标记隐藏页内朗读小面板：药丸背景不是文字，
-        // 不隐藏会被烘进弹窗模糊底图（SurfaceBackdrop 按 tag_backdrop_hide 识别）
-        binding.readAloudPagePanel.setTag(R.id.tag_backdrop_hide, true)
-        binding.readAloudPlaybackPanel.setTag(R.id.tag_backdrop_hide, true)
+        SurfaceBackdrop.excludeFromPaperCapture(binding.readAloudPagePanel)
+        SurfaceBackdrop.excludeFromPaperCapture(binding.readAloudPlaybackPanel)
         binding.navigationBar.setOnApplyWindowInsetsListenerCompat { view, windowInsets ->
             val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
             view.updateLayoutParams {

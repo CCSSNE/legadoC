@@ -16,7 +16,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.Window
 import android.widget.TextView
-import io.legado.app.R
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.surface.SurfaceDrawable
 import io.legado.app.lib.theme.surface.SurfaceStyle
@@ -60,8 +59,8 @@ fun Context.findHostWindow(): Window? {
 /**
  * 统一的玻璃表面生命周期。
  *
- * 调用方必须明确提供真正承载表面的 View；这里不遍历布局、不猜最大子节点，也不反射
- * PopupWindow 私有字段。窗口适配器只负责在显示前隐藏自己的窗口，并在 [onReady] 后显示。
+ * 调用方必须明确提供真正承载背景的 target 和完整逻辑浮层 layerOwner。展示层只在 attach
+ * 后登记，并以登记顺序确定上下关系；采集只合成请求层以下的内容，不反射或猜测窗口根。
  */
 object SurfaceBackdrop {
 
@@ -73,11 +72,39 @@ object SurfaceBackdrop {
         var attachListener: View.OnAttachStateChangeListener? = null
     )
 
+    private data class PresentedLayer(
+        val owner: WeakReference<View>,
+        val hostDecor: WeakReference<View>,
+        val targets: ArrayList<WeakReference<View>>,
+        val order: Long
+    )
+
+    private data class LayerSnapshot(
+        val owner: View,
+        val order: Long
+    )
+
+    private data class CaptureComposition(
+        val allLayers: List<LayerSnapshot>,
+        val sameWindowOwners: List<View>,
+        val lowerLayers: List<LayerSnapshot>
+    )
+
     private val states = WeakHashMap<View, State>()
     private val mainHandler = Handler(Looper.getMainLooper())
-    // 独立窗口表面根视图登记（弱引用）：纸模糊离屏采集时，把下层弹窗/弹出菜单的
-    // 窗口按登记（显示）顺序叠画到宿主内容之上，实现"弹窗叠弹窗时下层弹窗本体参与模糊"。
-    private val overlayRoots = ArrayList<WeakReference<View>>()
+    private val presentedLayers = WeakHashMap<View, PresentedLayer>()
+    private val paperContentRoots = WeakHashMap<View, Unit>()
+    private var nextPresentationOrder = 0L
+
+    fun excludeFromPaperCapture(contentRoot: View) {
+        synchronized(paperContentRoots) {
+            paperContentRoots[contentRoot] = Unit
+        }
+    }
+
+    fun present(hostWindow: Window, target: View, layerOwner: View) {
+        presentLayer(hostWindow.decorView, target, layerOwner)
+    }
 
     fun installStatic(target: View, style: SurfaceStyle) {
         val state = stateFor(target)
@@ -104,7 +131,7 @@ object SurfaceBackdrop {
         hostWindow: Window,
         target: View,
         style: SurfaceStyle,
-        clearSameWindowSurfaceBeforeCapture: Boolean = false,
+        layerOwner: View,
         onReady: () -> Unit = {}
     ) {
         val state = stateFor(target)
@@ -129,19 +156,11 @@ object SurfaceBackdrop {
             onReady()
         }
 
+        val hostDecor = hostWindow.decorView
+        present(hostWindow, target, layerOwner)
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || style.blurRadiusPx <= 0) {
             finish(null)
             return
-        }
-        val hostDecor = hostWindow.decorView
-        val sameWindow = target.rootView === hostDecor.rootView
-        if (sameWindow && clearSameWindowSurfaceBeforeCapture) {
-            val transparentStyle = style.copy(
-                tintColor = Color.TRANSPARENT,
-                strokeColor = Color.TRANSPARENT
-            )
-            target.background = SurfaceDrawable(null, transparentStyle)
-            target.invalidate()
         }
 
         awaitStableBounds(
@@ -153,6 +172,7 @@ object SurfaceBackdrop {
                     hostWindow = hostWindow,
                     hostDecor = hostDecor,
                     target = target,
+                    layerOwner = layerOwner,
                     radius = style.blurRadiusPx,
                     generationValid = { state.generation == generation },
                     attempt = 0,
@@ -167,7 +187,7 @@ object SurfaceBackdrop {
     fun refresh(
         hostWindow: Window,
         target: View,
-        clearSameWindowSurfaceBeforeCapture: Boolean = false,
+        layerOwner: View,
         onReady: () -> Unit = {}
     ) {
         val style = states[target]?.style
@@ -179,7 +199,7 @@ object SurfaceBackdrop {
             hostWindow = hostWindow,
             target = target,
             style = style,
-            clearSameWindowSurfaceBeforeCapture = clearSameWindowSurfaceBeforeCapture,
+            layerOwner = layerOwner,
             onReady = onReady
         )
     }
@@ -188,7 +208,7 @@ object SurfaceBackdrop {
     fun refresh(
         hostWindow: Window,
         targets: Iterable<View>,
-        clearSameWindowSurfaceBeforeCapture: Boolean = false,
+        layerOwner: View,
         onReady: () -> Unit = {}
     ) {
         val pendingTargets = targets.filter { states[it]?.style != null }
@@ -201,7 +221,7 @@ object SurfaceBackdrop {
             refresh(
                 hostWindow = hostWindow,
                 target = target,
-                clearSameWindowSurfaceBeforeCapture = clearSameWindowSurfaceBeforeCapture
+                layerOwner = layerOwner
             ) {
                 remaining -= 1
                 if (remaining == 0) onReady()
@@ -210,6 +230,7 @@ object SurfaceBackdrop {
     }
 
     fun cancel(target: View, keepStaticStyle: Boolean = true) {
+        removePresentedTarget(target)
         val state = states[target] ?: return
         state.generation += 1
         if (keepStaticStyle) {
@@ -224,6 +245,7 @@ object SurfaceBackdrop {
     }
 
     fun clear(target: View) {
+        removePresentedTarget(target)
         val state = states.remove(target) ?: return
         state.generation += 1
         target.background = state.originalBackground
@@ -237,7 +259,6 @@ object SurfaceBackdrop {
     }
 
     private fun stateFor(target: View): State {
-        registerOverlayRoot(target.rootView)
         return states[target] ?: State(target.background).also { state ->
             state.attachListener = object : View.OnAttachStateChangeListener {
                 override fun onViewAttachedToWindow(v: View) = Unit
@@ -248,6 +269,113 @@ object SurfaceBackdrop {
             }.also(target::addOnAttachStateChangeListener)
             states[target] = state
         }
+    }
+
+    private fun presentLayer(hostDecor: View, target: View, layerOwner: View) {
+        require(hostDecor.isAttachedToWindow) {
+            "Surface backdrop host must be attached before presentation"
+        }
+        require(target.isAttachedToWindow) {
+            "Surface backdrop target must be attached before presentation"
+        }
+        require(layerOwner.isAttachedToWindow) {
+            "Surface backdrop layer owner must be attached before presentation"
+        }
+        require(target.isSelfOrDescendantOf(layerOwner)) {
+            "Surface backdrop target must belong to its declared layer owner"
+        }
+        require(target.rootView === layerOwner.rootView) {
+            "Surface backdrop target and layer owner must share one window"
+        }
+
+        synchronized(presentedLayers) {
+            removeInvalidPresentedLayers()
+            val existing = presentedLayers[layerOwner]
+            if (existing != null && existing.hostDecor.get() === hostDecor) {
+                existing.targets.removeAll { it.get() == null }
+                if (existing.targets.none { it.get() === target }) {
+                    existing.targets += WeakReference(target)
+                }
+                return
+            }
+            nextPresentationOrder += 1
+            presentedLayers[layerOwner] = PresentedLayer(
+                owner = WeakReference(layerOwner),
+                hostDecor = WeakReference(hostDecor),
+                targets = arrayListOf(WeakReference(target)),
+                order = nextPresentationOrder
+            )
+        }
+    }
+
+    private fun removePresentedTarget(target: View) {
+        synchronized(presentedLayers) {
+            val iterator = presentedLayers.entries.iterator()
+            while (iterator.hasNext()) {
+                val layer = iterator.next().value
+                layer.targets.removeAll { reference ->
+                    val registeredTarget = reference.get()
+                    registeredTarget == null || registeredTarget === target
+                }
+                if (layer.targets.isEmpty()) iterator.remove()
+            }
+        }
+    }
+
+    private fun removeInvalidPresentedLayers() {
+        val iterator = presentedLayers.entries.iterator()
+        while (iterator.hasNext()) {
+            val layer = iterator.next().value
+            val owner = layer.owner.get()
+            val hostDecor = layer.hostDecor.get()
+            layer.targets.removeAll { it.get() == null }
+            if (
+                owner == null || hostDecor == null ||
+                !owner.isAttachedToWindow || !hostDecor.isAttachedToWindow ||
+                layer.targets.isEmpty()
+            ) {
+                iterator.remove()
+            }
+        }
+    }
+
+    private fun captureComposition(hostDecor: View, requesterOwner: View): CaptureComposition {
+        return synchronized(presentedLayers) {
+            removeInvalidPresentedLayers()
+            val requester = requireNotNull(presentedLayers[requesterOwner]) {
+                "Surface backdrop requester has no active presentation layer"
+            }
+            require(requester.hostDecor.get() === hostDecor) {
+                "Surface backdrop requester belongs to a different host window"
+            }
+            val layers = presentedLayers.values.mapNotNull { layer ->
+                val owner = layer.owner.get() ?: return@mapNotNull null
+                if (
+                    layer.hostDecor.get() !== hostDecor ||
+                    owner.visibility != View.VISIBLE ||
+                    !owner.isAttachedToWindow
+                ) {
+                    return@mapNotNull null
+                }
+                LayerSnapshot(owner, layer.order)
+            }.sortedBy { it.order }
+            CaptureComposition(
+                allLayers = layers,
+                sameWindowOwners = layers.mapNotNull { layer ->
+                    layer.owner.takeIf { it.rootView === hostDecor.rootView }
+                },
+                lowerLayers = layers.filter { it.order < requester.order }
+            )
+        }
+    }
+
+    private fun View.isSelfOrDescendantOf(ancestor: View): Boolean {
+        var current: View? = this
+        while (current != null) {
+            if (current === ancestor) return true
+            current = current.parent as? View
+        }
+        return false
     }
 
     private fun installResult(
@@ -317,6 +445,7 @@ object SurfaceBackdrop {
         hostWindow: Window,
         hostDecor: View,
         target: View,
+        layerOwner: View,
         radius: Int,
         generationValid: () -> Boolean,
         attempt: Int,
@@ -331,8 +460,13 @@ object SurfaceBackdrop {
             return
         }
         if (AppConfig.blurExcludeText) {
-            captureTextless(hostDecor, target, sourceRect, radius, onFinished)
+            capturePaperBackdrop(hostDecor, layerOwner, sourceRect, radius, onFinished)
             return
+        }
+        require(
+            layerOwner.rootView !== hostDecor.rootView || layerOwner.alpha == 0f
+        ) {
+            "Same-window surface owner must be hidden before PixelCopy"
         }
         val sourceBitmap = runCatching {
             Bitmap.createBitmap(sourceRect.width(), sourceRect.height(), Bitmap.Config.ARGB_8888)
@@ -354,6 +488,7 @@ object SurfaceBackdrop {
                         hostWindow,
                         hostDecor,
                         target,
+                        layerOwner,
                         radius,
                         generationValid,
                         attempt + 1,
@@ -373,14 +508,21 @@ object SurfaceBackdrop {
                     if (!generationValid()) sourceBitmap.recycleSafely()
                     return@request
                 }
-                settled = true
                 mainHandler.removeCallbacks(timeoutGuard)
                 if (!generationValid()) {
+                    settled = true
                     sourceBitmap.recycleSafely()
                     onFinished(null)
                     return@request
                 }
                 if (result == PixelCopy.SUCCESS) {
+                    settled = true
+                    drawIndependentLowerLayers(
+                        bitmap = sourceBitmap,
+                        hostDecor = hostDecor,
+                        requesterOwner = layerOwner,
+                        sourceRect = sourceRect
+                    )
                     val blurred = runCatching { blurBitmap(sourceBitmap, radius) }.getOrNull()
                     sourceBitmap.recycleSafely()
                     onFinished(blurred)
@@ -431,13 +573,13 @@ object SurfaceBackdrop {
     }
 
     /**
-     * 开关开启时的离屏无文字采集：直接按模糊采样率渲染宿主窗口（不含文字），
-     * 并叠画已登记的下层弹窗窗口，只缩一次，模糊后放大回目标尺寸。
+     * 开关开启时的纸面采集：先移除宿主窗口中的全部已登记浮层，再按展示顺序
+     * 只叠画请求层以下的浮层。请求层自身与其上方内容不会进入模糊源。
      * 主线程同步完成，不影响真实帧。
      */
-    private fun captureTextless(
+    private fun capturePaperBackdrop(
         hostDecor: View,
-        target: View,
+        requesterOwner: View,
         sourceRect: Rect,
         radius: Int,
         onFinished: (Bitmap?) -> Unit
@@ -452,13 +594,32 @@ object SurfaceBackdrop {
         }
         val hostOrigin = IntArray(2)
         hostDecor.getLocationOnScreen(hostOrigin)
+        val composition = captureComposition(hostDecor, requesterOwner)
+        val excludedHostContent = synchronized(paperContentRoots) {
+            paperContentRoots.keys.filter {
+                it.isAttachedToWindow && it.rootView === hostDecor.rootView
+            }
+        }
         val blurred = runCatching {
             val canvas = Canvas(sampled)
             val scale = 1f / SURFACE_BLUR_SAMPLE
             canvas.scale(scale, scale)
             canvas.translate(-sourceRect.left.toFloat(), -sourceRect.top.toFloat())
-            drawTextlessWindow(hostDecor, canvas)
-            drawOverlayRoots(hostDecor, target, hostOrigin, canvas)
+            drawWindow(
+                view = hostDecor,
+                canvas = canvas,
+                suppressText = true,
+                excludedOwners = (composition.sameWindowOwners + excludedHostContent).toSet()
+            )
+            composition.lowerLayers.forEach { layer ->
+                drawPresentedLayer(
+                    layer = layer,
+                    allLayers = composition.allLayers,
+                    hostOrigin = hostOrigin,
+                    canvas = canvas,
+                    suppressText = true
+                )
+            }
             blurSampled(sampled, radius, sourceRect.width(), sourceRect.height())
         }.getOrNull()
         sampled.recycleSafely()
@@ -466,100 +627,102 @@ object SurfaceBackdrop {
     }
 
     /**
-     * 离屏渲染宿主窗口且不包含文字：临时隐藏窗口内全部 TextView、打了
-     * [R.id.tag_backdrop_hide] 标记的页内家具（如朗读小面板），
-     * 并让阅读页等自绘文字路径经 [BackdropRenderState] 跳过文字绘制。
+     * 离屏渲染窗口：按采集模式临时隐藏文字，并让阅读页等自绘内容路径经
+     * [BackdropRenderState] 只绘制纸面；明确传入的其他逻辑浮层 owner 同步排除。
      * 全程同步执行并在返回前恢复，真实帧不受影响。
      */
-    private fun drawTextlessWindow(decor: View, canvas: Canvas) {
+    private fun drawWindow(
+        view: View,
+        canvas: Canvas,
+        suppressText: Boolean,
+        excludedOwners: Set<View> = emptySet()
+    ) {
         val hidden = ArrayList<Pair<View, Int>>()
-        collectBackdropHiddenViews(decor, hidden)
+        collectBackdropHiddenViews(view, suppressText, excludedOwners, hidden)
         hidden.forEach { (view, _) -> view.visibility = View.INVISIBLE }
         try {
-            BackdropRenderState.withTextSuppressed {
-                decor.draw(canvas)
+            if (suppressText) {
+                BackdropRenderState.withTextSuppressed {
+                    view.draw(canvas)
+                }
+            } else {
+                view.draw(canvas)
             }
         } finally {
             hidden.forEach { (view, visibility) -> view.visibility = visibility }
         }
     }
 
-    private fun collectBackdropHiddenViews(view: View, out: ArrayList<Pair<View, Int>>) {
+    private fun collectBackdropHiddenViews(
+        view: View,
+        suppressText: Boolean,
+        excludedOwners: Set<View>,
+        out: ArrayList<Pair<View, Int>>
+    ) {
         if (view.visibility != View.VISIBLE) return
-        if (view is TextView || view.getTag(R.id.tag_backdrop_hide) == true) {
+        if (view in excludedOwners || suppressText && view is TextView) {
             out.add(view to view.visibility)
             return
         }
         if (view is ViewGroup) {
             for (index in 0 until view.childCount) {
-                collectBackdropHiddenViews(view.getChildAt(index), out)
+                collectBackdropHiddenViews(
+                    view.getChildAt(index),
+                    suppressText,
+                    excludedOwners,
+                    out
+                )
             }
         }
     }
 
-    private fun registerOverlayRoot(root: View) {
-        synchronized(overlayRoots) {
-            overlayRoots.removeAll { it.get() == null }
-            if (overlayRoots.none { it.get() === root }) {
-                overlayRoots.add(WeakReference(root))
-            }
-        }
-    }
-
-    /**
-     * 叠画独立窗口表面（下层弹窗的本体）：上层表面采集时，下层表面按登记顺序
-     * 叠在宿主内容之上参与模糊；各自隐藏文字，跳过请求方自身所在的窗口。
-     * 下层玻璃面的 tint 与模糊底图不参与叠加，保证各层弹窗透明度一致。
-     */
-    private fun drawOverlayRoots(
-        hostDecor: View,
-        target: View,
+    private fun drawPresentedLayer(
+        layer: LayerSnapshot,
+        allLayers: List<LayerSnapshot>,
         hostOrigin: IntArray,
-        canvas: Canvas
+        canvas: Canvas,
+        suppressText: Boolean
     ) {
-        val roots = synchronized(overlayRoots) {
-            overlayRoots.removeAll { ref ->
-                val view = ref.get()
-                view == null || !view.isAttachedToWindow
+        val owner = layer.owner
+        val nestedOwners = allLayers.mapNotNull { other ->
+            other.owner.takeIf {
+                it !== owner && it.isSelfOrDescendantOf(owner)
             }
-            overlayRoots.mapNotNull { it.get() }
-        }
-        roots.forEach { root ->
-            if (root === hostDecor || root === target.rootView) return@forEach
-            if (root.width <= 0 || root.height <= 0 || root.visibility != View.VISIBLE) {
-                return@forEach
-            }
-            val location = IntArray(2)
-            root.getLocationOnScreen(location)
-            canvas.save()
-            canvas.translate(
-                (location[0] - hostOrigin[0]).toFloat(),
-                (location[1] - hostOrigin[1]).toFloat()
-            )
-            drawOverlayRootContent(root, canvas)
-            canvas.restore()
-        }
+        }.toSet()
+        val location = IntArray(2)
+        owner.getLocationOnScreen(location)
+        canvas.save()
+        canvas.translate(
+            (location[0] - hostOrigin[0]).toFloat(),
+            (location[1] - hostOrigin[1]).toFloat()
+        )
+        drawWindow(owner, canvas, suppressText, nestedOwners)
+        canvas.restore()
     }
 
-    /**
-     * 采集下层窗口时剥离其中所有玻璃面的样式（tint + 已模糊底图）：
-     * 玻璃面是各层自己叠加的外观，混进模糊源会让上层弹窗 tint 翻倍、
-     * 亮度断层形成光晕；剥离后模糊源只含下层窗口的内容与背景。
-     */
-    private fun drawOverlayRootContent(root: View, canvas: Canvas) {
-        val stripped = ArrayList<Pair<View, Drawable?>>()
-        synchronized(states) {
-            states.keys.forEach { view ->
-                if (view.rootView === root) {
-                    stripped += view to view.background
-                }
-            }
+    private fun drawIndependentLowerLayers(
+        bitmap: Bitmap,
+        hostDecor: View,
+        requesterOwner: View,
+        sourceRect: Rect
+    ) {
+        val composition = captureComposition(hostDecor, requesterOwner)
+        val independentLayers = composition.lowerLayers.filter {
+            it.owner.rootView !== hostDecor.rootView
         }
-        stripped.forEach { (view, _) -> view.background = null }
-        try {
-            drawTextlessWindow(root, canvas)
-        } finally {
-            stripped.forEach { (view, background) -> view.background = background }
+        if (independentLayers.isEmpty()) return
+        val hostOrigin = IntArray(2)
+        hostDecor.getLocationOnScreen(hostOrigin)
+        val canvas = Canvas(bitmap)
+        canvas.translate(-sourceRect.left.toFloat(), -sourceRect.top.toFloat())
+        independentLayers.forEach { layer ->
+            drawPresentedLayer(
+                layer = layer,
+                allLayers = composition.allLayers,
+                hostOrigin = hostOrigin,
+                canvas = canvas,
+                suppressText = false
+            )
         }
     }
 

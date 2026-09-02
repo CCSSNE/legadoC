@@ -231,7 +231,7 @@ class MangaMenu @JvmOverloads constructor(
         SurfaceBackdrop.refresh(
             hostWindow = hostWindow,
             targets = listOf(binding.titleBlurSurface, binding.bottomBlurSurface),
-            clearSameWindowSurfaceBeforeCapture = true,
+            layerOwner = this@MangaMenu,
             onReady = onReady
         )
     }
