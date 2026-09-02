@@ -390,7 +390,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         }
 
     var modernDiscoveryLayout: Int
-        get() = appCtx.getPrefInt(PreferKey.modernDiscoveryLayout, 0).coerceIn(0, 2)
+        get() = appCtx.getPrefInt(PreferKey.modernDiscoveryLayout, 2).coerceIn(0, 2)
         set(value) = appCtx.putPrefInt(PreferKey.modernDiscoveryLayout, value.coerceIn(0, 2))
 
     var modernRssSourceUrl: String?
