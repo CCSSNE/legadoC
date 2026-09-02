@@ -843,16 +843,23 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     private fun launchOfflineReviewSend() {
-        ReviewOutboxDispatcher.sendInBackground { summary ->
-            // 批次独立于页面生命周期，回调统一用全局资源，不引用 Activity
-            val summary = summary ?: run {
-                splitties.init.appCtx.toastOnUi(R.string.offline_review_send_running)
-                return@sendInBackground
+        lifecycleScope.launch {
+            val count = withContext(IO) { ReviewOutboxStore.countSendable() }
+            if (count == 0) {
+                toastOnUi(R.string.offline_review_no_records)
+                return@launch
             }
-            if (summary.total == 0) {
-                splitties.init.appCtx.toastOnUi(R.string.offline_review_no_records)
-                return@sendInBackground
-            }
+            toastOnUi(getString(R.string.offline_review_send_start, count))
+            ReviewOutboxDispatcher.sendInBackground { summary ->
+                // 批次独立于页面生命周期，回调统一用全局资源，不引用 Activity
+                val summary = summary ?: run {
+                    splitties.init.appCtx.toastOnUi(R.string.offline_review_send_running)
+                    return@sendInBackground
+                }
+                if (summary.total == 0) {
+                    splitties.init.appCtx.toastOnUi(R.string.offline_review_no_records)
+                    return@sendInBackground
+                }
             splitties.init.appCtx.toastOnUi(
                 splitties.init.appCtx.getString(
                     R.string.offline_review_send_done, summary.success, summary.failures.size

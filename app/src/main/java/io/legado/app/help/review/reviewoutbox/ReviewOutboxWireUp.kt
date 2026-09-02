@@ -125,6 +125,10 @@ object ReviewOutboxWireUp {
             for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
             if (el) el.classList.add('active');
         }
+        function updateCharCount() {
+            var cc = document.getElementById('charCount');
+            if (cc) cc.textContent = ((textarea() || {}).value || '').length + '/' + MAX;
+        }
         function takeover() {
             var trigger = document.getElementById('commentTrigger');
             if (trigger) trigger.addEventListener('click', openModal);
@@ -134,6 +138,24 @@ object ReviewOutboxWireUp {
             if (close) close.addEventListener('click', closeModal);
             var submit = document.getElementById('modalSubmitBtn');
             if (submit) submit.addEventListener('click', send);
+            var taLive = textarea();
+            if (taLive) taLive.addEventListener('input', updateCharCount);
+            var emojiItems = document.querySelectorAll('.emoji-btn-item');
+            for (var i = 0; i < emojiItems.length; i++) {
+                (function (item) {
+                    item.addEventListener('click', function () {
+                        var code = item.getAttribute('data-code')
+                            || (item.querySelector('img') && item.querySelector('img').getAttribute('alt'))
+                            || '';
+                        if (!code) return;
+                        var ta = textarea();
+                        if (!ta) return;
+                        ta.value = (ta.value || '') + code;
+                        try { ta.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {}
+                        updateCharCount();
+                    });
+                })(emojiItems[i]);
+            }
             var tabs = document.querySelectorAll('.tab');
             for (var i = 0; i < tabs.length; i++) {
                 (function (tab) {
