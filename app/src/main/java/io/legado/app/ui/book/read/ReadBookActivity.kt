@@ -860,18 +860,19 @@ class ReadBookActivity : BaseReadBookActivity(),
                     splitties.init.appCtx.toastOnUi(R.string.offline_review_no_records)
                     return@sendInBackground
                 }
-            splitties.init.appCtx.toastOnUi(
-                splitties.init.appCtx.getString(
-                    R.string.offline_review_send_done, summary.success, summary.failures.size
-                )
-            )
-            if (summary.failures.isNotEmpty()) {
-                val detail = summary.failures.joinToString("\n") { failure ->
-                    "《${failure.item.bookName}》${failure.item.kindText()}：${failure.message}"
-                }
                 splitties.init.appCtx.toastOnUi(
-                    splitties.init.appCtx.getString(R.string.offline_review_send_failed_detail, detail)
+                    splitties.init.appCtx.getString(
+                        R.string.offline_review_send_done, summary.success, summary.failures.size
+                    )
                 )
+                if (summary.failures.isNotEmpty()) {
+                    val detail = summary.failures.joinToString("\n") { failure ->
+                        "《${failure.item.bookName}》${failure.item.kindText()}：${failure.message}"
+                    }
+                    splitties.init.appCtx.toastOnUi(
+                        splitties.init.appCtx.getString(R.string.offline_review_send_failed_detail, detail)
+                    )
+                }
             }
         }
     }
