@@ -1293,6 +1293,8 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     ): List<DiscoverTagItem> {
         val blocked = blockedButtonActions[source.bookSourceUrl]
         var currentGroup: String? = null
+        var unnamedGroupIndex = 0
+        val usedGroupNames = mutableSetOf<String>()
         val result = mutableListOf<DiscoverTagItem>()
         kinds.forEach { kind ->
             val action = kind.action?.takeIf { it.isNotBlank() }
@@ -1301,7 +1303,17 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             val isButton = kind.type == ExploreKind.Type.button && !action.isNullOrBlank()
 
             if (isDiscoverMajorGroupKind(kind, currentGroup != null)) {
-                currentGroup = resolveDiscoverGroupTitle(kind)
+                currentGroup = if (isDiscoverAbnormalGroupTitle(kind)) {
+                    var candidate: String
+                    do {
+                        unnamedGroupIndex++
+                        candidate = getString(R.string.discover_group_unnamed, unnamedGroupIndex)
+                    } while (usedGroupNames.contains(candidate))
+                    candidate
+                } else {
+                    resolveDiscoverGroupTitle(kind)
+                }
+                usedGroupNames.add(currentGroup)
                 if (!url.isNullOrBlank()) {
                     result += DiscoverTagItem(
                         kind = kind.copy(title = getString(R.string.all), viewName = null, url = url),
@@ -1369,14 +1381,15 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         if (!kind.action.isNullOrBlank()) return false
         if (kind.type == ExploreKind.Type.button || kind.type == ExploreKind.Type.select) return false
         if (!kind.url.isNullOrBlank() && !hasStartedGroup) return false
-        if (!isDiscoverFullLineKind(kind)) return false
-        return !isDiscoverDecorativeGroupTitle(kind)
+        return isDiscoverFullLineKind(kind)
     }
 
-    private fun isDiscoverDecorativeGroupTitle(kind: ExploreKind): Boolean {
+    private fun isDiscoverAbnormalGroupTitle(kind: ExploreKind): Boolean {
         val raw = resolveDiscoverTagText(kind).trim()
         if (raw.isBlank()) return true
-        return normalizeDiscoverGroupTitle(raw).isBlank()
+        val normalized = normalizeDiscoverGroupTitle(raw)
+        if (normalized.isBlank()) return true
+        return normalized.length >= 8
     }
 
     private fun normalizeDiscoverGroupTitle(raw: String): String {
