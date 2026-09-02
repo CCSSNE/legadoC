@@ -293,6 +293,6 @@ uiautomator2 / ADB
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- 最近一次自用版交付为 `3.26.090209` / `10807`，2026-09-02 UTC 09 时，使用 `assembleAppC` 冷编译成功。产物包名 `io.legado.app.dev`、versionName `3.26.090209c`、versionCode `10807`、架构 `arm64-v8a`，`apksigner` 验证通过；APK 位于 `app\build\outputs\apk\app\c\legado_app_3.26.090209_10807.apk`。本次未安装模拟器、未做正式回归。上一公开版为 `3.26.090202` / `10803`。
+- 最近一次自用版交付为 `3.26.090209` / `10808`，2026-09-02 UTC 09 时，使用 `assembleAppC` 冷编译成功。产物包名 `io.legado.app.dev`、versionName `3.26.090209c`、versionCode `10808`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C-自用`（label-zh 逐字匹配）、`apksigner` 验证通过；APK 位于 `app\build\outputs\apk\app\c\legado_app_3.26.090209_10808.apk`。同轮公开版交付为 `3.26.090209` / `10804`（包名 `io.legado.app.c`、应用名 `阅读C`、产物 `app\build\outputs\apk\oss\release\legado_oss_3.26.090209_10804.apk`）。本次未安装模拟器、未做正式回归。上一公开版为 `3.26.090202` / `10803`。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
