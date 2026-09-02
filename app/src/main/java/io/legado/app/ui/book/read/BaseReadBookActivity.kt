@@ -89,6 +89,10 @@ abstract class BaseReadBookActivity :
         setOrientation()
         upLayoutInDisplayCutoutMode()
         super.onCreate(savedInstanceState)
+        // 纸模糊背景采集时按标记隐藏页内朗读小面板：药丸背景不是文字，
+        // 不隐藏会被烘进弹窗模糊底图（SurfaceBackdrop 按 tag_backdrop_hide 识别）
+        binding.readAloudPagePanel.setTag(R.id.tag_backdrop_hide, true)
+        binding.readAloudPlaybackPanel.setTag(R.id.tag_backdrop_hide, true)
         binding.navigationBar.setOnApplyWindowInsetsListenerCompat { view, windowInsets ->
             val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
             view.updateLayoutParams {

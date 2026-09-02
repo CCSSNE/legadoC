@@ -16,6 +16,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.Window
 import android.widget.TextView
+import io.legado.app.R
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.surface.SurfaceDrawable
 import io.legado.app.lib.theme.surface.SurfaceStyle
@@ -465,13 +466,14 @@ object SurfaceBackdrop {
     }
 
     /**
-     * 离屏渲染宿主窗口且不包含文字：临时隐藏窗口内全部 TextView，
+     * 离屏渲染宿主窗口且不包含文字：临时隐藏窗口内全部 TextView、打了
+     * [R.id.tag_backdrop_hide] 标记的页内家具（如朗读小面板），
      * 并让阅读页等自绘文字路径经 [BackdropRenderState] 跳过文字绘制。
      * 全程同步执行并在返回前恢复，真实帧不受影响。
      */
     private fun drawTextlessWindow(decor: View, canvas: Canvas) {
-        val hidden = ArrayList<Pair<TextView, Int>>()
-        collectTextViews(decor, hidden)
+        val hidden = ArrayList<Pair<View, Int>>()
+        collectBackdropHiddenViews(decor, hidden)
         hidden.forEach { (view, _) -> view.visibility = View.INVISIBLE }
         try {
             BackdropRenderState.withTextSuppressed {
@@ -482,15 +484,15 @@ object SurfaceBackdrop {
         }
     }
 
-    private fun collectTextViews(view: View, out: ArrayList<Pair<TextView, Int>>) {
+    private fun collectBackdropHiddenViews(view: View, out: ArrayList<Pair<View, Int>>) {
         if (view.visibility != View.VISIBLE) return
-        if (view is TextView) {
+        if (view is TextView || view.getTag(R.id.tag_backdrop_hide) == true) {
             out.add(view to view.visibility)
             return
         }
         if (view is ViewGroup) {
             for (index in 0 until view.childCount) {
-                collectTextViews(view.getChildAt(index), out)
+                collectBackdropHiddenViews(view.getChildAt(index), out)
             }
         }
     }
@@ -505,8 +507,9 @@ object SurfaceBackdrop {
     }
 
     /**
-     * 叠画独立窗口表面（弹窗/弹出菜单的本体）：上层表面采集时，下层表面按登记顺序
+     * 叠画独立窗口表面（下层弹窗的本体）：上层表面采集时，下层表面按登记顺序
      * 叠在宿主内容之上参与模糊；各自隐藏文字，跳过请求方自身所在的窗口。
+     * 下层玻璃面的 tint 与模糊底图不参与叠加，保证各层弹窗透明度一致。
      */
     private fun drawOverlayRoots(
         hostDecor: View,
@@ -533,8 +536,30 @@ object SurfaceBackdrop {
                 (location[0] - hostOrigin[0]).toFloat(),
                 (location[1] - hostOrigin[1]).toFloat()
             )
-            drawTextlessWindow(root, canvas)
+            drawOverlayRootContent(root, canvas)
             canvas.restore()
+        }
+    }
+
+    /**
+     * 采集下层窗口时剥离其中所有玻璃面的样式（tint + 已模糊底图）：
+     * 玻璃面是各层自己叠加的外观，混进模糊源会让上层弹窗 tint 翻倍、
+     * 亮度断层形成光晕；剥离后模糊源只含下层窗口的内容与背景。
+     */
+    private fun drawOverlayRootContent(root: View, canvas: Canvas) {
+        val stripped = ArrayList<Pair<View, Drawable?>>()
+        synchronized(states) {
+            states.keys.forEach { view ->
+                if (view.rootView === root) {
+                    stripped += view to view.background
+                }
+            }
+        }
+        stripped.forEach { (view, _) -> view.background = null }
+        try {
+            drawTextlessWindow(root, canvas)
+        } finally {
+            stripped.forEach { (view, background) -> view.background = background }
         }
     }
 
