@@ -1369,7 +1369,21 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         if (!kind.action.isNullOrBlank()) return false
         if (kind.type == ExploreKind.Type.button || kind.type == ExploreKind.Type.select) return false
         if (!kind.url.isNullOrBlank() && !hasStartedGroup) return false
-        return isDiscoverFullLineKind(kind)
+        if (!isDiscoverFullLineKind(kind)) return false
+        return !isDiscoverDecorativeGroupTitle(kind)
+    }
+
+    private fun isDiscoverDecorativeGroupTitle(kind: ExploreKind): Boolean {
+        val raw = resolveDiscoverTagText(kind).trim()
+        if (raw.isBlank()) return true
+        return normalizeDiscoverGroupTitle(raw).isBlank()
+    }
+
+    private fun normalizeDiscoverGroupTitle(raw: String): String {
+        return raw
+            .replace(Regex("^[^\\p{L}\\p{N}]+|[^\\p{L}\\p{N}]+$"), "")
+            .replace(Regex("\\s{2,}"), " ")
+            .trim()
     }
 
     private fun isDiscoverFullLineKind(kind: ExploreKind): Boolean {
@@ -1382,10 +1396,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private fun resolveDiscoverGroupTitle(kind: ExploreKind): String {
         val raw = resolveDiscoverTagText(kind).trim()
         if (raw.isBlank()) return getString(R.string.discovery)
-        val normalized = raw
-            .replace(Regex("^[^\\p{L}\\p{N}]+|[^\\p{L}\\p{N}]+$"), "")
-            .replace(Regex("\\s{2,}"), " ")
-            .trim()
+        val normalized = normalizeDiscoverGroupTitle(raw)
         return normalized.ifBlank { raw }
     }
 
