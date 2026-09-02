@@ -59,7 +59,7 @@
 
 这是“AI 完成动态方案，人工之后慢慢测试”的模式。
 
-- AI 先完成原因排查和动态方案验证所需准备，再通过 F 工具把补丁注入当前雷电模拟器中正在运行的阅读 C 进程。
+- AI 先完成原因排查和动态方案验证所需准备，再通过 F 工具把补丁注入当前雷电模拟器中正在运行的阅读C-自用（appC）进程。
 - 补丁注入成功后，不设置自动失效时间，并同时显示持续可见、足够醒目的状态悬浮窗，明确标记“Frida 补丁已注入并生效”。
 - 补丁与悬浮窗保持同一生命周期；补丁仍有效时，悬浮窗不得自行消失。
 - 注入完成后结束当前调试回合，不继续要求人工实时配合；之后由人工自行测试，并在下一轮对话反馈结果。
@@ -99,7 +99,7 @@
 #### F 工具术语与修饰指令
 
 - **F 工具就是 Frida。** 用户说“F 工具”时按 Frida 理解。
-- “用 F 工具推上去永久有效”表示：把补丁通过 Frida 注入到当前模拟器中正在运行的阅读 C APP，并且不设置失效时间，用于持续验证方案可靠性；**不是把补丁写进源码**。
+- “用 F 工具推上去永久有效”表示：把补丁通过 Frida 注入到当前模拟器中正在运行的阅读C-自用（appC）APP，并且不设置失效时间，用于持续验证方案可靠性；**不是把补丁写进源码**。
 - 任何需要持续有效的 F 工具补丁，注入成功后必须同时显示持续可见、足够醒目的悬浮窗，明确标记“Frida 补丁已注入并生效”；补丁仍有效时悬浮窗不得自行消失。
 
 ## 2. 设备与测试边界
@@ -187,15 +187,17 @@ $versionName = '3.26.<MMddHH>' # <MMddHH> uses UTC; appC automatically appends c
 
 主代码只经 `app/src/main/java/io/legado/app/plugin` 的空接口与注册表（`ReadAloudEngines` / `TtsVoiceDirectories` / 各 flavor 的 `AppPlugins.init`）接触专有功能；插件缺失时主代码正常运行：引擎列表不渲染该行、路由到未内置引擎 id 明示回退系统 TTS、AI 选角在发音人目录缺失时自动降级。
 
-- 自有构建（阅读C/自用版）= `assembleAppC`：flavor `app` 自动并入 `app/src/app` 源集——百度引擎（`help/bdtts`、`BdReadAloudService`、`BdEngineManageActivity`、`com.baidu` SDK、`jniLibs/*.so`、自身 `app/src/app/AndroidManifest.xml` 与 `appImplementation(libs.snakeyaml)`）整体在包内，由自有 `AppPlugins` 注册为插件；包名 `io.legado.app.dev`（c buildType 后缀 `.dev`，特殊专属身份，与公开版并存且不共享升级链）。
-- 开源构建（公开版）= `assembleOssRelease`：flavor `oss` 不并入 `app/src/app`，专有插件源码/so/组件声明/snakeyaml 完全不参与编译与打包（产物内不存在这些代码）；包名 `io.legado.app.c`（标准公开身份，同签名同包名按 versionCode 递增即可互相覆盖安装）、应用名"阅读"（`src/oss/res` 覆盖，繁中为"閱讀"）、版本 `3.26.MMddHH` 无后缀。
+**版本称呼（2026-09-02 明文）**：公开版（`assembleOssRelease` / `io.legado.app.c`）才叫"阅读C"；自用版（`assembleAppC` / `io.legado.app.dev`）叫"阅读C-自用"。文档、Release 正文、日常交流一律按此称呼，不得再把自用版称为"阅读C"。
+
+- 自有构建（自用版，称呼"阅读C-自用"）= `assembleAppC`：flavor `app` 自动并入 `app/src/app` 源集——百度引擎（`help/bdtts`、`BdReadAloudService`、`BdEngineManageActivity`、`com.baidu` SDK、`jniLibs/*.so`、自身 `app/src/app/AndroidManifest.xml` 与 `appImplementation(libs.snakeyaml)`）整体在包内，由自有 `AppPlugins` 注册为插件；包名 `io.legado.app.dev`（c buildType 后缀 `.dev`，特殊专属身份，与公开版并存且不共享升级链）。
+- 开源构建（公开版，即"阅读C"）= `assembleOssRelease`：flavor `oss` 不并入 `app/src/app`，专有插件源码/so/组件声明/snakeyaml 完全不参与编译与打包（产物内不存在这些代码）；包名 `io.legado.app.c`（标准公开身份，同签名同包名按 versionCode 递增即可互相覆盖安装）、应用名"阅读"（`src/oss/res` 覆盖，繁中为"閱讀"）、版本 `3.26.MMddHH` 无后缀。
 - 新增专有功能一律放 `app/src/app`（或另开 flavor 专属源集）并在自有 `AppPlugins` 注册；开源构建自动剥离。
 - 若公开发布整个仓库源码而非仅 APK，`app/src/app` 下的专有代码会随源码泄露，需要导出过滤（只发布 APK 不受影响）。
 
 编译选择规则（默认自用，按用户点名才变）：
 
-- 用户未指明构建路线时，"编译/正式编译/交付"一律指自用构建 `assembleAppC`（阅读C），完全沿用"不可变交付约束"与本节的版本、产物规则；不得自行切换成开源构建。
-- 仅当用户明确点名"开源编译/发布编译/oss 编译"时，才执行 `assembleOssRelease`：同样传 `-PVERSION_CODE`/`-PVERSION_NAME`（版本名不带 `c`，oss flavor 无后缀），产物在 `app\build\outputs\apk\oss\release\`；验证用同一套 `aapt`/`apksigner` 流程，但身份预期不同——包名 `io.legado.app.c`（标准公开身份，同签名同包名按 versionCode 递增即可互相覆盖安装）、中文名"阅读"（繁中"閱讀"）、版本名无后缀。不得把 ossRelease 当作阅读C 的交付物，也不得用 appC 冒充开源发布包。
+- 用户未指明构建路线时，"编译/正式编译/交付"一律指自用构建 `assembleAppC`（阅读C-自用），完全沿用"不可变交付约束"与本节的版本、产物规则；不得自行切换成开源构建。
+- 仅当用户明确点名"开源编译/发布编译/oss 编译"时，才执行 `assembleOssRelease`：同样传 `-PVERSION_CODE`/`-PVERSION_NAME`（版本名不带 `c`，oss flavor 无后缀），产物在 `app\build\outputs\apk\oss\release\`；验证用同一套 `aapt`/`apksigner` 流程，但身份预期不同——包名 `io.legado.app.c`（标准公开身份，同签名同包名按 versionCode 递增即可互相覆盖安装）、中文名"阅读"（繁中"閱讀"）、版本名无后缀。不得把 ossRelease 当作阅读C-自用（appC）的交付物，也不得用 appC 冒充阅读C（公开版）发布包。
 - 用户明确要求"双编译"时，两个构建都执行：先自用 `assembleAppC`，再开源 `assembleOssRelease`，各自完整走一遍版本传参与产物验证；两包包名不同（自用 `io.legado.app.dev` / 公开 `io.legado.app.c`），互不影响覆盖安装，可共存装在同一设备。
 - **构建与签名铁律（2026-08-31 明文）**：**只允许 release 系构建，绝对禁止 debug 构建类型**；签名**一律使用 SDK 自带 debug 签名**，不创建也不使用任何正式密钥。可交付构建只有两个：自用版 `assembleAppC`（`io.legado.app.dev`）与公开版 `assembleOssRelease`（`io.legado.app.c`），两者都是 release 系，统一由 `app/build.gradle` 用 `signingConfig signingConfigs.debug` 签名（证书 `CN=Android Debug`、SHA-256 `70cb88ca...`）。两版用同一把 debug 签名，可互相覆盖安装、可共存；公开版同包名同签名按 versionCode 递增可正常覆盖。`app/build.gradle` 尾部钩子已拦截任何 `debug` buildType 的 assemble/bundle/install/package 任务，杜绝产出 `.debug` 包；签名由 debug.keystore 自动提供，构建/安装无需任何密钥或口令。所有构建产物 `apksigner` 必须验证通过、退出码为 0。**正式密钥（myConfig/RELEASE_STORE_*）一律不创建、不使用、不写入规则**。
 
@@ -217,7 +219,7 @@ $apk = 'D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_<version>
 & "$env:ANDROID_HOME\build-tools\36.0.0\apksigner.bat" verify --print-certs $apk
 ```
 
-交付前确认：包名 `io.legado.app.c`、版本号递增、中文名 `阅读 C`、`arm64-v8a`、产物来自 `appC`，且 `apksigner` 退出码为 0。部分 `META-INF` 条目未受签名保护的提示可接受。
+交付前确认两版身份：公开版（阅读C）= 包名 `io.legado.app.c`、应用名 `阅读`（繁中 `閱讀`）、产物来自 `assembleOssRelease`；自用版（阅读C-自用）= 包名 `io.legado.app.dev`、产物来自 `assembleAppC`；两版版本号均需递增、`arm64-v8a`、`apksigner` 退出码为 0。部分 `META-INF` 条目未受签名保护的提示可接受。
 
 ## 4. 工程质量规则
 
