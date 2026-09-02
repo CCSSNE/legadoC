@@ -931,6 +931,8 @@ class AudioPlayActivity : BaseActivity<ActivityAudioPlayBinding>(toolBarTheme = 
                             book = book,
                             chapterIndexes = chapterIndexes,
                             source = CacheRequestSource.READER,
+                            // 用户显式重复下载：已缓存评论增量补新，而不是纯跳过
+                            reviewIncremental = true,
                         )
                         toastOnUi(
                             getString(

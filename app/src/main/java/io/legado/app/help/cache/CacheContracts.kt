@@ -114,6 +114,11 @@ data class CacheRequest(
     val reviewRetryTargets: List<CacheReviewRetryTarget> = emptyList(),
     /** TEXT+BODY 任务终态后追加 TEXT+TTS 任务。 */
     val ttsEnabled: Boolean = false,
+    /**
+     * 用户显式下载重复章节时对已完整快照执行增量下载（只补新增评论，不整章强刷）。
+     * 仅显式点击下载的入口置 true；阅读时自动下载保持纯跳过。
+     */
+    val reviewIncremental: Boolean = false,
 )
 
 internal data class CacheWorkerLease(
@@ -136,6 +141,8 @@ data class CacheTaskState(
     val reviewRetryTargets: List<CacheReviewRetryTarget> = emptyList(),
     /** Persisted with a TEXT+BODY task so process recovery still appends the TTS sibling. */
     val ttsEnabled: Boolean = false,
+    /** Persisted with the prerequisite so the appended REVIEW task keeps the incremental intent. */
+    val reviewIncremental: Boolean = false,
     val status: CacheLifecycle = CacheLifecycle.QUEUED,
     val result: CacheResult? = null,
     val skipReason: CacheTaskSkipReason? = null,

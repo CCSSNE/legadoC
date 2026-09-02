@@ -197,6 +197,7 @@ object ReviewSnapshotCapture {
         preloadJs: String? = null,
         diagnostics: CacheOperationDiagnostics.Context? = null,
         commitIfLeaseActive: ((() -> Unit) -> Boolean) = { action -> action(); true },
+        incremental: Boolean = false,
     ): CaptureOutcome {
         return captureImpl(
             bookSource,
@@ -208,6 +209,7 @@ object ReviewSnapshotCapture {
             traceChapterIndex = chapter.index,
             diagnostics = diagnostics,
             commitIfLeaseActive = commitIfLeaseActive,
+            incremental = incremental,
         ) { page ->
             ReviewSnapshot(
                 bookUrl = book.bookUrl,
@@ -239,6 +241,7 @@ object ReviewSnapshotCapture {
         preloadJs: String?,
         diagnostics: CacheOperationDiagnostics.Context? = null,
         commitIfLeaseActive: ((() -> Unit) -> Boolean) = { action -> action(); true },
+        incremental: Boolean = false,
     ): CaptureOutcome {
         return captureImpl(
             bookSource,
@@ -250,6 +253,7 @@ object ReviewSnapshotCapture {
             traceChapterIndex = chapter.index,
             diagnostics = diagnostics,
             commitIfLeaseActive = commitIfLeaseActive,
+            incremental = incremental,
         ) { page ->
             ReviewSnapshot(
                 bookUrl = book.bookUrl,
@@ -279,6 +283,7 @@ object ReviewSnapshotCapture {
         preloadJs: String?,
         diagnostics: CacheOperationDiagnostics.Context? = null,
         commitIfLeaseActive: ((() -> Unit) -> Boolean) = { action -> action(); true },
+        incremental: Boolean = false,
     ): CaptureOutcome {
         return captureImpl(
             bookSource,
@@ -290,6 +295,7 @@ object ReviewSnapshotCapture {
             traceChapterIndex = -1,
             diagnostics = diagnostics,
             commitIfLeaseActive = commitIfLeaseActive,
+            incremental = incremental,
         ) { page ->
             ReviewSnapshot(
                 bookUrl = book.bookUrl,
@@ -323,6 +329,7 @@ object ReviewSnapshotCapture {
         traceChapterIndex: Int,
         diagnostics: CacheOperationDiagnostics.Context?,
         commitIfLeaseActive: ((() -> Unit) -> Boolean),
+        incremental: Boolean = false,
         buildSnapshot: (SnapshotPageResult) -> ReviewSnapshot,
     ): CaptureOutcome {
         val trace = diagnostics?.let {
@@ -349,6 +356,7 @@ object ReviewSnapshotCapture {
                 tab,
                 trace,
                 commitIfLeaseActive,
+                paginationEnabled = !incremental,
             )
             CaptureOutcome(
                 snapshot = buildSnapshot(page),
@@ -378,6 +386,8 @@ object ReviewSnapshotCapture {
      * 无头加载页面并穷尽展开后返回最终 HTML 与展开诊断数据。
      *
      * @param tab 非 null 时页面加载完成后先切换到目标评论 tab 再展开（章评/书评补充抓取）
+     * @param paginationEnabled false = 增量抓取：展开循环不再点击“加载更多”类翻页元素，
+     *        只保留滚动懒加载与楼中楼展开，避免把已缓存的历史评论页整页重新拉取
      * @return [SnapshotPageResult]：html、展开轮数、点击次数、本快照引用的资源 key 列表
      */
     private suspend fun snapshotPage(
@@ -389,6 +399,7 @@ object ReviewSnapshotCapture {
         tab: ReviewTab? = null,
         diagnostics: CacheOperationDiagnostics.Operation? = null,
         commitIfLeaseActive: ((() -> Unit) -> Boolean),
+        paginationEnabled: Boolean = true,
     ): SnapshotPageResult {
         val analyzeUrl = AnalyzeUrl(url, source = bookSource)
         val headerMap = analyzeUrl.headerMap
@@ -439,6 +450,7 @@ object ReviewSnapshotCapture {
                         tab,
                         diagnostics,
                         commitIfLeaseActive,
+                        paginationEnabled,
                     ) {
                         result, error, rounds, clicks, discardWebView, resourceKeys, droppedResources ->
                         sessionRef.set(null)
@@ -514,6 +526,7 @@ object ReviewSnapshotCapture {
         private val tab: ReviewTab?,
         private val diagnostics: CacheOperationDiagnostics.Operation?,
         private val commitIfLeaseActive: ((() -> Unit) -> Boolean),
+        private val paginationEnabled: Boolean = true,
         private val done: (String?, Throwable?, Int, Int, Boolean, List<String>, Int) -> Unit
     ) {
 
@@ -957,7 +970,7 @@ object ReviewSnapshotCapture {
             if (destroyed) return
             if (expandLoopActive) return
             expandLoopActive = true
-            webView.evaluateJavascript(expandJs(cacheReplies)) { json ->
+            webView.evaluateJavascript(expandJs(cacheReplies, paginationEnabled)) { json ->
                 mHandler.post {
                     if (destroyed) return@post
                     expandLoopActive = false
@@ -2038,35 +2051,46 @@ object ReviewSnapshotCapture {
      * @param includeReplies false = 关闭“缓存楼中楼”：正则不再匹配回复 toggle，
      *        并跳过一切位于回复容器内的元素（含“加载更多回复”），回复内容不参与展开；
      *        序列化时回复层会统一剥离。
+     * @param paginationEnabled false = 增量抓取：正则不再匹配“加载更多”类翻页关键词
+     *        （点它们会把已缓存的历史评论页整页重新拉取）；只保留回复展开与滚动懒加载。
+     *        两个开关都关闭时无元素可点，脚本退化为纯滚动探测。
      */
-    private fun expandJs(includeReplies: Boolean): String {
-        val pattern = if (includeReplies) {
-            "(展开|更多回复|查看回复|加载更多|查看更多|查看全部|显示全部|点击查看|继续阅读|load\\s*more|show\\s*more|view\\s*more|expand)"
-        } else {
-            "(加载更多|查看更多|查看全部|显示全部|点击查看|继续阅读|load\\s*more|show\\s*more|view\\s*more)"
+    private fun expandJs(includeReplies: Boolean, paginationEnabled: Boolean = true): String {
+        val pattern = when {
+            includeReplies && paginationEnabled ->
+                "(展开|更多回复|查看回复|加载更多|查看更多|查看全部|显示全部|点击查看|继续阅读|load\\s*more|show\\s*more|view\\s*more|expand)"
+            includeReplies -> "(展开|更多回复|查看回复|expand)"
+            paginationEnabled ->
+                "(加载更多|查看更多|查看全部|显示全部|点击查看|继续阅读|load\\s*more|show\\s*more|view\\s*more)"
+            else -> null
         }
         val replySkip = if (includeReplies) {
             ""
         } else {
             "if(el.closest&&el.closest('.reply-section'))continue;"
         }
-        return "(function(){" +
+        val clickLoop = if (pattern == null) {
+            ""
+        } else {
             "var pat=/$pattern/i;" +
+                "var els=document.querySelectorAll('a,button,[role=\"button\"],[onclick],div,span,p');" +
+                "for(var i=0;i<els.length;i++){var el=els[i];" +
+                replySkip +
+                "var t=(el.innerText||'').trim();" +
+                "if(!t||t.length>24||!pat.test(t))continue;" +
+                "var r=el.getBoundingClientRect();" +
+                "if(r.width<1||r.height<1)continue;" +
+                "if(el.children.length>2)continue;" +
+                "el.scrollIntoView({block:'center'});" +
+                "try{el.click();}catch(e){}" +
+                "try{el.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));" +
+                "el.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));" +
+                "el.dispatchEvent(new TouchEvent('touchend',{bubbles:true}));}catch(e){}" +
+                "clicked++;if(clicked>=6)break;}"
+        }
+        return "(function(){" +
             "var clicked=0;" +
-            "var els=document.querySelectorAll('a,button,[role=\"button\"],[onclick],div,span,p');" +
-            "for(var i=0;i<els.length;i++){var el=els[i];" +
-            replySkip +
-            "var t=(el.innerText||'').trim();" +
-            "if(!t||t.length>24||!pat.test(t))continue;" +
-            "var r=el.getBoundingClientRect();" +
-            "if(r.width<1||r.height<1)continue;" +
-            "if(el.children.length>2)continue;" +
-            "el.scrollIntoView({block:'center'});" +
-            "try{el.click();}catch(e){}" +
-            "try{el.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));" +
-            "el.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));" +
-            "el.dispatchEvent(new TouchEvent('touchend',{bubbles:true}));}catch(e){}" +
-            "clicked++;if(clicked>=6)break;}" +
+            clickLoop +
             "try{window.scrollTo(0,document.body?document.body.scrollHeight:0);}catch(e){}" +
             "var h=document.body?document.body.scrollHeight:0;" +
             "var n=document.getElementsByTagName('*').length;" +

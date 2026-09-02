@@ -299,6 +299,8 @@ abstract class BaseReadBookActivity :
                                 book = book,
                                 chapterIndexes = first..last,
                                 source = CacheRequestSource.READER,
+                                // 用户显式重复下载：已缓存评论增量补新，而不是纯跳过
+                                reviewIncremental = true,
                             )
                         }
                     }

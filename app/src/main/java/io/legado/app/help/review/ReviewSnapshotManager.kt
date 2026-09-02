@@ -86,6 +86,8 @@ object ReviewSnapshotManager {
     internal data class QueueTask(
         val key: String,
         val force: Boolean,
+        /** true = 已完整快照的按钮/tab 走增量下载而不是纯跳过 */
+        val incremental: Boolean,
         /** Null = normal/force chapter capture; non-null = only these failed button src values. */
         val retryButtonSources: Set<String>?,
         internal val executionLease: CacheWorkerLease,
@@ -118,6 +120,12 @@ object ReviewSnapshotManager {
         }.size
     }
 
+    /**
+     * 增量下载的书评 tab 去重（key = bookUrl|sessionId/taskId）：
+     * 书评整本一份，同一次下载任务的全部章节只增量一次。
+     */
+    private val bookTabIncrementalHandled = ConcurrentHashMap.newKeySet<String>()
+
     private data class Task(
         val key: String,
         val executionLease: CacheWorkerLease,
@@ -125,6 +133,7 @@ object ReviewSnapshotManager {
 
     private data class PendingReview(
         val force: Boolean,
+        val incremental: Boolean,
         val retryButtonSources: Set<String>?,
         val executionLease: CacheWorkerLease,
         val commitIfLeaseActive: ((() -> Unit) -> Boolean),
@@ -201,6 +210,7 @@ object ReviewSnapshotManager {
         book: Book,
         chapter: BookChapter,
         force: Boolean,
+        incremental: Boolean = false,
         retryButtonSources: Set<String>? = null,
         executionLease: CacheWorkerLease,
         commitIfLeaseActive: ((() -> Unit) -> Boolean),
@@ -225,6 +235,7 @@ object ReviewSnapshotManager {
                 key,
                 PendingReview(
                     force,
+                    incremental,
                     retryButtonSources,
                     executionLease,
                     commitIfLeaseActive,
@@ -275,6 +286,7 @@ object ReviewSnapshotManager {
         return QueueTask(
             key = task.first.key,
             force = task.second.force,
+            incremental = task.second.incremental,
             retryButtonSources = task.second.retryButtonSources,
             executionLease = task.second.executionLease,
             reportProgress = task.second.reportProgress,
@@ -341,6 +353,7 @@ object ReviewSnapshotManager {
                 processTask(
                     task.key,
                     task.force,
+                    task.incremental,
                     task.retryButtonSources,
                     outcomeKey,
                     diagnostics,
@@ -472,6 +485,7 @@ object ReviewSnapshotManager {
     private suspend fun processTask(
         key: String,
         force: Boolean,
+        incremental: Boolean,
         retryButtonSources: Set<String>?,
         outcomeKey: String,
         diagnostics: CacheOperationDiagnostics.Context,
@@ -489,6 +503,7 @@ object ReviewSnapshotManager {
             processTaskWithLog(
                 key,
                 force,
+                incremental,
                 retryButtonSources,
                 sb,
                 outcomeKey,
@@ -510,6 +525,7 @@ object ReviewSnapshotManager {
     private suspend fun processTaskWithLog(
         key: String,
         force: Boolean,
+        incremental: Boolean,
         retryButtonSources: Set<String>?,
         sb: StringBuilder,
         outcomeKey: String,
@@ -544,6 +560,7 @@ object ReviewSnapshotManager {
         sb.append("书籍：").append(book.name).append('\n')
         sb.append("章节URL：").append(chapter.url).append('\n')
         sb.append("force：").append(if (force) "true" else "false").append('\n')
+        sb.append("增量：").append(if (incremental) "true" else "false").append('\n')
         // 处理时再查一次开关：入队后关闭开关不应继续抓取
         if (!AppConfig.syncCacheReview) {
             sb.append("开关“缓存评论”已关闭，跳过")
@@ -648,6 +665,7 @@ object ReviewSnapshotManager {
                     index,
                     button,
                     force,
+                    incremental,
                     resolvedPageRecorder,
                     diagnostics,
                     commitIfLeaseActive,
@@ -731,6 +749,7 @@ object ReviewSnapshotManager {
             bookSource,
             chapter,
             force,
+            incremental,
             resolvedPageRecorder.get(),
             sb,
             diagnostics,
@@ -763,7 +782,8 @@ object ReviewSnapshotManager {
     /**
      * 章评/书评 tab 补充快照：复用本章按钮解析出的评论页地址（不重新执行
      * click/js），加载后点击目标 tab 抓取。章评每章一份、书评整本一份
-     * （书评挂在伪章节主键上跨章去重）；普通缓存跳过已完整快照，force 覆盖。
+     * （书评挂在伪章节主键上跨章去重）；普通缓存跳过已完整快照，force 覆盖，
+     * 增量下载对已完整快照只补新增评论（书评整本每次下载只增量一次）。
      *
      * 失败只记录日志，不影响段评快照的任务结论；下一次缓存运行会因
      * hasComplete=false 自动补抓。“缓存楼中楼”开关不影响补充快照本身——
@@ -774,6 +794,7 @@ object ReviewSnapshotManager {
         bookSource: BookSource,
         chapter: BookChapter,
         force: Boolean,
+        incremental: Boolean,
         resolved: ResolvedPageContext?,
         sb: StringBuilder,
         diagnostics: CacheOperationDiagnostics.Context,
@@ -784,96 +805,235 @@ object ReviewSnapshotManager {
             return
         }
         sb.append("8. 章评/书评补充快照：\n")
-        if (!force && ReviewSnapshotStore.hasCompleteChapterTab(book, chapter)) {
-            sb.append("   章评：已有完整快照，跳过\n")
+        val chapterTabComplete = !force && ReviewSnapshotStore.hasCompleteChapterTab(book, chapter)
+        val chapterTabExisting = if (chapterTabComplete) {
+            ReviewSnapshotStore.getChapterTab(book, chapter)
         } else {
-            val outcome = runCatching {
-                withPipelinePermit {
-                    ReviewSnapshotCapture.captureChapterTab(
-                        bookSource,
-                        book,
-                        chapter,
-                        resolved.url,
-                        resolved.html,
-                        resolved.preloadJs,
-                        diagnostics.forChapter(chapter.index),
-                        commitIfLeaseActive,
-                    )
-                }
-            }
-            outcome.fold(
-                onSuccess = { capture ->
-                    val put = runCatching {
-                        commitOrThrow(commitIfLeaseActive, "review chapter tab commit") {
-                            ReviewSnapshotStore.put(book, capture.snapshot, diagnostics.forChapter(chapter.index))
-                        }
-                    }
-                    put.exceptionOrNull()?.let { error ->
-                        if (error is CancellationException) throw error
-                    }
-                    if (put.isSuccess) {
-                        if (capture.snapshot.partial) {
-                            sb.append("   章评：部分成功（缺失资源已占位，等待重试）\n")
-                        } else {
-                            sb.append("   章评：成功（")
-                                .append(capture.snapshot.html.length / 1024).append(" KB）\n")
-                        }
-                    } else {
-                        sb.append("   章评：落盘失败\n   ")
-                            .append(put.exceptionOrNull()?.stackTraceToString()).append('\n')
-                    }
-                },
-                onFailure = { error ->
-                    if (error is CancellationException) throw error
-                    sb.append("   章评：失败（").append(error.localizedMessage ?: "未知错误").append("）\n")
-                    sb.append("   ").append(error.stackTraceToString()).append('\n')
-                },
-            )
+            null
         }
-        if (!force && ReviewSnapshotStore.hasCompleteBookTab(book)) {
-            sb.append("   书评：已有完整快照，跳过\n")
+        when {
+            chapterTabComplete && chapterTabExisting != null && incremental -> {
+                incrementalSupplementTab(
+                    tabLabel = "章评",
+                    book = book,
+                    bookSource = bookSource,
+                    chapter = chapter,
+                    existing = chapterTabExisting,
+                    sb = sb,
+                    diagnostics = diagnostics,
+                    commitIfLeaseActive = commitIfLeaseActive,
+                    capture = { incrementalMode ->
+                        ReviewSnapshotCapture.captureChapterTab(
+                            bookSource,
+                            book,
+                            chapter,
+                            resolved.url,
+                            resolved.html,
+                            resolved.preloadJs,
+                            diagnostics.forChapter(chapter.index),
+                            commitIfLeaseActive,
+                            incrementalMode,
+                        )
+                    },
+                )
+            }
+            chapterTabComplete -> {
+                sb.append("   章评：已有完整快照，跳过\n")
+            }
+            else -> {
+                val outcome = runCatching {
+                    withPipelinePermit {
+                        ReviewSnapshotCapture.captureChapterTab(
+                            bookSource,
+                            book,
+                            chapter,
+                            resolved.url,
+                            resolved.html,
+                            resolved.preloadJs,
+                            diagnostics.forChapter(chapter.index),
+                            commitIfLeaseActive,
+                        )
+                    }
+                }
+                outcome.fold(
+                    onSuccess = { capture ->
+                        val put = runCatching {
+                            commitOrThrow(commitIfLeaseActive, "review chapter tab commit") {
+                                ReviewSnapshotStore.put(book, capture.snapshot, diagnostics.forChapter(chapter.index))
+                            }
+                        }
+                        put.exceptionOrNull()?.let { error ->
+                            if (error is CancellationException) throw error
+                        }
+                        if (put.isSuccess) {
+                            if (capture.snapshot.partial) {
+                                sb.append("   章评：部分成功（缺失资源已占位，等待重试）\n")
+                            } else {
+                                sb.append("   章评：成功（")
+                                    .append(capture.snapshot.html.length / 1024).append(" KB）\n")
+                            }
+                        } else {
+                            sb.append("   章评：落盘失败\n   ")
+                                .append(put.exceptionOrNull()?.stackTraceToString()).append('\n')
+                        }
+                    },
+                    onFailure = { error ->
+                        if (error is CancellationException) throw error
+                        sb.append("   章评：失败（").append(error.localizedMessage ?: "未知错误").append("）\n")
+                        sb.append("   ").append(error.stackTraceToString()).append('\n')
+                    },
+                )
+            }
+        }
+        val bookTabComplete = !force && ReviewSnapshotStore.hasCompleteBookTab(book)
+        val bookTabExisting = if (bookTabComplete) {
+            ReviewSnapshotStore.getBookTab(book)
         } else {
-            val outcome = runCatching {
-                withPipelinePermit {
-                    ReviewSnapshotCapture.captureBookTab(
-                        bookSource,
-                        book,
-                        resolved.url,
-                        resolved.html,
-                        resolved.preloadJs,
-                        diagnostics.forChapter(chapter.index),
-                        commitIfLeaseActive,
+            null
+        }
+        when {
+            bookTabComplete && bookTabExisting != null && incremental -> {
+                // 书评整本一份：同一次下载任务内只增量一次，其余章节直接跳过
+                val guardKey = "${book.bookUrl}|${diagnostics.sessionId}/${diagnostics.taskId}"
+                if (!bookTabIncrementalHandled.add(guardKey)) {
+                    sb.append("   书评：本次下载已增量处理，跳过\n")
+                } else {
+                    incrementalSupplementTab(
+                        tabLabel = "书评",
+                        book = book,
+                        bookSource = bookSource,
+                        chapter = chapter,
+                        existing = bookTabExisting,
+                        sb = sb,
+                        diagnostics = diagnostics,
+                        commitIfLeaseActive = commitIfLeaseActive,
+                        capture = { incrementalMode ->
+                            ReviewSnapshotCapture.captureBookTab(
+                                bookSource,
+                                book,
+                                resolved.url,
+                                resolved.html,
+                                resolved.preloadJs,
+                                diagnostics.forChapter(chapter.index),
+                                commitIfLeaseActive,
+                                incrementalMode,
+                            )
+                        },
                     )
                 }
             }
-            outcome.fold(
-                onSuccess = { capture ->
-                    val put = runCatching {
-                        commitOrThrow(commitIfLeaseActive, "review book tab commit") {
-                            ReviewSnapshotStore.put(book, capture.snapshot, diagnostics.forChapter(chapter.index))
+            bookTabComplete -> {
+                sb.append("   书评：已有完整快照，跳过\n")
+            }
+            else -> {
+                val outcome = runCatching {
+                    withPipelinePermit {
+                        ReviewSnapshotCapture.captureBookTab(
+                            bookSource,
+                            book,
+                            resolved.url,
+                            resolved.html,
+                            resolved.preloadJs,
+                            diagnostics.forChapter(chapter.index),
+                            commitIfLeaseActive,
+                        )
+                    }
+                }
+                outcome.fold(
+                    onSuccess = { capture ->
+                        val put = runCatching {
+                            commitOrThrow(commitIfLeaseActive, "review book tab commit") {
+                                ReviewSnapshotStore.put(book, capture.snapshot, diagnostics.forChapter(chapter.index))
+                            }
                         }
-                    }
-                    put.exceptionOrNull()?.let { error ->
-                        if (error is CancellationException) throw error
-                    }
-                    if (put.isSuccess) {
-                        if (capture.snapshot.partial) {
-                            sb.append("   书评：部分成功（缺失资源已占位，等待重试）\n")
+                        put.exceptionOrNull()?.let { error ->
+                            if (error is CancellationException) throw error
+                        }
+                        if (put.isSuccess) {
+                            if (capture.snapshot.partial) {
+                                sb.append("   书评：部分成功（缺失资源已占位，等待重试）\n")
+                            } else {
+                                sb.append("   书评：成功（")
+                                    .append(capture.snapshot.html.length / 1024).append(" KB）\n")
+                            }
                         } else {
-                            sb.append("   书评：成功（")
-                                .append(capture.snapshot.html.length / 1024).append(" KB）\n")
+                            sb.append("   书评：落盘失败\n   ")
+                                .append(put.exceptionOrNull()?.stackTraceToString()).append('\n')
                         }
-                    } else {
-                        sb.append("   书评：落盘失败\n   ")
-                            .append(put.exceptionOrNull()?.stackTraceToString()).append('\n')
-                    }
-                },
-                onFailure = { error ->
-                    if (error is CancellationException) throw error
-                    sb.append("   书评：失败（").append(error.localizedMessage ?: "未知错误").append("）\n")
-                    sb.append("   ").append(error.stackTraceToString()).append('\n')
-                },
-            )
+                    },
+                    onFailure = { error ->
+                        if (error is CancellationException) throw error
+                        sb.append("   书评：失败（").append(error.localizedMessage ?: "未知错误").append("）\n")
+                        sb.append("   ").append(error.stackTraceToString()).append('\n')
+                    },
+                )
+            }
+        }
+    }
+
+    /**
+     * 章评/书评 tab 增量下载：免翻页抓第一屏，与原快照做增量合并。
+     * 任何失败都保留原快照，只记日志，不影响任务结论。
+     *
+     * @param capture (incremental) -> CaptureOutcome；incremental 恒为 true
+     */
+    private suspend fun incrementalSupplementTab(
+        tabLabel: String,
+        book: Book,
+        bookSource: BookSource,
+        chapter: BookChapter,
+        existing: ReviewSnapshot,
+        sb: StringBuilder,
+        diagnostics: CacheOperationDiagnostics.Context,
+        commitIfLeaseActive: ((() -> Unit) -> Boolean),
+        capture: suspend (Boolean) -> ReviewSnapshotCapture.CaptureOutcome,
+    ) {
+        val outcome = runCatching {
+            withPipelinePermit {
+                capture(true)
+            }
+        }
+        val captureResult = outcome.getOrNull()
+        if (captureResult == null) {
+            val error = outcome.exceptionOrNull()!!
+            if (error is CancellationException) throw error
+            sb.append("   ").append(tabLabel).append("：增量抓取失败（原快照保留，下次下载再试）")
+                .append("（").append(error.localizedMessage ?: "未知错误").append("）\n")
+            return
+        }
+        val mergeResult = runCatching {
+            ReviewSnapshotMerger.merge(existing.html, captureResult.snapshot.html)
+        }.getOrNull()
+        if (mergeResult == null) {
+            sb.append("   ").append(tabLabel).append("：增量合并失败，保留原快照\n")
+            return
+        }
+        if (mergeResult.addedCount == 0) {
+            sb.append("   ").append(tabLabel).append("：增量下载完成，无新增评论\n")
+            return
+        }
+        val mergedSnapshot = captureResult.snapshot.copy(
+            html = mergeResult.html,
+            resourceKeys = (existing.resourceKeys.orEmpty() + captureResult.snapshot.resourceKeys.orEmpty())
+                .distinct(),
+            partial = captureResult.snapshot.partial,
+            savedAt = System.currentTimeMillis(),
+        )
+        val put = runCatching {
+            commitOrThrow(commitIfLeaseActive, "review supplement tab incremental commit") {
+                ReviewSnapshotStore.put(book, mergedSnapshot, diagnostics.forChapter(chapter.index))
+            }
+        }
+        put.exceptionOrNull()?.let { error ->
+            if (error is CancellationException) throw error
+        }
+        if (put.isSuccess) {
+            sb.append("   ").append(tabLabel).append("：增量下载成功，新增 ")
+                .append(mergeResult.addedCount).append(" 条评论（")
+                .append(mergedSnapshot.html.length / 1024).append(" KB）\n")
+        } else {
+            sb.append("   ").append(tabLabel).append("：增量落盘失败，原快照未被覆盖\n   ")
+                .append(put.exceptionOrNull()?.stackTraceToString()).append('\n')
         }
     }
 
@@ -889,6 +1049,7 @@ object ReviewSnapshotManager {
         buttonIndex: Int,
         button: ReviewButton,
         force: Boolean,
+        incremental: Boolean,
         resolvedPageRecorder: AtomicReference<ResolvedPageContext?>,
         diagnostics: CacheOperationDiagnostics.Context,
         commitIfLeaseActive: ((() -> Unit) -> Boolean),
@@ -901,6 +1062,7 @@ object ReviewSnapshotManager {
             buttonIndex,
             button,
             force,
+            incremental,
             resolvedPageRecorder,
             diagnostics,
             commitIfLeaseActive,
@@ -915,6 +1077,7 @@ object ReviewSnapshotManager {
         buttonIndex: Int,
         button: ReviewButton,
         force: Boolean,
+        incremental: Boolean,
         resolvedPageRecorder: AtomicReference<ResolvedPageContext?>,
         diagnostics: CacheOperationDiagnostics.Context,
         commitIfLeaseActive: ((() -> Unit) -> Boolean),
@@ -922,16 +1085,31 @@ object ReviewSnapshotManager {
     ): ButtonOutcome {
         if (!button.hasAction) return ButtonOutcome(buttonIndex, button.src, "")
         val sb = StringBuilder()
-        // 普通触发只跳过完整快照；部分成功快照不完整，必须重新抓取覆盖
-        if (!force && ReviewSnapshotStore.hasComplete(book, chapter, button.src)) {
-            sb.append("3. 按钮").append(buttonIndex + 1).append("：src=").append(button.src)
-                .append("\n   已有有效快照，跳过\n")
-            return ButtonOutcome(buttonIndex, button.src, sb.toString())
+        // 普通触发只跳过完整快照；部分成功快照不完整，必须重新抓取覆盖。
+        // 增量下载（用户显式重复下载）：完整快照不跳过，改为“只补新增评论”的
+        // 增量抓取——原快照为基底合入新增，绝不整页覆盖、绝不删除已缓存评论。
+        var incrementalBase: ReviewSnapshot? = null
+        val hasCompleteSnapshot = !force && ReviewSnapshotStore.hasComplete(book, chapter, button.src)
+        if (hasCompleteSnapshot && incremental) {
+            incrementalBase = runCatching {
+                ReviewSnapshotStore.get(book, chapter, button.src)
+            }.getOrNull()
         }
         sb.append("3. 按钮").append(buttonIndex + 1).append("：\n")
         sb.append("   src=").append(button.src).append('\n')
         sb.append("   click=").append(if (button.click.isNullOrBlank()) "无" else "有")
             .append("  js=").append(if (button.js.isNullOrBlank()) "无" else "有").append('\n')
+        if (hasCompleteSnapshot && !incremental) {
+            sb.append("   已有有效快照，跳过\n")
+            return ButtonOutcome(buttonIndex, button.src, sb.toString())
+        }
+        if (hasCompleteSnapshot && incremental) {
+            if (incrementalBase == null) {
+                sb.append("   已有完整快照，但读取失败，无法增量，跳过\n")
+                return ButtonOutcome(buttonIndex, button.src, sb.toString())
+            }
+            sb.append("   已有完整快照，执行增量下载（只补新增评论，不翻页重抓历史）\n")
+        }
         // 计数拆分：抛异常记一次并 continue；无异常但 URL 为空才记 browser open 超时
         val resolveResult = runCatching {
             resolveReviewPageUrl(book, bookSource, chapter, button)
@@ -947,6 +1125,10 @@ object ReviewSnapshotManager {
             }
             sb.append("   解析真实评论页 URL：失败（").append(reason).append("）\n")
             sb.append("   ").append(error.stackTraceToString()).append('\n')
+            if (incrementalBase != null) {
+                sb.append("   增量下载失败（原快照保留，下次下载再试）\n")
+                return ButtonOutcome(buttonIndex, button.src, sb.toString())
+            }
             return ButtonOutcome(buttonIndex, button.src, sb.toString(), failed = true)
         }
         val page = resolveResult.getOrNull()!!
@@ -955,6 +1137,10 @@ object ReviewSnapshotManager {
             // resolveReviewPageUrl 无异常但没等到地址
             sb.append("   解析真实评论页 URL：失败（click/js 执行了，但没有触发 browser open/showBrowser，")
                 .append(RESOLVE_TIMEOUT_MS / 1000).append("s 超时）\n")
+            if (incrementalBase != null) {
+                sb.append("   增量下载失败（原快照保留，下次下载再试）\n")
+                return ButtonOutcome(buttonIndex, button.src, sb.toString())
+            }
             return ButtonOutcome(buttonIndex, button.src, sb.toString(), failed = true)
         }
         sb.append("   解析真实评论页 URL：成功")
@@ -983,6 +1169,7 @@ object ReviewSnapshotManager {
                 page.preloadJs,
                 diagnostics.forChapter(chapter.index),
                 commitIfLeaseActive,
+                incremental = incrementalBase != null,
             )
         }
         if (outcome.isFailure) {
@@ -996,6 +1183,10 @@ object ReviewSnapshotManager {
             }
             sb.append("4. 打开评论页/抓取快照：失败（").append(reason).append("）\n")
             sb.append("   ").append(e.stackTraceToString()).append('\n')
+            if (incrementalBase != null) {
+                sb.append("   增量下载失败（原快照保留，下次下载再试）\n")
+                return ButtonOutcome(buttonIndex, button.src, sb.toString())
+            }
             return ButtonOutcome(buttonIndex, button.src, sb.toString(), failed = true)
         }
         val capture = outcome.getOrNull()!!
@@ -1003,6 +1194,42 @@ object ReviewSnapshotManager {
         sb.append("5. 展开检测轮次：").append(capture.expandRounds)
             .append(" 次；实际点击“展开/加载更多”按钮：").append(capture.expandClickCount).append(" 次\n")
         sb.append("6. 最终 HTML：").append(capture.snapshot.html.length / 1024).append(" KB\n")
+        val base = incrementalBase
+        if (base != null) {
+            // 增量合并：原快照为基底，只合入第一屏新增的评论；任何失败都保留原快照
+            val mergeResult = ReviewSnapshotMerger.merge(base.html, capture.snapshot.html)
+            if (mergeResult == null) {
+                sb.append("7. 增量合并：无法可靠合并（评论页结构变化），保留原快照\n")
+                return ButtonOutcome(buttonIndex, button.src, sb.toString())
+            }
+            if (mergeResult.addedCount == 0) {
+                sb.append("7. 增量合并：无新增评论，原快照保持不变\n")
+                return ButtonOutcome(buttonIndex, button.src, sb.toString())
+            }
+            val mergedSnapshot = capture.snapshot.copy(
+                html = mergeResult.html,
+                resourceKeys = (base.resourceKeys.orEmpty() + capture.snapshot.resourceKeys.orEmpty())
+                    .distinct(),
+                partial = capture.snapshot.partial,
+                savedAt = System.currentTimeMillis(),
+            )
+            val putResult = runCatching {
+                commitOrThrow(commitIfLeaseActive, "review snapshot incremental commit") {
+                    ReviewSnapshotStore.put(book, mergedSnapshot, diagnostics.forChapter(chapter.index))
+                }
+            }
+            putResult.exceptionOrNull()?.let { error ->
+                if (error is CancellationException) throw error
+            }
+            if (putResult.isFailure) {
+                sb.append("7. 增量合并落盘：失败，原快照未被覆盖\n")
+                sb.append("   ").append(putResult.exceptionOrNull()!!.stackTraceToString()).append('\n')
+                return ButtonOutcome(buttonIndex, button.src, sb.toString())
+            }
+            sb.append("7. 增量合并落盘：成功，新增 ").append(mergeResult.addedCount)
+                .append(" 条评论\n")
+            return ButtonOutcome(buttonIndex, button.src, sb.toString())
+        }
         // 诊断日志：put 失败必须留下原因
         val putResult = runCatching {
             commitOrThrow(commitIfLeaseActive, "review snapshot commit") {

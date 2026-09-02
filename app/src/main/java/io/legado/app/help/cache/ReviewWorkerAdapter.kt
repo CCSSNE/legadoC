@@ -104,6 +104,7 @@ internal class ReviewWorkerAdapter(
                     task.source != CacheRequestSource.READER ||
                         ReviewSnapshotManager.isUserRefreshActive(book.bookUrl, chapter.index)
                     ),
+                incremental = task.reviewIncremental && retryButtonSources == null,
                 retryButtonSources = retryButtonSources,
                 executionLease = lease,
                 commitIfLeaseActive = { action -> workerPort.commitIfLeaseActive(lease, action) },

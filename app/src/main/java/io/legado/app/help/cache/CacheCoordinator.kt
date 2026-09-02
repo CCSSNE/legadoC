@@ -197,11 +197,12 @@ object CacheCoordinator : CacheUiPort {
         chapterIndexes: Iterable<Int>,
         source: CacheRequestSource,
         reviewEnabled: Boolean = AppConfig.syncCacheReview,
+        reviewIncremental: Boolean = false,
     ): CacheSubmission {
         return if (book.isAudio || book.isVideo) {
-            submitMediaDownload(book, chapterIndexes, source, reviewEnabled)
+            submitMediaDownload(book, chapterIndexes, source, reviewEnabled, reviewIncremental)
         } else {
-            submitTextDownload(book, chapterIndexes, source, reviewEnabled)
+            submitTextDownload(book, chapterIndexes, source, reviewEnabled, reviewIncremental)
         }
     }
 
@@ -212,6 +213,7 @@ object CacheCoordinator : CacheUiPort {
         source: CacheRequestSource,
         reviewEnabled: Boolean = AppConfig.syncCacheReview,
         ttsEnabled: Boolean = false,
+        reviewIncremental: Boolean = false,
     ): CacheSubmission {
         require(!book.isAudio && !book.isVideo) {
             "text download is invalid for media book: ${book.bookUrl}"
@@ -228,6 +230,7 @@ object CacheCoordinator : CacheUiPort {
                 units = indexes.map { CacheUnitKey(book.bookUrl, it) },
                 reviewEnabled = reviewEnabled,
                 ttsEnabled = ttsEnabled,
+                reviewIncremental = reviewIncremental,
             )
         )
     }
@@ -285,6 +288,7 @@ object CacheCoordinator : CacheUiPort {
         chapterIndexes: Iterable<Int>,
         source: CacheRequestSource,
         reviewEnabled: Boolean = AppConfig.syncCacheReview,
+        reviewIncremental: Boolean = false,
     ): CacheSubmission {
         require(book.isAudio || book.isVideo) { "media download requires an audio or video book" }
         val indexes = chapterIndexes.distinct().sorted()
@@ -298,6 +302,7 @@ object CacheCoordinator : CacheUiPort {
                 bookName = book.name,
                 units = indexes.map { CacheUnitKey(book.bookUrl, it) },
                 reviewEnabled = book.isAudio && !book.isLocal && reviewEnabled,
+                reviewIncremental = book.isAudio && !book.isLocal && reviewIncremental,
             )
         )
     }
@@ -481,6 +486,7 @@ object CacheCoordinator : CacheUiPort {
             bookName = prerequisite.bookName,
             units = eligible,
             reviewEnabled = true,
+            reviewIncremental = prerequisite.reviewIncremental,
         )
         val task = store.addTask(sessionId, request)
         record(
