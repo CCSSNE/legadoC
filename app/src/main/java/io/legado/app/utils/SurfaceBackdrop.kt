@@ -102,10 +102,6 @@ object SurfaceBackdrop {
         }
     }
 
-    fun present(hostWindow: Window, target: View, layerOwner: View) {
-        presentLayer(hostWindow.decorView, target, layerOwner)
-    }
-
     fun installStatic(target: View, style: SurfaceStyle) {
         val state = stateFor(target)
         state.generation += 1
@@ -157,27 +153,29 @@ object SurfaceBackdrop {
         }
 
         val hostDecor = hostWindow.decorView
-        present(hostWindow, target, layerOwner)
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || style.blurRadiusPx <= 0) {
-            finish(null)
-            return
-        }
+        val captureEnabled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            style.blurRadiusPx > 0
 
         awaitStableBounds(
             target = target,
             hostDecor = hostDecor,
             generationValid = { state.generation == generation },
             onStable = {
-                requestBackdrop(
-                    hostWindow = hostWindow,
-                    hostDecor = hostDecor,
-                    target = target,
-                    layerOwner = layerOwner,
-                    radius = style.blurRadiusPx,
-                    generationValid = { state.generation == generation },
-                    attempt = 0,
-                    onFinished = ::finish
-                )
+                presentLayer(hostDecor, target, layerOwner)
+                if (captureEnabled) {
+                    requestBackdrop(
+                        hostWindow = hostWindow,
+                        hostDecor = hostDecor,
+                        target = target,
+                        layerOwner = layerOwner,
+                        radius = style.blurRadiusPx,
+                        generationValid = { state.generation == generation },
+                        attempt = 0,
+                        onFinished = ::finish
+                    )
+                } else {
+                    finish(null)
+                }
             },
             onFailure = { finish(null) }
         )

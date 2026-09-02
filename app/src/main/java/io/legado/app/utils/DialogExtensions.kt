@@ -291,7 +291,6 @@ fun Dialog.applyDialogSurfaceBlur(
         return
     }
     if (hostTranslucent) {
-        SurfaceBackdrop.present(hostWindow, target, dialogWindow.decorView)
         revealWindow()
         return
     }
