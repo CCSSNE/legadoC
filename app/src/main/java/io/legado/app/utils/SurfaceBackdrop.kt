@@ -19,6 +19,7 @@ import android.widget.TextView
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.surface.SurfaceDrawable
 import io.legado.app.lib.theme.surface.SurfaceStyle
+import java.lang.ref.WeakReference
 import java.util.WeakHashMap
 
 private const val SURFACE_STABLE_FRAME_DELAY_MS = 16L
@@ -73,6 +74,9 @@ object SurfaceBackdrop {
 
     private val states = WeakHashMap<View, State>()
     private val mainHandler = Handler(Looper.getMainLooper())
+    // 独立窗口表面根视图登记（弱引用）：纸模糊离屏采集时，把下层弹窗/弹出菜单的
+    // 窗口按登记（显示）顺序叠画到宿主内容之上，实现"弹窗叠弹窗时下层弹窗本体参与模糊"。
+    private val overlayRoots = ArrayList<WeakReference<View>>()
 
     fun installStatic(target: View, style: SurfaceStyle) {
         val state = stateFor(target)
@@ -232,6 +236,7 @@ object SurfaceBackdrop {
     }
 
     private fun stateFor(target: View): State {
+        registerOverlayRoot(target.rootView)
         return states[target] ?: State(target.background).also { state ->
             state.attachListener = object : View.OnAttachStateChangeListener {
                 override fun onViewAttachedToWindow(v: View) = Unit
@@ -325,7 +330,7 @@ object SurfaceBackdrop {
             return
         }
         if (AppConfig.blurExcludeText) {
-            captureTextless(hostDecor, sourceRect, radius, onFinished)
+            captureTextless(hostDecor, target, sourceRect, radius, onFinished)
             return
         }
         val sourceBitmap = runCatching {
@@ -426,10 +431,12 @@ object SurfaceBackdrop {
 
     /**
      * 开关开启时的离屏无文字采集：直接按模糊采样率渲染宿主窗口（不含文字），
-     * 只缩一次，模糊后放大回目标尺寸。主线程同步完成，不影响真实帧。
+     * 并叠画已登记的下层弹窗窗口，只缩一次，模糊后放大回目标尺寸。
+     * 主线程同步完成，不影响真实帧。
      */
     private fun captureTextless(
         hostDecor: View,
+        target: View,
         sourceRect: Rect,
         radius: Int,
         onFinished: (Bitmap?) -> Unit
@@ -442,12 +449,15 @@ object SurfaceBackdrop {
             onFinished(null)
             return
         }
+        val hostOrigin = IntArray(2)
+        hostDecor.getLocationOnScreen(hostOrigin)
         val blurred = runCatching {
             val canvas = Canvas(sampled)
             val scale = 1f / SURFACE_BLUR_SAMPLE
             canvas.scale(scale, scale)
             canvas.translate(-sourceRect.left.toFloat(), -sourceRect.top.toFloat())
             drawTextlessWindow(hostDecor, canvas)
+            drawOverlayRoots(hostDecor, target, hostOrigin, canvas)
             blurSampled(sampled, radius, sourceRect.width(), sourceRect.height())
         }.getOrNull()
         sampled.recycleSafely()
@@ -482,6 +492,49 @@ object SurfaceBackdrop {
             for (index in 0 until view.childCount) {
                 collectTextViews(view.getChildAt(index), out)
             }
+        }
+    }
+
+    private fun registerOverlayRoot(root: View) {
+        synchronized(overlayRoots) {
+            overlayRoots.removeAll { it.get() == null }
+            if (overlayRoots.none { it.get() === root }) {
+                overlayRoots.add(WeakReference(root))
+            }
+        }
+    }
+
+    /**
+     * 叠画独立窗口表面（弹窗/弹出菜单的本体）：上层表面采集时，下层表面按登记顺序
+     * 叠在宿主内容之上参与模糊；各自隐藏文字，跳过请求方自身所在的窗口。
+     */
+    private fun drawOverlayRoots(
+        hostDecor: View,
+        target: View,
+        hostOrigin: IntArray,
+        canvas: Canvas
+    ) {
+        val roots = synchronized(overlayRoots) {
+            overlayRoots.removeAll { ref ->
+                val view = ref.get()
+                view == null || !view.isAttachedToWindow
+            }
+            overlayRoots.mapNotNull { it.get() }
+        }
+        roots.forEach { root ->
+            if (root === hostDecor || root === target.rootView) return@forEach
+            if (root.width <= 0 || root.height <= 0 || root.visibility != View.VISIBLE) {
+                return@forEach
+            }
+            val location = IntArray(2)
+            root.getLocationOnScreen(location)
+            canvas.save()
+            canvas.translate(
+                (location[0] - hostOrigin[0]).toFloat(),
+                (location[1] - hostOrigin[1]).toFloat()
+            )
+            drawTextlessWindow(root, canvas)
+            canvas.restore()
         }
     }
 
