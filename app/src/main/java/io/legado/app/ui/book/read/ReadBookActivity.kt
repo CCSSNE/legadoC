@@ -75,6 +75,8 @@ import io.legado.app.help.illustration.AudioBlockPlayer
 import io.legado.app.help.illustration.IllustrationHelp
 import io.legado.app.help.illustration.imageSrcsFromJson
 import io.legado.app.help.source.getSourceType
+import io.legado.app.help.review.SyntheticParaContent
+import io.legado.app.help.review.SyntheticReviewEntry
 import io.legado.app.help.review.reviewoutbox.ReviewOutboxDispatcher
 import io.legado.app.help.review.reviewoutbox.ReviewOutboxStore
 import io.legado.app.help.storage.Backup
@@ -280,6 +282,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     private var aiChapterPurifyRefreshChapterIndex: Int? = null
     private var illustrationAnchor: IllustrationAnchor? = null
     private var selectedReviewButton: ReviewButton? = null
+    private var selectedSyntheticPara: SyntheticParaContent? = null
     val textActionMenu: TextActionMenu by lazy {
         TextActionMenu(this, this)
     }
@@ -1268,7 +1271,9 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun showTextActionMenu() {
         illustrationAnchor = computeIllustrationAnchor()
         textActionMenu.illustrationEnabled = illustrationAnchor != null
-        selectedReviewButton = findSelectedHiddenReviewButton()
+        val reviewEntry = findSelectedReviewEntry()
+        selectedReviewButton = reviewEntry?.button
+        selectedSyntheticPara = reviewEntry?.syntheticPara
         textActionMenu.reviewEnabled = selectedReviewButton != null
         val navigationBarHeight =
             if (!ReadBookConfig.hideNavigationBar && navigationBarGravity == Gravity.BOTTOM)
@@ -1298,10 +1303,17 @@ class ReadBookActivity : BaseReadBookActivity(),
         )
     }
 
+    private data class SelectedReviewEntry(
+        val button: ReviewButton,
+        val syntheticPara: SyntheticParaContent?,
+    )
+
     /**
      * 段评菜单只对应选区起始段落；跨段选区沿用配图入口的“取第一段”语义。
+     * 优先用书源注入的评论泡（含零评论收纳泡）；完全没有泡的段落由
+     * [SyntheticReviewEntry.resolve] 借同章锚点泡合成入口，走同一条 click 链路。
      */
-    private fun findSelectedHiddenReviewButton(): ReviewButton? {
+    private fun findSelectedReviewEntry(): SelectedReviewEntry? {
         val chapter = ReadBook.curTextChapter ?: return null
         val pageView = binding.readView.curPage
         val startPos = pageView.selectStartPos
@@ -1312,10 +1324,30 @@ class ReadBookActivity : BaseReadBookActivity(),
         val startParaNum = startPage.getLine(startPos.lineIndex).paragraphNum
         val endParaNum = endPage.getLine(endPos.lineIndex).paragraphNum
         if (startParaNum <= 0 || endParaNum <= 0) return null
-        return chapter.paragraphs
-            .getOrNull(min(startParaNum, endParaNum) - 1)
+        val targetNum = min(startParaNum, endParaNum)
+        chapter.paragraphs
+            .getOrNull(targetNum - 1)
             ?.hiddenReviewButtons
             ?.firstOrNull { button -> BookImgClick.hasAction(button.src, button.click) }
+            ?.let { button ->
+                // 收纳泡自带原始 src（快照即本段），同样回填段落原文，
+                // 修复零评论段发评时页面用评论内容充当 para_content 的错文
+                val syntheticPara = SyntheticReviewEntry.parsePara(button.click)?.let { para ->
+                    SyntheticReviewEntry.paragraphContent(chapter, targetNum)?.let { content ->
+                        SyntheticParaContent(para, content)
+                    }
+                }
+                return SelectedReviewEntry(button, syntheticPara)
+            }
+        val synthesized = SyntheticReviewEntry.resolve(chapter, targetNum) ?: return null
+        return SelectedReviewEntry(
+            synthesized.button,
+            SyntheticParaContent(
+                synthesized.para,
+                synthesized.paraContent,
+                snapshotFallbackAllowed = false,
+            )
+        )
     }
 
     /**
@@ -1389,7 +1421,14 @@ class ReadBookActivity : BaseReadBookActivity(),
                     if (button.click.isNullOrBlank()) {
                         oldClickImg(button.src)
                     } else {
-                        clickImg(button.click, button.src)
+                        BookImgClick.clickImg(
+                            this,
+                            lifecycleScope,
+                            button.click,
+                            button.src,
+                            ReadBook.curTextChapter?.chapter,
+                            selectedSyntheticPara
+                        )
                     }
                 }
                 return true

@@ -18,6 +18,7 @@ import io.legado.app.help.review.ReviewSnapshot
 import io.legado.app.help.review.ReviewSnapshotCapture
 import io.legado.app.help.review.ReviewSnapshotManager
 import io.legado.app.help.review.ReviewSnapshotStore
+import io.legado.app.help.review.SyntheticParaContent
 import io.legado.app.help.review.reviewoutbox.ReviewOutboxContext
 import io.legado.app.help.source.SourceVerificationHelp
 import io.legado.app.model.ReadBook
@@ -209,20 +210,27 @@ object BookImgClick {
         click: String,
         src: String,
         hostChapter: BookChapter? = null,
+        syntheticPara: SyntheticParaContent? = null,
     ) {
+        // 快照兜底安全性：真实泡/自带原始 src 的收纳泡 = 本段快照，可用；
+        // 合成入口借用锚点泡 src，其快照属于其他段落，必须跳过
+        val allowSnapshot = syntheticPara == null || syntheticPara.snapshotFallbackAllowed
         when (openMode()) {
             AppConfig.ReviewOpenMode.SNAPSHOT_ONLY -> {
                 // 仅使用快照：绝不执行 click/js，也绝不允许快照内残留资源联网
-                if (!openSnapshotIfCached(
+                if (allowSnapshot &&
+                    openSnapshotIfCached(
                         context, src, hostChapter,
                         refreshToNetwork = false, offlineOnly = true
                     )
                 ) {
-                    context.toastOnUi(R.string.review_no_cached_snapshot)
+                    return
                 }
+                context.toastOnUi(R.string.review_no_cached_snapshot)
             }
             AppConfig.ReviewOpenMode.SNAPSHOT_FIRST -> {
-                if (openSnapshotIfCached(
+                if (allowSnapshot &&
+                    openSnapshotIfCached(
                         context, src, hostChapter,
                         refreshToNetwork = true, offlineOnly = false
                     )
@@ -230,9 +238,9 @@ object BookImgClick {
                     return
                 }
                 // 无快照 → 直接按正常网络评论打开
-                openNetwork(context, scope, click, null, null, src, hostChapter)
+                openNetwork(context, scope, click, null, null, src, hostChapter, syntheticPara)
             }
-            else -> openNetwork(context, scope, click, null, null, src, hostChapter)
+            else -> openNetwork(context, scope, click, null, null, src, hostChapter, syntheticPara)
         }
     }
 
@@ -312,14 +320,21 @@ object BookImgClick {
         js: String?,
         urlNoOption: String?,
         src: String,
-        hostChapter: BookChapter?
+        hostChapter: BookChapter?,
+        syntheticPara: SyntheticParaContent? = null,
     ) {
         Coroutine.async(scope, Dispatchers.IO) {
             val chapter = currentChapter(hostChapter)
                 ?: error("无法定位当前章节，无法执行评论网络打开")
             // 快照必须在任何网络执行条件、click/js 解析之前读出并持有。
+            // 合成入口（无泡段落）的 src 是锚点泡的 src，其快照属于别的段落，
+            // 不得作为本段落的兜底展示，按 snapshotFallbackAllowed 禁用。
             val resolvedContext = reviewContext(chapter, src)
-            val fallback = resolvedContext?.let { cachedSnapshot(it, src) }
+            val fallback = if (syntheticPara == null || syntheticPara.snapshotFallbackAllowed) {
+                resolvedContext?.let { cachedSnapshot(it, src) }
+            } else {
+                null
+            }
             try {
                 val execution = resolvedContext
                     ?: error("无法解析评论所属书籍或章节，无法执行评论网络打开")
@@ -337,6 +352,7 @@ object BookImgClick {
                             execution.book,
                             execution.chapter,
                             src,
+                            syntheticPara,
                         )
                         executeClick(
                             execution.book, execSource, execution.chapter, click, src
@@ -489,6 +505,7 @@ object BookImgClick {
         private val reviewResourceBook: Book,
         private val chapter: BookChapter?,
         private val buttonSrc: String?,
+        private val syntheticPara: SyntheticParaContent? = null,
     ) : SourceLoginJsExtensions(context, source, bookType) {
 
         var browserRequested = false
@@ -566,6 +583,7 @@ object BookImgClick {
                         networkRefresher = null,
                         fallbackHtml = fallbackHtml,
                         reviewResourceBook = reviewResourceBook,
+                        syntheticParaContent = syntheticPara,
                         outboxContext = ReviewOutboxContext(
                             bookUrl = reviewResourceBook.bookUrl,
                             bookName = reviewResourceBook.name,

@@ -139,6 +139,9 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
     /** 离线评论入队上下文：非空时页面加载完成后注入离线评论接管脚本 */
     private var outboxContext: io.legado.app.help.review.reviewoutbox.ReviewOutboxContext? = null
 
+    /** 合成段评入口（无泡段落）的目标段落：页面加载完成后注入段落原文回填脚本 */
+    private var syntheticParaContent: io.legado.app.help.review.SyntheticParaContent? = null
+
     private val mHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
     constructor(
@@ -153,6 +156,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         offlineOnly: Boolean = false,
         reviewResourceBook: Book? = null,
         outboxContext: io.legado.app.help.review.reviewoutbox.ReviewOutboxContext? = null,
+        syntheticParaContent: io.legado.app.help.review.SyntheticParaContent? = null,
     ) : this() {
         this.networkRefresher = networkRefresher
         this.fallbackHtml = fallbackHtml
@@ -161,6 +165,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         this.offlineMode = offlineOnly
         this.reviewResourceBook = reviewResourceBook
         this.outboxContext = outboxContext
+        this.syntheticParaContent = syntheticParaContent
         arguments = Bundle().apply {
             putString("sourceKey", sourceKey)
             putInt("bookType", bookType)
@@ -173,6 +178,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
             putString("config", config)
             putParcelable(ARG_REVIEW_RESOURCE_BOOK, reviewResourceBook)
             outboxContext?.putTo(this)
+            syntheticParaContent?.putTo(this)
         }
     }
 
@@ -227,6 +233,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
             arguments?.getParcelable(ARG_REVIEW_RESOURCE_BOOK)
         }
         outboxContext = io.legado.app.help.review.reviewoutbox.ReviewOutboxContext.fromBundle(arguments)
+        syntheticParaContent = io.legado.app.help.review.SyntheticParaContent.fromBundle(arguments)
     }
 
     override fun onAttach(context: Context) {
@@ -1091,6 +1098,15 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
             super.onPageFinished(view, url)
             // 页面加载成功：取消超时定时任务
             cancelFallbackTimeout()
+            // 合成段评入口（无泡段落）：注入段落原文回填脚本，评论弹窗经
+            // ?api=1 拉取到空原文时回填目标段落真实文本，保证发评引用正确；
+            // 注入幂等，发生在用户打开弹窗之前，时序安全
+            syntheticParaContent?.let { entry ->
+                view?.evaluateJavascript(
+                    io.legado.app.help.review.ReviewParaContentInjector.buildJs(entry),
+                    null
+                )
+            }
             // 离线评论模式：页面加载完成后注入接管脚本（快照=全接管，在线=拦截发评请求），
             // 快照优先的在线覆盖页同样生效；注入幂等，脚本内部自带安装标记
             val context = outboxContext
