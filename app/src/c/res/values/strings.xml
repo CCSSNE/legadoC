@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">legado C</string>
-    <string name="app_name_sigma">legado C</string>
-    <string name="receiving_shared_label">legado C search</string>
+    <string name="app_name">阅读C-自用</string>
+    <string name="app_name_sigma">阅读C-自用</string>
+    <string name="receiving_shared_label">阅读C-自用搜索</string>
 </resources>
