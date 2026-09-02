@@ -118,8 +118,10 @@ abstract class HorizontalPageDelegate(readView: ReadView) : PageDelegate(readVie
             scroller.abortAnimation()
             if (!isCancel) {
                 readView.fillPage(mDirection)
-                readView.invalidate()
             }
+            //无论中断的是完成动画还是回拉动画，都必须重绘：
+            //回拉动画中断时若不重绘，屏幕会停留在中断瞬间的半卷页帧上（翻页卡在中间）
+            readView.invalidate()
         } else {
             readView.isAbortAnim = false
         }
