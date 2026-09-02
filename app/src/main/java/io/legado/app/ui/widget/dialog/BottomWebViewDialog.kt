@@ -1129,7 +1129,8 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
 
         /**
          * 读取本章章评、本书书评补充快照并注入当前快照页：
-         * 章评/书评 tab 从死链变成离线可切换的 section，楼中楼可离线收起/展开。
+         * 章评/书评 tab 从死链变成离线可切换的 section，楼中楼默认收起、
+         * 点击 toggle 离线展开/收起。
          * 异步读取数据库与磁盘，evaluateJavascript 回到主线程执行。
          */
         private fun injectReviewSupplements(view: WebView) {
