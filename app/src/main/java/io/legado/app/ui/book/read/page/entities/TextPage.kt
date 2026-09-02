@@ -37,6 +37,7 @@ import io.legado.app.ui.book.read.page.entities.TextChapter.Companion.emptyTextC
 import io.legado.app.ui.book.read.page.entities.column.TextBaseColumn
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import io.legado.app.ui.book.read.page.provider.ChapterProvider
+import io.legado.app.utils.BackdropRenderState
 import io.legado.app.utils.canvasrecorder.CanvasRecorderFactory
 import io.legado.app.utils.canvasrecorder.recordIfNeeded
 import io.legado.app.utils.dpToPx
@@ -488,7 +489,7 @@ data class TextPage(
     }
 
     fun draw(view: ContentTextView, canvas: Canvas, relativeOffset: Float) {
-        if (AppConfig.optimizeRender) {
+        if (AppConfig.optimizeRender && !BackdropRenderState.textSuppressed) {
             render(view)
             canvas.withTranslation(0f, relativeOffset) {
                 if (hasEpubBackground()) {
@@ -497,6 +498,7 @@ data class TextPage(
                 canvasRecorder.draw(this)
             }
         } else {
+            // 无文字采集期间不走录制缓存，避免把空内容录进缓存
             canvas.withTranslation(0f, relativeOffset) {
                 drawPage(view, this)
             }
@@ -830,16 +832,17 @@ data class TextPage(
         if (epubNativeCommands.isEmpty()) return
         val paint = PaintPool.obtain()
         val textPaint = TextPaint(ChapterProvider.contentPaint)
+        val textless = BackdropRenderState.textSuppressed
         canvas.withTranslation(epubDrawOffsetX, epubDrawOffsetY) {
             epubNativeCommands.forEach { command ->
                 when (command) {
                     is EpubBlockBox -> drawEpubNativeBlock(this, paint, command)
-                    is EpubBullet -> drawEpubNativeBullet(this, textPaint, command)
+                    is EpubBullet -> if (!textless) drawEpubNativeBullet(this, textPaint, command)
                     is EpubImageBox -> drawEpubNativeImage(view, this, command)
                     is EpubLinkArea -> Unit
                     is EpubPageColor -> Unit
                     is EpubRuleLine -> drawEpubNativeRuleLine(this, paint, command)
-                    is EpubTextRun -> drawEpubNativeText(this, textPaint, command)
+                    is EpubTextRun -> if (!textless) drawEpubNativeText(this, textPaint, command)
                 }
             }
         }

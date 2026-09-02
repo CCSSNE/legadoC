@@ -277,6 +277,7 @@ object PreferKey {
     const val bookshelfCoverAlpha = "bookshelfCoverAlpha"
     const val dialogAlpha = "dialogAlpha"
     const val dialogBlur = "dialogBlur"
+    const val blurExcludeText = "blurExcludeText"
     const val uiCornerSearchFollow = "uiCornerSearchFollow"
     const val uiCornerReplyFollow = "uiCornerReplyFollow"
     const val transparentStatusBar = "transparentStatusBar"

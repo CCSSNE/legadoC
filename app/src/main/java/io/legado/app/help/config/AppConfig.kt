@@ -1361,6 +1361,12 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefInt(PreferKey.dialogBlur, value.coerceIn(0, 100))
         }
 
+    var blurExcludeText: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.blurExcludeText)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.blurExcludeText, value)
+        }
+
     @Deprecated("Use uiLayoutAlpha")
     var uiCornerEffectMode: String
         get() = "solid"

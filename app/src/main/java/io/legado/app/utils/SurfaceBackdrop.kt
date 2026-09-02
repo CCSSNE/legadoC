@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Rect
 import android.graphics.drawable.Drawable
@@ -12,7 +13,10 @@ import android.os.Handler
 import android.os.Looper
 import android.view.PixelCopy
 import android.view.View
+import android.view.ViewGroup
 import android.view.Window
+import android.widget.TextView
+import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.surface.SurfaceDrawable
 import io.legado.app.lib.theme.surface.SurfaceStyle
 import java.util.WeakHashMap
@@ -22,6 +26,24 @@ private const val SURFACE_STABLE_FRAME_LIMIT = 24
 private const val SURFACE_PIXEL_COPY_RETRIES = 2
 private const val SURFACE_PIXEL_COPY_TIMEOUT_MS = 800L
 private const val SURFACE_BLUR_SAMPLE = 4
+
+/**
+ * 模糊背景离屏采集的渲染状态：开启"模糊背景不含文字"时，采集窗口内容期间置位，
+ * 阅读页等自绘文字路径据此跳过文字。只在同一主线程同步块内生效，真实帧不受影响。
+ */
+object BackdropRenderState {
+    var textSuppressed: Boolean = false
+        private set
+
+    fun <T> withTextSuppressed(block: () -> T): T {
+        textSuppressed = true
+        try {
+            return block()
+        } finally {
+            textSuppressed = false
+        }
+    }
+}
 
 /** Resolves the host Activity window without inspecting popup internals. */
 fun Context.findHostWindow(): Window? {
@@ -302,6 +324,10 @@ object SurfaceBackdrop {
             onFinished(null)
             return
         }
+        if (AppConfig.blurExcludeText) {
+            captureTextless(hostDecor, sourceRect, radius, onFinished)
+            return
+        }
         val sourceBitmap = runCatching {
             Bitmap.createBitmap(sourceRect.width(), sourceRect.height(), Bitmap.Config.ARGB_8888)
         }.getOrNull() ?: run {
@@ -398,13 +424,83 @@ object SurfaceBackdrop {
         }.getOrNull()
     }
 
+    /**
+     * 开关开启时的离屏无文字采集：直接按模糊采样率渲染宿主窗口（不含文字），
+     * 只缩一次，模糊后放大回目标尺寸。主线程同步完成，不影响真实帧。
+     */
+    private fun captureTextless(
+        hostDecor: View,
+        sourceRect: Rect,
+        radius: Int,
+        onFinished: (Bitmap?) -> Unit
+    ) {
+        val sampleWidth = (sourceRect.width() / SURFACE_BLUR_SAMPLE).coerceAtLeast(1)
+        val sampleHeight = (sourceRect.height() / SURFACE_BLUR_SAMPLE).coerceAtLeast(1)
+        val sampled = runCatching {
+            Bitmap.createBitmap(sampleWidth, sampleHeight, Bitmap.Config.ARGB_8888)
+        }.getOrNull() ?: run {
+            onFinished(null)
+            return
+        }
+        val blurred = runCatching {
+            val canvas = Canvas(sampled)
+            val scale = 1f / SURFACE_BLUR_SAMPLE
+            canvas.scale(scale, scale)
+            canvas.translate(-sourceRect.left.toFloat(), -sourceRect.top.toFloat())
+            drawTextlessWindow(hostDecor, canvas)
+            blurSampled(sampled, radius, sourceRect.width(), sourceRect.height())
+        }.getOrNull()
+        sampled.recycleSafely()
+        onFinished(blurred)
+    }
+
+    /**
+     * 离屏渲染宿主窗口且不包含文字：临时隐藏窗口内全部 TextView，
+     * 并让阅读页等自绘文字路径经 [BackdropRenderState] 跳过文字绘制。
+     * 全程同步执行并在返回前恢复，真实帧不受影响。
+     */
+    private fun drawTextlessWindow(decor: View, canvas: Canvas) {
+        val hidden = ArrayList<Pair<TextView, Int>>()
+        collectTextViews(decor, hidden)
+        hidden.forEach { (view, _) -> view.visibility = View.INVISIBLE }
+        try {
+            BackdropRenderState.withTextSuppressed {
+                decor.draw(canvas)
+            }
+        } finally {
+            hidden.forEach { (view, visibility) -> view.visibility = visibility }
+        }
+    }
+
+    private fun collectTextViews(view: View, out: ArrayList<Pair<TextView, Int>>) {
+        if (view.visibility != View.VISIBLE) return
+        if (view is TextView) {
+            out.add(view to view.visibility)
+            return
+        }
+        if (view is ViewGroup) {
+            for (index in 0 until view.childCount) {
+                collectTextViews(view.getChildAt(index), out)
+            }
+        }
+    }
+
     private fun blurBitmap(source: Bitmap, radius: Int): Bitmap {
         val width = (source.width / SURFACE_BLUR_SAMPLE).coerceAtLeast(1)
         val height = (source.height / SURFACE_BLUR_SAMPLE).coerceAtLeast(1)
         val small = Bitmap.createScaledBitmap(source, width, height, true)
+        val result = blurSampled(small, radius, source.width, source.height)
+        if (small !== source) small.recycleSafely()
+        return result
+    }
+
+    /** 对已缩至采样分辨率的位图做盒模糊，再放大回目标尺寸（整条链路只缩一次）。 */
+    private fun blurSampled(source: Bitmap, radius: Int, outWidth: Int, outHeight: Int): Bitmap {
+        val width = source.width
+        val height = source.height
         val pixels = IntArray(width * height)
         val buffer = IntArray(pixels.size)
-        small.getPixels(pixels, 0, width, 0, 0, width, height)
+        source.getPixels(pixels, 0, width, 0, 0, width, height)
         val blurRadius = (radius / SURFACE_BLUR_SAMPLE).coerceIn(1, 24)
         repeat(3) {
             blurHorizontal(pixels, buffer, width, height, blurRadius)
@@ -413,8 +509,7 @@ object SurfaceBackdrop {
         val blurredSmall = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also {
             it.setPixels(pixels, 0, width, 0, 0, width, height)
         }
-        if (small !== source) small.recycleSafely()
-        val result = Bitmap.createScaledBitmap(blurredSmall, source.width, source.height, true)
+        val result = Bitmap.createScaledBitmap(blurredSmall, outWidth, outHeight, true)
         if (result !== blurredSmall) blurredSmall.recycleSafely()
         return result
     }
