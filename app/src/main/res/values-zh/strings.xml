@@ -1531,6 +1531,8 @@
     <string name="export_bookmarks">导出书签</string>
     <string name="sync_cache_review">缓存评论</string>
     <string name="sync_cache_review_summary">正文缓存完成后，在后台抓取真实评论页快照；评论失败不影响正文</string>
+    <string name="cache_review_replies">缓存楼中楼</string>
+    <string name="cache_review_replies_summary">快照包含每条评论的回复（楼中楼）。章评按章、书评整本各只缓存一份，不受此开关影响</string>
     <string name="auto_download_review">刷新时下载章节评论</string>
     <string name="auto_download_review_summary">当前章及预下载范围的正文全部完成后，执行与“下载”按钮相同的正文→评论下载任务</string>
     <string name="cache_review_avatars">缓存评论头像</string>

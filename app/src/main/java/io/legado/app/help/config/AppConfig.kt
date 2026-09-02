@@ -1091,6 +1091,17 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefBoolean(PreferKey.syncCacheReview, value)
         }
 
+    /**
+     * 缓存评论快照时保存楼中楼/回复内容。
+     * 关闭后所有评论快照（段评、章评、书评）都不包含回复层；
+     * 章评按章、书评整本各只缓存一份，不受此开关影响。
+     */
+    var cacheReviewReplies: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.cacheReviewReplies, true)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.cacheReviewReplies, value)
+        }
+
     /** 阅读或书架刷新时，按正文预下载窗口自动执行正文→评论下载任务。 */
     var autoDownloadReview: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.autoDownloadReview, false)

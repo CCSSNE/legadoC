@@ -372,6 +372,13 @@
         android:title="@string/sync_cache_review" />
 
     <io.legado.app.lib.prefs.SwitchPreference
+        android:defaultValue="true"
+        android:dependency="syncCacheReview"
+        android:key="cacheReviewReplies"
+        android:summary="@string/cache_review_replies_summary"
+        android:title="@string/cache_review_replies" />
+
+    <io.legado.app.lib.prefs.SwitchPreference
         android:defaultValue="false"
         android:dependency="syncCacheReview"
         android:key="autoDownloadReview"
