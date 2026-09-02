@@ -1362,7 +1362,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         }
 
     var blurExcludeText: Boolean
-        get() = appCtx.getPrefBoolean(PreferKey.blurExcludeText)
+        get() = appCtx.getPrefBoolean(PreferKey.blurExcludeText, true)
         set(value) {
             appCtx.putPrefBoolean(PreferKey.blurExcludeText, value)
         }

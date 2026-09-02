@@ -868,9 +868,11 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         drawScrollFollowBackground(canvas)
         drawPaperEffect(canvas)
         check(!visibleRect.isEmpty) { "visibleRect 为空" }
-        // 整页书签标签先于正文裁剪绘制：标签要从页面右边缘延伸出来，
-        // 若受正文 clipRect 限制，伸出正文的部分会被裁掉（常驻标签只剩一半）
-        drawPageBookmarkTabs(canvas)
+        if (!BackdropRenderState.textSuppressed) {
+            // 整页书签标签先于正文裁剪绘制：标签要从页面右边缘延伸出来，
+            // 若受正文 clipRect 限制，伸出正文的部分会被裁掉（常驻标签只剩一半）
+            drawPageBookmarkTabs(canvas)
+        }
         if (!textPage.hasEpubBackground()) {
             canvas.clipRect(visibleRect)
         }

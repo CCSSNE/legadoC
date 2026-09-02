@@ -41,7 +41,7 @@
         app:iconSpaceReserved="false" />
 
     <io.legado.app.lib.prefs.SwitchPreference
-        android:defaultValue="false"
+        android:defaultValue="true"
         android:key="blurExcludeText"
         android:summary="@string/blur_exclude_text_summary"
         android:title="@string/blur_exclude_text"

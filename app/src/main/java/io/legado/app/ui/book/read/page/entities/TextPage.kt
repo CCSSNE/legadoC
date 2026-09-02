@@ -522,6 +522,10 @@ data class TextPage(
 
     private fun drawPage(view: ContentTextView, canvas: Canvas) {
         drawEpubBackground(view, canvas)
+        if (BackdropRenderState.textSuppressed) {
+            // 纸模糊背景：只取页面背景（纸面），不渲染纸上内容
+            return
+        }
         drawPageContent(view, canvas)
     }
 
@@ -832,17 +836,16 @@ data class TextPage(
         if (epubNativeCommands.isEmpty()) return
         val paint = PaintPool.obtain()
         val textPaint = TextPaint(ChapterProvider.contentPaint)
-        val textless = BackdropRenderState.textSuppressed
         canvas.withTranslation(epubDrawOffsetX, epubDrawOffsetY) {
             epubNativeCommands.forEach { command ->
                 when (command) {
                     is EpubBlockBox -> drawEpubNativeBlock(this, paint, command)
-                    is EpubBullet -> if (!textless) drawEpubNativeBullet(this, textPaint, command)
+                    is EpubBullet -> drawEpubNativeBullet(this, textPaint, command)
                     is EpubImageBox -> drawEpubNativeImage(view, this, command)
                     is EpubLinkArea -> Unit
                     is EpubPageColor -> Unit
                     is EpubRuleLine -> drawEpubNativeRuleLine(this, paint, command)
-                    is EpubTextRun -> if (!textless) drawEpubNativeText(this, textPaint, command)
+                    is EpubTextRun -> drawEpubNativeText(this, textPaint, command)
                 }
             }
         }

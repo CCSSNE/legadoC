@@ -1036,8 +1036,8 @@
     <string name="dialog_alpha_value">%d%%</string>
     <string name="dialog_blur">弹窗模糊度</string>
     <string name="dialog_blur_value">%d%%</string>
-    <string name="blur_exclude_text">模糊背景不含文字</string>
-    <string name="blur_exclude_text_summary">弹窗与菜单的模糊背景不再包含界面文字，只保留背景与图片</string>
+    <string name="blur_exclude_text">纸模糊背景</string>
+    <string name="blur_exclude_text_summary">弹窗与菜单的模糊背景只取纸面背景，文字与图片等内容不参与模糊</string>
     <string name="ui_corner_search_follow">搜索栏跟随圆角</string>
     <string name="ui_corner_search_follow_summary">允许搜索栏使用全局圆角倍率</string>
     <string name="move_search_to_bookshelf">搜索入口移到书架</string>

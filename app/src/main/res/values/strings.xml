@@ -1280,8 +1280,8 @@
     <string name="dialog_alpha_value">%d%%</string>
     <string name="dialog_blur">Dialog blur</string>
     <string name="dialog_blur_value">%d%%</string>
-    <string name="blur_exclude_text">Blur without text</string>
-    <string name="blur_exclude_text_summary">Blur backdrops of dialogs and menus exclude on-screen text; backgrounds and images are kept</string>
+    <string name="blur_exclude_text">Paper blur backdrop</string>
+    <string name="blur_exclude_text_summary">Blur backdrops of dialogs and menus use only the page paper background; text and images are not rendered into the blur</string>
     <string name="ui_corner_search_follow">Search bars follow corner scale</string>
     <string name="ui_corner_search_follow_summary">Allow search bars to use the global corner radius scale</string>
     <string name="move_search_to_bookshelf">Move search to bookshelf</string>

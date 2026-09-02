@@ -17,12 +17,8 @@ import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.book.read.page.ContentTextView
 import io.legado.app.ui.book.read.page.entities.TextPage.Companion.emptyTextPage
 import io.legado.app.ui.book.read.page.entities.column.BaseColumn
-import io.legado.app.ui.book.read.page.entities.column.ButtonColumn
-import io.legado.app.ui.book.read.page.entities.column.ReviewColumn
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
-import io.legado.app.ui.book.read.page.entities.column.TextHtmlColumn
 import io.legado.app.ui.book.read.page.provider.ChapterProvider
-import io.legado.app.utils.BackdropRenderState
 import io.legado.app.utils.canvasrecorder.CanvasRecorderFactory
 import io.legado.app.utils.canvasrecorder.recordIfNeededThenDraw
 import io.legado.app.utils.dpToPx
@@ -170,26 +166,12 @@ data class TextLine(
     }
 
     fun draw(view: ContentTextView, canvas: Canvas) {
-        if (BackdropRenderState.textSuppressed) {
-            // 模糊背景离屏采集：只画图片类内容，不把空内容录进缓存
-            drawTextless(view, canvas)
-            return
-        }
         if (AppConfig.optimizeRender) {
             canvasRecorder.recordIfNeededThenDraw(canvas, view.width, height.toInt()) {
                 drawTextLine(view, this)
             }
         } else {
             drawTextLine(view, canvas)
-        }
-    }
-
-    private fun drawTextless(view: ContentTextView, canvas: Canvas) {
-        for (i in columns.indices) {
-            when (val column = columns[i]) {
-                is TextColumn, is TextHtmlColumn, is ReviewColumn, is ButtonColumn -> Unit
-                else -> column.draw(view, canvas)
-            }
         }
     }
 
