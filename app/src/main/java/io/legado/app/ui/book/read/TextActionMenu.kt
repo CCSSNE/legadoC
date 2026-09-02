@@ -130,9 +130,6 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
                 binding.recyclerView.visible()
             }
         }
-        binding.ivMenuEdit.setOnClickListener {
-            callBack.onMenuConfigRequested()
-        }
         binding.ivMenuMore.setOnClickListener {
             if (binding.recyclerView.isVisible) {
                 binding.ivMenuMore.setImageResource(R.drawable.ic_arrow_back)
@@ -154,6 +151,7 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
             when (item.itemId) {
                 R.id.menu_illustration -> illustrationEnabled
                 R.id.menu_review -> reviewEnabled
+                R.id.menu_edit_config -> true
                 else -> menuItemToActionId(item.itemId)?.let { configuredActionIds.contains(it) } ?: false
             }
         }
