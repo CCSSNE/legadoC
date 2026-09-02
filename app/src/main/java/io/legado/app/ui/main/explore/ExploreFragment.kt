@@ -1,14 +1,29 @@
 package io.legado.app.ui.main.explore
 
 import android.content.Intent
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
+import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
+import android.view.ViewGroup
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
+import android.widget.AutoCompleteTextView
+import android.widget.LinearLayout
 import android.widget.PopupWindow
+import android.widget.TextView
 import android.view.SubMenu
 import android.view.View
 import androidx.appcompat.widget.SearchView
+import androidx.core.content.ContextCompat
+import androidx.core.widget.NestedScrollView
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import androidx.core.os.bundleOf
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
@@ -18,6 +33,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.flexbox.FlexboxLayout
 import com.script.rhino.runScriptWithContext
 import io.legado.app.R
 import io.legado.app.base.VMBaseFragment
@@ -30,15 +46,22 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.data.entities.rule.RowUi
 import io.legado.app.databinding.FragmentExploreBinding
+import io.legado.app.databinding.ItemFindBookBinding
+import io.legado.app.databinding.ItemFilletCompleteTextBinding
+import io.legado.app.databinding.ItemFilletSelectorSingleBinding
+import io.legado.app.databinding.ItemFilletTextBinding
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.source.clearExploreKindsCache
 import io.legado.app.help.source.exploreKinds
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.applyUiTitleTypeface
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.surface.SurfaceStyles
+import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.book.explore.ExploreShowAdapter
 import io.legado.app.ui.book.explore.ExploreShowActivity
@@ -60,6 +83,9 @@ import io.legado.app.utils.dpToPx
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChange
 import io.legado.app.utils.gone
 import io.legado.app.utils.InfoMap
+import io.legado.app.utils.SurfaceBackdrop
+import io.legado.app.utils.applyAdaptiveDim
+import io.legado.app.utils.windowSize
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
@@ -165,6 +191,8 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         const val MENU_DISCOVER_SWITCH_LAYOUT = 2
         const val MENU_DISCOVER_RELOAD_SOURCE = 3
         const val DISCOVER_LAYOUT_COUNT = 3
+        const val DISCOVER_DIALOG_WIDTH_RATIO = 0.90f
+        const val DISCOVER_DIALOG_HEIGHT_RATIO = 0.72f
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
@@ -462,6 +490,10 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         binding.llDiscoverSourceSelect.setOnClickListener {
             showDiscoverSourceMenu()
         }
+        binding.llDiscoverSourceSelect.setOnLongClickListener {
+            showDiscoverKindsDialog()
+            true
+        }
         binding.btnDiscoverSourceSearch.setOnClickListener {
             openDiscoverSearch()
         }
@@ -723,6 +755,463 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         ) {
             selectDiscoverSource(it)
         }
+    }
+
+    private fun showDiscoverKindsDialog() {
+        val context = context ?: return
+        val source = selectedDiscoverSource ?: return
+        var dialog: AlertDialog? = null
+        val screenSize = requireActivity().windowManager.windowSize
+        val dialogWidth = (screenSize.widthPixels * DISCOVER_DIALOG_WIDTH_RATIO).toInt()
+        val dialogHeight = (screenSize.heightPixels * DISCOVER_DIALOG_HEIGHT_RATIO).toInt()
+        val itemBinding = ItemFindBookBinding.inflate(layoutInflater, null, false)
+        val flexbox = itemBinding.flexbox
+        val scrollView = NestedScrollView(context).apply {
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            isFillViewport = true
+            addView(
+                itemBinding.root,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
+        val refreshLayout = SwipeRefreshLayout(context).apply {
+            setColorSchemeColors(accentColor)
+            setOnChildScrollUpCallback { _, _ ->
+                scrollView.canScrollVertically(-1)
+            }
+            setOnRefreshListener {
+                refreshDiscoverKindsDialog(itemBinding, source, dialog, this, clearCache = true)
+            }
+            addView(
+                scrollView,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            )
+        }
+        val dialogContent = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = ViewGroup.LayoutParams(dialogWidth, dialogHeight)
+            SurfaceBackdrop.installStatic(this, SurfaceStyles.dialog(context))
+            setPadding(8.dpToPx(), 8.dpToPx(), 8.dpToPx(), 10.dpToPx())
+            addView(
+                refreshLayout,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    0,
+                    1f
+                )
+            )
+        }
+        itemBinding.apply {
+            root.setPadding(0, 0, 0, 0)
+            root.background = null
+            llTitle.isClickable = false
+            llTitle.background = UiCorner.opaqueRounded(
+                UiCorner.dialogSurfaceColor(
+                    ContextCompat.getColor(context, R.color.background_menu)
+                ),
+                UiCorner.actionRadius(context)
+            )
+            tvName.text = source.bookSourceName
+            ivStatus.gone()
+            flexbox.visible()
+            rotateLoading.visible()
+        }
+        dialog = AlertDialog.Builder(context)
+            .setView(dialogContent)
+            .create()
+        dialog.show()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        dialog.applyAdaptiveDim(dialogContent)
+        dialog.window?.setLayout(dialogWidth, dialogHeight)
+        refreshDiscoverKindsDialog(itemBinding, source, dialog, refreshLayout, clearCache = true)
+    }
+
+    private fun refreshDiscoverKindsDialog(
+        itemBinding: ItemFindBookBinding,
+        source: BookSource,
+        dialog: AlertDialog?,
+        refreshLayout: SwipeRefreshLayout?,
+        clearCache: Boolean
+    ) {
+        itemBinding.rotateLoading.visible()
+        viewLifecycleOwner.lifecycleScope.launch {
+            val result = runCatching {
+                withContext(IO) {
+                    if (clearCache) {
+                        source.clearExploreKindsCache()
+                    }
+                    source.exploreKinds()
+                }
+            }
+            if (!isAdded || dialog?.isShowing != true) return@launch
+            refreshLayout?.isRefreshing = false
+            itemBinding.rotateLoading.gone()
+            result.onSuccess { kinds ->
+                if (kinds.isEmpty()) {
+                    context?.toastOnUi(R.string.explore_empty)
+                    return@onSuccess
+                }
+                renderDiscoverDialogKinds(itemBinding, source, kinds, dialog)
+            }.onFailure {
+                AppLog.put("完整发现刷新失败", it)
+                context?.toastOnUi(it.localizedMessage ?: getString(R.string.unknown_error))
+            }
+        }
+    }
+
+    private fun renderDiscoverDialogKinds(
+        itemBinding: ItemFindBookBinding,
+        source: BookSource,
+        kinds: List<ExploreKind>,
+        dialog: AlertDialog?
+    ) {
+        val flexbox = itemBinding.flexbox
+        val infoMap = getDiscoverInfoMap(source.bookSourceUrl)
+        val java = SourceLoginJsExtensions(
+            activity as? AppCompatActivity,
+            source,
+            callback = object : SourceLoginJsExtensions.Callback {
+                override fun upUiData(data: Map<String, Any?>?) = Unit
+
+                override fun reUiView(deltaUp: Boolean) {
+                    refreshDiscoverKindsDialog(itemBinding, source, dialog, null, clearCache = true)
+                }
+            }
+        )
+        flexbox.removeAllViews()
+        kinds.forEach { kind ->
+            when (kind.type) {
+                ExploreKind.Type.url -> renderDiscoverDialogUrl(flexbox, source, kind, dialog, infoMap)
+                ExploreKind.Type.button -> renderDiscoverDialogButton(flexbox, source, kind, infoMap, java)
+                ExploreKind.Type.toggle -> renderDiscoverDialogToggle(flexbox, source, kind, infoMap, java)
+                ExploreKind.Type.select -> renderDiscoverDialogSelect(flexbox, source, kind, infoMap, java)
+                ExploreKind.Type.text -> renderDiscoverDialogTextInput(flexbox, source, kind, infoMap, java)
+            }
+        }
+    }
+
+    private fun renderDiscoverDialogUrl(
+        flexbox: FlexboxLayout,
+        source: BookSource,
+        kind: ExploreKind,
+        dialog: AlertDialog?,
+        infoMap: InfoMap
+    ) {
+        val tv = createDiscoverDialogTextView(flexbox)
+        flexbox.addView(tv)
+        applyDiscoverKindTextStyle(tv, kind)
+        bindDiscoverDialogKindText(tv, kind, source, infoMap)
+        tv.setOnClickListener {
+            val url = kind.url?.trim()?.takeIf {
+                it.isNotBlank() && !it.equals("null", ignoreCase = true)
+            } ?: return@setOnClickListener
+            dialog?.dismiss()
+            openDiscoverDialogTagInCurrentPage(source, kind, url)
+        }
+    }
+
+    private fun openDiscoverDialogTagInCurrentPage(
+        source: BookSource,
+        kind: ExploreKind,
+        url: String
+    ) {
+        val item = discoverAllTagItems.firstOrNull {
+            !it.isButton && it.kind.url == url
+        } ?: DiscoverTagItem(
+            kind = kind.copy(url = url),
+            text = resolveDiscoverTagText(kind),
+            isButton = false,
+            group = null
+        )
+        val index = discoverTagItems.indexOfFirst { !it.isButton && it.kind.url == url }
+        if (index >= 0) {
+            selectDiscoverTag(index, discoverTagItems[index], selectTab = true)
+        } else {
+            selectDiscoverSettingUrl(item)
+        }
+    }
+
+    private fun renderDiscoverDialogButton(
+        flexbox: FlexboxLayout,
+        source: BookSource,
+        kind: ExploreKind,
+        infoMap: InfoMap,
+        java: SourceLoginJsExtensions
+    ) {
+        val tv = createDiscoverDialogTextView(flexbox)
+        flexbox.addView(tv)
+        applyDiscoverKindTextStyle(tv, kind)
+        bindDiscoverDialogKindText(tv, kind, source, infoMap)
+        tv.setOnClickListener {
+            val action = kind.action?.takeIf { it.isNotBlank() } ?: return@setOnClickListener
+            viewLifecycleOwner.lifecycleScope.launch(IO) {
+                evalDiscoverDialogButtonClick(action, source, infoMap, kind.title, java)
+            }
+        }
+    }
+
+    private fun renderDiscoverDialogToggle(
+        flexbox: FlexboxLayout,
+        source: BookSource,
+        kind: ExploreKind,
+        infoMap: InfoMap,
+        java: SourceLoginJsExtensions
+    ) {
+        val tv = createDiscoverDialogTextView(flexbox)
+        flexbox.addView(tv)
+        var left = true
+        kind.style().apply {
+            when (layout_justifySelf) {
+                "flex_start" -> tv.gravity = Gravity.START
+                "flex_end" -> tv.gravity = Gravity.END
+                "right" -> left = false
+                else -> tv.gravity = Gravity.CENTER
+            }
+            apply(tv)
+        }
+        val chars = kind.chars?.filterNotNull() ?: listOf("chars", "is null")
+        var newName = kind.title
+        var char = infoMap[kind.title] ?: (kind.default ?: chars.firstOrNull().orEmpty()).also {
+            infoMap[kind.title] = it
+        }
+        fun updateText() {
+            tv.text = if (left) char + newName else newName + char
+        }
+        val viewName = kind.viewName
+        if (viewName != null && viewName.length in 3..19 && viewName.first() == '\'' && viewName.last() == '\'') {
+            newName = viewName.substring(1, viewName.length - 1)
+        } else if (!viewName.isNullOrBlank()) {
+            viewLifecycleOwner.lifecycleScope.launch {
+                val name = withContext(IO) { evalDiscoverDialogUiJs(viewName, source, infoMap) }
+                if (!name.isNullOrBlank()) {
+                    newName = name
+                    updateText()
+                }
+            }
+        }
+        updateText()
+        tv.setOnClickListener {
+            val currentIndex = chars.indexOf(char)
+            char = chars.getOrNull(currentIndex + 1) ?: chars.firstOrNull().orEmpty()
+            infoMap[kind.title] = char
+            updateText()
+            val action = kind.action?.takeIf { it.isNotBlank() } ?: return@setOnClickListener
+            viewLifecycleOwner.lifecycleScope.launch(IO) {
+                evalDiscoverDialogButtonClick(action, source, infoMap, kind.title, java)
+            }
+        }
+    }
+
+    private fun renderDiscoverDialogSelect(
+        flexbox: FlexboxLayout,
+        source: BookSource,
+        kind: ExploreKind,
+        infoMap: InfoMap,
+        java: SourceLoginJsExtensions
+    ) {
+        val binding = ItemFilletSelectorSingleBinding.inflate(layoutInflater, flexbox, false)
+        val root = binding.root
+        flexbox.addView(root)
+        kind.style().apply {
+            when (layout_justifySelf) {
+                "flex_start" -> root.gravity = Gravity.START
+                "flex_end" -> root.gravity = Gravity.END
+                else -> root.gravity = Gravity.CENTER
+            }
+            apply(root)
+        }
+        bindDiscoverDialogKindText(binding.spName, kind, source, infoMap)
+        val chars = kind.chars?.filterNotNull() ?: listOf("chars", "is null")
+        val adapter = ArrayAdapter(requireContext(), R.layout.item_text_common, chars)
+        adapter.setDropDownViewResource(R.layout.item_spinner_dropdown)
+        binding.spType.adapter = adapter
+        val char = infoMap[kind.title] ?: (kind.default ?: chars.firstOrNull().orEmpty()).also {
+            infoMap[kind.title] = it
+        }
+        binding.spType.setSelection(chars.indexOf(char).coerceAtLeast(0))
+        binding.spType.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            var initializing = true
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                if (initializing) {
+                    initializing = false
+                    return
+                }
+                if (position !in chars.indices) return
+                infoMap[kind.title] = chars[position]
+                val action = kind.action?.takeIf { it.isNotBlank() } ?: return
+                viewLifecycleOwner.lifecycleScope.launch(IO) {
+                    evalDiscoverDialogButtonClick(action, source, infoMap, kind.title, java)
+                }
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+        }
+    }
+
+    private fun renderDiscoverDialogTextInput(
+        flexbox: FlexboxLayout,
+        source: BookSource,
+        kind: ExploreKind,
+        infoMap: InfoMap,
+        java: SourceLoginJsExtensions
+    ) {
+        val input = ItemFilletCompleteTextBinding.inflate(layoutInflater, flexbox, false).root
+        flexbox.addView(input)
+        kind.style().apply {
+            when (layout_justifySelf) {
+                "center" -> input.gravity = Gravity.CENTER
+                "flex_end" -> input.gravity = Gravity.END
+                else -> input.gravity = Gravity.START
+            }
+            apply(input)
+        }
+        bindDiscoverDialogKindHint(input, kind, source, infoMap)
+        input.setText(infoMap[kind.title])
+        var actionJob: Job? = null
+        input.addTextChangedListener(object : TextWatcher {
+            var content: String? = null
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {
+                content = s?.toString()
+            }
+
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+
+            override fun afterTextChanged(s: Editable?) {
+                val value = s?.toString().orEmpty()
+                infoMap[kind.title] = value
+                val action = kind.action?.takeIf { it.isNotBlank() } ?: return
+                if (value == content) return
+                actionJob?.cancel()
+                actionJob = viewLifecycleOwner.lifecycleScope.launch(IO) {
+                    delay(600)
+                    evalDiscoverDialogButtonClick(action, source, infoMap, kind.title, java)
+                    content = value
+                }
+            }
+        })
+    }
+
+    private fun createDiscoverDialogTextView(flexbox: FlexboxLayout): TextView {
+        return ItemFilletTextBinding.inflate(layoutInflater, flexbox, false).root.apply {
+            typeface = requireContext().uiTypeface()
+        }
+    }
+
+    private fun applyDiscoverKindTextStyle(tv: TextView, kind: ExploreKind) {
+        kind.style().apply {
+            when (layout_justifySelf) {
+                "flex_start" -> tv.gravity = Gravity.START
+                "flex_end" -> tv.gravity = Gravity.END
+                else -> tv.gravity = Gravity.CENTER
+            }
+            apply(tv)
+        }
+    }
+
+    private fun bindDiscoverDialogKindText(
+        tv: TextView,
+        kind: ExploreKind,
+        source: BookSource,
+        infoMap: InfoMap
+    ) {
+        val viewName = kind.viewName
+        if (viewName == null) {
+            tv.text = kind.title
+        } else if (viewName.length in 3..19 && viewName.first() == '\'' && viewName.last() == '\'') {
+            tv.text = viewName.substring(1, viewName.length - 1)
+        } else {
+            tv.text = kind.title
+            viewLifecycleOwner.lifecycleScope.launch {
+                val name = withContext(IO) { evalDiscoverDialogUiJs(viewName, source, infoMap) }
+                tv.text = name ?: "err"
+            }
+        }
+    }
+
+    private fun bindDiscoverDialogKindHint(
+        input: AutoCompleteTextView,
+        kind: ExploreKind,
+        source: BookSource,
+        infoMap: InfoMap
+    ) {
+        val viewName = kind.viewName
+        if (viewName == null) {
+            input.hint = kind.title
+        } else if (viewName.length in 3..19 && viewName.first() == '\'' && viewName.last() == '\'') {
+            input.hint = viewName.substring(1, viewName.length - 1)
+        } else {
+            input.hint = kind.title
+            viewLifecycleOwner.lifecycleScope.launch {
+                val name = withContext(IO) { evalDiscoverDialogUiJs(viewName, source, infoMap) }
+                input.hint = name ?: "err"
+            }
+        }
+    }
+
+    private suspend fun evalDiscoverDialogUiJs(
+        jsStr: String,
+        source: BookSource,
+        infoMap: InfoMap
+    ): String? {
+        return try {
+            runScriptWithContext {
+                source.evalJS(jsStr) {
+                    put("infoMap", infoMap)
+                }.toString()
+            }
+        } catch (e: Throwable) {
+            AppLog.put(source.getTag() + " exploreUi err:" + (e.localizedMessage ?: e.toString()), e)
+            null
+        }
+    }
+
+    private suspend fun evalDiscoverDialogButtonClick(
+        jsStr: String,
+        source: BookSource,
+        infoMap: InfoMap,
+        name: String,
+        java: SourceLoginJsExtensions
+    ) {
+        try {
+            runScriptWithContext {
+                source.evalJS(normalizeDiscoverActionScript(jsStr)) {
+                    put("java", java)
+                    put("infoMap", infoMap)
+                }
+            }
+        } catch (e: Throwable) {
+            AppLog.put("ExploreUI Button $name JavaScript error", e)
+        }
+    }
+
+    private fun normalizeDiscoverActionScript(action: String): String {
+        var value = action.trim()
+        if (value.startsWith("@js:", ignoreCase = true)) {
+            return value.substring(4).trim()
+        }
+        if (value.startsWith("<js>", ignoreCase = true) && value.endsWith("</js>", ignoreCase = true)) {
+            return value.substring(4, value.length - 5).trim()
+        }
+        value = when {
+            value.startsWith("{\\{") && value.endsWith("}}") -> value.substring(3, value.length - 2)
+            value.startsWith("{{") && value.endsWith("}}") -> value.substring(2, value.length - 2)
+            value.startsWith("{") && value.endsWith("}") && isDiscoverExecutableObjectScript(value) ->
+                value.substring(1, value.length - 1)
+            else -> value
+        }
+        return value.trim()
+    }
+
+    private fun isDiscoverExecutableObjectScript(value: String): Boolean {
+        return value.contains("java.", ignoreCase = true) ||
+            value.contains("source.", ignoreCase = true) ||
+            value.contains("infoMap", ignoreCase = true)
     }
 
     private fun selectDiscoverSource(source: BookSourcePart) {
