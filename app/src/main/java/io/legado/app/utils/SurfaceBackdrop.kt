@@ -81,6 +81,7 @@ object SurfaceBackdrop {
 
     private data class LayerSnapshot(
         val owner: View,
+        val surfaces: List<View>,
         val order: Long
     )
 
@@ -348,14 +349,18 @@ object SurfaceBackdrop {
             }
             val layers = presentedLayers.values.mapNotNull { layer ->
                 val owner = layer.owner.get() ?: return@mapNotNull null
+                val surfaces = layer.targets.mapNotNull { it.get() }.filter {
+                    it.isAttachedToWindow && it.visibility == View.VISIBLE
+                }
                 if (
                     layer.hostDecor.get() !== hostDecor ||
                     owner.visibility != View.VISIBLE ||
-                    !owner.isAttachedToWindow
+                    !owner.isAttachedToWindow ||
+                    surfaces.isEmpty()
                 ) {
                     return@mapNotNull null
                 }
-                LayerSnapshot(owner, layer.order)
+                LayerSnapshot(owner, surfaces, layer.order)
             }.sortedBy { it.order }
             CaptureComposition(
                 allLayers = layers,
@@ -572,7 +577,8 @@ object SurfaceBackdrop {
 
     /**
      * 开关开启时的纸面采集：先移除宿主窗口中的全部已登记浮层，再按展示顺序
-     * 只叠画请求层以下的浮层。请求层自身与其上方内容不会进入模糊源。
+     * 只叠画请求层以下的玻璃表面，不重绘这些浮层的控件树。请求层自身与其上方内容
+     * 不会进入模糊源。
      * 主线程同步完成，不影响真实帧。
      */
     private fun capturePaperBackdrop(
@@ -615,7 +621,7 @@ object SurfaceBackdrop {
                     allLayers = composition.allLayers,
                     hostOrigin = hostOrigin,
                     canvas = canvas,
-                    suppressText = true
+                    surfaceOnly = true
                 )
             }
             blurSampled(sampled, radius, sourceRect.width(), sourceRect.height())
@@ -679,8 +685,14 @@ object SurfaceBackdrop {
         allLayers: List<LayerSnapshot>,
         hostOrigin: IntArray,
         canvas: Canvas,
-        suppressText: Boolean
+        surfaceOnly: Boolean
     ) {
+        if (surfaceOnly) {
+            layer.surfaces.forEach { surface ->
+                drawSurfaceBackground(surface, hostOrigin, canvas)
+            }
+            return
+        }
         val owner = layer.owner
         val nestedOwners = allLayers.mapNotNull { other ->
             other.owner.takeIf {
@@ -694,7 +706,28 @@ object SurfaceBackdrop {
             (location[0] - hostOrigin[0]).toFloat(),
             (location[1] - hostOrigin[1]).toFloat()
         )
-        drawWindow(owner, canvas, suppressText, nestedOwners)
+        drawWindow(
+            view = owner,
+            canvas = canvas,
+            suppressText = false,
+            excludedOwners = nestedOwners
+        )
+        canvas.restore()
+    }
+
+    private fun drawSurfaceBackground(surface: View, hostOrigin: IntArray, canvas: Canvas) {
+        val background = surface.background
+        require(background is SurfaceDrawable) {
+            "Presented surface target must own a SurfaceDrawable"
+        }
+        val location = IntArray(2)
+        surface.getLocationOnScreen(location)
+        canvas.save()
+        canvas.translate(
+            (location[0] - hostOrigin[0]).toFloat(),
+            (location[1] - hostOrigin[1]).toFloat()
+        )
+        background.draw(canvas)
         canvas.restore()
     }
 
@@ -719,7 +752,7 @@ object SurfaceBackdrop {
                 allLayers = composition.allLayers,
                 hostOrigin = hostOrigin,
                 canvas = canvas,
-                suppressText = false
+                surfaceOnly = false
             )
         }
     }
