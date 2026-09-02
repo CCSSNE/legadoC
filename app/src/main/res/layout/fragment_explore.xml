@@ -134,6 +134,23 @@
                 </LinearLayout>
 
                 <LinearLayout
+                    android:id="@+id/ll_discover_settings_bar"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/bookshelf_tag_bar_height"
+                    android:layout_marginTop="@dimen/bookshelf_tag_bar_margin_top"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:visibility="gone">
+
+                    <io.legado.app.ui.widget.RoundedTagBarView
+                        android:id="@+id/rv_discover_settings"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1" />
+
+                </LinearLayout>
+
+                <LinearLayout
                     android:id="@+id/ll_discover_selects_bar"
                     android:layout_width="match_parent"
                     android:layout_height="@dimen/bookshelf_tag_bar_height"

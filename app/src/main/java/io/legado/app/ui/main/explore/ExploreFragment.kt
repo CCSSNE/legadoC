@@ -55,6 +55,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.source.clearExploreKindsCache
 import io.legado.app.help.source.exploreKinds
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.applyUiTitleTypeface
@@ -301,6 +302,8 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         discoverBookAdapter.clearItems()
         binding.llDiscoverSelectsBar.gone()
         binding.rvDiscoverSelects.submitItems(emptyList(), -1)
+        binding.llDiscoverSettingsBar.gone()
+        binding.rvDiscoverSettings.submitItems(emptyList(), -1)
         binding.rvDiscoverTags.submitItems(emptyList(), -1)
         binding.btnDiscoverTagsExpand.gone()
         binding.tvDiscoverEmpty.gone()
@@ -458,6 +461,10 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             val group = discoverMajorGroups.getOrNull(index) ?: return@setOnTagClickListener
             selectedDiscoverMajorGroup = group
             applyDiscoverTagFilterAndSelect(preferredUrl = discoverCurrentUrl)
+        }
+        binding.rvDiscoverSettings.setOnTagClickListener { index ->
+            val item = discoverSelectItems.getOrNull(index) ?: return@setOnTagClickListener
+            showDiscoverSelectDialog(item)
         }
         binding.btnDiscoverTagsExpand.setOnClickListener {
             showDiscoverTagsSelector()
@@ -676,6 +683,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                         selectedDiscoverMajorGroup = null
                         clearDiscoverBooksToEmpty(getString(R.string.explore_empty))
                         renderDiscoverTags(emptyList(), -1)
+                        renderDiscoverSelects(emptyList())
                         renderDiscoverMajorGroups()
                         binding.tvDiscoverSourceSelect.text = getString(R.string.explore_empty)
                         updateDiscoverLoginButtonState()
@@ -1237,6 +1245,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         discoverSettingItems.clear()
         selectedDiscoverMajorGroup = null
         renderDiscoverTags(emptyList(), -1)
+        renderDiscoverSelects(emptyList())
         renderDiscoverMajorGroups()
         updateDiscoverTagFilterButtonState()
         viewLifecycleOwner.lifecycleScope.launch {
@@ -1279,6 +1288,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             discoverMajorGroups.clear()
             selectedDiscoverMajorGroup = null
             renderDiscoverTags(emptyList(), -1)
+            renderDiscoverSelects(emptyList())
             renderDiscoverMajorGroups()
             updateDiscoverTagFilterButtonState()
             clearDiscoverBooksToEmpty(getString(R.string.explore_empty))
@@ -1425,8 +1435,13 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         discoverSettingItems.clear()
         discoverSettingItems.addAll(buildDiscoverSettingItems())
         renderDiscoverMajorGroups()
+        renderDiscoverSelects(discoverAllTagItems.filter { it.kind.type == ExploreKind.Type.select })
         updateDiscoverTagFilterButtonState()
-        val tagItems = filtered.filter { it.kind.type != ExploreKind.Type.select && !it.isButton }
+        val tagItems = filtered.filter {
+            it.kind.type != ExploreKind.Type.select
+                && it.kind.type != ExploreKind.Type.text
+                && !it.isButton
+        }
         val targetIndexByUrl = preferredUrl
             ?.takeIf { it.isNotBlank() }
             ?.let { url ->
@@ -1549,7 +1564,6 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     }
 
     private fun renderDiscoverMajorGroups() {
-        discoverSelectItems.clear()
         if (discoverMajorGroups.isEmpty()) {
             binding.llDiscoverSelectsBar.gone()
             binding.rvDiscoverSelects.submitItems(emptyList(), -1)
@@ -1562,6 +1576,31 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         )
         binding.btnDiscoverSelectsExpand.isVisible =
             discoverMajorGroups.size >= ExpandableTagSelector.EXPAND_THRESHOLD
+    }
+
+    private fun renderDiscoverSelects(items: List<DiscoverTagItem>) {
+        discoverSelectItems.clear()
+        discoverSelectItems.addAll(items)
+        if (items.isEmpty()) {
+            binding.llDiscoverSettingsBar.gone()
+            binding.rvDiscoverSettings.submitItems(emptyList(), -1)
+            return
+        }
+        binding.llDiscoverSettingsBar.visible()
+        binding.rvDiscoverSettings.submitItems(
+            items.map {
+                RoundedTagBarView.Item("${it.text}: ${currentDiscoverSelectValue(it)}", 1f, showFullText = true)
+            },
+            -1
+        )
+    }
+
+    private fun showDiscoverSelectDialog(item: DiscoverTagItem) {
+        val options = item.kind.chars?.filterNotNull() ?: emptyList()
+        if (options.isEmpty()) return
+        context?.selector(item.text, options) { _, value, _ ->
+            handleDiscoverSelectValue(item, value)
+        }
     }
 
     private fun showDiscoverTagsSelector() {
