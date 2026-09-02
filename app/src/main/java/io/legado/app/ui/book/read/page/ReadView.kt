@@ -116,6 +116,8 @@ class ReadView(context: Context, attrs: AttributeSet) :
 
     //下拉添加整页书签手势（跟手位移 + 回弹动效）
     private var pullDownStartY = 0f
+    private var pullDownLastX = 0f
+    private var pullDownLastY = 0f
     private var pullDownArmed = false
     private var pullDownTriggered = false
     private var pullDownAdding = false
@@ -382,6 +384,8 @@ class ReadView(context: Context, attrs: AttributeSet) :
                     context.getPrefBoolean(PreferKey.pageBookmarkPullDown, true)
                 if (pullDownArmed) {
                     pullDownStartY = event.y
+                    pullDownLastX = event.x
+                    pullDownLastY = event.y
                     pullDownAdding = !callBack.hasPageBookmarkOnCurrentPage()
                     curPage.setPullDownAdding(pullDownAdding)
                     curPage.setPullDownOffset(0f)
@@ -400,6 +404,16 @@ class ReadView(context: Context, attrs: AttributeSet) :
                     return true
                 }
                 if (pullDownArmed) {
+                    //翻页往返笔画中手指会反复穿过 startX：deltaX 回零的同时若仍用累计纵向
+                    //位移对比，横向翻页会被误判成下拉意图（先拦截后抢占），页面卡住不再跟手。
+                    //按事件步长判定方向：横向主导的一步说明下拉意图被打断，纵向锚点立即重置
+                    val stepX = abs(event.x - pullDownLastX)
+                    val stepY = event.y - pullDownLastY
+                    pullDownLastX = event.x
+                    pullDownLastY = event.y
+                    if (stepX > abs(stepY)) {
+                        pullDownStartY = event.y
+                    }
                     val deltaY = event.y - pullDownStartY
                     val deltaX = abs(event.x - startX)
                     if (!pullDownTriggered && !isTextSelected) {

@@ -110,6 +110,7 @@ abstract class HorizontalPageDelegate(readView: ReadView) : PageDelegate(readVie
     }
 
     override fun abortAnim() {
+        val animating = isRunning || !scroller.isFinished
         isStarted = false
         isMoved = false
         isRunning = false
@@ -124,6 +125,11 @@ abstract class HorizontalPageDelegate(readView: ReadView) : PageDelegate(readVie
             readView.invalidate()
         } else {
             readView.isAbortAnim = false
+            //拖拽进行中被接管（如下拉书签手势抢占）时同样要重绘，
+            //否则卷页停留在中断瞬间的位置，页面表现成卡死
+            if (animating) {
+                readView.invalidate()
+            }
         }
     }
 
