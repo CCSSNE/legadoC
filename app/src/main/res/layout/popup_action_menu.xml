@@ -4,46 +4,16 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:background="@drawable/bg_popup_action_modern"
-    android:gravity="center_horizontal"
     android:orientation="vertical"
     android:padding="6dp">
 
-    <LinearLayout
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
-
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/recycler_view"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:orientation="horizontal"
-            app:flexDirection="row"
-            app:flexWrap="wrap"
-            app:layoutManager="com.google.android.flexbox.FlexboxLayoutManager" />
-
-        <androidx.appcompat.widget.AppCompatImageView
-            android:id="@+id/iv_menu_more"
-            android:layout_width="34dp"
-            android:layout_height="34dp"
-            android:background="@drawable/bg_popup_action_item"
-            android:contentDescription="@string/more_menu"
-            android:padding="8dp"
-            android:src="@drawable/ic_more_vert"
-            android:tint="@color/primaryText"
-            android:visibility="gone" />
-
-    </LinearLayout>
-
+    <!-- 宽度固定 match_parent：预测量与窗口布局两趟都拿到 EXACTLY 同一宽度，
+         FlexboxLayoutManager 换行行数两趟一致，弹窗高度不会多出空行 -->
     <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/recycler_view_more"
-        android:layout_width="wrap_content"
+        android:id="@+id/recycler_view"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:orientation="vertical"
-        android:visibility="gone"
-        app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
+        android:overScrollMode="never"
+        app:layoutManager="com.google.android.flexbox.FlexboxLayoutManager" />
 
 </LinearLayout>

@@ -1507,10 +1507,6 @@ class ReadBookActivity : BaseReadBookActivity(),
                 stageSelectedText()
                 return true
             }
-            R.id.menu_edit_config -> {
-                onMenuConfigRequested()
-                return true
-            }
         }
         return false
     }

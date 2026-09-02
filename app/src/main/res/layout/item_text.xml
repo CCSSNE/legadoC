@@ -4,7 +4,7 @@
     android:id="@+id/text_view"
     android:layout_width="wrap_content"
     android:layout_height="34dp"
-    android:layout_margin="3dp"
+    android:layout_margin="2dp"
     android:background="@drawable/bg_popup_action_item"
     android:ellipsize="end"
     android:gravity="center"

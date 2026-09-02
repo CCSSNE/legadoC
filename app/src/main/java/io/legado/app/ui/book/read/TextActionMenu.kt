@@ -17,29 +17,26 @@ import androidx.annotation.RequiresApi
 import androidx.appcompat.view.SupportMenuInflater
 import androidx.appcompat.view.menu.MenuBuilder
 import androidx.appcompat.view.menu.MenuItemImpl
-import androidx.core.view.isVisible
 import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
+import io.legado.app.databinding.ItemMenuEditBinding
 import io.legado.app.databinding.ItemTextBinding
 import io.legado.app.databinding.PopupActionMenuBinding
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.surface.SurfaceStyles
 import io.legado.app.lib.theme.uiTypeface
-import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.getPrefStringSet
 import io.legado.app.utils.dpToPx
-import io.legado.app.utils.gone
 import io.legado.app.utils.SurfaceBackdrop
 import io.legado.app.utils.findHostWindow
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.share
 import io.legado.app.utils.toastOnUi
-import io.legado.app.utils.visible
 
 @SuppressLint("RestrictedApi")
 class TextActionMenu(private val context: Context, private val callBack: CallBack) :
@@ -50,10 +47,7 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
         setHasStableIds(true)
     }
     private val allMenuItems: List<MenuItemImpl>
-    private val visibleMenuItems = arrayListOf<MenuItemImpl>()
-    private val moreMenuItems = arrayListOf<MenuItemImpl>()
     private var blurGeneration = 0
-    private val expandTextMenu get() = context.getPrefBoolean(PreferKey.expandTextMenu)
     var illustrationEnabled: Boolean = false
         set(value) {
             // 每次赋值都重建菜单项，保证"配图"只按当前选区状态出现/隐藏，
@@ -117,31 +111,18 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
             onInitializeMenu(otherMenu)
         }
         allMenuItems = myMenu.visibleItems + otherMenu.visibleItems
+        adapter.addFooterView { parent ->
+            ItemMenuEditBinding.inflate(adapter.inflater, parent, false).apply {
+                root.setOnClickListener {
+                    callBack.onMenuConfigRequested()
+                }
+            }
+        }
         binding.recyclerView.adapter = adapter
-        binding.recyclerViewMore.adapter = adapter
         setOnDismissListener {
             blurGeneration++
             SurfaceBackdrop.cancel(contentView)
             contentView.alpha = 1f
-            if (!context.getPrefBoolean(PreferKey.expandTextMenu)) {
-                binding.ivMenuMore.setImageResource(R.drawable.ic_more_vert)
-                binding.recyclerViewMore.gone()
-                adapter.setItems(visibleMenuItems)
-                binding.recyclerView.visible()
-            }
-        }
-        binding.ivMenuMore.setOnClickListener {
-            if (binding.recyclerView.isVisible) {
-                binding.ivMenuMore.setImageResource(R.drawable.ic_arrow_back)
-                adapter.setItems(moreMenuItems)
-                binding.recyclerView.gone()
-                binding.recyclerViewMore.visible()
-            } else {
-                binding.ivMenuMore.setImageResource(R.drawable.ic_more_vert)
-                binding.recyclerViewMore.gone()
-                adapter.setItems(visibleMenuItems)
-                binding.recyclerView.visible()
-            }
         }
         upMenu()
     }
@@ -151,7 +132,6 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
             when (item.itemId) {
                 R.id.menu_illustration -> illustrationEnabled
                 R.id.menu_review -> reviewEnabled
-                R.id.menu_edit_config -> true
                 else -> menuItemToActionId(item.itemId)?.let { configuredActionIds.contains(it) } ?: false
             }
         }
@@ -165,21 +145,7 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
     }
 
     fun upMenu() {
-        visibleMenuItems.clear()
-        moreMenuItems.clear()
-        val filteredItems = filteredMenuItems()
-        visibleMenuItems.addAll(filteredItems)
-        if (expandTextMenu) {
-            adapter.setItems(filteredItems)
-            binding.ivMenuMore.gone()
-        } else {
-            adapter.setItems(visibleMenuItems)
-            if (moreMenuItems.isEmpty()) {
-                binding.ivMenuMore.gone()
-            } else {
-                binding.ivMenuMore.visible()
-            }
-        }
+        adapter.setItems(filteredMenuItems())
     }
 
     fun show(
@@ -203,9 +169,13 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
                 return
             }
         }
-        val margin = 8.dpToPx()
+        val margin = 4.dpToPx()
         // 弹窗宽度固定：只由窗口宽度决定，不随可见菜单项数量变化，
-        // 避免按内容测量出不同宽度导致弹窗反复改尺寸、按钮跨行跳动
+        // 避免按内容测量出不同宽度导致弹窗反复改尺寸、按钮跨行跳动。
+        // 内容区 RecyclerView 为 match_parent，预测量与窗口布局两趟拿到的都是
+        // EXACTLY 同一宽度，Flexbox 换行行数两趟必然一致；wrap_content 宽度下
+        // 测量上报的内容宽度会溢出父容器约束，两趟宽度漂移导致行数判定不一致，
+        // 弹窗高度按多出的行创建、底部出现整行空白
         val windowWidth = if (view.width > 0) view.width else context.resources.displayMetrics.widthPixels
         val popupWidth = (windowWidth - 2 * margin).coerceAtLeast(margin)
         contentView.measure(
@@ -243,7 +213,6 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
             height = popupHeight
             // 重新弹出前清掉上次布局残留的子项，避免首帧闪出旧菜单内容
             binding.recyclerView.removeAllViews()
-            binding.recyclerViewMore.removeAllViews()
             showAtLocation(view, Gravity.TOP or Gravity.START, x, y)
         }
         context.findHostWindow()?.let { hostWindow ->
