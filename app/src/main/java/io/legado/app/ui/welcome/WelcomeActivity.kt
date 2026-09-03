@@ -10,6 +10,7 @@ import android.graphics.drawable.LayerDrawable
 import android.os.Build
 import android.os.Bundle
 import android.view.View
+import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.postDelayed
 import io.legado.app.base.BaseActivity
@@ -102,7 +103,7 @@ open class WelcomeActivity : BaseActivity<ActivityWelcomeBinding>() {
         val insetX = ((metrics.widthPixels - artworkSize) / 2).coerceAtLeast(0)
         val insetY = ((metrics.heightPixels - artworkSize) / 2).coerceAtLeast(0)
         val centeredLogo = InsetDrawable(foreground, insetX, insetY, insetX, insetY)
-        return LayerDrawable(arrayOf(ColorDrawable(backgroundColor), centeredLogo))
+        return LayerDrawable(arrayOf(ColorDrawable(ContextCompat.getColor(this, R.color.background)), centeredLogo))
     }
 
     private fun startMainActivity() {
