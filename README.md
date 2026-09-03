@@ -1,3 +1,13 @@
+**交流群 有bug 或者建议可以加入 1101873338 主要优化听书体验**
+
+好用的话，点个 star，谢谢啦
+
+阅读C 功能排期 https://docs.qq.com/doc/DVkxsQVpqWk1tV05S
+
+阅读C 不做功能 https://docs.qq.com/doc/DVkFjc0tWWW1VSnZB
+
+阅读C Bug排期 https://docs.qq.com/doc/DVmtiSHZza1VPZWdG
+
 <table align="center" width="100%">
   <tr>
     <td width="33.33%" align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/1.png" width="100%" alt="界面截图 1" /></td>
