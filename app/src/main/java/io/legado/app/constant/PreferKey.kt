@@ -449,6 +449,12 @@ object PreferKey {
 
     const val bgImageCrop = "backgroundImageCrop"
     const val bgImageCropN = "backgroundImageCropNight"
+    const val topBarPackageDay = "topBarPackageDay"
+    const val topBarPackageNight = "topBarPackageNight"
+    const val coverCollectionDay = "coverCollectionDay"
+    const val coverCollectionNight = "coverCollectionNight"
+    const val coverCollectionModeDay = "coverCollectionModeDay"
+    const val coverCollectionModeNight = "coverCollectionModeNight"
     const val panelBgImage = "panelBackgroundImage"
     const val panelBgImageN = "panelBackgroundImageNight"
     const val panelBgScaleType = "panelBackgroundScaleType"

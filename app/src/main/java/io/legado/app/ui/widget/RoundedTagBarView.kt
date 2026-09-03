@@ -46,7 +46,7 @@ class RoundedTagBarView @JvmOverloads constructor(
     init {
         clipToOutline = true
         background = UiCorner.rounded(
-            android.graphics.Color.TRANSPARENT,
+            UiCorner.themeSurfaceTagBarColor(context) ?: android.graphics.Color.TRANSPARENT,
             UiCorner.panelRadius(context)
         )
         val horizontalPadding = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_bar_padding_horizontal)
@@ -155,7 +155,8 @@ class RoundedTagBarView @JvmOverloads constructor(
                 .inflate(R.layout.item_bookshelf_group_tag, parent, false) as TextView
             textView.background = UiCorner.softActionSelector(
                 android.graphics.Color.TRANSPARENT,
-                UiCorner.themeSurfaceTabColor(parent.context),
+                UiCorner.themeSurfaceTagSelectedColor(parent.context)
+                    ?: UiCorner.themeSurfaceTabColor(parent.context),
                 UiCorner.actionRadius(parent.context)
             )
             textView.setTextColor(

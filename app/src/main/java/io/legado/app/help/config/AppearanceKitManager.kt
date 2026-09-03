@@ -6,6 +6,7 @@ import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.externalFiles
+import io.legado.app.utils.getFile
 import io.legado.app.utils.fromJsonObject
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.withContext
@@ -16,9 +17,10 @@ import java.util.zip.ZipFile
 /**
  * 上游外观套件包（appearance_kit.json + 组件 zip）的识别与导入。
  *
- * 套件可携带界面主题、顶栏、导航栏、封面集合四类组件；本项目当前只实现了
- * 界面主题与导航栏两类消费端，顶栏与封面集合组件在导入时明确计数跳过并
- * 向用户报告，不做静默丢弃，也不伪装成导入成功。
+ * 套件可携带界面主题、顶栏、导航栏、封面集合四类组件；导入即应用：主题按
+ * switchNightMode=false 应用并触发界面重建，导航栏/顶栏按各自日夜激活，封面
+ * 集合按组件自带的日夜标记选中。上游顶栏 View（MainTopBarView）依赖上游主页
+ * 布局结构，本项目经 TopBarConfig 配置层与现有标签条/搜索控件消费其样式。
  */
 object AppearanceKitManager {
 
@@ -33,8 +35,8 @@ object AppearanceKitManager {
         val kitName: String,
         val themeCount: Int,
         val navigationBarCount: Int,
-        val unsupportedCount: Int,
-        val unsupportedTypes: List<String>
+        val topBarCount: Int,
+        val coverCollectionCount: Int
     )
 
     fun isKitPackage(zipFile: File): Boolean {
@@ -62,34 +64,58 @@ object AppearanceKitManager {
             val manifest = GSON.fromJsonObject<KitManifest>(manifestFile.readText()).getOrThrow()
             var themeCount = 0
             var navigationBarCount = 0
-            val unsupportedTypes = mutableListOf<String>()
+            var topBarCount = 0
+            var coverCollectionCount = 0
+            // 主题应用会触发界面重建，放在最后：其余组件配置先写入，重建后一次生效。
+            var themeEntry: ThemePackageManager.Entry? = null
+            var navigationApplied = false
             manifest.components.forEach { component ->
                 val componentFile = resolveComponentFile(packageRoot, unzipDir, component.path)
                     ?: return@forEach
                 when (component.type) {
-                    TYPE_THEME -> {
-                        ThemePackageManager.importZipForKit(componentFile)
-                        themeCount += 1
-                    }
-
                     TYPE_NAVIGATION_BAR -> {
-                        NavigationBarIconConfig.importZip(componentFile)
+                        val entry = NavigationBarIconConfig.importZip(componentFile)
+                        NavigationBarIconConfig.select(entry)
+                        navigationApplied = true
                         navigationBarCount += 1
                     }
 
-                    TYPE_TOP_BAR -> unsupportedTypes += TYPE_TOP_BAR
-                    TYPE_COVER_COLLECTION -> unsupportedTypes += TYPE_COVER_COLLECTION
+                    TYPE_TOP_BAR -> {
+                        val entry = TopBarConfig.importZip(componentFile)
+                        TopBarConfig.apply(entry)
+                        topBarCount += 1
+                    }
+
+                    TYPE_COVER_COLLECTION -> {
+                        val collection = CoverCollectionManager.importZip(
+                            componentFile,
+                            component.isNight,
+                            overwrite = true
+                        )
+                        CoverCollectionManager.setSelected(collection.isNight, collection.id)
+                        CoverCollectionManager.setMode(collection.isNight, collection.mode)
+                        coverCollectionCount += 1
+                    }
+
+                    TYPE_THEME -> {
+                        themeEntry = ThemePackageManager.importZipForKit(componentFile)
+                        themeCount += 1
+                    }
                 }
             }
-            if (themeCount == 0 && navigationBarCount == 0) {
+            if (navigationApplied) {
+                NavigationBarIconConfig.applyCurrentBottomConfig(AppConfig.isNightTheme)
+            }
+            themeEntry?.let { ThemePackageManager.apply(appCtx, it, switchNightMode = false) }
+            if (themeCount == 0 && navigationBarCount == 0 && topBarCount == 0 && coverCollectionCount == 0) {
                 throw IllegalArgumentException(appCtx.getString(R.string.appearance_kit_no_importable))
             }
             ImportSummary(
                 kitName = manifest.name.ifBlank { appCtx.getString(R.string.appearance_kit_default_name) },
                 themeCount = themeCount,
                 navigationBarCount = navigationBarCount,
-                unsupportedCount = unsupportedTypes.size,
-                unsupportedTypes = unsupportedTypes.distinct()
+                topBarCount = topBarCount,
+                coverCollectionCount = coverCollectionCount
             )
         } finally {
             FileUtils.delete(unzipDir, deleteRootDir = true)

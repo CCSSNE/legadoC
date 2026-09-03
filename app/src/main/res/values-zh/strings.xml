@@ -2234,6 +2234,13 @@
     <string name="appearance_kit_default_name">外观套件</string>
     <string name="appearance_kit_imported">外观套件已导入:%1$s</string>
     <string name="appearance_kit_imported_with_skipped">外观套件已导入:%1$s,主题 %2$d 项、导航栏 %3$d 项;%4$d 项暂不支持(顶栏/封面集合)</string>
+    <string name="top_bar_config_missing">缺少顶栏配置</string>
+    <string name="top_bar_name_exists">顶栏名称已存在</string>
+    <string name="top_bar_day_default_name">默认日间顶栏</string>
+    <string name="top_bar_night_default_name">默认夜间顶栏</string>
+    <string name="cover_collection_zip_no_images">ZIP 中没有可用图片</string>
+    <string name="cover_collection_no_images_to_export">没有可导出的图片</string>
+    <string name="cover_collection_export_failed">导出封面集合失败</string>
     <string name="theme_apply_failed">应用主题失败：%s</string>
     <string name="theme_applied">主题已应用</string>
     <string name="theme_sync_done">云端主题状态已同步</string>

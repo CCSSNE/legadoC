@@ -12,6 +12,7 @@ import io.legado.app.lib.theme.UiCorner
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ThemeConfig
+import io.legado.app.help.config.TopBarConfig
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.getPrefString
@@ -380,6 +381,32 @@ object UiCorner {
             PreferKey.panelBgScaleType
         }
         return context.getPrefString(key) == ThemeConfig.PANEL_BG_FIT
+    }
+
+    /**
+     * 顶栏包配置的标签条底色（已折算配置透明度）。
+     * 仅在激活了非默认顶栏包时生效；未激活或未配置返回 null，保持主题默认行为。
+     */
+    fun themeSurfaceTagBarColor(context: Context): Int? {
+        val config = activeTopBarConfigOrNull(context) ?: return null
+        val color = config.tagBarColor ?: return null
+        return TopBarConfig.withOpacity(color, config.tagBarAlpha)
+    }
+
+    /**
+     * 顶栏包配置的标签选中色（已折算配置透明度），优先级同上。
+     */
+    fun themeSurfaceTagSelectedColor(context: Context): Int? {
+        val config = activeTopBarConfigOrNull(context) ?: return null
+        val color = config.tagSelectedColor ?: return null
+        return TopBarConfig.withOpacity(color, config.tagSelectedAlpha)
+    }
+
+    private fun activeTopBarConfigOrNull(context: Context): TopBarConfig.Config? {
+        if (TopBarConfig.activeDirName(AppConfig.isNightTheme) == TopBarConfig.DEFAULT_DIR_NAME) {
+            return null
+        }
+        return TopBarConfig.currentConfig(context)
     }
 
     private fun themeSurfaceColorOverride(context: Context, dayKey: String, nightKey: String): Int? {

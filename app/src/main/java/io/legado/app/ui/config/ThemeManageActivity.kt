@@ -1059,19 +1059,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 if (summary == null) {
                     toastOnUi(getString(R.string.theme_imported))
                 } else {
-                    toastOnUi(
-                        if (summary.unsupportedCount == 0) {
-                            getString(R.string.appearance_kit_imported, summary.kitName)
-                        } else {
-                            getString(
-                                R.string.appearance_kit_imported_with_skipped,
-                                summary.kitName,
-                                summary.themeCount,
-                                summary.navigationBarCount,
-                                summary.unsupportedCount
-                            )
-                        }
-                    )
+                    toastOnUi(getString(R.string.appearance_kit_imported, summary.kitName))
                 }
                 loadThemes()
             }.onFailure {
