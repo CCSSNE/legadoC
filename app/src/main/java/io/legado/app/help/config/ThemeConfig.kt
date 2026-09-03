@@ -384,6 +384,11 @@ object ThemeConfig {
         save()
     }
 
+    fun delConfig(themeName: String) {
+        configList.removeAll { it.themeName == themeName }
+        save()
+    }
+
     fun addConfig(json: String): Boolean {
         GSON.fromJsonObject<Config>(json.trim { it < ' ' }).getOrNull()
             ?.let {
@@ -663,6 +668,38 @@ object ThemeConfig {
             postEvent(EventBus.RECREATE, "")
         } catch (e: Exception) {
             AppLog.put("设置主题出错\n$e", e, true)
+        }
+    }
+
+    fun defaultConfig(context: Context, isNightTheme: Boolean): Config {
+        val backgroundFile = File(
+            File(context.filesDir, "defaultData"),
+            if (isNightTheme) DEFAULT_NIGHT_BACKGROUND_FILE else DEFAULT_DAY_BACKGROUND_FILE
+        )
+        return if (isNightTheme) {
+            Config(
+                themeName = "",
+                isNightTheme = true,
+                primaryColor = "#${DEFAULT_NIGHT_PRIMARY.hexString}",
+                accentColor = "#${context.getCompatColor(R.color.md_deep_orange_800).hexString}",
+                backgroundColor = "#${context.getCompatColor(R.color.md_grey_900).hexString}",
+                bottomBackground = "#${context.getCompatColor(R.color.md_grey_850).hexString}",
+                transparentNavBar = true,
+                backgroundImgPath = backgroundFile.takeIf { it.isFile }?.absolutePath,
+                backgroundImgBlur = 0
+            )
+        } else {
+            Config(
+                themeName = "",
+                isNightTheme = false,
+                primaryColor = "#${DEFAULT_DAY_PRIMARY.hexString}",
+                accentColor = "#${context.getCompatColor(R.color.md_red_600).hexString}",
+                backgroundColor = "#${context.getCompatColor(R.color.md_grey_100).hexString}",
+                bottomBackground = "#${context.getCompatColor(R.color.md_grey_200).hexString}",
+                transparentNavBar = true,
+                backgroundImgPath = backgroundFile.takeIf { it.isFile }?.absolutePath,
+                backgroundImgBlur = 0
+            )
         }
     }
 

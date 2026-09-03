@@ -988,11 +988,9 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             if (entry.source != ThemePackageManager.Source.REMOTE) add(ThemeAction.EXPORT)
             if (entry.source != ThemePackageManager.Source.LOCAL) add(ThemeAction.DOWNLOAD)
             if (entry.source != ThemePackageManager.Source.REMOTE) add(ThemeAction.UPLOAD)
-            if (!isApplied(entry)) {
-                if (entry.source != ThemePackageManager.Source.REMOTE) add(ThemeAction.DELETE_LOCAL)
-                if (entry.source != ThemePackageManager.Source.LOCAL) add(ThemeAction.DELETE_REMOTE)
-                if (entry.source == ThemePackageManager.Source.BOTH) add(ThemeAction.DELETE_BOTH)
-            }
+            if (entry.source != ThemePackageManager.Source.REMOTE) add(ThemeAction.DELETE_LOCAL)
+            if (entry.source != ThemePackageManager.Source.LOCAL) add(ThemeAction.DELETE_REMOTE)
+            if (entry.source == ThemePackageManager.Source.BOTH) add(ThemeAction.DELETE_BOTH)
         }
         selector(entry.packageInfo.name, actions.map { getString(it.titleRes) }) { _, index ->
             when (actions[index]) {
@@ -1004,18 +1002,41 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                     enqueueUploadIfNeeded(entry)
                     toastOnUi(getString(R.string.theme_sync_queued))
                 }
-                ThemeAction.DELETE_LOCAL -> confirmDeleteTheme(entry, getString(R.string.theme_delete_local_confirm)) {
+                ThemeAction.DELETE_LOCAL -> confirmDelete(deleteConfirmMessage(entry, R.string.theme_delete_local_confirm)) {
                     ThemePackageManager.deleteLocal(entry)
+                    resetAppliedThemeDefault(entry)
                 }
-                ThemeAction.DELETE_REMOTE -> confirmDeleteTheme(entry, getString(R.string.theme_delete_remote_confirm)) {
+                ThemeAction.DELETE_REMOTE -> confirmDelete(getString(R.string.theme_delete_remote_confirm)) {
                     enqueueRemoteDelete(entry)
                 }
-                ThemeAction.DELETE_BOTH -> confirmDeleteTheme(entry, getString(R.string.theme_delete_both_confirm)) {
+                ThemeAction.DELETE_BOTH -> confirmDelete(deleteConfirmMessage(entry, R.string.theme_delete_both_confirm)) {
                     ThemePackageManager.deleteLocal(entry)
                     enqueueRemoteDelete(entry)
+                    resetAppliedThemeDefault(entry)
                 }
             }
         }
+    }
+
+    private fun deleteConfirmMessage(
+        entry: ThemePackageManager.Entry,
+        baseRes: Int
+    ): String {
+        return if (isApplied(entry)) {
+            getString(R.string.theme_delete_applied_confirm)
+        } else {
+            getString(baseRes)
+        }
+    }
+
+    private fun resetAppliedThemeDefault(entry: ThemePackageManager.Entry) {
+        if (!isApplied(entry)) return
+        ThemeConfig.delConfig(entry.packageInfo.name)
+        ThemeConfig.applyConfig(
+            this@ThemeManageActivity,
+            ThemeConfig.defaultConfig(this@ThemeManageActivity, entry.packageInfo.isNightTheme),
+            switchNightMode = false
+        )
     }
 
     private fun exportThemeZip(entry: ThemePackageManager.Entry) {
@@ -1221,18 +1242,6 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             }
             noButton()
         }
-    }
-
-    private fun confirmDeleteTheme(
-        entry: ThemePackageManager.Entry,
-        message: String,
-        block: suspend () -> Unit
-    ) {
-        if (isApplied(entry)) {
-            toastOnUi(getString(R.string.theme_delete_applied_forbidden))
-            return
-        }
-        confirmDelete(message, block)
     }
 
     private inner class Adapter : RecyclerView.Adapter<Adapter.Holder>() {

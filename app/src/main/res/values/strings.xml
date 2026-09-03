@@ -2351,6 +2351,7 @@
     <string name="theme_delete_local_confirm">Delete local theme?</string>
     <string name="theme_delete_remote_confirm">Delete cloud theme?</string>
     <string name="theme_delete_both_confirm">Delete both local and cloud theme?</string>
+    <string name="theme_delete_applied_confirm">This theme is applied. Deleting it restores the default theme?</string>
     <string name="theme_export_failed">Failed to export theme: %s</string>
     <string name="theme_zip_read_failed">Unable to read theme ZIP</string>
     <string name="theme_imported">Theme imported</string>
@@ -2373,7 +2374,6 @@
     <string name="theme_sync_failed_retry">Cloud theme sync failed. Try again later.</string>
     <string name="theme_sync_failed">Cloud theme sync failed: %s</string>
     <string name="theme_sync_pending">%d cloud change(s) are syncing in the background.</string>
-    <string name="theme_delete_applied_forbidden">Cannot delete the currently applied theme</string>
     <string name="theme_source_using">In use</string>
     <string name="theme_source_local">Local</string>
     <string name="theme_source_remote">Cloud</string>
