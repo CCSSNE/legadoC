@@ -526,7 +526,6 @@
     <string name="fusion_cancel_done">已取消融合：清理 %1$d 章评论挂载</string>
     <string name="select_cancel_count">取消全选（%1$d/%2$d）</string>
     <string name="dark_theme">深色模式</string>
-    <string name="welcome">启动页</string>
     <string name="download_start">开始下载</string>
     <string name="download_cancel">取消下载</string>
     <string name="no_download">暂无任务</string>
@@ -1486,12 +1485,9 @@
     <string name="copy_all">拷贝所有</string>
     <string name="auto_complete">自动补全</string>
     <string name="sort_by_size">大小排序</string>
-    <string name="welcome_style">启动界面样式</string>
-    <string name="welcome_style_summary">设定显示时间，更改背景图片，是否显示文字等</string>
-    <string name="show_welcome_text">显示文字</string>
-    <string name="welcome_text">阅读|享受美好时光</string>
-    <string name="custom_welcome">自定义欢迎页</string>
-    <string name="custom_welcome_summary">是否使用自定义欢迎页</string>
+    <string name="welcome_style">启动画面</string>
+    <string name="welcome_show_time">启动画面最短显示时间</string>
+    <string name="welcome_show_time_summary">设为 0 时在应用就绪后立即移除</string>
     <string name="show_icon">显示图标</string>
     <string name="show_default_book_icon">显示默认书籍图标</string>
     <string name="cache_export">缓存/导出</string>
@@ -2295,7 +2291,7 @@
     <string name="cache_manage_storage_theme_packages">主题包</string>
     <string name="cache_manage_storage_read_style_assets">阅读样式字体/背景</string>
     <string name="cache_manage_storage_navigation_assets">导航栏资源</string>
-    <string name="cache_manage_storage_cover_files">自定义封面/欢迎图</string>
+    <string name="cache_manage_storage_cover_files">自定义封面</string>
     <string name="cache_manage_storage_external_files">其它外部私有文件</string>
     <string name="cache_manage_storage_other_user_data">其它用户数据</string>
     <string name="cache_manage_storage_cover_thumbs">封面缩略图</string>

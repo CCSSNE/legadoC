@@ -257,7 +257,6 @@
     <string name="fusion_cancel_done">已取消融合：清理 %1$d 章評論掛載</string>
     <string name="select_cancel_count">取消全選 (%1$d/%2$d)</string>
     <string name="dark_theme">深色模式</string>
-    <string name="welcome">啟動頁</string>
     <string name="download_start">開始下載</string>
     <string name="download_cancel">取消下載</string>
     <string name="no_download">暫無任務</string>
@@ -1025,12 +1024,9 @@
     <string name="copy_all">拷贝所有</string>
     <string name="auto_complete">自动补全</string>
     <string name="sort_by_size">大小排序</string>
-    <string name="welcome_style">启动界面样式</string>
-    <string name="welcome_style_summary">启动界面图片和是否显示文字等</string>
-    <string name="show_welcome_text">显示文字</string>
-    <string name="welcome_text">阅读|享受美好时光</string>
-    <string name="custom_welcome">自定义欢迎页</string>
-    <string name="custom_welcome_summary">是否使用自定义欢迎页</string>
+    <string name="welcome_style">啟動畫面</string>
+    <string name="welcome_show_time">啟動畫面最短顯示時間</string>
+    <string name="welcome_show_time_summary">設為 0 時在應用程式就緒後立即移除</string>
     <string name="show_icon">显示图标</string>
     <string name="show_default_book_icon">显示默认书籍图标</string>
     <string name="cache_export">缓存/导出</string>

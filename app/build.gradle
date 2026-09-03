@@ -226,6 +226,7 @@ dependencies {
 
     //androidX
     implementation(libs.core.ktx)
+    implementation(libs.core.splashscreen)
     implementation(libs.appcompat.appcompat)
     implementation(libs.activity.ktx)
     implementation(libs.fragment.ktx)

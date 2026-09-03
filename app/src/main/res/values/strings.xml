@@ -528,7 +528,6 @@
     <string name="fusion_cancel_done">Fusion removed: %1$d chapters cleaned</string>
     <string name="select_cancel_count">Cancel select all(%1$d/%2$d)</string>
     <string name="dark_theme">Dark mode</string>
-    <string name="welcome">Welcome page</string>
     <string name="download_start">Download start</string>
     <string name="download_cancel">Download cancel</string>
     <string name="no_download">No download</string>
@@ -1739,12 +1738,7 @@
     <string name="copy_all">Copy all</string>
     <string name="auto_complete">Automatic completion</string>
     <string name="sort_by_size">Sort by size</string>
-    <string name="welcome_style">Launch interface style</string>
-    <string name="welcome_style_summary">Startup screen image and whether to display text, etc.</string>
-    <string name="show_welcome_text">Display text</string>
-    <string name="welcome_text">阅读|享受美好时光</string>
-    <string name="custom_welcome">Customize the welcome page</string>
-    <string name="custom_welcome_summary">Whether to use a customized welcome page</string>
+    <string name="welcome_style">Launch screen</string>
     <string name="show_icon">Show icon</string>
     <string name="show_default_book_icon">Show default book icon</string>
     <string name="cache_export">Cache / Export</string>
@@ -2195,8 +2189,8 @@
     <string name="time_hour">小时</string>
     <string name="custom_button">定制按钮</string>
     <string name="change_book_source_action">更换书源</string>
-    <string name="welcome_show_time">欢迎页显示时间</string>
-    <string name="welcome_show_time_summary">设为0不显示欢迎页</string>
+    <string name="welcome_show_time">Minimum launch screen duration</string>
+    <string name="welcome_show_time_summary">Set to 0 to remove it as soon as the app is ready</string>
     <string name="domain">域名</string>
     <string name="write_source_comment">写入源注释</string>
     <string name="auto_play">自动播放</string>
@@ -2421,7 +2415,7 @@
     <string name="cache_manage_storage_theme_packages">Theme packages</string>
     <string name="cache_manage_storage_read_style_assets">Reading style fonts/backgrounds</string>
     <string name="cache_manage_storage_navigation_assets">Navigation bar resources</string>
-    <string name="cache_manage_storage_cover_files">Custom covers/welcome images</string>
+    <string name="cache_manage_storage_cover_files">Custom covers</string>
     <string name="cache_manage_storage_external_files">Other external private files</string>
     <string name="cache_manage_storage_other_user_data">Other user data</string>
     <string name="cache_manage_storage_cover_thumbs">Cover thumbnails</string>

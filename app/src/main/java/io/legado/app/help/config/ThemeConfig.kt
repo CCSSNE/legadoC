@@ -1,8 +1,10 @@
 package io.legado.app.help.config
 
+import android.app.UiModeManager
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.Drawable
+import android.os.Build
 import android.util.DisplayMetrics
 import androidx.annotation.Keep
 import androidx.appcompat.app.AppCompatDelegate
@@ -216,21 +218,21 @@ object ThemeConfig {
 
     fun applyDayNight(context: Context) {
         applyTheme(context)
-        initNightMode()
+        initNightMode(context)
         BookCover.upDefaultCover()
         postEvent(EventBus.RECREATE, "")
     }
 
     fun applyDayNightNoRecreate(context: Context) {
         applyTheme(context)
-        initNightMode()
+        initNightMode(context)
         BookCover.upDefaultCover()
     }
 
     fun applyDayNightInit(context: Context) {
         migrateLegacyDefaultDayPrimary(context)
         applyTheme(context)
-        initNightMode()
+        initNightMode(context)
     }
 
     private fun migrateLegacyDefaultDayPrimary(context: Context) {
@@ -248,13 +250,25 @@ object ThemeConfig {
         return config.copy(primaryColor = DEFAULT_DAY_PRIMARY_HEX)
     }
 
-    private fun initNightMode() {
-        val targetMode =
-            if (AppConfig.isNightTheme) {
-                AppCompatDelegate.MODE_NIGHT_YES
-            } else {
-                AppCompatDelegate.MODE_NIGHT_NO
+    private fun initNightMode(context: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // Application night mode is persisted and available when the next system splash is built.
+            val targetMode = when (currentThemeMode()) {
+                // For the application-scoped API, AUTO clears the package-specific night override.
+                ThemeMode.AUTO -> UiModeManager.MODE_NIGHT_AUTO
+                ThemeMode.DARK -> UiModeManager.MODE_NIGHT_YES
+                ThemeMode.LIGHT, ThemeMode.EINK -> UiModeManager.MODE_NIGHT_NO
             }
+            context.getSystemService(UiModeManager::class.java)
+                .setApplicationNightMode(targetMode)
+            return
+        }
+
+        val targetMode = if (AppConfig.isNightTheme) {
+            AppCompatDelegate.MODE_NIGHT_YES
+        } else {
+            AppCompatDelegate.MODE_NIGHT_NO
+        }
         AppCompatDelegate.setDefaultNightMode(targetMode)
     }
 

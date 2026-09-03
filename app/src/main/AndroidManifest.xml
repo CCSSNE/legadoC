@@ -52,7 +52,7 @@
             android:enabled="false"
             android:exported="true"
             android:icon="@mipmap/launcher1"
-            android:theme="@style/AppTheme.Welcome">
+            android:theme="@style/AppTheme.Welcome.Launcher1">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
@@ -65,7 +65,7 @@
             android:enabled="false"
             android:exported="true"
             android:icon="@mipmap/launcher2"
-            android:theme="@style/AppTheme.Welcome">
+            android:theme="@style/AppTheme.Welcome.Launcher2">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
@@ -78,7 +78,7 @@
             android:enabled="false"
             android:exported="true"
             android:icon="@mipmap/launcher3"
-            android:theme="@style/AppTheme.Welcome">
+            android:theme="@style/AppTheme.Welcome.Launcher3">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
@@ -91,7 +91,7 @@
             android:enabled="false"
             android:exported="true"
             android:icon="@mipmap/launcher4"
-            android:theme="@style/AppTheme.Welcome">
+            android:theme="@style/AppTheme.Welcome.Launcher4">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
@@ -104,7 +104,7 @@
             android:enabled="false"
             android:exported="true"
             android:icon="@mipmap/launcher5"
-            android:theme="@style/AppTheme.Welcome">
+            android:theme="@style/AppTheme.Welcome.Launcher5">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
@@ -117,7 +117,7 @@
             android:enabled="false"
             android:exported="true"
             android:icon="@mipmap/launcher6"
-            android:theme="@style/AppTheme.Welcome">
+            android:theme="@style/AppTheme.Welcome.Launcher6">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
@@ -130,7 +130,7 @@
             android:enabled="false"
             android:exported="true"
             android:icon="@mipmap/launcher7"
-            android:theme="@style/AppTheme.Welcome">
+            android:theme="@style/AppTheme.Welcome.Launcher7">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
@@ -143,7 +143,7 @@
             android:enabled="false"
             android:exported="true"
             android:icon="@mipmap/launcher8"
-            android:theme="@style/AppTheme.Welcome">
+            android:theme="@style/AppTheme.Welcome.Launcher8">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
