@@ -58,14 +58,12 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
     /** 源模块详情页当前 Tab：0 = 已加入，1 = 发现 */
     private var sourceDetailTab = 0
 
-    /** 发现页状态：选中的模块类型与分类 */
+    /** 发现页状态：分类加载状态 */
     private var discoverState = DiscoverState()
 
     private data class DiscoverState(
         val loading: Boolean = false,
         val kinds: List<ExploreKind> = emptyList(),
-        val selectedPageKinds: List<ExploreKind> = emptyList(),
-        val selectedCategory: ExploreKind? = null,
     )
 
     private sealed interface Page {
@@ -327,7 +325,7 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
         rows.add(
             Row.Field(
                 label = getString(R.string.homepage_select_pagination),
-                value = discoverState.selectedPageKinds.joinToString("、") { it.title },
+                value = "",
                 hint = getString(R.string.homepage_multi_select_hint),
             ) {
                 showKindSelectSheet(page, multiple = true)
@@ -336,7 +334,7 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
         rows.add(
             Row.Field(
                 label = getString(R.string.homepage_select_category),
-                value = discoverState.selectedCategory?.title ?: "",
+                value = "",
             ) {
                 showKindSelectSheet(page, multiple = false)
             }
@@ -390,13 +388,6 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
             putString("sourceUrl", page.sourceUrl)
             putString("sourceType", page.sourceType)
             putBoolean("multiple", multiple)
-            putStringArrayList(
-                "selected",
-                ArrayList(
-                    (if (multiple) discoverState.selectedPageKinds else listOfNotNull(discoverState.selectedCategory))
-                        .map { it.url ?: it.title }
-                )
-            )
         }
         sheet.show(childFragmentManager, "homepageKindSelect")
     }
@@ -407,7 +398,6 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
         val page = currentPage()
         if (page !is Page.SourceDetail) return
         val def = if (multiple) {
-            discoverState = discoverState.copy(selectedPageKinds = kinds)
             ModuleDef(
                 type = HomepageModuleType.Ranking.key,
                 title = kinds.joinToString("、") { it.title },
@@ -419,7 +409,6 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
             )
         } else {
             val kind = kinds.first()
-            discoverState = discoverState.copy(selectedCategory = kind)
             ModuleDef(
                 key = "explore_${kind.title}_${kind.url}",
                 type = HomepageModuleType.Grid.key,
@@ -444,7 +433,6 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
             isCreate = true,
             setId = page.setId,
         )
-        rebuildRows()
     }
 
     private fun resolveSetId(setUrl: String): String {
