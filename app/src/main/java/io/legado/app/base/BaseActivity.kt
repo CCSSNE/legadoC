@@ -209,7 +209,12 @@ abstract class BaseActivity<VB : ViewBinding>(
 
     @SuppressLint("RestrictedApi")
     private fun installSurfaceOverflow(menu: Menu) {
-        val toolbar = findViewById<TitleBar>(R.id.title_bar)?.toolbar ?: return
+        // 多 Fragment 各自带 TitleBar 时 findViewById 会命中第一个，
+        // 必须按 menu 对象精确匹配所属 Toolbar，否则溢出按钮拿到别人的菜单闭包
+        val titleBars = buildList {
+            collectTitleBars(window.decorView, this)
+        }
+        val toolbar = titleBars.firstOrNull { it.toolbar.menu === menu }?.toolbar ?: return
         toolbar.post {
             val menuView = toolbar.children
                 .filterIsInstance<ActionMenuView>()
@@ -274,6 +279,18 @@ abstract class BaseActivity<VB : ViewBinding>(
 
     private fun dispatchSurfaceMenuClosed(menu: Menu) {
         onSurfaceMenuClosed(menu)
+    }
+
+    private fun collectTitleBars(view: View, out: MutableList<TitleBar>) {
+        if (view is TitleBar) {
+            out.add(view)
+            return
+        }
+        if (view is ViewGroup) {
+            for (index in 0 until view.childCount) {
+                collectTitleBars(view.getChildAt(index), out)
+            }
+        }
     }
 
     protected open fun onSurfaceMenuOpened(menu: Menu) = Unit

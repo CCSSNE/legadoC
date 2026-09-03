@@ -2547,7 +2547,8 @@
     <string name="homepage_module_type">模块类型</string>
     <string name="homepage_module_title">标题</string>
     <string name="homepage_module_url">模块 URL（可选）</string>
-    <string name="homepage_module_args">参数 JSON，如 [{"t":"排行","u":"url"}]</string>
+    <string name="homepage_module_args">参数 (args)</string>
+    <string name="homepage_module_layout_config">布局配置 (layoutConfig)</string>
     <string name="homepage_module_added">模块已添加</string>
     <string name="homepage_copied">模块已复制到该集</string>
     <string name="homepage_only_one_infinite">每个集只能有一个无限流模块</string>
@@ -2574,7 +2575,9 @@
     <string name="homepage_layout_source_tab">分源Tab</string>
     <string name="homepage_preload">预加载相邻集</string>
     <string name="homepage_select_category">选择分类</string>
-    <string name="homepage_multi_select_hint">按钮组与排行榜类型可选择多个分类</string>
+    <string name="homepage_select_pagination">选择分页</string>
+    <string name="homepage_drag_sort">拖动排序</string>
+    <string name="homepage_multi_select_hint">可选择多个分类合并为一个模块</string>
     <string name="homepage_selected_categories_count">已选 %d 个分类</string>
     <string name="homepage_loading_categories">正在加载分类</string>
     <string name="homepage_manual_add_module">手动添加模块</string>

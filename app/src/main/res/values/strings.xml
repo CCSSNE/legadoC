@@ -2359,6 +2359,7 @@
     <string name="appearance_kit_no_importable">No importable components in this kit</string>
     <string name="appearance_kit_default_name">Appearance kit</string>
     <string name="appearance_kit_imported">Appearance kit imported: %1$s</string>
+    <string name="appearance_kit_imported_with_skipped">Appearance kit imported: %1$s, %2$d theme(s) and %3$d navigation bar(s); %4$d component(s) not supported yet (top bar / cover collection)</string>
     <string name="top_bar_name_exists">Top bar name already exists</string>
     <string name="cover_collection_no_images_to_export">No images to export in this cover collection</string>
     <string name="cover_collection_export_failed">Failed to export cover collection</string>
@@ -2693,7 +2694,8 @@ Selected text or question:
     <string name="homepage_module_type">Module type</string>
     <string name="homepage_module_title">Title</string>
     <string name="homepage_module_url">Module URL (optional)</string>
-    <string name="homepage_module_args">Args JSON, e.g. [{"t":"rank","u":"url"}]</string>
+    <string name="homepage_module_args">Args</string>
+    <string name="homepage_module_layout_config">Layout config</string>
     <string name="homepage_module_added">Module added</string>
     <string name="homepage_copied">Module copied to this set</string>
     <string name="homepage_only_one_infinite">Each set allows only one infinite module</string>
@@ -2720,7 +2722,9 @@ Selected text or question:
     <string name="homepage_layout_source_tab">Source tabs</string>
     <string name="homepage_preload">Preload adjacent tabs</string>
     <string name="homepage_select_category">Select category</string>
-    <string name="homepage_multi_select_hint">Multiple categories can be selected for button group / ranking</string>
+    <string name="homepage_select_pagination">Select pages</string>
+    <string name="homepage_drag_sort">Drag to sort</string>
+    <string name="homepage_multi_select_hint">Select multiple categories to merge into one module</string>
     <string name="homepage_selected_categories_count">%d selected</string>
     <string name="homepage_loading_categories">Loading categories</string>
     <string name="homepage_manual_add_module">Add module manually</string>

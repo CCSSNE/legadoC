@@ -75,7 +75,7 @@ object AppearanceKitManager {
                 when (component.type) {
                     TYPE_NAVIGATION_BAR -> {
                         val entry = NavigationBarIconConfig.importZip(componentFile)
-                        NavigationBarIconConfig.select(entry)
+                        NavigationBarIconConfig.apply(entry)
                         navigationApplied = true
                         navigationBarCount += 1
                     }

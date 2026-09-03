@@ -99,7 +99,7 @@ class HomepageKindSelectSheet :
             kinds.filter { (it.url ?: it.title) in selectedUrls }
         }
         if (selected.isEmpty()) return
-        (parentFragment as? HomepageModuleManageSheet)?.onKindsSelected(selected)
+        (parentFragment as? HomepageModuleManageSheet)?.onKindsSelected(selected, multiple)
         dismiss()
     }
 }

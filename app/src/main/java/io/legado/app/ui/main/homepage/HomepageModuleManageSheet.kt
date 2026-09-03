@@ -3,12 +3,14 @@ package io.legado.app.ui.main.homepage
 import android.content.Context
 import android.os.Bundle
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.TextView
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewbinding.ViewBinding
@@ -27,7 +29,6 @@ import io.legado.app.databinding.ItemHomepageManageSourceBinding
 import io.legado.app.domain.model.HomepageModuleType
 import io.legado.app.domain.model.ModuleDef
 import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.selector
 import io.legado.app.utils.GSON
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.setLayout
@@ -48,6 +49,10 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
 
     private val adapter by lazy { ManageAdapter(requireContext()) }
 
+    private val itemTouchHelper by lazy {
+        ItemTouchHelper(ReorderCallback())
+    }
+
     private var pageStack = mutableListOf<Page>(Page.SetList)
 
     /** 源模块详情页当前 Tab：0 = 已加入，1 = 发现 */
@@ -59,8 +64,8 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
     private data class DiscoverState(
         val loading: Boolean = false,
         val kinds: List<ExploreKind> = emptyList(),
-        val moduleType: String = HomepageModuleType.Grid.key,
-        val selectedKinds: List<ExploreKind> = emptyList(),
+        val selectedPageKinds: List<ExploreKind> = emptyList(),
+        val selectedCategory: ExploreKind? = null,
     )
 
     private sealed interface Page {
@@ -109,6 +114,7 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.rvManage.layoutManager = LinearLayoutManager(requireContext())
         binding.rvManage.adapter = adapter
+        itemTouchHelper.attachToRecyclerView(binding.rvManage)
 
         binding.ivClose.setOnClickListener { dismiss() }
         binding.ivBack.setOnClickListener { popPage() }
@@ -212,29 +218,35 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
             is Page.SetDetail -> {
                 val setId = resolveSetId(page.setUrl)
                 val modules = state.allJoinedModules.filter { it.customSetId == setId }
-                if (modules.isNotEmpty()) {
-                    rows.add(Row.Section(getString(R.string.homepage_set_detail)))
+                if (modules.isEmpty()) {
+                    rows.add(Row.Section(getString(R.string.homepage_empty_title)))
                 }
                 modules.forEach { rows.add(Row.Module(it)) }
                 when {
                     page.setUrl.startsWith("src_") -> rows.add(
-                        Row.Source(
-                            HomepageSourceManageUi(
-                                sourceUrl = page.setUrl.removePrefix("src_"),
-                                sourceName = page.setName,
-                            ),
-                            "book"
-                        )
+                        Row.Action(getString(R.string.homepage_add_module)) {
+                            pushPage(
+                                Page.SourceDetail(
+                                    sourceUrl = page.setUrl.removePrefix("src_"),
+                                    sourceName = page.setName,
+                                    setId = page.setUrl,
+                                    sourceType = "book",
+                                )
+                            )
+                        }
                     )
 
                     page.setUrl.startsWith("rss_") -> rows.add(
-                        Row.Source(
-                            HomepageSourceManageUi(
-                                sourceUrl = page.setUrl.removePrefix("rss_"),
-                                sourceName = page.setName,
-                            ),
-                            "rss"
-                        )
+                        Row.Action(getString(R.string.homepage_add_module)) {
+                            pushPage(
+                                Page.SourceDetail(
+                                    sourceUrl = page.setUrl.removePrefix("rss_"),
+                                    sourceName = page.setName,
+                                    setId = page.setUrl,
+                                    sourceType = "rss",
+                                )
+                            )
+                        }
                     )
 
                     else -> rows.add(
@@ -307,86 +319,49 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
         }
     }
 
-    /** 发现 Tab：模块类型选择 → 分类选择 → 手动添加，选完分类自动打开添加对话框 */
+    /** 发现 Tab：选择分页 → 选择分类 → 手动添加，选完分类自动打开添加对话框 */
     private fun buildDiscoverRows(rows: MutableList<Row>, page: Page.SourceDetail) {
-        val moduleType = HomepageModuleType.fromKey(discoverState.moduleType)
         if (discoverState.loading) {
             rows.add(Row.Section(getString(R.string.homepage_loading_categories)))
         }
         rows.add(
             Row.Field(
-                label = getString(R.string.homepage_module_type),
-                value = getString(moduleType.titleRes),
+                label = getString(R.string.homepage_select_pagination),
+                value = discoverState.selectedPageKinds.joinToString("、") { it.title },
+                hint = getString(R.string.homepage_multi_select_hint),
             ) {
-                showModuleTypeMenu()
+                showKindSelectSheet(page, multiple = true)
             }
         )
-        val multiSelect = isMultiSelectType(discoverState.moduleType)
-        val value = if (multiSelect) {
-            when {
-                discoverState.selectedKinds.isEmpty() -> ""
-                discoverState.selectedKinds.size <= 3 ->
-                    discoverState.selectedKinds.joinToString("、") { it.title }
-
-                else -> getString(
-                    R.string.homepage_selected_categories_count,
-                    discoverState.selectedKinds.size
-                )
-            }
-        } else {
-            discoverState.selectedKinds.firstOrNull()?.title ?: ""
-        }
         rows.add(
             Row.Field(
                 label = getString(R.string.homepage_select_category),
-                value = value,
-                hint = if (multiSelect) getString(R.string.homepage_multi_select_hint) else null,
+                value = discoverState.selectedCategory?.title ?: "",
             ) {
-                showKindSelectSheet(page)
+                showKindSelectSheet(page, multiple = false)
             }
         )
-        rows.add(Row.Action(getString(R.string.homepage_manual_add_module)) {
-            showEditDialog(
-                HomepageModuleManageUi(
-                    id = "",
-                    sourceUrl = page.sourceUrl,
-                    sourceName = page.sourceName,
-                    moduleKey = "",
-                    title = "",
-                    type = discoverState.moduleType,
-                    originalTitle = "",
-                    sourceType = page.sourceType,
-                ),
-                isCreate = true,
-                setId = page.setId,
-            )
-        })
-    }
-
-    private fun isMultiSelectType(type: String): Boolean {
-        return type == HomepageModuleType.ButtonGroup.key
-                || type == HomepageModuleType.Ranking.key
-                || type == HomepageModuleType.GridRanking.key
-    }
-
-    private fun showModuleTypeMenu() {
-        val entries = HomepageModuleType.entries.filter { it != HomepageModuleType.Unknown }
-        val options = entries.map { entry ->
-            val label = getString(entry.titleRes)
-            if (entry.key == discoverState.moduleType) "✓ $label" else label
-        }
-        requireContext().selector(
-            getString(R.string.homepage_module_type), options
-        ) { _, index ->
-            val selected = entries.getOrNull(index) ?: return@selector
-            if (selected.key != discoverState.moduleType) {
-                discoverState = discoverState.copy(
-                    moduleType = selected.key,
-                    selectedKinds = emptyList(),
+        rows.add(
+            Row.Field(
+                label = getString(R.string.homepage_manual_add_module),
+                value = "",
+            ) {
+                showEditDialog(
+                    HomepageModuleManageUi(
+                        id = "",
+                        sourceUrl = page.sourceUrl,
+                        sourceName = page.sourceName,
+                        moduleKey = "",
+                        title = "",
+                        type = "",
+                        originalTitle = "",
+                        sourceType = page.sourceType,
+                    ),
+                    isCreate = true,
+                    setId = page.setId,
                 )
-                rebuildRows()
             }
-        }
+        )
     }
 
     private fun loadDiscoverKinds(page: Page.SourceDetail) {
@@ -405,7 +380,7 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
         }
     }
 
-    private fun showKindSelectSheet(page: Page.SourceDetail) {
+    private fun showKindSelectSheet(page: Page.SourceDetail, multiple: Boolean) {
         if (discoverState.loading || discoverState.kinds.isEmpty()) {
             requireContext().toastOnUi(getString(R.string.homepage_loading_categories))
             return
@@ -414,25 +389,27 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
         sheet.arguments = Bundle().apply {
             putString("sourceUrl", page.sourceUrl)
             putString("sourceType", page.sourceType)
-            putBoolean("multiple", isMultiSelectType(discoverState.moduleType))
+            putBoolean("multiple", multiple)
             putStringArrayList(
                 "selected",
-                ArrayList(discoverState.selectedKinds.map { it.url ?: it.title })
+                ArrayList(
+                    (if (multiple) discoverState.selectedPageKinds else listOfNotNull(discoverState.selectedCategory))
+                        .map { it.url ?: it.title }
+                )
             )
         }
         sheet.show(childFragmentManager, "homepageKindSelect")
     }
 
     /** 分类选择弹窗回调：单选/多选都打开添加对话框并预填参数 */
-    internal fun onKindsSelected(kinds: List<ExploreKind>) {
+    internal fun onKindsSelected(kinds: List<ExploreKind>, multiple: Boolean) {
         if (kinds.isEmpty()) return
         val page = currentPage()
         if (page !is Page.SourceDetail) return
-        val multiSelect = isMultiSelectType(discoverState.moduleType)
-        discoverState = discoverState.copy(selectedKinds = kinds)
-        val def = if (multiSelect) {
+        val def = if (multiple) {
+            discoverState = discoverState.copy(selectedPageKinds = kinds)
             ModuleDef(
-                type = discoverState.moduleType,
+                type = HomepageModuleType.Ranking.key,
                 title = kinds.joinToString("、") { it.title },
                 args = GSON.toJson(
                     kinds.map { mapOf("t" to it.title, "u" to (it.url ?: "")) }
@@ -442,9 +419,10 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
             )
         } else {
             val kind = kinds.first()
+            discoverState = discoverState.copy(selectedCategory = kind)
             ModuleDef(
                 key = "explore_${kind.title}_${kind.url}",
-                type = discoverState.moduleType,
+                type = HomepageModuleType.Grid.key,
                 title = kind.title,
                 url = kind.url,
                 sourceUrl = page.sourceUrl,
@@ -504,25 +482,6 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
         viewModel.toggleSet(ui.sourceUrl, visible)
     }
 
-    private fun onSetMoreMenu(ui: HomepageSourceManageUi) {
-        requireContext().selector(
-            ui.sourceName,
-            listOf(
-                getString(R.string.homepage_rename_set),
-                getString(R.string.homepage_delete_set),
-                getString(R.string.homepage_move_up),
-                getString(R.string.homepage_move_down),
-            )
-        ) { _, index ->
-            when (index) {
-                0 -> showRenameSetDialog(ui)
-                1 -> showDeleteSetDialog(ui)
-                2 -> moveSet(ui, -1)
-                3 -> moveSet(ui, 1)
-            }
-        }
-    }
-
     private fun showRenameSetDialog(ui: HomepageSourceManageUi) {
         val setId = resolveSetId(ui.sourceUrl)
         requireContext().alert(getString(R.string.homepage_rename_set)) {
@@ -556,39 +515,8 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
         }
     }
 
-    private fun moveSet(ui: HomepageSourceManageUi, direction: Int) {
-        val urls = adapter.manageState.sets.map { it.sourceUrl }
-        val index = urls.indexOf(ui.sourceUrl)
-        val target = index + direction
-        if (index < 0 || target < 0 || target >= urls.size) return
-        val reordered = urls.toMutableList().apply {
-            removeAt(index)
-            add(target, ui.sourceUrl)
-        }
-        viewModel.reorderCustomSets(reordered)
-    }
-
     private fun onModuleToggle(ui: HomepageModuleManageUi, visible: Boolean) {
         viewModel.toggleModule(ui.id, visible)
-    }
-
-    private fun onModuleMoreMenu(ui: HomepageModuleManageUi) {
-        requireContext().selector(
-            ui.title,
-            listOf(
-                getString(R.string.homepage_edit_module),
-                getString(R.string.homepage_delete_module),
-                getString(R.string.homepage_move_up),
-                getString(R.string.homepage_move_down),
-            )
-        ) { _, index ->
-            when (index) {
-                0 -> showEditDialog(ui, isCreate = false)
-                1 -> showDeleteModuleDialog(ui)
-                2 -> moveModule(ui, -1)
-                3 -> moveModule(ui, 1)
-            }
-        }
     }
 
     private fun showDeleteModuleDialog(ui: HomepageModuleManageUi) {
@@ -601,21 +529,6 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
             }
             negativeButton(R.string.cancel)
         }
-    }
-
-    private fun moveModule(ui: HomepageModuleManageUi, direction: Int) {
-        val setId = ui.customSetId ?: return
-        val ids = adapter.manageState.allJoinedModules
-            .filter { it.customSetId == setId }
-            .map { it.id }
-        val index = ids.indexOf(ui.id)
-        val target = index + direction
-        if (index < 0 || target < 0 || target >= ids.size) return
-        val reordered = ids.toMutableList().apply {
-            removeAt(index)
-            add(target, ui.id)
-        }
-        viewModel.reorderModules(reordered)
     }
 
     private fun onSourceRowClick(ui: HomepageSourceManageUi, sourceType: String) {
@@ -657,6 +570,7 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
             putString("type", ui.type)
             putString("url", ui.url)
             putString("args", ui.args)
+            putString("layoutConfig", ui.layoutConfig)
             putString("setId", setId)
             putString("sourceType", ui.sourceType)
             putBoolean("isCreate", isCreate)
@@ -665,6 +579,94 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
     }
 
     // ==================== 适配器 ====================
+
+    /** 拖动柄触摸即启动排序拖拽 */
+    private fun bindDragHandle(iv: View, holder: RecyclerView.ViewHolder) {
+        iv.setOnTouchListener { _, event ->
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                val position = holder.bindingAdapterPosition
+                if (position != RecyclerView.NO_POSITION && adapter.isDraggable(position)) {
+                    itemTouchHelper.startDrag(holder)
+                    return@setOnTouchListener true
+                }
+            }
+            false
+        }
+    }
+
+    private inner class ReorderCallback : ItemTouchHelper.Callback() {
+
+        override fun isLongPressDragEnabled(): Boolean = false
+
+        override fun getMovementFlags(
+            recyclerView: RecyclerView,
+            viewHolder: RecyclerView.ViewHolder,
+        ): Int {
+            val position = viewHolder.bindingAdapterPosition
+            val flags = if (position != RecyclerView.NO_POSITION && adapter.isDraggable(position)) {
+                ItemTouchHelper.UP or ItemTouchHelper.DOWN
+            } else {
+                0
+            }
+            return makeMovementFlags(flags, 0)
+        }
+
+        override fun onMove(
+            recyclerView: RecyclerView,
+            viewHolder: RecyclerView.ViewHolder,
+            target: RecyclerView.ViewHolder,
+        ): Boolean {
+            return adapter.moveRow(
+                viewHolder.bindingAdapterPosition,
+                target.bindingAdapterPosition
+            )
+        }
+
+        override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) = Unit
+
+        override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
+            super.clearView(recyclerView, viewHolder)
+            commitReorder()
+        }
+    }
+
+    /** 拖拽结束后按页面类型持久化新顺序 */
+    private fun commitReorder() {
+        val rows = adapter.currentRows()
+        when (val page = currentPage()) {
+            is Page.SetList -> {
+                val urls = rows.filterIsInstance<Row.Set>().map { it.ui.sourceUrl }
+                if (urls.isNotEmpty() && urls != adapter.manageState.sets.map { it.sourceUrl }) {
+                    viewModel.reorderCustomSets(urls)
+                }
+            }
+
+            is Page.SetDetail ->
+                commitModuleOrder(rows, resolveSetId(page.setUrl))
+
+            is Page.SourceDetail -> {
+                if (sourceDetailTab != 0) return
+                val effectiveSetId = page.setId ?: when (page.sourceType) {
+                    "rss" -> "rss_${page.sourceUrl}"
+                    else -> "src_${page.sourceUrl}"
+                }
+                commitModuleOrder(rows, effectiveSetId)
+            }
+
+            else -> Unit
+        }
+    }
+
+    private fun commitModuleOrder(rows: List<Row>, setId: String) {
+        val ids = rows.filterIsInstance<Row.Module>().map { it.ui.id }
+        if (ids.isEmpty()) return
+        val current = adapter.manageState.allJoinedModules
+            .filter { it.customSetId == setId }
+            .map { it.id }
+        if (ids != current) {
+            viewModel.reorderModules(ids)
+        }
+    }
 
     private inner class ManageAdapter(
         context: Context
@@ -679,6 +681,30 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
             rows.clear()
             rows.addAll(newRows)
             notifyDataSetChanged()
+        }
+
+        fun currentRows(): List<Row> = rows.toList()
+
+        fun isDraggable(position: Int): Boolean {
+            if (position < 0 || position >= rows.size) return false
+            return when (val row = rows[position]) {
+                is Row.Set -> true
+                is Row.Module -> !row.copyMode
+                else -> false
+            }
+        }
+
+        fun moveRow(from: Int, to: Int): Boolean {
+            if (from == to || from < 0 || to < 0 || from >= rows.size || to >= rows.size) {
+                return false
+            }
+            if (!isDraggable(from) || !isDraggable(to)) return false
+            if (rows[from]::class != rows[to]::class) return false
+            val tmp = rows[from]
+            rows[from] = rows[to]
+            rows[to] = tmp
+            notifyItemMoved(from, to)
+            return true
         }
 
         override fun getItemViewType(position: Int): Int = when (rows[position]) {
@@ -710,6 +736,7 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
                 is Row.Section -> holder.sectionBinding?.tvSection?.text = row.title
 
                 is Row.Set -> holder.setBinding?.run {
+                    bindDragHandle(ivDrag, holder)
                     tvName.text = row.ui.sourceName
                     tvDesc.text = context.getString(R.string.homepage_module_count, row.ui.moduleCount)
                     swVisible.setOnCheckedChangeListener(null)
@@ -718,22 +745,28 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
                         onSetToggle(row.ui, isChecked)
                     }
                     root.setOnClickListener { onSetRowClick(row.ui) }
-                    ivMore.setOnClickListener { onSetMoreMenu(row.ui) }
+                    ivEdit.setOnClickListener { showRenameSetDialog(row.ui) }
+                    ivDelete.setOnClickListener { showDeleteSetDialog(row.ui) }
                 }
 
                 is Row.Module -> holder.moduleBinding?.run {
+                    val editable = !row.copyMode
+                    bindDragHandle(ivDrag, holder)
+                    ivDrag.isVisible = editable
+                    ivEdit.isVisible = editable
+                    ivDelete.isVisible = editable
                     tvTitle.text = row.ui.title
                     tvDesc.text = moduleTypeLabel(row.ui.type)
-                    swVisible.isVisible = !row.copyMode
-                    if (!row.copyMode) {
+                    swVisible.isVisible = editable
+                    if (editable) {
                         swVisible.setOnCheckedChangeListener(null)
                         swVisible.isChecked = row.ui.isVisible
                         swVisible.setOnCheckedChangeListener { _, isChecked ->
                             onModuleToggle(row.ui, isChecked)
                         }
+                        ivEdit.setOnClickListener { showEditDialog(row.ui, isCreate = false) }
+                        ivDelete.setOnClickListener { showDeleteModuleDialog(row.ui) }
                     }
-                    ivMore.isVisible = !row.copyMode
-                    ivMore.setOnClickListener { onModuleMoreMenu(row.ui) }
                     root.setOnClickListener {
                         if (row.copyMode) onCopyModule(row.ui)
                     }

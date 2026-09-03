@@ -114,6 +114,10 @@ class HomepageFragment() : VMBaseFragment<HomepageViewModel>(R.layout.fragment_h
         if (binding.llSourceTabRoot.isVisible == tabMode) return
         binding.llSourceTabRoot.isVisible = tabMode
         binding.swipeRefreshLayout.isVisible = !tabMode
+        supportToolbar?.menu?.findItem(R.id.menu_preload)?.let { item ->
+            item.isVisible = tabMode
+            item.isChecked = viewModel.uiState.value.preloadMode == 1
+        }
     }
 
     /**
@@ -167,15 +171,6 @@ class HomepageFragment() : VMBaseFragment<HomepageViewModel>(R.layout.fragment_h
     override fun onCompatCreateOptionsMenu(menu: android.view.Menu) {
         super.onCompatCreateOptionsMenu(menu)
         menuInflater.inflate(R.menu.menu_homepage, menu)
-    }
-
-    override fun onPrepareOptionsMenu(menu: android.view.Menu) {
-        super.onPrepareOptionsMenu(menu)
-        val tabMode = AppConfig.homepageLayoutMode == 1
-        menu.findItem(R.id.menu_preload)?.let {
-            it.isVisible = tabMode
-            it.isChecked = AppConfig.homepagePreload == 1
-        }
     }
 
     override fun onCompatOptionsItemSelected(item: android.view.MenuItem) {

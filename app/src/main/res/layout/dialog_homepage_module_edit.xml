@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
@@ -19,38 +18,11 @@
         android:textSize="16sp"
         android:textStyle="bold" />
 
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:paddingStart="18dp"
-        android:paddingEnd="18dp"
-        android:text="@string/homepage_module_type"
-        android:textColor="@color/secondaryText"
-        android:textSize="12sp" />
-
-    <androidx.core.widget.NestedScrollView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:fadeScrollbars="false"
-        android:paddingStart="18dp"
-        android:paddingTop="8dp"
-        android:paddingEnd="18dp"
-        android:scrollbars="horizontal">
-
-        <com.google.android.flexbox.FlexboxLayout
-            android:id="@+id/fl_types"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            app:flexWrap="nowrap" />
-
-    </androidx.core.widget.NestedScrollView>
-
     <EditText
         android:id="@+id/et_title"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginStart="18dp"
-        android:layout_marginTop="6dp"
         android:layout_marginEnd="18dp"
         android:hint="@string/homepage_module_title"
         android:importantForAutofill="no"
@@ -64,7 +36,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginStart="18dp"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="8dp"
         android:layout_marginEnd="18dp"
         android:hint="@string/homepage_module_url"
         android:importantForAutofill="no"
@@ -72,14 +44,78 @@
         android:maxLines="1"
         android:textSize="14sp" />
 
+    <LinearLayout
+        android:id="@+id/ll_type_field"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="18dp"
+        android:layout_marginTop="10dp"
+        android:layout_marginEnd="18dp"
+        android:background="@drawable/bg_homepage_field"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="14dp"
+        android:paddingTop="6dp"
+        android:paddingEnd="14dp"
+        android:paddingBottom="6dp">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/homepage_module_type"
+                android:textColor="@color/secondaryText"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/tv_type_value"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/primaryText"
+                android:textSize="15sp"
+                tools:text="网格" />
+
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingStart="8dp"
+            android:text="▾"
+            android:textColor="@color/secondaryText"
+            android:textSize="14sp" />
+
+    </LinearLayout>
+
     <EditText
         android:id="@+id/et_args"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginStart="18dp"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="10dp"
         android:layout_marginEnd="18dp"
         android:hint="@string/homepage_module_args"
+        android:importantForAutofill="no"
+        android:inputType="text"
+        android:maxLines="1"
+        android:textSize="14sp" />
+
+    <EditText
+        android:id="@+id/et_layout_config"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="18dp"
+        android:layout_marginTop="10dp"
+        android:layout_marginEnd="18dp"
+        android:hint="@string/homepage_module_layout_config"
         android:importantForAutofill="no"
         android:inputType="text"
         android:maxLines="1"

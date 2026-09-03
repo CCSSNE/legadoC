@@ -5,21 +5,19 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.Window
-import android.widget.TextView
-import androidx.core.content.ContextCompat
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.databinding.DialogHomepageModuleEditBinding
 import io.legado.app.domain.model.HomepageModuleType
 import io.legado.app.domain.model.ModuleDef
-import io.legado.app.lib.theme.accentColor
-import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.utils.PopupMenuAction
 import io.legado.app.utils.setLayout
+import io.legado.app.utils.showPopupMenu
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
 /**
- * 主页模块新建/编辑弹窗：选择模块类型，填写标题、URL 与参数 JSON。
+ * 主页模块新建/编辑弹窗：标题、URL、模块类型（下拉选择）、参数 JSON 与布局配置。
  */
 class HomepageModuleEditDialog : BaseDialogFragment(R.layout.dialog_homepage_module_edit) {
 
@@ -45,7 +43,8 @@ class HomepageModuleEditDialog : BaseDialogFragment(R.layout.dialog_homepage_mod
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         val args = arguments ?: Bundle()
         val isCreate = args.getBoolean("isCreate")
-        selectedType = args.getString("type") ?: HomepageModuleType.Grid.key
+        selectedType = args.getString("type")?.takeIf { it.isNotBlank() }
+            ?: HomepageModuleType.Grid.key
 
         binding.run {
             tvTitle.text = if (isCreate) {
@@ -56,29 +55,29 @@ class HomepageModuleEditDialog : BaseDialogFragment(R.layout.dialog_homepage_mod
             etTitle.setText(args.getString("title") ?: "")
             etUrl.setText(args.getString("url") ?: "")
             etArgs.setText(args.getString("args") ?: "")
+            etLayoutConfig.setText(args.getString("layoutConfig") ?: "")
 
-            upTypeChips()
+            upTypeLabel()
+            llTypeField.setOnClickListener { fieldType ->
+                fieldType.showPopupMenu(typeEntries.map { entry ->
+                    PopupMenuAction(getString(entry.titleRes)) {
+                        selectedType = entry.key
+                        upTypeLabel()
+                    }
+                })
+            }
 
             tvCancel.setOnClickListener { dismiss() }
             tvOk.setOnClickListener { submit(args, isCreate) }
         }
     }
 
-    private fun upTypeChips() {
-        binding.flTypes.removeAllViews()
-        typeEntries.forEach { entry ->
-            val selected = entry.key == selectedType
-            val chip = HomepageModuleManageSheet.createKindChip(requireContext(), "") {}
-            chip.text = getString(entry.titleRes)
-            chip.setTextColor(
-                if (selected) accentColor
-                else ContextCompat.getColor(requireContext(), R.color.primaryText)
-            )
-            chip.setOnClickListener {
-                selectedType = entry.key
-                upTypeChips()
-            }
-            binding.flTypes.addView(chip)
+    private fun upTypeLabel() {
+        val entry = HomepageModuleType.entries.find { it.key == selectedType }
+        binding.tvTypeValue.text = if (entry == null || entry == HomepageModuleType.Unknown) {
+            selectedType
+        } else {
+            getString(entry.titleRes)
         }
     }
 
@@ -87,6 +86,7 @@ class HomepageModuleEditDialog : BaseDialogFragment(R.layout.dialog_homepage_mod
             val title = etTitle.text.toString().trim()
             val url = etUrl.text.toString().trim()
             val moduleArgs = etArgs.text.toString().trim().ifBlank { null }
+            val layoutConfig = etLayoutConfig.text.toString().trim().ifBlank { null }
             val sourceUrl = args.getString("sourceUrl") ?: return
             val setId = args.getString("setId")
             val sourceName = args.getString("sourceName") ?: ""
@@ -102,6 +102,7 @@ class HomepageModuleEditDialog : BaseDialogFragment(R.layout.dialog_homepage_mod
                 type = selectedType,
                 title = title,
                 args = moduleArgs,
+                layoutConfig = layoutConfig,
                 url = url.ifBlank { null },
                 sourceUrl = sourceUrl,
             )

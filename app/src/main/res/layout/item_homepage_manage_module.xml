@@ -12,9 +12,19 @@
     android:paddingEnd="8dp"
     android:paddingBottom="10dp">
 
+    <ImageView
+        android:id="@+id/iv_drag"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
+        android:contentDescription="@string/homepage_drag_sort"
+        android:padding="4dp"
+        android:src="@drawable/ic_drag_handle"
+        app:tint="@color/secondaryText" />
+
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
         android:layout_weight="1"
         android:orientation="vertical">
 
@@ -41,21 +51,31 @@
 
     </LinearLayout>
 
+    <ImageView
+        android:id="@+id/iv_edit"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
+        android:layout_marginStart="8dp"
+        android:contentDescription="@string/homepage_edit_module"
+        android:padding="4dp"
+        android:src="@drawable/ic_edit"
+        app:tint="@color/secondaryText" />
+
+    <ImageView
+        android:id="@+id/iv_delete"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
+        android:layout_marginStart="8dp"
+        android:contentDescription="@string/homepage_delete_module"
+        android:padding="4dp"
+        android:src="@drawable/ic_outline_delete"
+        app:tint="@color/secondaryText" />
+
     <Switch
         android:id="@+id/sw_visible"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginStart="8dp"
         android:contentDescription="@string/homepage_module_manage" />
-
-    <ImageView
-        android:id="@+id/iv_more"
-        android:layout_width="24dp"
-        android:layout_height="24dp"
-        android:layout_marginStart="8dp"
-        android:contentDescription="@string/homepage_more"
-        android:padding="4dp"
-        android:src="@drawable/ic_more_vert"
-        app:tint="@color/secondaryText" />
 
 </LinearLayout>
