@@ -39,6 +39,11 @@
     <td width="33.33%" align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/23.png" width="100%" alt="界面截图 23" /></td>
     <td width="33.33%" align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/24.png" width="100%" alt="界面截图 24" /></td>
   </tr>
+  <tr>
+    <td width="33.33%" align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/25.png" width="100%" alt="界面截图 25" /></td>
+    <td width="33.33%" align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/26.png" width="100%" alt="界面截图 26" /></td>
+    <td width="33.33%" align="center"></td>
+  </tr>
 </table>
 
 **交流群 有bug 或者建议可以加入 1101873338 主要优化听书体验**
