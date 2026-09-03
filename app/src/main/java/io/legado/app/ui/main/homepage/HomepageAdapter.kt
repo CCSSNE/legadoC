@@ -176,8 +176,10 @@ class HomepageAdapter(
                 }
             }
             // Tab 行默认隐藏，仅由 bindRankingTabs 显示，避免各内容绑定路径误伤；
-            // 横滑到底自动加载动作同样按次绑定，入口先清掉防 holder 复用残留
+            // 横滑到底自动加载动作同样按次绑定，入口先清掉防 holder 复用残留；
+            // 标题行默认显示，多 tab 时由 bindRankingTabs 藏掉只留 tab
             binding.llTabs.gone()
+            binding.llTitle.visible()
             hEndAction = null
             when (val state = module.state) {
                 is ModuleLoadState.Loading -> bindLoading(module)
@@ -370,8 +372,10 @@ class HomepageAdapter(
                 )
             }
 
-            // Tab 行在内容绑定之后显示：显隐只由本方法管理
+            // Tab 行在内容绑定之后显示：显隐只由本方法管理；
+            // 多分类时隐藏顶部静态标题，只留 tab 行（跳转走 tab 行右侧箭头）
             binding.llTabs.visible()
+            binding.llTitle.isVisible = state.tabs.size < 2
             binding.ivTabArrow.isVisible = currentTab?.exploreUrl != null
             binding.ivTabArrow.setOnClickListener {
                 currentTab?.let { tab -> callBack.onModuleHeaderClick(module, tab.exploreUrl) }
