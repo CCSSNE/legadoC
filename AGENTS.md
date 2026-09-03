@@ -183,6 +183,7 @@ $versionName = '3.26.<MMddHH>' # <MMddHH> uses UTC; appC automatically appends c
 - 2026-08-24：后台构建 `.bat` 用 `echo %EXIT_CODE%> "file"` 记录退出码，`%EXIT_CODE%` 为纯数字（如 0）时该行被 cmd 解析为句柄 `0>` 重定向，退出码文件为 0 字节空文件（构建本身正常，成功以 out.log 的 BUILD SUCCESSFUL 与空 err.log 为准，此问题不触发重编译）。记录退出码必须把重定向写在行首：`> "file" echo %EXIT_CODE%`。
 - 2026-09-01：`compileAppCKotlin` 报 `Unresolved reference 'start'` / `end'`——Kotlin `MatchResult` 没有 `start(groupIdx)` / `end(groupIdx)` 方法；需用 `match.groups[groupIdx]!!.range.first` 和 `range.last + 1`。同文件 `outcome` 为可空类型，在 `when` 后的 `else` 分支不会被 smart cast（lambda 捕获），需显式 `!!`。
 - 2026-09-02：`assembleAppC` 冷编译三次才成功。第一次 Gradle daemon 原生 OOM（hs_err malloc 失败，同 2026-08-19）；第二次改用 `-Dkotlin.compiler.execution.strategy=in-process` 但 Kotlin 编译仍走守护进程（堆栈 `compileWithDaemon`），守护进程崩溃报 "Connection to the Kotlin daemon has been unexpectedly lost"——**`-D` 形式在当前 Kotlin 版本下不被读取**；第三次改用 `-Pkotlin.compiler.execution.strategy=in-process`（Gradle property 形式）才真正 in-process，编译成功。规则：冷编译参数中 Kotlin 编译策略一律用 `-P` 而非 `-D`；低内存环境下 Gradle daemon 原生 OOM 与 Kotlin daemon 崩溃可能交替出现，需区分处理。
+- 2026-09-03：新增带 `tools:` 预览属性的布局（如 `tools:text`）若根元素未声明 `xmlns:tools`，`mergeAppCResources` 直接报 `AttributePrefixUnbound` 并失败；本轮聚合主页两个布局（`item_homepage_ranking_tab`、`item_homepage_manage_source`）先后触发。规则：布局一旦使用 `tools:` 属性必须在根元素声明 `xmlns:tools="http://schemas.android.com/tools"`。另：本轮聚合主页代码曾整体未编译即提交（Kotlin 缺 import/裸类引用、`Row` 内嵌 sealed 子类未加 `Row.` 前缀、`Row.Module.copyMode` 误写成 `ui.copyMode`、根无 id 布局误用绑定字段 `tvAction` 应改用 `root`、抽象 ViewHolder 直接被实例化），先编译再提交，避免一次性排错堆积。
 
 ### 双构建路线（自有 / 开源）
 
@@ -294,6 +295,6 @@ uiautomator2 / ADB
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- 最近一次自用版交付为 `3.26.090221` / `10812`，2026-09-02 UTC 21 时，使用 `assembleAppC` 冷编译成功。产物包名 `io.legado.app.dev`、versionName `3.26.090221c`、versionCode `10812`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C-自用`（label-zh 逐字匹配）、`apksigner` 验证通过；APK 位于 `app\build\outputs\apk\app\c\legado_app_3.26.090221_10812.apk`。本次未安装模拟器、未做正式回归。上一自用版为 `3.26.090219` / `10811`；最近公开版仍为 `3.26.090209` / `10804`。
+- 最近一次自用版交付为 `3.26.090223` / `10813`，2026-09-02 UTC 23 时，使用 `assembleAppC` 冷编译成功（首次达成的正式编译需先行修复聚合主页遗留的未编译代码：两个布局缺 `xmlns:tools`、若干 Kotlin 类型/引用错误，并补录 Room 115 版 schema）。产物包名 `io.legado.app.dev`、versionName `3.26.090223c`、versionCode `10813`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C-自用`（label-zh 逐字匹配）、`apksigner` 验证通过；APK 位于 `app\build\outputs\apk\app\c\legado_app_3.26.090223_10813.apk`。本次未安装模拟器、未做正式回归。上一自用版为 `3.26.090221` / `10812`；最近公开版仍为 `3.26.090209` / `10804`。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
