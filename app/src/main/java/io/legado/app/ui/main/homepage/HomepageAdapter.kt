@@ -11,6 +11,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.isVisible
+import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.MarginPageTransformer
 import androidx.viewpager2.widget.ViewPager2
@@ -62,6 +63,33 @@ class HomepageAdapter(
     private val appContext = context.applicationContext
     private val modules = mutableListOf<HomepageModuleUi>()
 
+    /** 网格模块点过“加载更多”后展示全部已加载书籍，不再只取前 6 条 */
+    private val gridMoreShown = mutableSetOf<String>()
+
+    /** 无限网格随外层下滑自动加载：手势触发，ViewModel 侧防重入 */
+    private val outerScrollListener = object : RecyclerView.OnScrollListener() {
+        override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+            if (dy <= 0) return
+            val lm = recyclerView.layoutManager as? LinearLayoutManager ?: return
+            val pos = lm.findLastVisibleItemPosition()
+            if (pos == RecyclerView.NO_POSITION) return
+            val module = modules.getOrNull(pos) ?: return
+            if (module.type != HomepageModuleType.InfiniteGrid) return
+            val state = module.state as? ModuleLoadState.Loaded ?: return
+            if (state.hasMore && !state.isLoadingMore) {
+                callBack.onLoadMore(module)
+            }
+        }
+    }
+
+    override fun onAttachedToRecyclerView(recyclerView: RecyclerView) {
+        recyclerView.addOnScrollListener(outerScrollListener)
+    }
+
+    override fun onDetachedFromRecyclerView(recyclerView: RecyclerView) {
+        recyclerView.removeOnScrollListener(outerScrollListener)
+    }
+
     fun submitModules(list: List<HomepageModuleUi>) {
         if (list == modules) return
         modules.clear()
@@ -94,6 +122,9 @@ class HomepageAdapter(
         private var pagerLoadAction: (() -> Unit)? = null
         private val pagerPositions = mutableMapOf<String, Int>()
 
+        /** 横幅/卡片横滑到最右时的自动加载动作，其他类型保持 null */
+        private var hEndAction: (() -> Unit)? = null
+
         private val pagerCallback = object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
                 val key = currentPagerKey ?: return
@@ -107,6 +138,14 @@ class HomepageAdapter(
 
         init {
             binding.vpGridRanking.registerOnPageChangeCallback(pagerCallback)
+            // 横滑列表右滑到头且是用户手势时触发自动加载（dx > 0 防绑定后连锁自加载）
+            binding.rvContent.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+                override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                    if (dx > 0 && !recyclerView.canScrollHorizontally(1)) {
+                        hEndAction?.invoke()
+                    }
+                }
+            })
         }
 
         fun bind(module: HomepageModuleUi) {
@@ -125,8 +164,10 @@ class HomepageAdapter(
                     callBack.onModuleHeaderClick(target, headerExploreUrl(target))
                 }
             }
-            // Tab 行默认隐藏，仅由 bindRankingTabs 显示，避免各内容绑定路径误伤
+            // Tab 行默认隐藏，仅由 bindRankingTabs 显示，避免各内容绑定路径误伤；
+            // 横滑到底自动加载动作同样按次绑定，入口先清掉防 holder 复用残留
             binding.llTabs.gone()
+            hEndAction = null
             when (val state = module.state) {
                 is ModuleLoadState.Loading -> bindLoading(module)
                 is ModuleLoadState.Error -> bindError(module)
@@ -214,10 +255,16 @@ class HomepageAdapter(
                 return
             }
             val rankStyle = module.type == HomepageModuleType.Ranking
+            val isHorizontal = module.type == HomepageModuleType.Card ||
+                    module.type == HomepageModuleType.Banner
+            val isInfinite = module.type == HomepageModuleType.InfiniteGrid
             showRankCard(rankStyle)
             ensureBooksAdapter(module.type)
             val books = when {
-                module.type == HomepageModuleType.Grid -> state.books.take(GRID_MAX_ITEMS)
+                // 网格首屏只取 6 条，点过加载更多后展示全部已加载（否则按钮形同虚设）
+                module.type == HomepageModuleType.Grid ->
+                    if (gridMoreShown.contains(module.globalId)) state.books
+                    else state.books.take(GRID_MAX_ITEMS)
                 rankStyle -> state.books.take(rankLimit(module))
                 else -> state.books
             }
@@ -227,8 +274,18 @@ class HomepageAdapter(
             } else {
                 binding.llExpand.gone()
             }
-            bindLoadMore(state.hasMore, state.isLoadingMore) {
-                callBack.onLoadMore(module)
+            when {
+                // 横幅/卡片横滑到头自动加载，无限网格随下滑自动加载，都不要底部按钮
+                isHorizontal || isInfinite -> binding.llLoadMore.gone()
+                else -> bindLoadMore(state.hasMore, state.isLoadingMore) {
+                    if (module.type == HomepageModuleType.Grid) {
+                        gridMoreShown.add(module.globalId)
+                    }
+                    callBack.onLoadMore(module)
+                }
+            }
+            if (isHorizontal) {
+                hEndAction = { callBack.onLoadMore(module) }
             }
         }
 
