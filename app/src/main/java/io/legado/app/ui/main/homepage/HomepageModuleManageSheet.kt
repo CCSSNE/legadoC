@@ -8,6 +8,7 @@ import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.TextView
 import androidx.core.view.isVisible
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewbinding.ViewBinding
@@ -24,6 +25,7 @@ import io.legado.app.databinding.ItemHomepageManageSetBinding
 import io.legado.app.databinding.ItemHomepageManageSourceBinding
 import io.legado.app.domain.model.HomepageModuleType
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.selector
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.toastOnUi
@@ -38,7 +40,7 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
 
     private val binding by viewBinding(DialogHomepageManageBinding::bind)
 
-    private val viewModel: HomepageViewModel
+    internal val viewModel: HomepageViewModel
         get() = (parentFragment as HomepageFragment).viewModel
 
     private val adapter by lazy { ManageAdapter(requireContext()) }
@@ -160,7 +162,7 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
         when (val page = currentPage()) {
             Page.SetList -> {
                 if (state.sets.isEmpty()) {
-                    rows.add(Section(getString(R.string.homepage_empty_title)))
+                    rows.add(Row.Section(getString(R.string.homepage_empty_title)))
                 }
                 state.sets.forEach { rows.add(Row.Set(it)) }
             }
@@ -169,7 +171,7 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
                 val setId = resolveSetId(page.setUrl)
                 val modules = state.allJoinedModules.filter { it.customSetId == setId }
                 if (modules.isNotEmpty()) {
-                    rows.add(Section(getString(R.string.homepage_set_detail)))
+                    rows.add(Row.Section(getString(R.string.homepage_set_detail)))
                 }
                 modules.forEach { rows.add(Row.Module(it)) }
                 when {
@@ -194,7 +196,7 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
                     )
 
                     else -> rows.add(
-                        Action(getString(R.string.homepage_copy_from_other_sets)) {
+                        Row.Action(getString(R.string.homepage_copy_from_other_sets)) {
                             pushPage(Page.CustomSetAdd(setId, page.setName))
                         }
                     )
@@ -206,14 +208,14 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
                     rows.add(Row.Source(it, "book"))
                 }
                 if (state.browseSources.isEmpty()) {
-                    rows.add(Section(getString(R.string.homepage_empty_title)))
+                    rows.add(Row.Section(getString(R.string.homepage_empty_title)))
                 }
             }
 
             Page.BrowseRssSources -> {
                 state.rssSources.forEach { rows.add(Row.Source(it, "rss")) }
                 if (state.rssSources.isEmpty()) {
-                    rows.add(Section(getString(R.string.homepage_empty_title)))
+                    rows.add(Row.Section(getString(R.string.homepage_empty_title)))
                 }
             }
 
@@ -226,17 +228,17 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
                     it.sourceUrl == page.sourceUrl && it.customSetId == effectiveSetId
                 }
                 if (modules.isNotEmpty()) {
-                    rows.add(Section(getString(R.string.homepage_joined_modules)))
+                    rows.add(Row.Section(getString(R.string.homepage_joined_modules)))
                 }
                 modules.forEach { rows.add(Row.Module(it)) }
                 if (page.sourceType == "book") {
-                    rows.add(Action(getString(R.string.homepage_sync)) {
+                    rows.add(Row.Action(getString(R.string.homepage_sync)) {
                         viewModel.syncSourceModules(page.sourceUrl) {
                             requireContext().toastOnUi(getString(R.string.homepage_sync_done))
                         }
                     })
                 }
-                rows.add(Action(getString(R.string.homepage_add_custom_module)) {
+                rows.add(Row.Action(getString(R.string.homepage_add_custom_module)) {
                     showEditDialog(
                         HomepageModuleManageUi(
                             id = "",
@@ -257,10 +259,10 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
 
             is Page.CustomSetAdd -> {
                 val others = state.allJoinedModules.filter { it.customSetId != page.setId }
-                rows.add(Section(getString(R.string.homepage_copy_from_other_sets)))
+                rows.add(Row.Section(getString(R.string.homepage_copy_from_other_sets)))
                 others.forEach { rows.add(Row.Module(it, copyMode = true)) }
                 if (others.isEmpty()) {
-                    rows.add(Section(getString(R.string.homepage_empty_title)))
+                    rows.add(Row.Section(getString(R.string.homepage_empty_title)))
                 }
             }
         }
@@ -510,7 +512,7 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
         val page = currentPage()
         if (page !is Page.SourceDetail) return
         val categories = kindsState.kinds.filter { it.title in kindsState.selected }
-            .map { it.title to it.url }
+            .mapNotNull { it.url?.let { url -> it.title to url } }
         if (categories.isEmpty()) return
         if (page.sourceType == "rss") {
             viewModel.addRssRankingGroupFromKinds(
@@ -586,18 +588,18 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
                 is Row.Module -> holder.moduleBinding?.run {
                     tvTitle.text = row.ui.title
                     tvDesc.text = moduleTypeLabel(row.ui.type)
-                    swVisible.isVisible = !row.ui.copyMode
-                    if (!row.ui.copyMode) {
+                    swVisible.isVisible = !row.copyMode
+                    if (!row.copyMode) {
                         swVisible.setOnCheckedChangeListener(null)
                         swVisible.isChecked = row.ui.isVisible
                         swVisible.setOnCheckedChangeListener { _, isChecked ->
                             onModuleToggle(row.ui, isChecked)
                         }
                     }
-                    ivMore.isVisible = !row.ui.copyMode
+                    ivMore.isVisible = !row.copyMode
                     ivMore.setOnClickListener { onModuleMoreMenu(row.ui) }
                     root.setOnClickListener {
-                        if (row.ui.copyMode) onCopyModule(row.ui)
+                        if (row.copyMode) onCopyModule(row.ui)
                     }
                 }
 
@@ -631,20 +633,20 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
                     tvAddRanking.setOnClickListener { addSelectedAsRanking() }
                 }
 
-                is Row.Action -> holder.actionBinding?.tvAction?.run {
-                    text = row.label
-                    setOnClickListener { row.action() }
+                is Row.Action -> holder.actionBinding?.root?.let { tv ->
+                    tv.text = row.label
+                    tv.setOnClickListener { row.action() }
                 }
             }
         }
 
         private fun moduleTypeLabel(type: String): String {
             val res = HomepageModuleType.fromKey(type).titleRes
-            return context.getString(res)
+            return requireContext().getString(res)
         }
     }
 
-    abstract class ManageViewHolder(val binding: ViewBinding) :
+    class ManageViewHolder(val binding: ViewBinding) :
         RecyclerView.ViewHolder(binding.root) {
         val sectionBinding: ItemHomepageManageSectionBinding? =
             binding as? ItemHomepageManageSectionBinding

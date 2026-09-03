@@ -1149,7 +1149,9 @@ class HomepageViewModel(application: Application) : BaseViewModel(application) {
 
     fun reorderModules(orderedIds: List<String>) {
         viewModelScope.launch {
-            gateway.batchSetSortOrders(orderedIds.mapIndexed { index, id -> id to index })
+            gateway.batchSetSortOrders(
+                orderedIds.mapIndexed { index, id -> id to index }.toMap()
+            )
             notifyConfigChanged()
         }
     }

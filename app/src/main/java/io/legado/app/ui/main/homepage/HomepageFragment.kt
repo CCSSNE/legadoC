@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.view.View
 import androidx.core.view.isVisible
 import androidx.fragment.app.viewModels
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import io.legado.app.R
 import io.legado.app.base.VMBaseFragment
@@ -41,7 +42,7 @@ class HomepageFragment() : VMBaseFragment<HomepageViewModel>(R.layout.fragment_h
 
     override val position: Int? get() = arguments?.getInt("position")
 
-    override val viewModel by viewModels<HomepageViewModel>()
+    public override val viewModel by viewModels<HomepageViewModel>()
 
     private val binding by viewBinding(FragmentHomepageBinding::bind)
 

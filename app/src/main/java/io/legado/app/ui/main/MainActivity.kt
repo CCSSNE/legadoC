@@ -1974,7 +1974,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 ?: visiblePositions.indexOf(resolveDiscoveryNavTarget())
             "my" -> visiblePositions.indexOf(idMy)
             else -> 0
-        }.takeIf { it >= 0 } ?: 0
+        }.takeIf { it != null && it >= 0 } ?: 0
     }
 
     private fun getFragmentId(position: Int): Int {
