@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 保护注释：Android 12+ 平台启动屏经 108dp 画布+×1.5 bleed+×16/9 上屏，图案=(162-2×inset)×16/9；
+     54dp→96dp 即 192dp 一半。禁止改 72dp（图案只剩约 32dp），禁止删除本目录（b00bd65e 教训）。 -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@mipmap/ic_launcher"
+    android:insetLeft="54dp"
+    android:insetTop="54dp"
+    android:insetRight="54dp"
+    android:insetBottom="54dp" />

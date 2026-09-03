@@ -18,7 +18,8 @@
         <item name="android:windowBackground">@android:color/transparent</item>
     </style>
 
-    <!-- System splash themes -->
+    <!-- System splash themes（欢迎页启动屏图标：必须引用 @drawable/splash_icon* inset 包装，禁止直接引用 @mipmap；
+         inset 数值由 AOSP 管线公式推导——默认 96dp / drawable-v31 54dp，禁止改动或删除 v31 变体，b00bd65e 已因此回归） -->
     <style name="AppTheme.Welcome.Base" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/background</item>
         <item name="postSplashScreenTheme">@style/Base.AppTheme</item>

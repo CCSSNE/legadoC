@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 保护注释：此 96dp 只适配 API 21-30 compat 路径（288dp 图标区→图案 96dp=一半）。
+     API 31+ 平台走另一套管线（108dp 画布+bleed+×16/9），数值在 drawable-v31/（54dp）。
+     数值由 AOSP 管线公式推导，禁止改回 72dp、禁止删除 v31 变体、禁止改引 @mipmap（b00bd65e 已因此回归）。 -->
 <inset xmlns:android="http://schemas.android.com/apk/res/android"
     android:drawable="@mipmap/launcher2"
-    android:insetLeft="72dp"
-    android:insetTop="72dp"
-    android:insetRight="72dp"
-    android:insetBottom="72dp" />
+    android:insetLeft="96dp"
+    android:insetTop="96dp"
+    android:insetRight="96dp"
+    android:insetBottom="96dp" />
