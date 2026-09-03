@@ -188,8 +188,16 @@ class HomepageAdapter(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 )
-                lp.flexBasisPercent = 1f / actualColumns
-                lp.setMargins(4.dpToPx(), 4.dpToPx(), 4.dpToPx(), 4.dpToPx())
+                // 横向等宽：basis 必须先扣除横向 margin，否则 basis+margin 超出行宽被迫换行；
+                // 容器宽 = 屏幕宽 - 模块左右 padding（16dp×2），每格 basis = W/N - 左右 margin，
+                // 再减 1px 防浮点取整溢出，余量由 flexGrow 均分吃掉，保证同行等宽占满
+                val marginH = 4.dpToPx()
+                val containerPx =
+                    appContext.resources.displayMetrics.widthPixels - 32.dpToPx()
+                lp.flexBasisPercent =
+                    (containerPx / actualColumns - marginH * 2 - 1).toFloat() / containerPx
+                lp.flexGrow = 1f
+                lp.setMargins(marginH, 4.dpToPx(), marginH, 4.dpToPx())
                 binding.flButtons.addView(cell, lp)
             }
         }
