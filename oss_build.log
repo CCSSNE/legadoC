@@ -75,3 +75,4 @@ Unable to strip the following libraries, packaging them as they are: libarchive-
 > Task :modules:book:bundleLibCompileToJarRelease
 > Task :modules:rhino:bundleLibCompileToJarRelease
 > Task :app:kspOssReleaseKotlin
+> Task :app:compileOssReleaseKotlin
