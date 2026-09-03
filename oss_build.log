@@ -1,0 +1,77 @@
+﻿To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.14.4/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preOssReleaseBuild UP-TO-DATE
+> Task :app:mergeOssReleaseJniLibFolders
+> Task :modules:book:preBuild UP-TO-DATE
+> Task :modules:book:preReleaseBuild UP-TO-DATE
+> Task :modules:book:mergeReleaseJniLibFolders
+> Task :modules:book:mergeReleaseNativeLibs NO-SOURCE
+> Task :modules:book:copyReleaseJniLibsProjectOnly
+> Task :modules:rhino:preBuild UP-TO-DATE
+> Task :modules:rhino:preReleaseBuild UP-TO-DATE
+> Task :modules:rhino:mergeReleaseJniLibFolders
+> Task :modules:rhino:mergeReleaseNativeLibs NO-SOURCE
+> Task :modules:rhino:copyReleaseJniLibsProjectOnly
+> Task :app:mergeOssReleaseNativeLibs
+
+> Task :app:stripOssReleaseDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libarchive-jni.so, libimage_processing_util_jni.so, librenderscript-toolkit.so, librtmp-jni.so, libsurface_util_jni.so. Run with --info option to learn more.
+
+> Task :app:extractOssReleaseNativeSymbolTables
+> Task :app:mergeOssReleaseNativeDebugMetadata NO-SOURCE
+> Task :modules:book:prepareReleaseArtProfile
+> Task :modules:rhino:prepareReleaseArtProfile
+> Task :app:mergeOssReleaseArtProfile
+> Task :app:expandOssReleaseL8ArtProfileWildcards
+> Task :modules:book:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :modules:book:generateReleaseResources
+> Task :modules:book:packageReleaseResources
+> Task :modules:book:processReleaseNavigationResources
+> Task :modules:book:parseReleaseLocalResources
+> Task :modules:book:generateReleaseRFile
+> Task :modules:book:compileReleaseKotlin NO-SOURCE
+> Task :modules:book:javaPreCompileRelease
+> Task :modules:book:compileReleaseJavaWithJavac
+> Task :modules:book:bundleLibRuntimeToJarRelease
+> Task :modules:rhino:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :modules:rhino:generateReleaseResources FROM-CACHE
+> Task :modules:rhino:packageReleaseResources
+> Task :modules:rhino:processReleaseNavigationResources FROM-CACHE
+> Task :modules:rhino:parseReleaseLocalResources FROM-CACHE
+> Task :modules:rhino:generateReleaseRFile
+> Task :modules:rhino:compileReleaseKotlin
+> Task :modules:rhino:javaPreCompileRelease FROM-CACHE
+> Task :modules:rhino:compileReleaseJavaWithJavac NO-SOURCE
+> Task :modules:rhino:bundleLibRuntimeToJarRelease
+> Task :app:checkOssReleaseDuplicateClasses
+> Task :app:buildKotlinToolingMetadata
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:dataBindingMergeDependencyArtifactsOssRelease
+> Task :app:generateOssReleaseResources
+> Task :app:mergeOssReleaseResources
+> Task :app:packageOssReleaseResources
+> Task :app:processOssReleaseNavigationResources
+> Task :app:parseOssReleaseLocalResources
+> Task :app:dataBindingGenBaseClassesOssRelease
+> Task :app:generateOssReleaseBuildConfig
+> Task :modules:book:writeReleaseAarMetadata
+> Task :modules:rhino:writeReleaseAarMetadata
+> Task :app:checkOssReleaseAarMetadata
+> Task :app:compileOssReleaseNavigationResources
+> Task :app:mapOssReleaseSourceSetPaths
+> Task :app:createOssReleaseCompatibleScreenManifests
+> Task :app:extractDeepLinksOssRelease
+> Task :modules:book:extractDeepLinksRelease
+> Task :modules:book:processReleaseManifest
+> Task :modules:rhino:extractDeepLinksRelease FROM-CACHE
+> Task :modules:rhino:processReleaseManifest
+> Task :app:processOssReleaseMainManifest
+> Task :app:processOssReleaseManifest
+> Task :app:processOssReleaseManifestForPackage
+> Task :modules:book:compileReleaseLibraryResources
+> Task :modules:rhino:compileReleaseLibraryResources FROM-CACHE
+> Task :app:processOssReleaseResources
+> Task :modules:book:bundleLibCompileToJarRelease
+> Task :modules:rhino:bundleLibCompileToJarRelease
+> Task :app:kspOssReleaseKotlin
