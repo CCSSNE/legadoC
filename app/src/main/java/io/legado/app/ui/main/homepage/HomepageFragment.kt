@@ -21,6 +21,7 @@ import io.legado.app.databinding.ItemHomepageSourcePageBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.ui.book.SearchBookOpenHelper
 import io.legado.app.ui.book.explore.ExploreShowActivity
 import io.legado.app.ui.main.MainFragmentInterface
@@ -77,6 +78,10 @@ class HomepageFragment() : VMBaseFragment<HomepageViewModel>(R.layout.fragment_h
             rvModules.setEdgeEffectColor(accentColor)
             rvModules.applyMainBottomBarPadding()
             rvModules.adapter = adapter
+
+            tabSource.setSelectedTabIndicatorColor(accentColor)
+            tabSource.tabIndicatorHeight = 2.dpToPx()
+            tabSource.setTabTextColors(secondaryTextColor, accentColor)
 
             viewPagerSource.adapter = sourcePagerAdapter
             viewPagerSource.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
@@ -233,8 +238,8 @@ class HomepageFragment() : VMBaseFragment<HomepageViewModel>(R.layout.fragment_h
         }
     }
 
-    override fun onModuleHeaderClick(module: HomepageModuleUi) {
-        navigateToExplore(module.sourceUrl, module.exploreUrl, module.title)
+    override fun onModuleHeaderClick(module: HomepageModuleUi, exploreUrl: String?) {
+        navigateToExplore(module.sourceUrl, exploreUrl ?: module.exploreUrl, module.title)
     }
 
     override fun onKindClick(module: HomepageModuleUi, kind: ExploreKind) {

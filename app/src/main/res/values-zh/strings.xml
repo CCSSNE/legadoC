@@ -2521,9 +2521,12 @@
     <string name="homepage_module_count">%d 个模块</string>
     <string name="homepage_empty_title">还没有主页模块</string>
     <string name="homepage_empty_desc">点击顶栏管理按钮添加模块</string>
-    <string name="homepage_load_failed">加载失败，点击重试</string>
+    <string name="homepage_load_failed">加载失败</string>
+    <string name="homepage_click_retry">点击重试</string>
     <string name="homepage_load_more">加载更多</string>
     <string name="homepage_loading">加载中</string>
+    <string name="homepage_expand_all">展开全部</string>
+    <string name="homepage_collapse">收起</string>
     <string name="homepage_new_custom_set">新建集</string>
     <string name="homepage_browse_book_sources">浏览书源</string>
     <string name="homepage_browse_rss_sources">浏览订阅源</string>

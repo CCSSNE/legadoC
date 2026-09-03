@@ -2666,9 +2666,12 @@ Selected text or question:
     <string name="homepage_module_count">%d modules</string>
     <string name="homepage_empty_title">No homepage modules</string>
     <string name="homepage_empty_desc">Tap the manage button in the top bar to add modules</string>
-    <string name="homepage_load_failed">Load failed, tap to retry</string>
+    <string name="homepage_load_failed">Load failed</string>
+    <string name="homepage_click_retry">Tap to retry</string>
     <string name="homepage_load_more">Load more</string>
     <string name="homepage_loading">Loading</string>
+    <string name="homepage_expand_all">Expand all</string>
+    <string name="homepage_collapse">Collapse</string>
     <string name="homepage_new_custom_set">New set</string>
     <string name="homepage_browse_book_sources">Browse book sources</string>
     <string name="homepage_browse_rss_sources">Browse RSS sources</string>

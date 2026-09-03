@@ -30,38 +30,40 @@
             android:textStyle="bold"
             tools:text="模块标题" />
 
-        <TextView
-            android:id="@+id/tv_set_name"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textColor="@color/secondaryText"
-            android:textSize="11sp"
-            tools:text="书源名" />
-
-        <ImageView
-            android:id="@+id/iv_more"
-            android:layout_width="16dp"
-            android:layout_height="16dp"
-            android:layout_marginStart="4dp"
-            android:contentDescription="@string/homepage_more"
-            android:src="@drawable/ic_arrow_right"
-            app:tint="@color/secondaryText" />
-
     </LinearLayout>
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/rv_tabs"
+    <LinearLayout
+        android:id="@+id/ll_tabs"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="6dp"
-        android:clipToPadding="false"
+        android:gravity="center_vertical"
         android:orientation="horizontal"
         android:visibility="gone"
-        tools:listitem="@layout/item_homepage_ranking_tab"
-        tools:visibility="visible" />
+        tools:visibility="visible">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rv_tabs"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:clipToPadding="false"
+            android:orientation="horizontal"
+            tools:listitem="@layout/item_homepage_ranking_tab" />
+
+        <ImageView
+            android:id="@+id/iv_tab_arrow"
+            android:layout_width="18dp"
+            android:layout_height="18dp"
+            android:layout_marginStart="4dp"
+            android:layout_marginEnd="8dp"
+            android:contentDescription="@string/homepage_more"
+            android:src="@drawable/ic_arrow_right"
+            app:tint="@color/secondaryText"
+            android:visibility="gone"
+            tools:visibility="visible" />
+
+    </LinearLayout>
 
     <com.google.android.flexbox.FlexboxLayout
         android:id="@+id/fl_buttons"
@@ -76,38 +78,92 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content">
 
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/rv_content"
+        <LinearLayout
+            android:id="@+id/ll_rank_card"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:clipToPadding="false"
-            tools:listitem="@layout/item_explore_book_grid" />
+            android:orientation="vertical">
 
-        <ProgressBar
-            android:id="@+id/pb_loading"
-            android:layout_width="28dp"
-            android:layout_height="28dp"
-            android:layout_gravity="center"
-            android:layout_marginTop="24dp"
-            android:layout_marginBottom="24dp"
-            android:indeterminate="true"
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rv_content"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:clipToPadding="false"
+                tools:listitem="@layout/item_homepage_ranking_row" />
+
+            <LinearLayout
+                android:id="@+id/ll_expand"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="?android:attr/selectableItemBackground"
+                android:gravity="center"
+                android:orientation="horizontal"
+                android:paddingTop="12dp"
+                android:paddingBottom="12dp"
+                android:visibility="gone"
+                tools:visibility="visible">
+
+                <androidx.appcompat.widget.AppCompatImageView
+                    android:id="@+id/iv_expand"
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:contentDescription="@string/homepage_expand_all"
+                    android:src="@drawable/ic_arrow_down" />
+
+                <TextView
+                    android:id="@+id/tv_expand"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:textSize="12sp"
+                    tools:text="展开全部" />
+            </LinearLayout>
+
+        </LinearLayout>
+
+        <androidx.viewpager2.widget.ViewPager2
+            android:id="@+id/vp_grid_ranking"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
             android:visibility="gone"
             tools:visibility="visible" />
 
-        <TextView
-            android:id="@+id/tv_error"
+        <FrameLayout
+            android:id="@+id/fl_skeleton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone"
+            tools:visibility="visible" />
+
+        <LinearLayout
+            android:id="@+id/ll_error"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
             android:layout_marginBottom="10dp"
-            android:background="@drawable/bg_homepage_error"
+            android:background="@drawable/bg_homepage_card_12"
             android:gravity="center"
-            android:padding="12dp"
-            android:text="@string/homepage_load_failed"
-            android:textColor="@color/error"
-            android:textSize="12sp"
+            android:orientation="vertical"
+            android:padding="16dp"
             android:visibility="gone"
-            tools:visibility="visible" />
+            tools:visibility="visible">
+
+            <TextView
+                android:id="@+id/tv_error"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/homepage_load_failed"
+                android:textColor="@color/error"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/tv_retry"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="@string/homepage_click_retry"
+                android:textSize="12sp" />
+        </LinearLayout>
 
     </FrameLayout>
 
@@ -115,19 +171,25 @@
         android:id="@+id/ll_load_more"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="2dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="2dp"
         android:background="?android:attr/selectableItemBackground"
         android:gravity="center"
         android:orientation="horizontal"
-        android:paddingTop="8dp"
-        android:paddingBottom="8dp"
+        android:paddingTop="6dp"
+        android:paddingBottom="6dp"
         android:visibility="gone"
         tools:visibility="visible">
 
         <ProgressBar
             android:id="@+id/pb_load_more"
-            android:layout_width="14dp"
-            android:layout_height="14dp"
-            android:indeterminate="true" />
+            android:layout_width="8dp"
+            android:layout_height="8dp"
+            android:indeterminate="true"
+            android:visibility="gone"
+            tools:visibility="visible" />
 
         <TextView
             android:id="@+id/tv_load_more"
@@ -135,8 +197,15 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="4dp"
             android:text="@string/homepage_load_more"
-            android:textColor="@color/secondaryText"
-            android:textSize="12sp" />
+            android:textSize="9sp" />
+
+        <androidx.appcompat.widget.AppCompatImageView
+            android:id="@+id/iv_load_more"
+            android:layout_width="12dp"
+            android:layout_height="12dp"
+            android:layout_marginStart="4dp"
+            android:contentDescription="@string/homepage_load_more"
+            android:src="@drawable/ic_arrow_down" />
 
     </LinearLayout>
 

@@ -1,7 +1,7 @@
 package io.legado.app.ui.main.homepage
 
 import android.content.Context
-import android.view.View
+import android.graphics.Typeface
 import android.view.ViewGroup
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.GridLayoutManager
@@ -11,18 +11,20 @@ import androidx.viewbinding.ViewBinding
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.data.entities.SearchBook
-import io.legado.app.databinding.ItemExploreBookGridBinding
 import io.legado.app.databinding.ItemHomepageBookBannerBinding
-import io.legado.app.databinding.ItemSearchBinding
-import io.legado.app.domain.model.BookShelfState
+import io.legado.app.databinding.ItemHomepageBookCardBinding
+import io.legado.app.databinding.ItemHomepageBookGridBinding
+import io.legado.app.databinding.ItemHomepageBookWaterfallBinding
+import io.legado.app.databinding.ItemHomepageRankingRowBinding
 import io.legado.app.help.config.AppConfig
-import io.legado.app.utils.dpToPx
-import io.legado.app.utils.gone
-import io.legado.app.utils.visible
+import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.secondaryTextColor
+import io.legado.app.utils.StringUtils
 
 /**
- * 主页模块内嵌书籍列表适配器，按展示模式加载不同行布局：
- * 网格/瀑布流复用发现网格卡片，排行榜复用搜索列表行，横幅与卡片为横向行。
+ * 主页模块内嵌书籍列表适配器，按展示模式加载不同行布局，排版对齐 Max 版：
+ * 排行榜 = 序号+封面+文字三段行；网格 = 纯封面+双行书名；卡片 = 120dp 圆角卡；
+ * 瀑布流 = 圆角卡（封面/书名/作者/简介）；横幅 = 纯封面列。
  */
 class HomepageBooksAdapter(
     context: Context,
@@ -37,15 +39,13 @@ class HomepageBooksAdapter(
     }
 
     override fun getViewBinding(parent: ViewGroup): ViewBinding {
-        val binding = when (mode) {
+        return when (mode) {
             MODE_BANNER -> ItemHomepageBookBannerBinding.inflate(inflater, parent, false)
-            MODE_RANK -> ItemSearchBinding.inflate(inflater, parent, false)
-            else -> ItemExploreBookGridBinding.inflate(inflater, parent, false)
+            MODE_RANK -> ItemHomepageRankingRowBinding.inflate(inflater, parent, false)
+            MODE_CARD -> ItemHomepageBookCardBinding.inflate(inflater, parent, false)
+            MODE_WATERFALL -> ItemHomepageBookWaterfallBinding.inflate(inflater, parent, false)
+            else -> ItemHomepageBookGridBinding.inflate(inflater, parent, false)
         }
-        if (mode == MODE_CARD) {
-            binding.root.layoutParams = RecyclerView.LayoutParams(CARD_WIDTH_DP.dpToPx(), ViewGroup.LayoutParams.WRAP_CONTENT)
-        }
-        return binding
     }
 
     override fun convert(
@@ -55,56 +55,81 @@ class HomepageBooksAdapter(
         payloads: MutableList<Any>
     ) {
         when (binding) {
-            is ItemSearchBinding -> bindRank(binding, item)
+            is ItemHomepageRankingRowBinding -> bindRank(binding, item, holder.layoutPosition)
             is ItemHomepageBookBannerBinding -> bindBanner(binding, item)
-            is ItemExploreBookGridBinding -> bindGrid(binding, item)
+            is ItemHomepageBookCardBinding -> bindCard(binding, item)
+            is ItemHomepageBookWaterfallBinding -> bindWaterfall(binding, item)
+            is ItemHomepageBookGridBinding -> bindGrid(binding, item)
         }
     }
 
-    private fun bindShelfDot(view: View, item: HomepageBookItemUi) {
-        view.isVisible = item.shelfState != BookShelfState.NOT_IN_SHELF
-    }
-
-    private fun bindRank(binding: ItemSearchBinding, item: HomepageBookItemUi) {
+    private fun bindRank(binding: ItemHomepageRankingRowBinding, item: HomepageBookItemUi, position: Int) {
         binding.run {
-            tvName.text = item.book.name
-            tvAuthor.text = item.book.author
-            tvIntroduce.text = item.book.intro
-            llKind.gone()
-            bvOriginCount.gone()
-            upLasted(binding, item.book.latestChapterTitle)
-            bindShelfDot(ivInBookshelf, item)
-            ivCover.load(item.book, AppConfig.loadCoverOnlyWifi)
-        }
-    }
-
-    private fun upLasted(binding: ItemSearchBinding, latestChapterTitle: String?) {
-        binding.run {
-            if (latestChapterTitle.isNullOrEmpty()) {
-                tvLasted.gone()
+            val rank = position + 1
+            tvRank.text = rank.toString()
+            if (rank <= 3) {
+                tvRank.setTextColor(context.accentColor)
+                tvRank.setTypeface(tvRank.typeface, Typeface.BOLD_ITALIC)
             } else {
-                tvLasted.text = latestChapterTitle
-                tvLasted.visible()
+                tvRank.setTextColor(context.secondaryTextColor)
+                tvRank.setTypeface(tvRank.typeface, Typeface.BOLD)
             }
+            tvName.text = item.book.name
+            val stat = buildString {
+                val wc = StringUtils.wordCountFormat(item.book.wordCount)
+                if (wc.isNotEmpty()) append(wc)
+                if (item.book.author.isNotBlank()) {
+                    if (isNotEmpty()) append(" · ")
+                    append(item.book.author)
+                }
+            }
+            tvStat.text = stat
+            tvStat.isVisible = stat.isNotBlank()
+            val kind = item.book.kind?.split(",")?.firstOrNull()
+            tvKind.text = kind
+            tvKind.isVisible = !kind.isNullOrBlank()
+            val intro = item.book.intro?.takeIf { it.isNotBlank() }?.replace("\\s+".toRegex(), " ")
+            tvIntro.text = intro
+            tvIntro.isVisible = !intro.isNullOrBlank()
+            HomepageBookBadge.bind(flBadge, ivBadge, item)
+            ivCover.load(item.book, AppConfig.loadCoverOnlyWifi)
         }
     }
 
     private fun bindBanner(binding: ItemHomepageBookBannerBinding, item: HomepageBookItemUi) {
         binding.run {
-            tvName.text = item.book.name
-            bindShelfDot(ivInBookshelf, item)
+            HomepageBookBadge.bind(flBadge, ivBadge, item)
             ivCover.load(item.book, AppConfig.loadCoverOnlyWifi)
         }
     }
 
-    private fun bindGrid(binding: ItemExploreBookGridBinding, item: HomepageBookItemUi) {
+    private fun bindGrid(binding: ItemHomepageBookGridBinding, item: HomepageBookItemUi) {
+        binding.run {
+            tvName.text = item.book.name
+            HomepageBookBadge.bind(flBadge, ivBadge, item)
+            ivCover.load(item.book, AppConfig.loadCoverOnlyWifi)
+        }
+    }
+
+    private fun bindCard(binding: ItemHomepageBookCardBinding, item: HomepageBookItemUi) {
+        binding.run {
+            tvName.text = item.book.name
+            val intro = item.book.intro?.takeIf { it.isNotBlank() }?.replace("\\s+".toRegex(), " ")
+            tvIntro.text = intro
+            tvIntro.isVisible = !intro.isNullOrBlank()
+            HomepageBookBadge.bind(flBadge, ivBadge, item)
+            ivCover.load(item.book, AppConfig.loadCoverOnlyWifi)
+        }
+    }
+
+    private fun bindWaterfall(binding: ItemHomepageBookWaterfallBinding, item: HomepageBookItemUi) {
         binding.run {
             tvName.text = item.book.name
             tvAuthor.text = item.book.author
-            tvLasted.gone()
-            llKind.gone()
-            tvIntroduce.gone()
-            bindShelfDot(ivInBookshelf, item)
+            val intro = item.book.intro?.takeIf { it.isNotBlank() }?.replace("\\s+".toRegex(), " ")
+            tvIntro.text = intro
+            tvIntro.isVisible = !intro.isNullOrBlank()
+            HomepageBookBadge.bind(flBadge, ivBadge, item)
             ivCover.load(item.book, AppConfig.loadCoverOnlyWifi)
         }
     }
@@ -129,8 +154,6 @@ class HomepageBooksAdapter(
         const val MODE_BANNER = 2
         const val MODE_CARD = 3
         const val MODE_WATERFALL = 4
-
-        private const val CARD_WIDTH_DP = 120
 
         /** 纵向布局管理器 */
         fun verticalLayoutManager(context: Context): LinearLayoutManager =
