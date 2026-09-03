@@ -295,6 +295,6 @@ uiautomator2 / ADB
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- 最近一次自用版交付为 `3.26.090223` / `10813`，2026-09-02 UTC 23 时，使用 `assembleAppC` 冷编译成功（首次达成的正式编译需先行修复聚合主页遗留的未编译代码：两个布局缺 `xmlns:tools`、若干 Kotlin 类型/引用错误，并补录 Room 115 版 schema）。产物包名 `io.legado.app.dev`、versionName `3.26.090223c`、versionCode `10813`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C-自用`（label-zh 逐字匹配）、`apksigner` 验证通过；APK 位于 `app\build\outputs\apk\app\c\legado_app_3.26.090223_10813.apk`。本次未安装模拟器、未做正式回归。上一自用版为 `3.26.090221` / `10812`；最近公开版仍为 `3.26.090209` / `10804`。
+- 最近一次自用版交付为 `3.26.090301` / `10814`，2026-09-03 UTC 01 时，使用 `assembleAppC` 冷编译成功。正式编译先暴露两处未编译代码并修复：`item_homepage_manage_field.xml` 根元素缺 `xmlns:tools` 声明（resource string 多替换与 `AttributePrefixUnbound`）；`HomepageFragment.kt` 源页布局根节点即 `SwipeRefreshLayout`（无 `android:id`，绑定字段应是 `root` 而非不存在的 `swipePage`）；`HomepageModuleManageSheet.kt` 缺 `ModuleDef` 导入。产物包名 `io.legado.app.dev`、versionName `3.26.090301c`、versionCode `10814`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C-自用`（label-zh 逐字匹配）、`apksigner` 验证通过；APK 位于 `app\build\outputs\apk\app\c\legado_app_3.26.090301_10814.apk`。本次未安装模拟器、未做正式回归。上一自用版为 `3.26.090223` / `10813`；最近公开版仍为 `3.26.090209` / `10804`。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
