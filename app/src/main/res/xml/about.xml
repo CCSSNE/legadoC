@@ -41,6 +41,11 @@
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
+            android:key="showLog"
+            android:title="@string/show_normal_log"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
             android:key="saveLog"
             android:title="@string/save_normal_log"
             app:iconSpaceReserved="false" />

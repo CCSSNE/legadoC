@@ -75,6 +75,7 @@ class AboutFragment : PreferenceFragmentCompat() {
             "gzGzh" -> requireContext().sendToClip(getString(R.string.legado_gzh))
             "crashLog" -> showDialogFragment<CrashLogsDialog>()
             "saveCrashLog" -> saveCrashLog()
+            "showLog" -> showDialogFragment<AppLogDialog>()
             "saveLog" -> saveLog()
             "logShownModules" -> showLogShownModulesDialog()
             "createHeapDump" -> createHeapDump()

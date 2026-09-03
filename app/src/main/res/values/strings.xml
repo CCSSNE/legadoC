@@ -2072,6 +2072,7 @@
     <string name="save_log">Save logs</string>
     <string name="show_crash_log">Show crash logs</string>
     <string name="save_crash_log">Save crash logs</string>
+    <string name="show_normal_log">Show normal logs</string>
     <string name="save_normal_log">Save normal logs</string>
     <string name="create_heap_dump">Create heap dump</string>
     <string name="record_heap_dump_s">Saving a heap dump when the application crashes by OOM</string>
