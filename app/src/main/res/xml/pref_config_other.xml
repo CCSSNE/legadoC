@@ -207,12 +207,6 @@
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
-            android:key="welcomeStyle"
-            android:summary="@string/welcome_style_summary"
-            android:title="@string/welcome_style"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.Preference
             android:key="videoSetting"
             android:summary="@string/video_setting_summary"
             android:title="@string/video_setting" />

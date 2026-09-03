@@ -3,21 +3,15 @@ package io.legado.app.ui.welcome
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
-import androidx.core.view.ViewCompat
 import androidx.core.view.postDelayed
+import io.legado.app.R
 import io.legado.app.base.BaseActivity
 import io.legado.app.constant.PreferKey
-import io.legado.app.constant.Theme
 import io.legado.app.data.appDb
 import io.legado.app.databinding.ActivityWelcomeBinding
-import io.legado.app.help.config.AppConfig
-import io.legado.app.help.config.ThemeConfig
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.main.MainActivity
-import io.legado.app.utils.BitmapUtils
-import io.legado.app.utils.CenterCropBitmapDrawable
-import io.legado.app.utils.FileUtils
 import io.legado.app.utils.fullScreen
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefInt
@@ -53,28 +47,7 @@ open class WelcomeActivity : BaseActivity<ActivityWelcomeBinding>() {
     }
 
     override fun upBackgroundImage() {
-        val imagePath = when (ThemeConfig.getTheme()) {
-            Theme.Dark -> AppConfig.welcomeImageDark
-            Theme.Light -> AppConfig.welcomeImage
-            else -> null
-        }?.takeIf { path ->
-            path.isNotBlank()
-                && getPrefBoolean(PreferKey.customWelcome)
-                && FileUtils.exist(path)
-        } ?: return
-        val drawable = try {
-            if (imagePath.endsWith(".9.png")) {
-                BitmapUtils.decodeNinePatchDrawable(imagePath)
-            } else {
-                val metrics = resources.displayMetrics
-                BitmapUtils.decodeBitmap(imagePath, metrics.widthPixels, metrics.heightPixels)
-                    ?.let { CenterCropBitmapDrawable(resources, it) }
-            }
-        } catch (_: OutOfMemoryError) {
-            null
-        } ?: return
-        ViewCompat.setBackgroundTintList(window.decorView, null)
-        window.decorView.background = drawable
+        window.decorView.setBackgroundResource(R.drawable.bg_welcome_preview)
     }
 
     private fun startMainActivity() {
