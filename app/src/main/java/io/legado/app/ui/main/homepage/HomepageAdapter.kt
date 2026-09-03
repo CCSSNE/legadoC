@@ -125,6 +125,8 @@ class HomepageAdapter(
                     callBack.onModuleHeaderClick(target, headerExploreUrl(target))
                 }
             }
+            // Tab 行默认隐藏，仅由 bindRankingTabs 显示，避免各内容绑定路径误伤
+            binding.llTabs.gone()
             when (val state = module.state) {
                 is ModuleLoadState.Loading -> bindLoading(module)
                 is ModuleLoadState.Error -> bindError(module)
@@ -223,7 +225,6 @@ class HomepageAdapter(
         }
 
         private fun bindRankingTabs(module: HomepageModuleUi, state: ModuleLoadState.RankingTabs) {
-            binding.llTabs.visible()
             if (tabsAdapter == null || binding.rvTabs.adapter == null) {
                 tabsAdapter = HomepageRankingTabAdapter(appContext) { index ->
                     currentModule?.let { callBack.onSelectRankingTab(it, index) }
@@ -235,10 +236,6 @@ class HomepageAdapter(
             tabsAdapter?.submitItems(state.tabs, state.selectedIndex)
 
             val currentTab = state.tabs.getOrNull(state.selectedIndex)
-            binding.ivTabArrow.isVisible = currentTab?.exploreUrl != null
-            binding.ivTabArrow.setOnClickListener {
-                currentTab?.let { tab -> callBack.onModuleHeaderClick(module, tab.exploreUrl) }
-            }
 
             if (module.type == HomepageModuleType.GridRanking) {
                 bindGridRanking(
@@ -255,6 +252,13 @@ class HomepageAdapter(
                 booksAdapter?.setItems(all.take(rankLimit(module)))
                 bindExpandFooter(module, all)
                 binding.llLoadMore.gone()
+            }
+
+            // Tab 行在内容绑定之后显示：显隐只由本方法管理
+            binding.llTabs.visible()
+            binding.ivTabArrow.isVisible = currentTab?.exploreUrl != null
+            binding.ivTabArrow.setOnClickListener {
+                currentTab?.let { tab -> callBack.onModuleHeaderClick(module, tab.exploreUrl) }
             }
         }
 
@@ -300,7 +304,6 @@ class HomepageAdapter(
             onLoadMore: () -> Unit,
         ) {
             binding.llRankCard.gone()
-            binding.llTabs.gone()
             binding.flSkeleton.gone()
             binding.llError.gone()
             binding.flButtons.gone()
@@ -340,7 +343,6 @@ class HomepageAdapter(
             binding.llError.gone()
             binding.vpGridRanking.gone()
             binding.flButtons.gone()
-            binding.llTabs.gone()
             binding.llExpand.gone()
             binding.llRankCard.visible()
             if (rankStyle) {
