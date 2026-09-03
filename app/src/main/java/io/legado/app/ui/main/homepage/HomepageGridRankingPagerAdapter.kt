@@ -3,6 +3,7 @@ package io.legado.app.ui.main.homepage
 import android.content.Context
 import android.graphics.Typeface
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.Space
@@ -62,7 +63,7 @@ class HomepageGridRankingPagerAdapter(
         item: HomepageBookItemUi,
         rank: Int,
         parent: ViewGroup,
-    ): ItemHomepageGridRankingRowBinding {
+    ): View {
         val binding = ItemHomepageGridRankingRowBinding.inflate(inflater, parent, false)
         val book = item.book
         binding.tvRank.text = rank.toString()
@@ -91,7 +92,7 @@ class HomepageGridRankingPagerAdapter(
             onLongClick(item)
             true
         }
-        return binding
+        return binding.root
     }
 
     class PageViewHolder(val container: LinearLayout) : RecyclerView.ViewHolder(container)

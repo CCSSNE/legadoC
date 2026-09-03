@@ -80,7 +80,7 @@ class HomepageFragment() : VMBaseFragment<HomepageViewModel>(R.layout.fragment_h
             rvModules.adapter = adapter
 
             tabSource.setSelectedTabIndicatorColor(accentColor)
-            tabSource.tabIndicatorHeight = 2.dpToPx()
+            tabSource.setSelectedTabIndicatorHeight(2.dpToPx())
             tabSource.setTabTextColors(secondaryTextColor, accentColor)
 
             viewPagerSource.adapter = sourcePagerAdapter
