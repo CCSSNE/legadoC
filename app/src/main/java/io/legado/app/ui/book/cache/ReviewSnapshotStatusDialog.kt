@@ -3,7 +3,6 @@ package io.legado.app.ui.book.cache
 import android.os.Bundle
 import android.view.View
 import androidx.core.os.bundleOf
-import androidx.core.content.ContextCompat
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -48,8 +47,8 @@ class ReviewSnapshotStatusDialog :
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.btnRetryAll.background = UiCorner.softActionSelector(
-            ContextCompat.getColor(requireContext(), R.color.background_card),
-            ContextCompat.getColor(requireContext(), R.color.background_menu),
+            UiCorner.themeSurfaceCardColor(requireContext()),
+            UiCorner.themeSurfaceMutedColor(requireContext()),
             UiCorner.actionRadius(requireContext())
         )
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())

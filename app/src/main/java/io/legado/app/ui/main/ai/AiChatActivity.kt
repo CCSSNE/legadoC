@@ -415,7 +415,7 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
         val surfaceColor = if (baseIsLight) {
             ColorUtils.blendColors(
                 baseColor,
-                ContextCompat.getColor(this, R.color.background_card),
+                UiCorner.themeSurfaceCardColor(this),
                 0.72f
             )
         } else {

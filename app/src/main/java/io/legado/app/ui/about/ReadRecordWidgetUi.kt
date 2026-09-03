@@ -12,7 +12,6 @@ import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import androidx.appcompat.app.AlertDialog
-import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
 import io.legado.app.data.entities.Book
@@ -353,7 +352,7 @@ fun Context.showReadRecordGoalDialog(
 
 fun buildReadRecordPreviewBackground(context: Context, weight: Float = 1f): GradientDrawable {
     return UiCorner.rounded(
-        ColorUtils.adjustAlpha(ContextCompat.getColor(context, R.color.background_menu), 0.92f),
+        ColorUtils.adjustAlpha(UiCorner.themeSurfaceMutedColor(context), 0.92f),
         UiCorner.panelRadius(context) * weight.coerceAtLeast(0.8f)
     )
 }

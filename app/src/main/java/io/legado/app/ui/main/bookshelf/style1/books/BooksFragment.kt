@@ -11,7 +11,6 @@ import android.view.HapticFeedbackConstants
 import android.widget.CheckBox
 import android.widget.LinearLayout
 import androidx.activity.addCallback
-import androidx.core.content.ContextCompat
 import androidx.core.view.isGone
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
@@ -283,7 +282,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
 
     private fun initBookActionBar() = binding.run {
         bookActionBar.background = ColorDrawable(
-            UiCorner.surfaceColor(ContextCompat.getColor(requireContext(), R.color.background_card))
+            UiCorner.surfaceColor(UiCorner.themeSurfaceCardColor(requireContext()))
         )
         actionBookInfo.setOnClickListener {
             val selected = selectedBookList()

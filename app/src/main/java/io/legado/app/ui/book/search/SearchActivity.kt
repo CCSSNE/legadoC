@@ -13,7 +13,6 @@ import android.view.View.VISIBLE
 import android.widget.TextView
 import androidx.activity.viewModels
 import androidx.appcompat.widget.SearchView
-import androidx.core.content.ContextCompat
 import androidx.core.os.bundleOf
 import androidx.core.view.isVisible
 import androidx.lifecycle.Lifecycle
@@ -148,19 +147,19 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         binding.btnMenu.setColorFilter(secondaryTextColor)
         val searchSurfaceColor = UiCorner.groupColor(
             UiCorner.SurfaceGroup.UI,
-            ContextCompat.getColor(this, R.color.background_menu)
+            UiCorner.themeSurfaceMutedColor(this)
         )
         val cardColor = UiCorner.groupColor(
             UiCorner.SurfaceGroup.UI,
-            ContextCompat.getColor(this, R.color.background_menu)
+            UiCorner.themeSurfaceMutedColor(this)
         )
         val chipColor = UiCorner.groupColor(
             UiCorner.SurfaceGroup.UI,
-            ContextCompat.getColor(this, R.color.background_card)
+            UiCorner.themeSurfaceCardColor(this)
         )
         val chipPressedColor = UiCorner.groupColor(
             UiCorner.SurfaceGroup.UI,
-            ContextCompat.getColor(this, R.color.background_menu),
+            UiCorner.themeSurfaceMutedColor(this),
             pressed = true
         )
         val strokeColor = UiCorner.effectStrokeColor(primaryTextColor)

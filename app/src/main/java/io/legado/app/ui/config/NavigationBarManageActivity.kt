@@ -10,7 +10,6 @@ import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -169,20 +168,20 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>() {
 
     private fun initView() = binding.run {
         tabBar.background = UiCorner.rounded(
-            ContextCompat.getColor(this@NavigationBarManageActivity, R.color.background_menu),
+            UiCorner.themeSurfaceMutedColor(this@NavigationBarManageActivity),
             UiCorner.panelRadius(this@NavigationBarManageActivity)
         )
         listOf(btnDay, btnNight).forEach {
             it.background = UiCorner.softActionSelector(
                 android.graphics.Color.TRANSPARENT,
-                ContextCompat.getColor(this@NavigationBarManageActivity, R.color.background_card),
+                UiCorner.themeSurfaceCardColor(this@NavigationBarManageActivity),
                 UiCorner.actionRadius(this@NavigationBarManageActivity)
             )
         }
         btnAdd.text = getString(R.string.theme_add)
         btnAdd.background = UiCorner.softActionSelector(
-            ContextCompat.getColor(this@NavigationBarManageActivity, R.color.background_card),
-            ContextCompat.getColor(this@NavigationBarManageActivity, R.color.background_menu),
+            UiCorner.themeSurfaceCardColor(this@NavigationBarManageActivity),
+            UiCorner.themeSurfaceMutedColor(this@NavigationBarManageActivity),
             UiCorner.actionRadius(this@NavigationBarManageActivity)
         )
         btnAdd.setOnClickListener {
@@ -308,7 +307,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                 hint = getString(R.string.navigation_bar_name)
                 applyUiInputStyle(this@NavigationBarManageActivity)
                 background = UiCorner.rounded(
-                    ContextCompat.getColor(context, R.color.background_card),
+                    UiCorner.themeSurfaceCardColor(context),
                     UiCorner.actionRadius(context)
                 )
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 44.dp)
@@ -425,7 +424,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>() {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(14.dp, 0, 14.dp, 0)
             background = UiCorner.rounded(
-                ContextCompat.getColor(context, R.color.background_card),
+                UiCorner.themeSurfaceCardColor(context),
                 UiCorner.actionRadius(context)
             )
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 46.dp).apply {
@@ -455,7 +454,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>() {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(14.dp, 8.dp, 14.dp, 8.dp)
             background = UiCorner.rounded(
-                ContextCompat.getColor(context, R.color.background_card),
+                UiCorner.themeSurfaceCardColor(context),
                 UiCorner.actionRadius(context)
             )
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
@@ -480,8 +479,8 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>() {
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             setImageDrawable(NavigationBarIconConfig.previewDrawable(this@NavigationBarManageActivity, entry, item, selected))
             background = UiCorner.softActionSelector(
-                ContextCompat.getColor(context, R.color.background_menu),
-                ContextCompat.getColor(context, R.color.background_card),
+                UiCorner.themeSurfaceMutedColor(context),
+                UiCorner.themeSurfaceCardColor(context),
                 UiCorner.actionRadius(context)
             )
             layoutParams = LinearLayout.LayoutParams(44.dp, 44.dp).apply { marginStart = 8.dp }
@@ -734,7 +733,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>() {
 
             fun bind(entry: NavigationBarIconConfig.Entry) = itemBinding.run {
                 root.background = UiCorner.rounded(
-                    ContextCompat.getColor(this@NavigationBarManageActivity, R.color.background_card),
+                    UiCorner.themeSurfaceCardColor(this@NavigationBarManageActivity),
                     UiCorner.panelRadius(this@NavigationBarManageActivity)
                 )
                 tvName.text = entry.config.name
@@ -762,8 +761,8 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                 tvSource.setTextColor(accentColor)
                 listOf(btnApply, btnEdit, btnMore, tvSource).forEach {
                     it.background = UiCorner.softActionSelector(
-                        ContextCompat.getColor(this@NavigationBarManageActivity, R.color.background_card),
-                        ContextCompat.getColor(this@NavigationBarManageActivity, R.color.background_menu),
+                        UiCorner.themeSurfaceCardColor(this@NavigationBarManageActivity),
+                        UiCorner.themeSurfaceMutedColor(this@NavigationBarManageActivity),
                         UiCorner.actionRadius(this@NavigationBarManageActivity)
                     )
                 }

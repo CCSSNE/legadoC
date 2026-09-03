@@ -27,6 +27,7 @@ object ThemePackageManager {
     private const val packageFileName = "theme.json"
     private const val mainBackgroundPrefix = "background"
     private const val bookInfoBackgroundPrefix = "book_info_background"
+    private const val panelBackgroundPrefix = "panel_background"
     private const val uiFontPrefix = "ui_font"
     private const val titleFontPrefix = "title_font"
     private const val defaultDayPrimary = "#F1F2F6"
@@ -347,11 +348,17 @@ object ThemePackageManager {
             dir,
             bookInfoBackgroundPrefix
         )
+        val panelBackground = copyAsset(
+            config.panelBackgroundImgPath,
+            dir,
+            panelBackgroundPrefix
+        )
         val uiFont = copyAsset(config.uiFontPath, dir, uiFontPrefix, keepOriginalName = true)
         val titleFont = copyAsset(config.titleFontPath, dir, titleFontPrefix, keepOriginalName = true)
         return config.copy(
             backgroundImgPath = background,
             bookInfoBackgroundImgPath = bookInfo,
+            panelBackgroundImgPath = panelBackground,
             uiFontPath = uiFont,
             titleFontPath = titleFont
         )
@@ -452,6 +459,7 @@ object ThemePackageManager {
             isNightTheme = pkg.isNightTheme,
             backgroundImgPath = resolvePath(config.backgroundImgPath, dir),
             bookInfoBackgroundImgPath = resolvePath(config.bookInfoBackgroundImgPath, dir),
+            panelBackgroundImgPath = resolvePath(config.panelBackgroundImgPath, dir),
             uiFontPath = resolvePath(config.uiFontPath, dir),
             titleFontPath = resolvePath(config.titleFontPath, dir)
         )

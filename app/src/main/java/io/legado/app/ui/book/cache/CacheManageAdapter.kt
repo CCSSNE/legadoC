@@ -2,7 +2,6 @@ package io.legado.app.ui.book.cache
 
 import android.content.Context
 import android.view.ViewGroup
-import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.DiffUtil
 import io.legado.app.R
 import io.legado.app.base.adapter.DiffRecyclerAdapter
@@ -62,18 +61,18 @@ class CacheManageAdapter(
         }
         val book = item.book
         root.background = UiCorner.rounded(
-            ContextCompat.getColor(context, R.color.background_card),
+            UiCorner.themeSurfaceCardColor(context),
             UiCorner.panelRadius(context)
         )
         btnSource.background = UiCorner.softActionSelector(
-            ContextCompat.getColor(context, R.color.background_menu),
-            ContextCompat.getColor(context, R.color.background_card),
+            UiCorner.themeSurfaceMutedColor(context),
+            UiCorner.themeSurfaceCardColor(context),
             UiCorner.actionRadius(context)
         )
         listOf(btnChapters, btnUpload, btnDelete, btnBookshelf, btnReviews, btnStop).forEach {
             it.background = UiCorner.softActionSelector(
-                ContextCompat.getColor(context, R.color.background_card),
-                ContextCompat.getColor(context, R.color.background_menu),
+                UiCorner.themeSurfaceCardColor(context),
+                UiCorner.themeSurfaceMutedColor(context),
                 UiCorner.actionRadius(context)
             )
         }

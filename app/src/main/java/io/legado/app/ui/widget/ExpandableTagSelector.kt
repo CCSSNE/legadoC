@@ -15,7 +15,6 @@ import android.widget.Space
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.AppCompatImageButton
-import androidx.core.content.ContextCompat
 import io.legado.app.R
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
@@ -189,7 +188,7 @@ object ExpandableTagSelector {
             )
             background = UiCorner.dialogActionSelector(
                 Color.TRANSPARENT,
-                ContextCompat.getColor(context, R.color.background_card),
+                UiCorner.themeSurfaceTabColor(context),
                 UiCorner.actionRadius(context)
             )
         }

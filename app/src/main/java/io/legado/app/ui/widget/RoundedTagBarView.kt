@@ -7,7 +7,6 @@ import android.util.AttributeSet
 import android.view.LayoutInflater
 import android.widget.FrameLayout
 import android.widget.TextView
-import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
@@ -156,7 +155,7 @@ class RoundedTagBarView @JvmOverloads constructor(
                 .inflate(R.layout.item_bookshelf_group_tag, parent, false) as TextView
             textView.background = UiCorner.softActionSelector(
                 android.graphics.Color.TRANSPARENT,
-                ContextCompat.getColor(parent.context, R.color.background_card),
+                UiCorner.themeSurfaceTabColor(parent.context),
                 UiCorner.actionRadius(parent.context)
             )
             textView.setTextColor(

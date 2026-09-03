@@ -45,7 +45,11 @@ class SurfaceDrawable(
         canvas.clipPath(path)
         backdrop?.takeUnless(Bitmap::isRecycled)?.let {
             backdropPaint.alpha = drawableAlpha
-            canvas.drawBitmap(it, null, bounds, backdropPaint)
+            if (style.backdropImageFitInside) {
+                canvas.drawBitmap(it, null, fitCenterRect(it, boundsF), backdropPaint)
+            } else {
+                canvas.drawBitmap(it, centerCropSrcRect(it, boundsF), bounds, backdropPaint)
+            }
         }
         tintPaint.alpha = (android.graphics.Color.alpha(style.tintColor) * drawableAlpha / 255f)
             .roundToInt()
@@ -57,6 +61,36 @@ class SurfaceDrawable(
                 .roundToInt()
             canvas.drawPath(path, strokePaint)
         }
+    }
+
+    /**
+     * 等比居中裁剪源矩形：底图与表面宽高比不一致时保持铺满不变形。
+     * 模糊底图按目标区域采样生成、宽高比一致，此时裁剪结果等于全图，视觉不变。
+     */
+    private fun centerCropSrcRect(bitmap: Bitmap, dst: RectF): Rect {
+        val bitmapRatio = bitmap.width.toFloat() / bitmap.height.toFloat()
+        val targetRatio = dst.width() / dst.height()
+        return if (bitmapRatio > targetRatio) {
+            val cropWidth = (bitmap.height * targetRatio).roundToInt()
+            val left = (bitmap.width - cropWidth) / 2
+            Rect(left, 0, left + cropWidth, bitmap.height)
+        } else {
+            val cropHeight = (bitmap.width / targetRatio).roundToInt()
+            val top = (bitmap.height - cropHeight) / 2
+            Rect(0, top, bitmap.width, top + cropHeight)
+        }
+    }
+
+    private fun fitCenterRect(bitmap: Bitmap, dst: RectF): RectF {
+        val scale = minOf(
+            dst.width() / bitmap.width.toFloat(),
+            dst.height() / bitmap.height.toFloat()
+        )
+        val width = bitmap.width * scale
+        val height = bitmap.height * scale
+        val left = dst.centerX() - width / 2f
+        val top = dst.centerY() - height / 2f
+        return RectF(left, top, left + width, top + height)
     }
 
     override fun getOutline(outline: Outline) {

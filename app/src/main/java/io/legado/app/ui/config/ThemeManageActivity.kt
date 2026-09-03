@@ -8,7 +8,6 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.core.content.ContextCompat
 import androidx.core.graphics.toColorInt
 import androidx.core.view.updateLayoutParams
 import androidx.lifecycle.lifecycleScope
@@ -173,19 +172,19 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
 
     private fun initView() = binding.run {
         tabBar.background = UiCorner.rounded(
-            ContextCompat.getColor(this@ThemeManageActivity, R.color.background_menu),
+            UiCorner.themeSurfaceMutedColor(this@ThemeManageActivity),
             UiCorner.panelRadius(this@ThemeManageActivity)
         )
         listOf(btnDay, btnNight).forEach {
             it.background = UiCorner.softActionSelector(
                 Color.TRANSPARENT,
-                ContextCompat.getColor(this@ThemeManageActivity, R.color.background_card),
+                UiCorner.themeSurfaceCardColor(this@ThemeManageActivity),
                 UiCorner.actionRadius(this@ThemeManageActivity)
             )
         }
         btnAdd.background = UiCorner.softActionSelector(
             Color.TRANSPARENT,
-            ContextCompat.getColor(this@ThemeManageActivity, R.color.background_card),
+            UiCorner.themeSurfaceCardColor(this@ThemeManageActivity),
             UiCorner.actionRadius(this@ThemeManageActivity)
         )
         recyclerView.layoutManager = LinearLayoutManager(this@ThemeManageActivity)
@@ -387,7 +386,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
 
     private fun setupThemeEditTabs(binding: DialogThemePackageEditBinding) = binding.run {
         tabEditBar.background = UiCorner.rounded(
-            ContextCompat.getColor(this@ThemeManageActivity, R.color.background_menu),
+            UiCorner.themeSurfaceMutedColor(this@ThemeManageActivity),
             UiCorner.panelRadius(this@ThemeManageActivity)
         )
         listOf(
@@ -412,7 +411,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         llImageGroup.visibility = if (tab == ThemeEditTab.IMAGE) View.VISIBLE else View.GONE
         llInterfaceGroup.visibility = if (tab == ThemeEditTab.INTERFACE) View.VISIBLE else View.GONE
         llFontGroup.visibility = if (tab == ThemeEditTab.FONT) View.VISIBLE else View.GONE
-        val selectedBackground = ContextCompat.getColor(this@ThemeManageActivity, R.color.background_card)
+        val selectedBackground = UiCorner.themeSurfaceCardColor(this@ThemeManageActivity)
         listOf(
             btnTabColor to ThemeEditTab.COLOR,
             btnTabImage to ThemeEditTab.IMAGE,
@@ -1283,7 +1282,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             fun bind(entry: ThemePackageManager.Entry) = itemBinding.run {
                 val pkg = entry.packageInfo
                 root.background = UiCorner.rounded(
-                    ContextCompat.getColor(this@ThemeManageActivity, R.color.background_card),
+                    UiCorner.themeSurfaceCardColor(this@ThemeManageActivity),
                     UiCorner.panelRadius(this@ThemeManageActivity)
                 )
                 cardPreview.radius = UiCorner.panelRadius(this@ThemeManageActivity)
@@ -1305,7 +1304,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 listOf(btnApply, btnEdit, btnMore).forEach {
                     it.background = UiCorner.softActionSelector(
                         Color.TRANSPARENT,
-                        ContextCompat.getColor(this@ThemeManageActivity, R.color.background_menu),
+                        UiCorner.themeSurfaceMutedColor(this@ThemeManageActivity),
                         UiCorner.actionRadius(this@ThemeManageActivity)
                     )
                 }

@@ -2,7 +2,6 @@ package io.legado.app.ui.main.bookshelf
 
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
-import androidx.core.content.ContextCompat
 import android.view.View
 import android.graphics.drawable.GradientDrawable
 import io.legado.app.R
@@ -17,7 +16,7 @@ fun ViewBookCollectionMosaicBinding.loadCollectionCovers(
     dialogSurface: Boolean = false,
     collectionName: String? = null
 ) {
-    val backgroundColor = ContextCompat.getColor(root.context, R.color.background_card)
+    val backgroundColor = UiCorner.themeSurfaceCardColor(root.context)
     val coverAlpha = if (dialogSurface) {
         UiCorner.dialogSurfaceAlpha()
     } else {

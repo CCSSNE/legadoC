@@ -71,8 +71,8 @@ object ReadRecordComponentConfigDialog {
         val items: MutableList<ReadRecordComponentItem>
     ) : RecyclerView.Adapter<ComponentAdapter.ComponentViewHolder>(), ItemTouchCallback.Callback {
 
-        private val panelColor by lazy { ContextCompat.getColor(context, R.color.background_card) }
-        private val pressedColor by lazy { ContextCompat.getColor(context, R.color.background_menu) }
+        private val panelColor by lazy { UiCorner.themeSurfaceCardColor(context) }
+        private val pressedColor by lazy { UiCorner.themeSurfaceMutedColor(context) }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ComponentViewHolder {
             val binding = ItemReadRecordComponentBinding.inflate(

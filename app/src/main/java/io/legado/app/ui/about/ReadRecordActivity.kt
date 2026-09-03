@@ -556,8 +556,8 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
     }
 
     private fun applyPageChrome() {
-        val panelSurfaceColor = ContextCompat.getColor(this, R.color.background_card)
-        val cardSurfaceColor = ContextCompat.getColor(this, R.color.background_card)
+        val panelSurfaceColor = UiCorner.themeSurfaceCardColor(this)
+        val cardSurfaceColor = UiCorner.themeSurfaceCardColor(this)
         val strokeColor = ColorUtils.adjustAlpha(
             primaryTextColor,
             0.08f

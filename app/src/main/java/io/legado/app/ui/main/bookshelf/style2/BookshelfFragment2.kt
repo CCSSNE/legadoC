@@ -10,7 +10,6 @@ import android.widget.CheckBox
 import android.widget.LinearLayout
 import androidx.activity.addCallback
 import androidx.appcompat.widget.SearchView
-import androidx.core.content.ContextCompat
 import androidx.core.view.isGone
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -126,7 +125,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
 
     private fun initBookActionBar() = binding.run {
         bookActionBar.background = ColorDrawable(
-            UiCorner.surfaceColor(ContextCompat.getColor(requireContext(), R.color.background_card))
+            UiCorner.surfaceColor(UiCorner.themeSurfaceCardColor(requireContext()))
         )
         actionBookInfo.setOnClickListener {
             (actionItem as? Book)?.let {

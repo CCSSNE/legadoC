@@ -8,7 +8,6 @@ import android.view.MenuItem
 import android.widget.EditText
 import androidx.activity.viewModels
 import androidx.appcompat.widget.SearchView
-import androidx.core.content.ContextCompat
 import androidx.core.view.allViews
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
@@ -58,7 +57,7 @@ class SearchContentActivity :
     private var initJob: Job? = null
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        val panelColor = ContextCompat.getColor(this, R.color.background_menu)
+        val panelColor = UiCorner.themeSurfaceMutedColor(this)
         val actionColor = UiCorner.groupColor(
             UiCorner.SurfaceGroup.UI,
             panelColor,

@@ -20,7 +20,7 @@ object PreferenceItemStyle {
         holder.isDividerAllowedAbove = false
         holder.isDividerAllowedBelow = false
         val itemColor = UiCorner.surfaceColor(
-            ContextCompat.getColor(preference.context, R.color.background_card)
+            UiCorner.themeSurfaceCardColor(preference.context)
         )
         val dividerColor = UiCorner.surfaceColor(
             ContextCompat.getColor(preference.context, R.color.bg_divider_line)

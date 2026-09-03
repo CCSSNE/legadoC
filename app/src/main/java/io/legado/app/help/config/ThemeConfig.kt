@@ -81,6 +81,8 @@ object ThemeConfig {
     private const val DEFAULT_DAY_PRIMARY_HEX = "#F1F2F6"
     private const val LEGACY_DEFAULT_DAY_PRIMARY = 0xFF795548.toInt()
     const val DEFAULT_BOOK_INFO_BACKGROUND_BLUR = 12
+    const val PANEL_BG_CROP = "crop"
+    const val PANEL_BG_FIT = "fit"
     private var usableBgImageCacheKey: String? = null
     private var usableBgImageCacheValue: Boolean = false
     const val configFileName = "themeConfig.json"
@@ -429,6 +431,80 @@ object ThemeConfig {
         save()
     }
 
+    fun normalizeBackgroundCrop(value: String?): String? {
+        val parts = value
+            ?.split(',', '|', ';')
+            ?.mapNotNull { it.trim().toFloatOrNull()?.coerceIn(0f, 1f) }
+            ?: return null
+        if (parts.size != 4) return null
+        val (left, top, right, bottom) = parts
+        if (right <= left || bottom <= top) return null
+        return parts.joinToString(",") { crop ->
+            String.format(Locale.US, "%.6f", crop).trimEnd('0').trimEnd('.')
+        }
+    }
+
+    private fun applyExtendedInterfaceColors(context: Context, config: Config) {
+        val isNightTheme = config.isNightTheme
+        context.putOrClearThemeColor(
+            if (isNightTheme) PreferKey.themeCardColorN else PreferKey.themeCardColor,
+            config.cardColor
+        )
+        context.putOrClearThemeColor(
+            if (isNightTheme) PreferKey.themeMutedColorN else PreferKey.themeMutedColor,
+            config.mutedColor
+        )
+        context.putOrClearThemeColor(
+            if (isNightTheme) {
+                PreferKey.themeSearchFieldBackgroundColorN
+            } else {
+                PreferKey.themeSearchFieldBackgroundColor
+            },
+            config.searchFieldBackgroundColor
+        )
+        context.putOrClearThemeColor(
+            if (isNightTheme) {
+                PreferKey.themeTabBackgroundColorN
+            } else {
+                PreferKey.themeTabBackgroundColor
+            },
+            config.tabBackgroundColor
+        )
+        context.putOrClearThemeColor(
+            if (isNightTheme) PreferKey.themeShelfColorN else PreferKey.themeShelfColor,
+            config.shelfColor
+        )
+        val shadowKey = if (isNightTheme) PreferKey.themeCardShadowN else PreferKey.themeCardShadow
+        config.cardShadow?.let {
+            context.putPrefInt(shadowKey, it.coerceIn(0, 24))
+        } ?: context.removePref(shadowKey)
+        val blurKey = if (isNightTheme) {
+            PreferKey.themeCardBackgroundBlurN
+        } else {
+            PreferKey.themeCardBackgroundBlur
+        }
+        config.cardBackgroundBlur?.let {
+            context.putPrefInt(blurKey, (it * 10f).toInt().coerceIn(0, 250))
+        } ?: context.removePref(blurKey)
+        context.putOrClearThemeColor(
+            if (isNightTheme) PreferKey.uiFontColorN else PreferKey.uiFontColor,
+            config.uiFontColor
+        )
+        context.putOrClearThemeColor(
+            if (isNightTheme) PreferKey.titleFontColorN else PreferKey.titleFontColor,
+            config.titleFontColor
+        )
+    }
+
+    private fun Context.putOrClearThemeColor(key: String, value: String?) {
+        val normalized = value?.takeIf { it.isNotBlank() }
+        if (normalized == null) {
+            removePref(key)
+        } else {
+            putPrefString(key, normalized)
+        }
+    }
+
     private fun validateConfig(config: Config): Boolean {
         try {
             config.primaryColor.toColorInt()
@@ -469,14 +545,25 @@ object ThemeConfig {
             val bBackground = config.bottomBackground.toColorInt()
             val isNightTheme = config.isNightTheme
             val backgroundPath = config.backgroundImgPath
+            val backgroundCrop = normalizeBackgroundCrop(config.backgroundImgCrop)
             val bookInfoBackgroundPath = config.bookInfoBackgroundImgPath
             val bookInfoBackgroundBlur = config.bookInfoBackgroundBlur().coerceIn(0, 25)
+            val panelBackgroundPath = config.panelBackgroundImgPath
+            val panelBackgroundScaleType = config.panelBackgroundScaleType?.takeIf {
+                it == PANEL_BG_CROP || it == PANEL_BG_FIT
+            } ?: PANEL_BG_CROP
+            val panelBorderColor = config.panelBorderColor?.takeIf { it.isNotBlank() }
+            val panelBorderAlpha = config.panelBorderAlpha?.coerceIn(0, 100) ?: 100
             config.uiCornerScale?.let {
                 context.putPrefString(PreferKey.uiCornerScale, it.coerceIn(0f, 3f).toPlainScale())
             }
             config.uiLayoutAlpha?.let {
                 context.putPrefInt(PreferKey.uiLayoutAlpha, it.coerceIn(0, 100))
             }
+            config.dialogAlpha?.let {
+                context.putPrefInt(PreferKey.dialogAlpha, it.coerceIn(0, 100))
+            }
+            applyExtendedInterfaceColors(context, config)
             config.uiCornerSearchFollow?.let {
                 context.putPrefBoolean(PreferKey.uiCornerSearchFollow, it)
             }
@@ -534,8 +621,13 @@ object ThemeConfig {
                 context.putPrefBoolean(PreferKey.tNavBarN, true)
                 context.putPrefString(PreferKey.bgImageN, backgroundPath.orEmpty())
                 context.putPrefInt(PreferKey.bgImageNBlurring, backgroundBlur)
+                context.putPrefString(PreferKey.bgImageCropN, backgroundCrop.orEmpty())
                 context.putPrefString(PreferKey.bookInfoBgImageN, bookInfoBackgroundPath)
                 context.putPrefInt(PreferKey.bookInfoBgImageNBlurring, bookInfoBackgroundBlur)
+                context.putPrefString(PreferKey.panelBgImageN, panelBackgroundPath.orEmpty())
+                context.putPrefString(PreferKey.panelBgScaleTypeN, panelBackgroundScaleType)
+                context.putPrefString(PreferKey.panelBorderColorN, panelBorderColor.orEmpty())
+                context.putPrefInt(PreferKey.panelBorderAlphaN, panelBorderAlpha)
             } else {
                 context.putPrefString(PreferKey.dThemeName, config.themeName)
                 context.putPrefInt(PreferKey.cPrimary, primary)
@@ -545,8 +637,13 @@ object ThemeConfig {
                 context.putPrefBoolean(PreferKey.tNavBar, true)
                 context.putPrefString(PreferKey.bgImage, backgroundPath.orEmpty())
                 context.putPrefInt(PreferKey.bgImageBlurring, backgroundBlur)
+                context.putPrefString(PreferKey.bgImageCrop, backgroundCrop.orEmpty())
                 context.putPrefString(PreferKey.bookInfoBgImage, bookInfoBackgroundPath)
                 context.putPrefInt(PreferKey.bookInfoBgImageBlurring, bookInfoBackgroundBlur)
+                context.putPrefString(PreferKey.panelBgImage, panelBackgroundPath.orEmpty())
+                context.putPrefString(PreferKey.panelBgScaleType, panelBackgroundScaleType)
+                context.putPrefString(PreferKey.panelBorderColor, panelBorderColor.orEmpty())
+                context.putPrefInt(PreferKey.panelBorderAlpha, panelBorderAlpha)
             }
             if (switchNightMode) {
                 switchThemeMode(
@@ -627,15 +724,44 @@ object ThemeConfig {
                 transparentNavBar = true,
                 backgroundImgPath = bgImgPath,
                 backgroundImgBlur = bgImgBlur,
+                backgroundImgCrop = context.getPrefString(PreferKey.bgImageCrop)
+                    ?.takeIf { it.isNotBlank() } ?: stored?.backgroundImgCrop,
                 bookInfoBackgroundImgPath = bookInfoBgImgPath,
                 bookInfoBackgroundImgBlur = bookInfoBgImgBlur,
+                panelBackgroundImgPath = context.getPrefString(PreferKey.panelBgImage)
+                    ?.takeIf { it.isNotBlank() } ?: stored?.panelBackgroundImgPath,
+                panelBackgroundScaleType = context.getPrefString(PreferKey.panelBgScaleType)
+                    ?.takeIf { it.isNotBlank() } ?: stored?.panelBackgroundScaleType,
+                panelBorderColor = context.getPrefString(PreferKey.panelBorderColor)
+                    ?.takeIf { it.isNotBlank() } ?: stored?.panelBorderColor,
+                panelBorderAlpha = context.getPrefInt(PreferKey.panelBorderAlpha, 100),
                 uiCornerScale = stored?.uiCornerScale ?: AppConfig.uiCornerScale,
                 uiLayoutAlpha = stored?.uiLayoutAlpha ?: AppConfig.uiLayoutAlpha,
+                dialogAlpha = appCtx.getPrefInt(PreferKey.dialogAlpha, 50).coerceIn(0, 100),
+                cardColor = context.getPrefString(PreferKey.themeCardColor)
+                    ?.takeIf { it.isNotBlank() } ?: stored?.cardColor,
+                mutedColor = context.getPrefString(PreferKey.themeMutedColor)
+                    ?.takeIf { it.isNotBlank() } ?: stored?.mutedColor,
+                searchFieldBackgroundColor = context.getPrefString(
+                    PreferKey.themeSearchFieldBackgroundColor
+                )?.takeIf { it.isNotBlank() } ?: stored?.searchFieldBackgroundColor,
+                tabBackgroundColor = context.getPrefString(PreferKey.themeTabBackgroundColor)
+                    ?.takeIf { it.isNotBlank() } ?: stored?.tabBackgroundColor,
+                shelfColor = context.getPrefString(PreferKey.themeShelfColor)
+                    ?.takeIf { it.isNotBlank() } ?: stored?.shelfColor,
+                cardShadow = context.getPrefInt(PreferKey.themeCardShadow, -1)
+                    .takeIf { it >= 0 } ?: stored?.cardShadow,
+                cardBackgroundBlur = context.getPrefInt(PreferKey.themeCardBackgroundBlur, -1)
+                    .takeIf { it >= 0 }?.let { it / 10f } ?: stored?.cardBackgroundBlur,
                 uiCornerSearchFollow = stored?.uiCornerSearchFollow ?: AppConfig.uiCornerSearchFollow,
                 uiCornerReplyFollow = stored?.uiCornerReplyFollow ?: AppConfig.uiCornerReplyFollow,
                 fontScale = stored?.fontScale ?: appCtx.getPrefInt(PreferKey.fontScale, 0),
                 uiFontPath = stored?.uiFontPath ?: AppConfig.uiFontPath,
-                titleFontPath = stored?.titleFontPath ?: AppConfig.titleFontPath
+                titleFontPath = stored?.titleFontPath ?: AppConfig.titleFontPath,
+                uiFontColor = context.getPrefString(PreferKey.uiFontColor)
+                    ?.takeIf { it.isNotBlank() } ?: stored?.uiFontColor,
+                titleFontColor = context.getPrefString(PreferKey.titleFontColor)
+                    ?.takeIf { it.isNotBlank() } ?: stored?.titleFontColor
             )
         )
     }
@@ -682,15 +808,44 @@ object ThemeConfig {
                 transparentNavBar = true,
                 backgroundImgPath = bgImgPath,
                 backgroundImgBlur = bgImgBlur,
+                backgroundImgCrop = context.getPrefString(PreferKey.bgImageCropN)
+                    ?.takeIf { it.isNotBlank() } ?: stored?.backgroundImgCrop,
                 bookInfoBackgroundImgPath = bookInfoBgImgPath,
                 bookInfoBackgroundImgBlur = bookInfoBgImgBlur,
+                panelBackgroundImgPath = context.getPrefString(PreferKey.panelBgImageN)
+                    ?.takeIf { it.isNotBlank() } ?: stored?.panelBackgroundImgPath,
+                panelBackgroundScaleType = context.getPrefString(PreferKey.panelBgScaleTypeN)
+                    ?.takeIf { it.isNotBlank() } ?: stored?.panelBackgroundScaleType,
+                panelBorderColor = context.getPrefString(PreferKey.panelBorderColorN)
+                    ?.takeIf { it.isNotBlank() } ?: stored?.panelBorderColor,
+                panelBorderAlpha = context.getPrefInt(PreferKey.panelBorderAlphaN, 100),
                 uiCornerScale = stored?.uiCornerScale ?: AppConfig.uiCornerScale,
                 uiLayoutAlpha = stored?.uiLayoutAlpha ?: AppConfig.uiLayoutAlpha,
+                dialogAlpha = appCtx.getPrefInt(PreferKey.dialogAlpha, 50).coerceIn(0, 100),
+                cardColor = context.getPrefString(PreferKey.themeCardColorN)
+                    ?.takeIf { it.isNotBlank() } ?: stored?.cardColor,
+                mutedColor = context.getPrefString(PreferKey.themeMutedColorN)
+                    ?.takeIf { it.isNotBlank() } ?: stored?.mutedColor,
+                searchFieldBackgroundColor = context.getPrefString(
+                    PreferKey.themeSearchFieldBackgroundColorN
+                )?.takeIf { it.isNotBlank() } ?: stored?.searchFieldBackgroundColor,
+                tabBackgroundColor = context.getPrefString(PreferKey.themeTabBackgroundColorN)
+                    ?.takeIf { it.isNotBlank() } ?: stored?.tabBackgroundColor,
+                shelfColor = context.getPrefString(PreferKey.themeShelfColorN)
+                    ?.takeIf { it.isNotBlank() } ?: stored?.shelfColor,
+                cardShadow = context.getPrefInt(PreferKey.themeCardShadowN, -1)
+                    .takeIf { it >= 0 } ?: stored?.cardShadow,
+                cardBackgroundBlur = context.getPrefInt(PreferKey.themeCardBackgroundBlurN, -1)
+                    .takeIf { it >= 0 }?.let { it / 10f } ?: stored?.cardBackgroundBlur,
                 uiCornerSearchFollow = stored?.uiCornerSearchFollow ?: AppConfig.uiCornerSearchFollow,
                 uiCornerReplyFollow = stored?.uiCornerReplyFollow ?: AppConfig.uiCornerReplyFollow,
                 fontScale = stored?.fontScale ?: appCtx.getPrefInt(PreferKey.fontScale, 0),
                 uiFontPath = stored?.uiFontPath ?: AppConfig.uiFontPath,
-                titleFontPath = stored?.titleFontPath ?: AppConfig.titleFontPath
+                titleFontPath = stored?.titleFontPath ?: AppConfig.titleFontPath,
+                uiFontColor = context.getPrefString(PreferKey.uiFontColorN)
+                    ?.takeIf { it.isNotBlank() } ?: stored?.uiFontColor,
+                titleFontColor = context.getPrefString(PreferKey.titleFontColorN)
+                    ?.takeIf { it.isNotBlank() } ?: stored?.titleFontColor
             )
         )
     }
@@ -702,6 +857,7 @@ object ThemeConfig {
         } ?: return config
         return config.copy(
             backgroundImgPath = preferThemeAsset(config.backgroundImgPath, stored.backgroundImgPath),
+            backgroundImgCrop = config.backgroundImgCrop ?: stored.backgroundImgCrop,
             bookInfoBackgroundImgPath = config.bookInfoBackgroundImgPath,
             bookInfoBackgroundImgBlur = config.bookInfoBackgroundImgBlur,
             backgroundImgBlur = if (config.backgroundImgPath.isNullOrBlank() && !stored.backgroundImgPath.isNullOrBlank()) {
@@ -709,13 +865,32 @@ object ThemeConfig {
             } else {
                 config.backgroundImgBlur
             },
+            panelBackgroundImgPath = preferThemeAsset(
+                config.panelBackgroundImgPath,
+                stored.panelBackgroundImgPath
+            ),
+            panelBackgroundScaleType = config.panelBackgroundScaleType
+                ?: stored.panelBackgroundScaleType,
+            panelBorderColor = config.panelBorderColor ?: stored.panelBorderColor,
+            panelBorderAlpha = config.panelBorderAlpha ?: stored.panelBorderAlpha,
             uiCornerScale = config.uiCornerScale ?: stored.uiCornerScale,
             uiLayoutAlpha = config.uiLayoutAlpha ?: stored.uiLayoutAlpha,
+            dialogAlpha = config.dialogAlpha ?: stored.dialogAlpha,
+            cardColor = config.cardColor ?: stored.cardColor,
+            mutedColor = config.mutedColor ?: stored.mutedColor,
+            searchFieldBackgroundColor = config.searchFieldBackgroundColor
+                ?: stored.searchFieldBackgroundColor,
+            tabBackgroundColor = config.tabBackgroundColor ?: stored.tabBackgroundColor,
+            shelfColor = config.shelfColor ?: stored.shelfColor,
+            cardShadow = config.cardShadow ?: stored.cardShadow,
+            cardBackgroundBlur = config.cardBackgroundBlur ?: stored.cardBackgroundBlur,
             uiCornerSearchFollow = config.uiCornerSearchFollow ?: stored.uiCornerSearchFollow,
             uiCornerReplyFollow = config.uiCornerReplyFollow ?: stored.uiCornerReplyFollow,
             fontScale = config.fontScale ?: stored.fontScale,
             uiFontPath = config.uiFontPath ?: stored.uiFontPath,
-            titleFontPath = config.titleFontPath ?: stored.titleFontPath
+            titleFontPath = config.titleFontPath ?: stored.titleFontPath,
+            uiFontColor = config.uiFontColor ?: stored.uiFontColor,
+            titleFontColor = config.titleFontColor ?: stored.titleFontColor
         )
     }
 
@@ -864,15 +1039,30 @@ object ThemeConfig {
         var transparentNavBar: Boolean,
         var backgroundImgPath: String?,
         var backgroundImgBlur: Int,
+        var backgroundImgCrop: String? = null,
         var bookInfoBackgroundImgPath: String? = null,
         var bookInfoBackgroundImgBlur: Int? = null,
+        var panelBackgroundImgPath: String? = null,
+        var panelBackgroundScaleType: String? = PANEL_BG_CROP,
+        var panelBorderColor: String? = null,
+        var panelBorderAlpha: Int? = null,
         var uiCornerScale: Float? = null,
         var uiLayoutAlpha: Int? = null,
+        var dialogAlpha: Int? = null,
+        var cardColor: String? = null,
+        var mutedColor: String? = null,
+        var searchFieldBackgroundColor: String? = null,
+        var tabBackgroundColor: String? = null,
+        var shelfColor: String? = null,
+        var cardShadow: Int? = null,
+        var cardBackgroundBlur: Float? = null,
         var uiCornerSearchFollow: Boolean? = null,
         var uiCornerReplyFollow: Boolean? = null,
         var fontScale: Int? = null,
         var uiFontPath: String? = null,
-        var titleFontPath: String? = null
+        var titleFontPath: String? = null,
+        var uiFontColor: String? = null,
+        var titleFontColor: String? = null
     ) {
 
         override fun hashCode(): Int {
@@ -891,15 +1081,30 @@ object ThemeConfig {
                         && other.transparentNavBar == transparentNavBar
                         && other.backgroundImgPath == backgroundImgPath
                         && other.backgroundImgBlur == backgroundImgBlur
+                        && other.backgroundImgCrop == backgroundImgCrop
                         && other.bookInfoBackgroundImgPath == bookInfoBackgroundImgPath
                         && other.bookInfoBackgroundImgBlur == bookInfoBackgroundImgBlur
+                        && other.panelBackgroundImgPath == panelBackgroundImgPath
+                        && other.panelBackgroundScaleType == panelBackgroundScaleType
+                        && other.panelBorderColor == panelBorderColor
+                        && other.panelBorderAlpha == panelBorderAlpha
                         && other.uiCornerScale == uiCornerScale
                         && other.uiLayoutAlpha == uiLayoutAlpha
+                        && other.dialogAlpha == dialogAlpha
+                        && other.cardColor == cardColor
+                        && other.mutedColor == mutedColor
+                        && other.searchFieldBackgroundColor == searchFieldBackgroundColor
+                        && other.tabBackgroundColor == tabBackgroundColor
+                        && other.shelfColor == shelfColor
+                        && other.cardShadow == cardShadow
+                        && other.cardBackgroundBlur == cardBackgroundBlur
                         && other.uiCornerSearchFollow == uiCornerSearchFollow
                         && other.uiCornerReplyFollow == uiCornerReplyFollow
                         && other.fontScale == fontScale
                         && other.uiFontPath == uiFontPath
                         && other.titleFontPath == titleFontPath
+                        && other.uiFontColor == uiFontColor
+                        && other.titleFontColor == titleFontColor
             }
             return false
         }
@@ -914,15 +1119,30 @@ object ThemeConfig {
             "transparentNavBar" to transparentNavBar,
             "backgroundImgPath" to backgroundImgPath,
             "backgroundImgBlur" to backgroundImgBlur,
+            "backgroundImgCrop" to backgroundImgCrop,
             "bookInfoBackgroundImgPath" to bookInfoBackgroundImgPath,
             "bookInfoBackgroundImgBlur" to bookInfoBackgroundImgBlur,
+            "panelBackgroundImgPath" to panelBackgroundImgPath,
+            "panelBackgroundScaleType" to panelBackgroundScaleType,
+            "panelBorderColor" to panelBorderColor,
+            "panelBorderAlpha" to panelBorderAlpha,
             "uiCornerScale" to uiCornerScale,
             "uiLayoutAlpha" to uiLayoutAlpha,
+            "dialogAlpha" to dialogAlpha,
+            "cardColor" to cardColor,
+            "mutedColor" to mutedColor,
+            "searchFieldBackgroundColor" to searchFieldBackgroundColor,
+            "tabBackgroundColor" to tabBackgroundColor,
+            "shelfColor" to shelfColor,
+            "cardShadow" to cardShadow,
+            "cardBackgroundBlur" to cardBackgroundBlur,
             "uiCornerSearchFollow" to uiCornerSearchFollow,
             "uiCornerReplyFollow" to uiCornerReplyFollow,
             "fontScale" to fontScale,
             "uiFontPath" to uiFontPath,
-            "titleFontPath" to titleFontPath
+            "titleFontPath" to titleFontPath,
+            "uiFontColor" to uiFontColor,
+            "titleFontColor" to titleFontColor
         )
 
         fun bookInfoBackgroundBlur(): Int {

@@ -21,7 +21,6 @@ import android.widget.TextView
 import android.view.SubMenu
 import android.view.View
 import androidx.appcompat.widget.SearchView
-import androidx.core.content.ContextCompat
 import androidx.core.widget.NestedScrollView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import androidx.core.os.bundleOf
@@ -813,7 +812,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             llTitle.isClickable = false
             llTitle.background = UiCorner.opaqueRounded(
                 UiCorner.dialogSurfaceColor(
-                    ContextCompat.getColor(context, R.color.background_menu)
+                    UiCorner.themeSurfaceMutedColor(context)
                 ),
                 UiCorner.actionRadius(context)
             )

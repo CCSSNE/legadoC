@@ -12,7 +12,6 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.SearchView
-import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
@@ -67,7 +66,7 @@ object SourceSelectDialog {
                 cornerRadius = UiCorner.searchRadius(10f)
                 setColor(
                     UiCorner.dialogSurfaceColor(
-                        ContextCompat.getColor(context, R.color.background_menu)
+                        UiCorner.themeSurfaceMutedColor(context)
                     )
                 )
             }
@@ -164,7 +163,7 @@ object SourceSelectDialog {
             setPadding(18.dpToPx(), 0, 18.dpToPx(), 0)
             background = UiCorner.dialogActionSelector(
                 Color.TRANSPARENT,
-                ContextCompat.getColor(context, R.color.background_menu),
+                UiCorner.themeSurfaceMutedColor(context),
                 UiCorner.actionRadius(context)
             )
             isClickable = true

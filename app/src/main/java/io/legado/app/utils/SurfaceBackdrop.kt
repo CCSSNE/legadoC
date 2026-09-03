@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Rect
@@ -19,6 +20,7 @@ import android.widget.TextView
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.surface.SurfaceDrawable
 import io.legado.app.lib.theme.surface.SurfaceStyle
+import java.io.File
 import java.lang.ref.WeakReference
 import java.util.WeakHashMap
 
@@ -27,6 +29,7 @@ private const val SURFACE_STABLE_FRAME_LIMIT = 24
 private const val SURFACE_PIXEL_COPY_RETRIES = 2
 private const val SURFACE_PIXEL_COPY_TIMEOUT_MS = 800L
 private const val SURFACE_BLUR_SAMPLE = 4
+private const val PANEL_BACKDROP_MAX_DIMENSION = 1080
 
 /**
  * 模糊背景离屏采集的渲染状态：开启"模糊背景不含文字"时，采集窗口内容期间置位，
@@ -154,7 +157,9 @@ object SurfaceBackdrop {
         }
 
         val hostDecor = hostWindow.decorView
-        val captureEnabled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+        val staticBackdrop = style.backdropImagePath
+        val captureEnabled = staticBackdrop == null &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             style.blurRadiusPx > 0
 
         awaitStableBounds(
@@ -163,7 +168,14 @@ object SurfaceBackdrop {
             generationValid = { state.generation == generation },
             onStable = {
                 presentLayer(hostDecor, target, layerOwner)
-                if (captureEnabled) {
+                if (staticBackdrop != null) {
+                    // 主题面板底图：解码在后台线程完成，完成后按当前代次安装；
+                    // 代次已过期或目标已脱离时由 finish 统一回收。
+                    Thread {
+                        val bitmap = decodeStaticBackdrop(staticBackdrop)
+                        mainHandler.post { finish(bitmap) }
+                    }.start()
+                } else if (captureEnabled) {
                     requestBackdrop(
                         hostWindow = hostWindow,
                         hostDecor = hostDecor,
@@ -539,9 +551,34 @@ object SurfaceBackdrop {
         }
     }
 
+    /**
+     * 主题面板底图解码。按上限采样控制内存；文件缺失或解码失败返回 null，
+     * 调用方将按无静态底图的默认路径继续（面板图本来就是可选输入）。
+     * 仅在后台线程调用。
+     */
+    private fun decodeStaticBackdrop(path: String): Bitmap? {
+        val file = File(path)
+        if (!file.isFile) return null
+        return runCatching {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(file.absolutePath, bounds)
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
+            var sampleSize = 1
+            while (
+                bounds.outWidth / (sampleSize * 2) >= PANEL_BACKDROP_MAX_DIMENSION &&
+                bounds.outHeight / (sampleSize * 2) >= PANEL_BACKDROP_MAX_DIMENSION
+            ) {
+                sampleSize *= 2
+            }
+            BitmapFactory.decodeFile(
+                file.absolutePath,
+                BitmapFactory.Options().apply { inSampleSize = sampleSize }
+            )
+        }.getOrNull()
+    }
+
     /** PixelCopy 的矩形始终使用源 Window 坐标。 */
-    private fun sourceRect(hostDecor: View, target: View): Rect? {
-        if (hostDecor.width <= 0 || hostDecor.height <= 0) return null
+    private fun sourceRect(hostDecor: View, target: View): Rect? {        if (hostDecor.width <= 0 || hostDecor.height <= 0) return null
         val targetLocation = IntArray(2)
         val hostLocation = IntArray(2)
         val rawLeft: Int

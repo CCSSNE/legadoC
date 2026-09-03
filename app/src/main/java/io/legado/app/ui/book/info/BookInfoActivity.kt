@@ -333,8 +333,8 @@ class BookInfoActivity :
     }
 
     private fun applyUiCorners() = binding.run {
-        val panelColor = ContextCompat.getColor(this@BookInfoActivity, R.color.background_card)
-        val menuColor = ContextCompat.getColor(this@BookInfoActivity, R.color.background_menu)
+        val panelColor = UiCorner.themeSurfaceCardColor(this@BookInfoActivity)
+        val menuColor = UiCorner.themeSurfaceMutedColor(this@BookInfoActivity)
         val actionColor = ContextCompat.getColor(this@BookInfoActivity, R.color.book_info_frost)
         val strokeColor = ContextCompat.getColor(this@BookInfoActivity, R.color.glass_stroke)
         val transparent = Color.TRANSPARENT

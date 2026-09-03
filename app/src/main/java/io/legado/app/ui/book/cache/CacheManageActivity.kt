@@ -110,14 +110,14 @@ class CacheManageActivity :
     private fun initView(initialMode: CacheManageMode) = binding.run {
         listOf(cardStatsTotal, cardStatsDetail, cardStatsCache).forEach {
             it.background = UiCorner.rounded(
-                ContextCompat.getColor(this@CacheManageActivity, R.color.background_card),
+                UiCorner.themeSurfaceCardColor(this@CacheManageActivity),
                 UiCorner.panelRadius(this@CacheManageActivity)
             )
         }
         listOf(btnUploadAll, btnDeleteAll).forEach {
             it.background = UiCorner.softActionSelector(
                 Color.TRANSPARENT,
-                ContextCompat.getColor(this@CacheManageActivity, R.color.background_card),
+                UiCorner.themeSurfaceCardColor(this@CacheManageActivity),
                 UiCorner.actionRadius(this@CacheManageActivity)
             )
         }
@@ -410,10 +410,10 @@ class CacheManageActivity :
             },
             palette = SegmentedControlStyle.Palette(
                 trackColor = UiCorner.surfaceColor(
-                    ContextCompat.getColor(this@CacheManageActivity, R.color.background_menu)
+                    UiCorner.themeSurfaceMutedColor(this@CacheManageActivity)
                 ),
                 selectedColor = UiCorner.surfaceColor(
-                    ContextCompat.getColor(this@CacheManageActivity, R.color.background_card),
+                    UiCorner.themeSurfaceCardColor(this@CacheManageActivity),
                     pressed = true
                 ),
                 textColor = this@CacheManageActivity.primaryTextColor,
@@ -485,7 +485,7 @@ class CacheManageActivity :
                     setColorFilter(secondaryTextColor())
                     background = UiCorner.softActionSelector(
                         Color.TRANSPARENT,
-                        ContextCompat.getColor(this@CacheManageActivity, R.color.background_menu),
+                        UiCorner.themeSurfaceMutedColor(this@CacheManageActivity),
                         UiCorner.actionRadius(this@CacheManageActivity)
                     )
                     contentDescription = getString(R.string.delete)

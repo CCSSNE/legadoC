@@ -3,7 +3,6 @@ package io.legado.app.ui.about
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
-import androidx.core.content.ContextCompat
 import io.legado.app.R
 import io.legado.app.base.BaseActivity
 import io.legado.app.databinding.ActivityAboutBinding
@@ -19,7 +18,7 @@ class AboutActivity : BaseActivity<ActivityAboutBinding>() {
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         binding.llAbout.background = UiCorner.rounded(
-            ContextCompat.getColor(this, R.color.background_card),
+            UiCorner.themeSurfaceCardColor(this),
             UiCorner.panelRadius(this)
         )
         val fTag = "aboutFragment"

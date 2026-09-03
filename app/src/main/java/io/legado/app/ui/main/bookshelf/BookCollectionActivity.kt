@@ -10,7 +10,6 @@ import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import androidx.activity.addCallback
-import androidx.core.content.ContextCompat
 import androidx.core.view.isGone
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
@@ -83,7 +82,7 @@ class BookCollectionActivity : BaseActivity<ActivityBookCollectionBinding>(),
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         binding.bookActionBar.background = ColorDrawable(
-            UiCorner.surfaceColor(ContextCompat.getColor(this, R.color.background_card))
+            UiCorner.surfaceColor(UiCorner.themeSurfaceCardColor(this))
         )
         val spanCount = AppConfig.bookshelfLayout.takeIf { it >= 2 } ?: 3
         binding.rvBooks.layoutManager = GridLayoutManager(this, spanCount)
