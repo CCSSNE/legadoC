@@ -28,8 +28,19 @@ class HomepageModuleEditDialog : BaseDialogFragment(R.layout.dialog_homepage_mod
 
     private var selectedType: String = HomepageModuleType.Grid.key
 
+    private val multiSelectTypes = setOf(
+        HomepageModuleType.ButtonGroup,
+        HomepageModuleType.Ranking,
+        HomepageModuleType.GridRanking,
+    )
+
     private val typeEntries: List<HomepageModuleType>
-        get() = HomepageModuleType.entries.filter { it != HomepageModuleType.Unknown }
+        get() {
+            val multi = HomepageModuleType.fromKey(selectedType) in multiSelectTypes
+            return HomepageModuleType.entries.filter { entry ->
+                entry != HomepageModuleType.Unknown && (entry in multiSelectTypes) == multi
+            }
+        }
 
     override fun onStart() {
         super.onStart()

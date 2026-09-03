@@ -324,16 +324,15 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
         }
         rows.add(
             Row.Field(
-                label = getString(R.string.homepage_select_pagination),
+                label = getString(R.string.homepage_select_multi),
                 value = "",
-                hint = getString(R.string.homepage_multi_select_hint),
             ) {
                 showKindSelectSheet(page, multiple = true)
             }
         )
         rows.add(
             Row.Field(
-                label = getString(R.string.homepage_select_category),
+                label = getString(R.string.homepage_select_single),
                 value = "",
             ) {
                 showKindSelectSheet(page, multiple = false)
