@@ -25,39 +25,39 @@
     </style>
 
     <style name="AppTheme.Welcome" parent="AppTheme.Welcome.Base">
-        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
     </style>
 
     <style name="AppTheme.Welcome.Launcher1" parent="AppTheme.Welcome.Base">
-        <item name="windowSplashScreenAnimatedIcon">@mipmap/launcher1</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon1</item>
     </style>
 
     <style name="AppTheme.Welcome.Launcher2" parent="AppTheme.Welcome.Base">
-        <item name="windowSplashScreenAnimatedIcon">@mipmap/launcher2</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon2</item>
     </style>
 
     <style name="AppTheme.Welcome.Launcher3" parent="AppTheme.Welcome.Base">
-        <item name="windowSplashScreenAnimatedIcon">@mipmap/launcher3</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon3</item>
     </style>
 
     <style name="AppTheme.Welcome.Launcher4" parent="AppTheme.Welcome.Base">
-        <item name="windowSplashScreenAnimatedIcon">@mipmap/launcher4</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon4</item>
     </style>
 
     <style name="AppTheme.Welcome.Launcher5" parent="AppTheme.Welcome.Base">
-        <item name="windowSplashScreenAnimatedIcon">@mipmap/launcher5</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon5</item>
     </style>
 
     <style name="AppTheme.Welcome.Launcher6" parent="AppTheme.Welcome.Base">
-        <item name="windowSplashScreenAnimatedIcon">@mipmap/launcher6</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon6</item>
     </style>
 
     <style name="AppTheme.Welcome.Launcher7" parent="AppTheme.Welcome.Base">
-        <item name="windowSplashScreenAnimatedIcon">@mipmap/launcher7</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon7</item>
     </style>
 
     <style name="AppTheme.Welcome.Launcher8" parent="AppTheme.Welcome.Base">
-        <item name="windowSplashScreenAnimatedIcon">@mipmap/launcher8</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon8</item>
     </style>
 
     <!-- Base application theme. -->
