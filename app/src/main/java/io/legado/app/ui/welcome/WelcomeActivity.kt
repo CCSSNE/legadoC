@@ -1,19 +1,10 @@
 package io.legado.app.ui.welcome
 
-import android.content.ComponentName
 import android.content.Intent
-import android.graphics.drawable.AdaptiveIconDrawable
-import android.graphics.drawable.ColorDrawable
-import android.graphics.drawable.Drawable
-import android.graphics.drawable.InsetDrawable
-import android.graphics.drawable.LayerDrawable
-import android.os.Build
 import android.os.Bundle
 import android.view.View
-import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.postDelayed
-import io.legado.app.R
 import io.legado.app.base.BaseActivity
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Theme
@@ -27,7 +18,6 @@ import io.legado.app.ui.main.MainActivity
 import io.legado.app.utils.BitmapUtils
 import io.legado.app.utils.CenterCropBitmapDrawable
 import io.legado.app.utils.FileUtils
-import io.legado.app.utils.dpToPx
 import io.legado.app.utils.fullScreen
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefInt
@@ -71,40 +61,20 @@ open class WelcomeActivity : BaseActivity<ActivityWelcomeBinding>() {
             path.isNotBlank()
                 && getPrefBoolean(PreferKey.customWelcome)
                 && FileUtils.exist(path)
-        }
-        val drawable = imagePath?.let { path ->
-            try {
-                if (path.endsWith(".9.png")) {
-                    BitmapUtils.decodeNinePatchDrawable(path)
-                } else {
-                    val metrics = resources.displayMetrics
-                    BitmapUtils.decodeBitmap(path, metrics.widthPixels, metrics.heightPixels)
-                        ?.let { CenterCropBitmapDrawable(resources, it) }
-                }
-            } catch (_: OutOfMemoryError) {
-                null
+        } ?: return
+        val drawable = try {
+            if (imagePath.endsWith(".9.png")) {
+                BitmapUtils.decodeNinePatchDrawable(imagePath)
+            } else {
+                val metrics = resources.displayMetrics
+                BitmapUtils.decodeBitmap(imagePath, metrics.widthPixels, metrics.heightPixels)
+                    ?.let { CenterCropBitmapDrawable(resources, it) }
             }
-        }
+        } catch (_: OutOfMemoryError) {
+            null
+        } ?: return
         ViewCompat.setBackgroundTintList(window.decorView, null)
-        window.decorView.background = drawable ?: createDefaultWelcomeBackground()
-    }
-
-    private fun createDefaultWelcomeBackground(): Drawable {
-        val icon = packageManager.getActivityIcon(ComponentName(this, javaClass))
-        val foreground: Drawable
-        val artworkSize: Int
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && icon is AdaptiveIconDrawable) {
-            foreground = icon.foreground
-            artworkSize = 168.dpToPx()
-        } else {
-            foreground = icon
-            artworkSize = 112.dpToPx()
-        }
-        val metrics = resources.displayMetrics
-        val insetX = ((metrics.widthPixels - artworkSize) / 2).coerceAtLeast(0)
-        val insetY = ((metrics.heightPixels - artworkSize) / 2).coerceAtLeast(0)
-        val centeredLogo = InsetDrawable(foreground, insetX, insetY, insetX, insetY)
-        return LayerDrawable(arrayOf(ColorDrawable(ContextCompat.getColor(this, R.color.background)), centeredLogo))
+        window.decorView.background = drawable
     }
 
     private fun startMainActivity() {
