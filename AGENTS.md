@@ -165,10 +165,11 @@ $versionName = '3.26.<MMddHH>' # <MMddHH> uses UTC; appC automatically appends c
 ### 长命令和构建失败
 
 - 任何可能超过 30 秒的命令必须实时监控。每 30 秒以内检查进程是否存活、CPU 是否增长、日志/产物是否更新；停滞时终止并报告，不能无限等待。
-- `assembleAppC` 及任何可能超过 30 秒的编译必须通过 `Start-Process` 或独立 `.bat` 在后台启动；禁止在当前工具会话前台直接运行长时间 Gradle 编译，也禁止用阻塞等待伪装成后台编译。
+- 编译启动必须“快、直接、零仪式”：**一条命令直接把环境变量与 `.bat` 里 Step 配置一起设好，然后立刻后台拉起并返回 PID 与日志路径**，不要写启动脚本文件、不要 `Start-Process` 套 `cmd` 再套 `.bat` 的笨重链路，更不要在启动后反复 `Start-Sleep + Get-Content` 干等。
+- 最快路径：用 `Start-Process` 启动 `gradlew.bat`（或一条 PowerShell 后台作业），`-ArgumentList` 一次性传入环境设置与 `assembleAppC` 全部参数，`-WindowStyle Hidden` 后台运行；把 stdout/stderr 重定向到日志文件后立即返回 PID。整个“配置+启动+返回 PID”应在一个命令内完成，禁止拆成“先写 .bat→再 Start-Process 拉起→再串行轮询”的多步仪式。
 - 后台启动的 `PowerShell`、`cmd`、Gradle 或包装脚本必须显式使用 `Start-Process -WindowStyle Hidden`；禁止弹出可见控制台窗口。构建 stdout、stderr、退出码和 APK 必须写入文件，禁止把二进制内容输出到文本终端。
-- 后台编译启动后必须立即返回 PID、日志路径和启动参数；后续通过独立的进程轮询检查存活、CPU、stdout、stderr 和 APK 产物，每 30 秒以内检查一次，不能让当前会话持续占用等待编译完成。
-- 后台编译须保存 stdout、stderr 和退出码。`cmd /c` 的内联重定向不可靠时，改用 `.bat` 文件启动，不得把空日志或启动器已退出误判为编译成功。
+- 后台编译启动后必须立即返回 PID、日志路径和启动参数；后续**在机械的长时间隔里低开销地瞄一眼三样核心信号即可**——是否出现 `BUILD SUCCESSFUL` / 失败报错 / APK 是否已产出。不要追着早已退出的 cmd wrapper PID 反复 `Get-Process`，真正的信号在 java(Gradle/Kotlin) 进程 CPU 与日志尾部。确认后台进程在跑、CPU 在涨、日志在写之后，就撤手等结果，不要一轮轮 `Start-Sleep + Get-Content` 干等。
+- 后台编译须保存 stdout、stderr 和退出码。`cmd /c` 的内联重定向不可靠时，才降级改用 `.bat` 文件启动（入口 `gradlew.bat` 直接用 `Start-Process` 拉起即可，通常不需要 `.bat`），不得把空日志或启动器已退出误判为编译成功。
 - 用户中断或工具会话结束后，必须先检查并清理仍属于本次构建的 Gradle/Kotlin/Java PID，再报告构建结果；不得遗留后台编译进程。
 - 先阅读实际错误中的文件、行号和异常，再选择修复。不得把源码错误猜成内存问题后盲目重跑。
 - 只有证据明确指向缓存锁定、Gradle 守护进程或原生内存问题时，才停止 Gradle、清理本次构建残留进程，并使用 `assembleAppC` 加冷编译参数重新诊断；目录清理只允许针对受影响模块的 `build` 目录。
@@ -294,6 +295,6 @@ uiautomator2 / ADB
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- 最近一次自用版交付为 `3.26.090308` / `10817`，2026-09-03，基于当时提交 `27cf4489` 使用 `assembleAppC` 冷编译成功（`-Pkotlin.compiler.execution.strategy=in-process`）。产物包名 `io.legado.app.dev`、versionName `3.26.090308c`、versionCode `10817`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C-自用`（label-zh 逐字匹配）、`apksigner` 验证通过；APK 位于 `app\build\outputs\apk\app\c\legado_app_3.26.090308_10817.apk`。当天 `fa2de371` 起对启动图标与欢迎页的全部改动（自适应图标前景 inset 调整、ICO 帧重新生成图标瓷贴、启动页新图标位图、自定义启动页图片接通、welcomeStyle 设置入口、欢迎页背景替换及闪屏修复）经用户要求已整体撤回，源码恢复到 `b1796cbe` 状态；下次自用版交付必须基于撤回后的最新提交，versionCode 递增为 `10818`。上一自用版为 `3.26.090307` / `10816`；最近公开版仍为 `3.26.090209` / `10804`。
+- 最近一次自用版交付为 `3.26.090308` / `10818`，2026-09-03，基于撤回后的最新提交 `dcc25d15`（整体撤回今日启动图标与欢迎页改动，源码回到 `b1796cbe` 语义）使用 `assembleAppC` 冷编译成功（`-Pkotlin.compiler.execution.strategy=in-process`）。产物包名 `io.legado.app.dev`、versionName `3.26.090308c`、versionCode `10818`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C-自用`（label-zh 逐字匹配）、`apksigner` 验证通过；APK 位于 `app\build\outputs\apk\app\c\legado_app_3.26.090308_10818.apk`。上一自用版为 `3.26.090308` / `10817`（同 UTC 小时构建，显示名相同仅 versionCode 递增）；最近公开版仍为 `3.26.090209` / `10804`。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
