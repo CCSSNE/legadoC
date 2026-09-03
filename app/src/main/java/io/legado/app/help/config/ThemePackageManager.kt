@@ -132,6 +132,14 @@ object ThemePackageManager {
         importZipInternal(zipFile, 0L)
     }
 
+    /**
+     * 外观套件导入专用：同名主题直接覆盖，重复导入同一套件视为更新。
+     * 单主题手动导入仍走 importZip 的重名保护。
+     */
+    suspend fun importZipForKit(zipFile: File): Entry = withContext(IO) {
+        importZipInternal(zipFile, 0L)
+    }
+
     suspend fun exportZip(entry: Entry): File = withContext(IO) {
         val localEntry = if (entry.source == Source.REMOTE) download(entry) else entry
         val dir = localEntry.localDir ?: localDir(localEntry.packageInfo.isNightTheme, localEntry.dirName)

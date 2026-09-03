@@ -2229,6 +2229,11 @@
     <string name="theme_zip_read_failed">无法读取主题 ZIP</string>
     <string name="theme_imported">主题已导入</string>
     <string name="theme_import_failed">导入主题失败：%s</string>
+    <string name="appearance_kit_manifest_missing">未找到外观套件清单</string>
+    <string name="appearance_kit_no_importable">套件中没有可导入的组件</string>
+    <string name="appearance_kit_default_name">外观套件</string>
+    <string name="appearance_kit_imported">外观套件已导入:%1$s</string>
+    <string name="appearance_kit_imported_with_skipped">外观套件已导入:%1$s,主题 %2$d 项、导航栏 %3$d 项;%4$d 项暂不支持(顶栏/封面集合)</string>
     <string name="theme_apply_failed">应用主题失败：%s</string>
     <string name="theme_applied">主题已应用</string>
     <string name="theme_sync_done">云端主题状态已同步</string>

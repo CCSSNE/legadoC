@@ -29,6 +29,7 @@ import io.legado.app.databinding.ItemThemePackageBinding
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.config.AppearanceKitManager
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.config.ThemePackageManager
 import io.legado.app.help.glide.ImageLoader
@@ -1046,11 +1047,33 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 contentResolver.openInputStream(uri)?.use { input ->
                     FileOutputStream(file).use { output -> input.copyTo(output) }
                 } ?: throw IllegalArgumentException(getString(R.string.theme_zip_read_failed))
-                ThemePackageManager.importZip(file)
-            }.onSuccess {
-                toastOnUi(getString(R.string.theme_imported))
+                if (AppearanceKitManager.isKitPackage(file)) {
+                    AppearanceKitManager.importPackage(file)
+                } else {
+                    ThemePackageManager.importZip(file).also {
+                        enqueueUploadIfNeeded(it)
+                    }
+                    null
+                }
+            }.onSuccess { summary ->
+                if (summary == null) {
+                    toastOnUi(getString(R.string.theme_imported))
+                } else {
+                    toastOnUi(
+                        if (summary.unsupportedCount == 0) {
+                            getString(R.string.appearance_kit_imported, summary.kitName)
+                        } else {
+                            getString(
+                                R.string.appearance_kit_imported_with_skipped,
+                                summary.kitName,
+                                summary.themeCount,
+                                summary.navigationBarCount,
+                                summary.unsupportedCount
+                            )
+                        }
+                    )
+                }
                 loadThemes()
-                enqueueUploadIfNeeded(it)
             }.onFailure {
                 if (it.isJobCancellation()) return@onFailure
                 toastOnUi(getString(R.string.theme_import_failed, it.localizedMessage))

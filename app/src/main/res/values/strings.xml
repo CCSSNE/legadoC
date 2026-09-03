@@ -2355,6 +2355,11 @@
     <string name="theme_zip_read_failed">Unable to read theme ZIP</string>
     <string name="theme_imported">Theme imported</string>
     <string name="theme_import_failed">Failed to import theme: %s</string>
+    <string name="appearance_kit_manifest_missing">Appearance kit manifest not found</string>
+    <string name="appearance_kit_no_importable">No importable components in this kit</string>
+    <string name="appearance_kit_default_name">Appearance kit</string>
+    <string name="appearance_kit_imported">Appearance kit imported: %1$s</string>
+    <string name="appearance_kit_imported_with_skipped">Appearance kit imported: %1$s, %2$d theme(s) and %3$d navigation bar(s); %4$d component(s) not supported yet (top bar / cover collection)</string>
     <string name="theme_apply_failed">Failed to apply theme: %s</string>
     <string name="theme_applied">Theme applied</string>
     <string name="theme_sync_done">Cloud theme state synced</string>
