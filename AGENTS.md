@@ -295,6 +295,6 @@ uiautomator2 / ADB
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- 最近一次自用版交付为 `3.26.090308` / `10818`，2026-09-03，基于撤回后的最新提交 `dcc25d15`（整体撤回今日启动图标与欢迎页改动，源码回到 `b1796cbe` 语义）使用 `assembleAppC` 冷编译成功（`-Pkotlin.compiler.execution.strategy=in-process`）。产物包名 `io.legado.app.dev`、versionName `3.26.090308c`、versionCode `10818`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C-自用`（label-zh 逐字匹配）、`apksigner` 验证通过；APK 位于 `app\build\outputs\apk\app\c\legado_app_3.26.090308_10818.apk`。上一自用版为 `3.26.090308` / `10817`（同 UTC 小时构建，显示名相同仅 versionCode 递增）；最近公开版仍为 `3.26.090209` / `10804`。
+- 最近一次自用版交付为 `3.26.090308` / `10818`，2026-09-03，基于撤回后的最新提交 `dcc25d15`（整体撤回今日启动图标与欢迎页改动，源码回到 `b1796cbe` 语义）使用 `assembleAppC` 冷编译成功（`-Pkotlin.compiler.execution.strategy=in-process`）。产物包名 `io.legado.app.dev`、versionName `3.26.090308c`、versionCode `10818`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C-自用`（label-zh 逐字匹配）、`apksigner` 验证通过；APK 位于 `app\build\outputs\apk\app\c\legado_app_3.26.090308_10818.apk`。上一自用版为 `3.26.090308` / `10817`（同 UTC 小时构建，显示名相同仅 versionCode 递增）；最近公开版为 `3.26.090317` / `10805`，2026-09-03，使用 `assembleOssRelease` 冷编译成功。产物包名 `io.legado.app.c`、versionName `3.26.090317`、versionCode `10805`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C`（label-zh 逐字匹配）、`apksigner` 验证通过；APK 位于 `app\build\outputs\apk\oss\release\legado_oss_3.26.090317_10805.apk`。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
