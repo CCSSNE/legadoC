@@ -296,6 +296,6 @@ uiautomator2 / ADB
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- 最近一次自用版交付为 `3.26.090303` / `10815`，2026-09-03 UTC 03 时，使用 `assembleAppC` 冷编译成功。正式编译先暴露一处未编译代码并修复：`AppearanceKitManager.kt:78` 调用不存在的 `NavigationBarIconConfig.select(entry)`（Unresolved reference 'select'），正确方法为 `apply(entry: Entry)`（与 `TopBarConfig.apply` 一致，把导入的导航栏配置写入 active key 并更新 AppConfig）。产物包名 `io.legado.app.dev`、versionName `3.26.090303c`、versionCode `10815`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C-自用`（label-zh 逐字匹配）、`apksigner` 验证通过；APK 位于 `app\build\outputs\apk\app\c\legado_app_3.26.090303_10815.apk`。本次未安装模拟器、未做正式回归。上一自用版为 `3.26.090301` / `10814`；最近公开版仍为 `3.26.090209` / `10804`。
+- 最近一次自用版交付为 `3.26.090307` / `10816`，2026-09-03 UTC 07 时，使用 `assembleAppC` 冷编译成功。产品级 APK 已存在（legado_app_3.26.090307_10816.apk）但在最新提交 `95161ef6`（欢迎页底色修复）之后构建，故重新编译；正式编译先暴露一处未编译代码并修复：`WelcomeActivity.kt:106` 使用 `R.color.background` 但缺 `import io.legado.app.R`（Unresolved reference 'R'），补上 import 后同版本重编译成功。产物包名 `io.legado.app.dev`、versionName `3.26.090307c`、versionCode `10816`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C-自用`（label-zh 逐字匹配）、`apksigner` 验证通过；APK 位于 `app\build\outputs\apk\app\c\legado_app_3.26.090307_10816.apk`。本次未安装模拟器、未做正式回归。上一自用版为 `3.26.090303` / `10815`；最近公开版仍为 `3.26.090209` / `10804`。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
