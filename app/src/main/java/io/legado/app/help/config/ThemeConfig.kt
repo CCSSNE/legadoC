@@ -218,21 +218,21 @@ object ThemeConfig {
 
     fun applyDayNight(context: Context) {
         applyTheme(context)
-        initNightMode(context)
+        syncSystemNightMode(context)
         BookCover.upDefaultCover()
         postEvent(EventBus.RECREATE, "")
     }
 
     fun applyDayNightNoRecreate(context: Context) {
         applyTheme(context)
-        initNightMode(context)
+        syncSystemNightMode(context)
         BookCover.upDefaultCover()
     }
 
     fun applyDayNightInit(context: Context) {
         migrateLegacyDefaultDayPrimary(context)
         applyTheme(context)
-        initNightMode(context)
+        syncSystemNightMode(context)
     }
 
     private fun migrateLegacyDefaultDayPrimary(context: Context) {
@@ -250,7 +250,7 @@ object ThemeConfig {
         return config.copy(primaryColor = DEFAULT_DAY_PRIMARY_HEX)
     }
 
-    private fun initNightMode(context: Context) {
+    internal fun syncSystemNightMode(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             // Application night mode is persisted and available when the next system splash is built.
             val targetMode = when (currentThemeMode()) {
