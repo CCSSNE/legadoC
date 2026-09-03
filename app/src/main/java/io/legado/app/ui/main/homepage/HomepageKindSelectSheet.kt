@@ -16,7 +16,7 @@ import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.launch
 
 /**
- * 主页源模块分类选择底部弹窗：单选模式点击即确认，多选模式勾选后点确定，
+ * 主页源模块分类选择底部弹窗：点选切换勾选 1~N 个分类后点确定，
  * 结果回传 [HomepageModuleManageSheet.onKindsSelected] 打开添加模块对话框。
  */
 class HomepageKindSelectSheet :
@@ -27,7 +27,6 @@ class HomepageKindSelectSheet :
     private val viewModel: HomepageViewModel
         get() = (parentFragment as HomepageModuleManageSheet).viewModel
 
-    private var multiple = false
     private var kinds = listOf<ExploreKind>()
     private val selectedUrls = mutableSetOf<String>()
 
@@ -40,11 +39,10 @@ class HomepageKindSelectSheet :
         val args = arguments ?: Bundle()
         val sourceUrl = args.getString("sourceUrl") ?: ""
         val sourceType = args.getString("sourceType") ?: "book"
-        multiple = args.getBoolean("multiple")
         selectedUrls.clear()
         selectedUrls.addAll(args.getStringArrayList("selected").orEmpty())
 
-        binding.tvKindOk.isVisible = multiple
+        binding.tvKindOk.isVisible = true
         binding.tvKindOk.setOnClickListener { confirmSelection() }
 
         loadKinds(sourceUrl, sourceType)
@@ -73,16 +71,12 @@ class HomepageKindSelectSheet :
             val url = kind.url ?: kind.title
             val selected = url in selectedUrls
             val chip = HomepageModuleManageSheet.createKindChip(requireContext(), kind.title) {
-                if (multiple) {
-                    if (selected) {
-                        selectedUrls.remove(url)
-                    } else {
-                        selectedUrls.add(url)
-                    }
-                    upKinds()
+                if (selected) {
+                    selectedUrls.remove(url)
                 } else {
-                    confirmSelection(listOf(kind))
+                    selectedUrls.add(url)
                 }
+                upKinds()
             }
             if (selected) {
                 chip.setBackgroundResource(R.drawable.bg_homepage_field)
@@ -92,14 +86,10 @@ class HomepageKindSelectSheet :
         }
     }
 
-    private fun confirmSelection(result: List<ExploreKind>? = null) {
-        val selected = if (result != null) {
-            result
-        } else {
-            kinds.filter { (it.url ?: it.title) in selectedUrls }
-        }
+    private fun confirmSelection() {
+        val selected = kinds.filter { (it.url ?: it.title) in selectedUrls }
         if (selected.isEmpty()) return
-        (parentFragment as? HomepageModuleManageSheet)?.onKindsSelected(selected, multiple)
+        (parentFragment as? HomepageModuleManageSheet)?.onKindsSelected(selected)
         dismiss()
     }
 }

@@ -478,12 +478,15 @@ class HomepageViewModel(application: Application) : BaseViewModel(application) {
             }.also { it.invokeOnCompletion { loadJobs.remove(module.id) } }
             return
         }
-        // 排行榜多分类模式：args 包含多个 {t:标题, u:URL} 对象
-        val isRanking = module.type == HomepageModuleType.Ranking.key
-                || module.type == HomepageModuleType.GridRanking.key
-        val rankingCategoryPairs = if (isRanking) parseRankingCategories(module.args) else null
+        // 多分类 tab 模式：args 包含 [{t:标题, u:URL}]（1~N 个），按钮组以外所有类型通用，
+        // 单分类即单 tab，头统一为 tab 样式，不再分单选多选
+        val rankingCategoryPairs = if (module.type == HomepageModuleType.ButtonGroup.key) {
+            null
+        } else {
+            parseRankingCategories(module.args)
+        }
 
-        if (rankingCategoryPairs != null && rankingCategoryPairs.size >= 2) {
+        if (!rankingCategoryPairs.isNullOrEmpty()) {
             val rssSource = appDb.rssSourceDao.getByKey(module.sourceUrl)
             val initialTabs = rankingCategoryPairs.map { (title, url) ->
                 RankingTabData(
@@ -528,15 +531,10 @@ class HomepageViewModel(application: Application) : BaseViewModel(application) {
                     }
                     books to false
                 } else {
-                    val effectiveUrl = if (isRanking) {
-                        parseRankingCategories(module.args)?.firstOrNull()?.second?.ifBlank { null }
-                            ?: module.url
-                    } else {
-                        module.url
-                    }
+                    // 有 args 的已在上面走 tab 流，到这里 args 为空，直接用模块 URL
                     exploreBooks(
                         sourceUrl = module.sourceUrl,
-                        moduleUrl = effectiveUrl,
+                        moduleUrl = module.url,
                         page = 1
                     )
                 }
@@ -583,17 +581,10 @@ class HomepageViewModel(application: Application) : BaseViewModel(application) {
         viewModelScope.launch {
             kotlin.runCatching {
                 val module = gateway.getById(globalId) ?: throw Exception("Module not found")
-                val isRanking = module.type == HomepageModuleType.Ranking.key ||
-                        module.type == HomepageModuleType.GridRanking.key
-                val effectiveUrl = if (isRanking) {
-                    parseRankingCategories(module.args)?.firstOrNull()?.second?.ifBlank { null }
-                        ?: module.url
-                } else {
-                    module.url
-                }
+                // 有 args 的走 tab 流的 loadMoreRankingTab，到这里 args 为空，直接用模块 URL
                 exploreBooks(
                     sourceUrl = module.sourceUrl,
-                    moduleUrl = effectiveUrl,
+                    moduleUrl = module.url,
                     page = nextPage
                 )
             }.onSuccess { (books, hasMore) ->
@@ -1179,7 +1170,7 @@ class HomepageViewModel(application: Application) : BaseViewModel(application) {
 
     // ==================== args 解析 ====================
 
-    /** 解析排行榜多分类 args：[{t:标题, u:URL}]；至少 2 个元素才按多分类模式 */
+    /** 解析多分类 tab 的 args：[{t:标题, u:URL}]；1~N 个都按 tab 模式（单分类即单 tab） */
     private fun parseRankingCategories(args: String?): List<Pair<String, String>>? {
         if (args.isNullOrBlank()) return null
         return runCatching {
@@ -1188,7 +1179,7 @@ class HomepageViewModel(application: Application) : BaseViewModel(application) {
                     val t = item["t"] ?: return@mapNotNull null
                     t to (item["u"] ?: "")
                 }
-        }.getOrNull()?.takeIf { it.size >= 2 }
+        }.getOrNull()?.takeIf { it.isNotEmpty() }
     }
 
     /** 解析按钮组 args 的分类标题，兼容新 [{t,u}] 与旧 ["title"] 两种格式 */

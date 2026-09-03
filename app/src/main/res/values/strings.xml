@@ -2719,8 +2719,7 @@ Selected text or question:
     <string name="homepage_layout_mixed">Mixed list</string>
     <string name="homepage_layout_source_tab">Source tabs</string>
     <string name="homepage_preload">Preload adjacent tabs</string>
-    <string name="homepage_select_multi">Multi-select</string>
-    <string name="homepage_select_single">Single-select</string>
+    <string name="homepage_select_kinds">Select categories</string>
     <string name="homepage_drag_sort">Drag to sort</string>
     <string name="homepage_selected_categories_count">%d selected</string>
     <string name="homepage_loading_categories">Loading categories</string>

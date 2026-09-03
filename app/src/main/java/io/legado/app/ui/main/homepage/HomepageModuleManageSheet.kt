@@ -317,25 +317,17 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
         }
     }
 
-    /** 发现 Tab：选择分页 → 选择分类 → 手动添加，选完分类自动打开添加对话框 */
+    /** 发现 Tab：选择分类（1~N 个，多个即切换 tab）→ 手动添加，选完分类自动打开添加对话框 */
     private fun buildDiscoverRows(rows: MutableList<Row>, page: Page.SourceDetail) {
         if (discoverState.loading) {
             rows.add(Row.Section(getString(R.string.homepage_loading_categories)))
         }
         rows.add(
             Row.Field(
-                label = getString(R.string.homepage_select_multi),
+                label = getString(R.string.homepage_select_kinds),
                 value = "",
             ) {
-                showKindSelectSheet(page, multiple = true)
-            }
-        )
-        rows.add(
-            Row.Field(
-                label = getString(R.string.homepage_select_single),
-                value = "",
-            ) {
-                showKindSelectSheet(page, multiple = false)
+                showKindSelectSheet(page)
             }
         )
         rows.add(
@@ -377,7 +369,7 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
         }
     }
 
-    private fun showKindSelectSheet(page: Page.SourceDetail, multiple: Boolean) {
+    private fun showKindSelectSheet(page: Page.SourceDetail) {
         if (discoverState.loading || discoverState.kinds.isEmpty()) {
             requireContext().toastOnUi(getString(R.string.homepage_loading_categories))
             return
@@ -386,36 +378,25 @@ class HomepageModuleManageSheet : BaseBottomSheetDialogFragment(R.layout.dialog_
         sheet.arguments = Bundle().apply {
             putString("sourceUrl", page.sourceUrl)
             putString("sourceType", page.sourceType)
-            putBoolean("multiple", multiple)
         }
         sheet.show(childFragmentManager, "homepageKindSelect")
     }
 
-    /** 分类选择弹窗回调：单选/多选都打开添加对话框并预填参数 */
-    internal fun onKindsSelected(kinds: List<ExploreKind>, multiple: Boolean) {
+    /** 分类选择弹窗回调：1~N 个分类统一按多分类建模块（1 个即单 tab），打开添加对话框预填参数 */
+    internal fun onKindsSelected(kinds: List<ExploreKind>) {
         if (kinds.isEmpty()) return
         val page = currentPage()
         if (page !is Page.SourceDetail) return
-        val def = if (multiple) {
-            ModuleDef(
-                type = HomepageModuleType.Ranking.key,
-                title = kinds.joinToString("、") { it.title },
-                args = GSON.toJson(
-                    kinds.map { mapOf("t" to it.title, "u" to (it.url ?: "")) }
-                ),
-                url = kinds.firstOrNull()?.url,
-                sourceUrl = page.sourceUrl,
-            )
-        } else {
-            val kind = kinds.first()
-            ModuleDef(
-                key = "explore_${kind.title}_${kind.url}",
-                type = HomepageModuleType.Grid.key,
-                title = kind.title,
-                url = kind.url,
-                sourceUrl = page.sourceUrl,
-            )
-        }
+        val def = ModuleDef(
+            key = "explore_" + kinds.joinToString("_") { it.title },
+            type = HomepageModuleType.Ranking.key,
+            title = kinds.joinToString("、") { it.title },
+            args = GSON.toJson(
+                kinds.map { mapOf("t" to it.title, "u" to (it.url ?: "")) }
+            ),
+            url = kinds.firstOrNull()?.url,
+            sourceUrl = page.sourceUrl,
+        )
         showEditDialog(
             HomepageModuleManageUi(
                 id = "",

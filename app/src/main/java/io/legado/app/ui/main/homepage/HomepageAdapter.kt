@@ -75,9 +75,20 @@ class HomepageAdapter(
             if (pos == RecyclerView.NO_POSITION) return
             val module = modules.getOrNull(pos) ?: return
             if (module.type != HomepageModuleType.InfiniteGrid) return
-            val state = module.state as? ModuleLoadState.Loaded ?: return
-            if (state.hasMore && !state.isLoadingMore) {
-                callBack.onLoadMore(module)
+            when (val state = module.state) {
+                is ModuleLoadState.Loaded -> {
+                    if (state.hasMore && !state.isLoadingMore) {
+                        callBack.onLoadMore(module)
+                    }
+                }
+                is ModuleLoadState.RankingTabs -> {
+                    val tab = state.tabs.getOrNull(state.selectedIndex) ?: return
+                    // 严格按 hasMore（空页即停），防自动加载死循环
+                    if (tab.hasMore && !tab.isLoadingMore) {
+                        callBack.onLoadMoreRankingTab(module, state.selectedIndex)
+                    }
+                }
+                else -> return
             }
         }
     }
@@ -254,38 +265,65 @@ class HomepageAdapter(
                 )
                 return
             }
-            val rankStyle = module.type == HomepageModuleType.Ranking
+            if (module.type == HomepageModuleType.Ranking) {
+                showRankCard(rankStyle = true)
+                ensureBooksAdapter(HomepageModuleType.Ranking)
+                booksAdapter?.setItems(state.books.take(rankLimit(module)))
+                bindExpandFooter(module, state.books)
+                bindLoadMore(state.hasMore, state.isLoadingMore) {
+                    callBack.onLoadMore(module)
+                }
+                return
+            }
+            bindTypeContent(
+                module = module,
+                books = state.books,
+                hasMore = state.hasMore,
+                isLoadingMore = state.isLoadingMore,
+                moreKey = module.globalId,
+                onLoadMore = { callBack.onLoadMore(module) },
+            )
+        }
+
+        /**
+         * 排行榜/网格排行以外的内容形态（网格/瀑布流/卡片/横幅/无限网格）：
+         * 单 URL（Loaded）与多分类 tab 共用，加载动作由调用方传入单页或 tab 版。
+         */
+        private fun bindTypeContent(
+            module: HomepageModuleUi,
+            books: List<HomepageBookItemUi>,
+            hasMore: Boolean,
+            isLoadingMore: Boolean,
+            moreKey: String,
+            onLoadMore: () -> Unit,
+        ) {
             val isHorizontal = module.type == HomepageModuleType.Card ||
                     module.type == HomepageModuleType.Banner
             val isInfinite = module.type == HomepageModuleType.InfiniteGrid
-            showRankCard(rankStyle)
+            showRankCard(rankStyle = false)
             ensureBooksAdapter(module.type)
-            val books = when {
-                // 网格首屏只取 6 条，点过加载更多后展示全部已加载（否则按钮形同虚设）
-                module.type == HomepageModuleType.Grid ->
-                    if (gridMoreShown.contains(module.globalId)) state.books
-                    else state.books.take(GRID_MAX_ITEMS)
-                rankStyle -> state.books.take(rankLimit(module))
-                else -> state.books
-            }
-            booksAdapter?.setItems(books)
-            if (rankStyle) {
-                bindExpandFooter(module, state.books)
+            // 网格首屏只取 6 条，点过加载更多后展示全部已加载（否则按钮形同虚设）
+            val shown = if (module.type == HomepageModuleType.Grid &&
+                !gridMoreShown.contains(moreKey)
+            ) {
+                books.take(GRID_MAX_ITEMS)
             } else {
-                binding.llExpand.gone()
+                books
             }
+            booksAdapter?.setItems(shown)
+            binding.llExpand.gone()
             when {
                 // 横幅/卡片横滑到头自动加载，无限网格随下滑自动加载，都不要底部按钮
                 isHorizontal || isInfinite -> binding.llLoadMore.gone()
-                else -> bindLoadMore(state.hasMore, state.isLoadingMore) {
+                else -> bindLoadMore(hasMore, isLoadingMore) {
                     if (module.type == HomepageModuleType.Grid) {
-                        gridMoreShown.add(module.globalId)
+                        gridMoreShown.add(moreKey)
                     }
-                    callBack.onLoadMore(module)
+                    onLoadMore()
                 }
             }
             if (isHorizontal) {
-                hEndAction = { callBack.onLoadMore(module) }
+                hEndAction = { onLoadMore() }
             }
         }
 
@@ -301,22 +339,35 @@ class HomepageAdapter(
             tabsAdapter?.submitItems(state.tabs, state.selectedIndex)
 
             val currentTab = state.tabs.getOrNull(state.selectedIndex)
+            val tabBooks = currentTab?.books ?: emptyList()
+            val tabHasMore = currentTab?.hasMore == true
+            val tabLoading = currentTab?.isLoadingMore == true
+            val onTabLoadMore = { callBack.onLoadMoreRankingTab(module, state.selectedIndex) }
 
             if (module.type == HomepageModuleType.GridRanking) {
                 bindGridRanking(
-                    books = currentTab?.books ?: emptyList(),
-                    hasMore = currentTab?.hasMore == true,
-                    isLoadingMore = currentTab?.isLoadingMore == true,
+                    books = tabBooks,
+                    hasMore = tabHasMore,
+                    isLoadingMore = tabLoading,
                     tabKey = currentTab?.title,
-                    onLoadMore = { callBack.onLoadMoreRankingTab(module, state.selectedIndex) },
+                    onLoadMore = onTabLoadMore,
                 )
-            } else {
+            } else if (module.type == HomepageModuleType.Ranking) {
                 showRankCard(rankStyle = true)
                 ensureBooksAdapter(HomepageModuleType.Ranking)
-                val all = currentTab?.books ?: emptyList()
-                booksAdapter?.setItems(all.take(rankLimit(module)))
-                bindExpandFooter(module, all)
+                booksAdapter?.setItems(tabBooks.take(rankLimit(module)))
+                bindExpandFooter(module, tabBooks)
                 binding.llLoadMore.gone()
+            } else {
+                // 网格/瀑布流/卡片/横幅/无限网格的多分类：当前 tab 内容按本类型形态渲染
+                bindTypeContent(
+                    module = module,
+                    books = tabBooks,
+                    hasMore = tabHasMore,
+                    isLoadingMore = tabLoading,
+                    moreKey = "${module.globalId}#${state.selectedIndex}",
+                    onLoadMore = onTabLoadMore,
+                )
             }
 
             // Tab 行在内容绑定之后显示：显隐只由本方法管理
