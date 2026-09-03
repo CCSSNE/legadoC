@@ -91,6 +91,8 @@ object PreferKey {
     const val showDiscovery = "showDiscovery"
     const val showHomepage = "showHomepage"
     const val homepageSourceHidden = "homepageSourceHidden"
+    const val homepageLayoutMode = "homepageLayoutMode"
+    const val homepagePreload = "homepagePreload"
     const val showReadRecord = "showReadRecord"
     const val modernDiscoveryPage = "modernDiscoveryPage"
     const val modernRssPage = "modernRssPage"

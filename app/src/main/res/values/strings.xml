@@ -2678,11 +2678,6 @@ Selected text or question:
     <string name="homepage_add_custom_module">Add custom module</string>
     <string name="homepage_copy_from_other_sets">Copy modules from other sets</string>
     <string name="homepage_joined_modules">Joined modules</string>
-    <string name="homepage_explore_kinds">Explore categories</string>
-    <string name="homepage_kinds_hint">Select categories, then add them as a button group or a ranking group</string>
-    <string name="homepage_kinds_search_hint">Search category</string>
-    <string name="homepage_add_as_button_group">Add as button group</string>
-    <string name="homepage_add_as_ranking">Add as ranking</string>
     <string name="homepage_edit_module">Edit module</string>
     <string name="homepage_module_type">Module type</string>
     <string name="homepage_module_title">Title</string>
@@ -2707,4 +2702,17 @@ Selected text or question:
     <string name="module_type_button_group">Button group</string>
     <string name="module_type_waterfall">Waterfall</string>
     <string name="unknown_type">Unknown type</string>
+    <string name="homepage_joined">Joined</string>
+    <string name="homepage_discover">Discover</string>
+    <string name="homepage_switch_layout">Switch layout</string>
+    <string name="homepage_layout_mixed">Mixed list</string>
+    <string name="homepage_layout_source_tab">Source tabs</string>
+    <string name="homepage_preload">Preload adjacent tabs</string>
+    <string name="homepage_select_category">Select category</string>
+    <string name="homepage_multi_select_hint">Multiple categories can be selected for button group / ranking</string>
+    <string name="homepage_selected_categories_count">%d selected</string>
+    <string name="homepage_loading_categories">Loading categories</string>
+    <string name="homepage_manual_add_module">Add module manually</string>
+    <string name="homepage_kind_select_title">Select categories</string>
+    <string name="homepage_kind_select_confirm">OK</string>
 </resources>

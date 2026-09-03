@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <View
+        android:layout_width="36dp"
+        android:layout_height="4dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="8dp"
+        android:background="@drawable/bg_homepage_handle" />
+
+    <TextView
+        android:id="@+id/tv_kind_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingStart="16dp"
+        android:paddingTop="12dp"
+        android:paddingEnd="16dp"
+        android:text="@string/homepage_kind_select_title"
+        android:textColor="@color/primaryText"
+        android:textSize="16sp"
+        android:textStyle="bold" />
+
+    <ProgressBar
+        android:id="@+id/pb_kind"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="24dp"
+        android:visibility="gone"
+        tools:visibility="visible" />
+
+    <ScrollView
+        android:id="@+id/sv_kinds"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fadeScrollbars="false">
+
+        <com.google.android.flexbox.FlexboxLayout
+            android:id="@+id/fl_kinds"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="16dp"
+            app:flexWrap="wrap" />
+
+    </ScrollView>
+
+    <TextView
+        android:id="@+id/tv_kind_ok"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="12dp"
+        android:background="@drawable/bg_homepage_field"
+        android:gravity="center"
+        android:padding="12dp"
+        android:text="@string/homepage_kind_select_confirm"
+        android:textColor="@color/primaryText"
+        android:textSize="15sp"
+        android:visibility="gone"
+        tools:visibility="visible" />
+
+</LinearLayout>

@@ -44,8 +44,8 @@ class HomepageModuleEditDialog : BaseDialogFragment(R.layout.dialog_homepage_mod
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         val args = arguments ?: Bundle()
-        val isCreate = args.getBoolean("isCreate", true)
-        selectedType = args.getString("type", HomepageModuleType.Grid.key)
+        val isCreate = args.getBoolean("isCreate")
+        selectedType = args.getString("type") ?: HomepageModuleType.Grid.key
 
         binding.run {
             tvTitle.text = if (isCreate) {
@@ -53,9 +53,9 @@ class HomepageModuleEditDialog : BaseDialogFragment(R.layout.dialog_homepage_mod
             } else {
                 getString(R.string.homepage_edit_module)
             }
-            etTitle.setText(args.getString("title", ""))
-            etUrl.setText(args.getString("url", ""))
-            etArgs.setText(args.getString("args", ""))
+            etTitle.setText(args.getString("title") ?: "")
+            etUrl.setText(args.getString("url") ?: "")
+            etArgs.setText(args.getString("args") ?: "")
 
             upTypeChips()
 
@@ -89,8 +89,8 @@ class HomepageModuleEditDialog : BaseDialogFragment(R.layout.dialog_homepage_mod
             val moduleArgs = etArgs.text.toString().trim().ifBlank { null }
             val sourceUrl = args.getString("sourceUrl") ?: return
             val setId = args.getString("setId")
-            val sourceName = args.getString("sourceName", "") ?: ""
-            val sourceType = args.getString("sourceType", "book") ?: "book"
+            val sourceName = args.getString("sourceName") ?: ""
+            val sourceType = args.getString("sourceType") ?: "book"
 
             if (title.isBlank()) {
                 requireContext().toastOnUi(getString(R.string.homepage_module_title))
@@ -98,7 +98,7 @@ class HomepageModuleEditDialog : BaseDialogFragment(R.layout.dialog_homepage_mod
             }
 
             val def = ModuleDef(
-                key = args.getString("moduleKey", "") ?: "",
+                key = args.getString("moduleKey") ?: "",
                 type = selectedType,
                 title = title,
                 args = moduleArgs,
@@ -112,7 +112,7 @@ class HomepageModuleEditDialog : BaseDialogFragment(R.layout.dialog_homepage_mod
                     viewModel.addCustomModule(sourceUrl, setId, def)
                 }
             } else {
-                viewModel.updateModule(args.getString("id", "") ?: "", def)
+                viewModel.updateModule(args.getString("id") ?: "", def)
             }
             requireContext().toastOnUi(getString(R.string.homepage_module_added))
             dismiss()

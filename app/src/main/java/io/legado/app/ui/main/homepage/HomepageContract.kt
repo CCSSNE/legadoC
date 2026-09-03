@@ -104,6 +104,10 @@ data class HomepageUiState(
     val modules: List<HomepageModuleUi> = emptyList(),
     val isRefreshing: Boolean = false,
     val manageState: HomepageManageUiState = HomepageManageUiState(),
+    /** 布局模式：0 = 混合列表，1 = 分源Tab */
+    val layoutMode: Int = 0,
+    /** 分源Tab 模式预加载：0 = 仅当前集，1 = 当前集 + 相邻集 */
+    val preloadMode: Int = 0,
 )
 
 /** 一次性 UI 事件 */

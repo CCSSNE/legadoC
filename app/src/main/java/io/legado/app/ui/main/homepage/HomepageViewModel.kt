@@ -118,6 +118,10 @@ class HomepageViewModel(application: Application) : BaseViewModel(application) {
         MutableStateFlow<Map<String, BookSourcePartLite>>(emptyMap())
     private val _rssSourceNames = MutableStateFlow<Map<String, String>>(emptyMap())
 
+    /** 分源Tab 模式：当前选中页索引与页对应的集 URL 列表（由 UI 回传，用于按需加载） */
+    private var currentTabIndex = 0
+    private val _currentTabSetUrls = MutableStateFlow<List<String>>(emptyList())
+
     private val localModulesFlow = gateway.flowEnabled()
     val allModulesCache = gateway.flowAll()
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
@@ -312,12 +316,15 @@ class HomepageViewModel(application: Application) : BaseViewModel(application) {
     val uiState: StateFlow<HomepageUiState> = combine(
         displayModulesFlow,
         _isRefreshing,
-        manageStateFlow
-    ) { modules, isRefreshing, manageState ->
+        manageStateFlow,
+        _configVersion
+    ) { modules, isRefreshing, manageState, _ ->
         HomepageUiState(
             modules = modules,
             isRefreshing = isRefreshing,
             manageState = manageState,
+            layoutMode = AppConfig.homepageLayoutMode,
+            preloadMode = AppConfig.homepagePreload,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), HomepageUiState())
 
@@ -343,15 +350,16 @@ class HomepageViewModel(application: Application) : BaseViewModel(application) {
             }
         }
 
-        // 自动加载进入 Loading 状态的模块
+        // 自动加载进入 Loading 状态的模块；分源Tab 模式下只加载当前 Tab（含预加载相邻集）的模块
         viewModelScope.launch {
             uiState.mapLatest { it.modules }.collect { modules ->
+                val loadSetIds = shouldLoadSetIds()
                 modules.forEach { ui ->
                     if (ui.state is ModuleLoadState.Loading && loadJobs[ui.globalId]?.isActive != true) {
-                        val shouldLoad = if (_isRefreshing.value) {
-                            ui.globalId in _refreshingModuleIds.value
-                        } else {
-                            true
+                        val shouldLoad = when {
+                            _isRefreshing.value -> ui.globalId in _refreshingModuleIds.value
+                            loadSetIds != null -> ui.customSetId != null && ui.customSetId in loadSetIds
+                            else -> true
                         }
                         if (shouldLoad) {
                             val module = gateway.getById(ui.globalId)
@@ -777,9 +785,53 @@ class HomepageViewModel(application: Application) : BaseViewModel(application) {
             _isRefreshing.value = true
             loadJobs.values.forEach { it.cancel() }
             loadJobs.clear()
-            _refreshingModuleIds.value = uiState.value.modules.map { it.globalId }.toSet()
+            val loadSetIds = shouldLoadSetIds()
+            _refreshingModuleIds.value = uiState.value.modules
+                .filter { loadSetIds?.let { ids -> it.customSetId != null && it.customSetId in ids } ?: true }
+                .map { it.globalId }.toSet()
             _moduleContentStates.value = emptyMap()
         }
+    }
+
+    // ==================== 布局模式 ====================
+
+    /** 设置主页布局模式（0: 混合列表, 1: 分源Tab） */
+    fun setLayoutMode(mode: Int) {
+        AppConfig.homepageLayoutMode = mode
+        notifyConfigChanged()
+    }
+
+    /** 设置分源Tab 预加载模式（0: 仅当前集, 1: 当前集 + 相邻集） */
+    fun setPreloadMode(mode: Int) {
+        AppConfig.homepagePreload = mode
+        notifyConfigChanged()
+    }
+
+    /**
+     * 更新分源Tab 模式下当前选中的页索引与集 URL 列表（由 UI 在页面稳定后回传），
+     * 用于限制仅加载当前 Tab（及开启预加载时的相邻 Tab）的模块。
+     */
+    fun updateCurrentTab(tabIndex: Int, setUrls: List<String>) {
+        currentTabIndex = tabIndex
+        _currentTabSetUrls.value = setUrls
+    }
+
+    /**
+     * 计算分源Tab 模式下应当加载的集 ID 集合；混合列表模式返回 null（表示全部加载）。
+     * 集 URL 与模块 customSetId 的对应：源集（src_/rss_）URL 即 ID，自定义集需去掉 custom:// 前缀。
+     */
+    private fun shouldLoadSetIds(): Set<String>? {
+        if (AppConfig.homepageLayoutMode == 0) return null
+        val urls = _currentTabSetUrls.value
+        if (urls.isEmpty()) return emptySet()
+        val preload = AppConfig.homepagePreload == 1
+        val start = if (preload) (currentTabIndex - 1).coerceAtLeast(0) else currentTabIndex
+        val end = if (preload) (currentTabIndex + 1).coerceAtMost(urls.lastIndex) else currentTabIndex
+        return (start..end).mapNotNull { index ->
+            urls.getOrNull(index)?.let { url ->
+                if (isCustomSetUrl(url)) customSetIdFromUrl(url) else url
+            }
+        }.toSet()
     }
 
     fun retryModule(globalId: String) {
@@ -923,35 +975,6 @@ class HomepageViewModel(application: Application) : BaseViewModel(application) {
         }
     }
 
-    /** 从选中分类创建按钮组模块 */
-    fun addButtonGroupFromKinds(sourceUrl: String, setId: String?, title: String, kindTitles: List<String>) {
-        viewModelScope.launch {
-            val effectiveSetId = setId ?: ensureSetForSource(
-                sourceUrl, _bookSourcesCache.value[sourceUrl]?.name ?: sourceUrl
-            )
-            val args = GSON.toJson(kindTitles.map { mapOf("t" to it, "u" to "") })
-            val globalId = ModuleDef.globalIdOf(
-                sourceUrl, "bg_${System.currentTimeMillis()}", effectiveSetId
-            )
-            gateway.upsertAll(listOf(
-                ModuleItem(
-                    id = globalId,
-                    sourceUrl = sourceUrl,
-                    moduleKey = "bg_${System.currentTimeMillis()}",
-                    type = HomepageModuleType.ButtonGroup.key,
-                    title = title.ifBlank { "按钮组" },
-                    args = args,
-                    isEnabled = true,
-                    customSetId = effectiveSetId,
-                    sortOrder = allModulesCache.value.count { it.customSetId == effectiveSetId },
-                    isUserCreated = true,
-                    syncedAt = System.currentTimeMillis()
-                )
-            ))
-            notifyConfigChanged()
-        }
-    }
-
     /** 获取书源发现分类（支持 @js:/<js> 动态分类） */
     suspend fun getExploreKinds(sourceUrl: String): List<ExploreKind> {
         return runCatching {
@@ -988,102 +1011,6 @@ class HomepageViewModel(application: Application) : BaseViewModel(application) {
                     sortOrder = allModulesCache.value.count { it.customSetId == effectiveSetId },
                     isUserCreated = true,
                     layoutConfig = def.layoutConfig,
-                    syncedAt = System.currentTimeMillis()
-                )
-            ))
-            notifyConfigChanged()
-        }
-    }
-
-    /** 从订阅源分类创建按钮组模块 */
-    fun addRssButtonGroupFromKinds(sourceUrl: String, setId: String?, sourceName: String, title: String, kindTitles: List<String>) {
-        viewModelScope.launch {
-            val effectiveSetId = setId ?: ensureRssSetForSource(sourceUrl, sourceName)
-            val args = GSON.toJson(kindTitles.map { mapOf("t" to it, "u" to "") })
-            val globalId = ModuleDef.globalIdOf(
-                sourceUrl, "bg_${System.currentTimeMillis()}", effectiveSetId
-            )
-            gateway.upsertAll(listOf(
-                ModuleItem(
-                    id = globalId,
-                    sourceUrl = sourceUrl,
-                    moduleKey = "bg_${System.currentTimeMillis()}",
-                    type = HomepageModuleType.ButtonGroup.key,
-                    title = title.ifBlank { "按钮组" },
-                    args = args,
-                    isEnabled = true,
-                    customSetId = effectiveSetId,
-                    sortOrder = allModulesCache.value.count { it.customSetId == effectiveSetId },
-                    isUserCreated = true,
-                    syncedAt = System.currentTimeMillis()
-                )
-            ))
-            notifyConfigChanged()
-        }
-    }
-
-    /** 从分类创建排行榜组模块（type 可为 ranking 或 gridRanking） */
-    fun addRankingGroupFromKinds(
-        sourceUrl: String,
-        setId: String?,
-        title: String,
-        categories: List<Pair<String, String>>,
-        rankingType: String = HomepageModuleType.Ranking.key,
-    ) {
-        viewModelScope.launch {
-            val effectiveSetId = setId ?: ensureSetForSource(
-                sourceUrl, _bookSourcesCache.value[sourceUrl]?.name ?: sourceUrl
-            )
-            val args = GSON.toJson(categories.map { mapOf("t" to it.first, "u" to it.second) })
-            val globalId = ModuleDef.globalIdOf(
-                sourceUrl, "rg_${System.currentTimeMillis()}", effectiveSetId
-            )
-            gateway.upsertAll(listOf(
-                ModuleItem(
-                    id = globalId,
-                    sourceUrl = sourceUrl,
-                    moduleKey = "rg_${System.currentTimeMillis()}",
-                    type = rankingType,
-                    title = title.ifBlank { "排行榜" },
-                    args = args,
-                    isEnabled = true,
-                    customSetId = effectiveSetId,
-                    sortOrder = allModulesCache.value.count { it.customSetId == effectiveSetId },
-                    isUserCreated = true,
-                    syncedAt = System.currentTimeMillis()
-                )
-            ))
-            notifyConfigChanged()
-        }
-    }
-
-    /** 从订阅源分类创建排行榜组模块 */
-    fun addRssRankingGroupFromKinds(
-        sourceUrl: String,
-        setId: String?,
-        sourceName: String,
-        title: String,
-        categories: List<Pair<String, String>>,
-        rankingType: String = HomepageModuleType.Ranking.key,
-    ) {
-        viewModelScope.launch {
-            val effectiveSetId = setId ?: ensureRssSetForSource(sourceUrl, sourceName)
-            val args = GSON.toJson(categories.map { mapOf("t" to it.first, "u" to it.second) })
-            val globalId = ModuleDef.globalIdOf(
-                sourceUrl, "rg_${System.currentTimeMillis()}", effectiveSetId
-            )
-            gateway.upsertAll(listOf(
-                ModuleItem(
-                    id = globalId,
-                    sourceUrl = sourceUrl,
-                    moduleKey = "rg_${System.currentTimeMillis()}",
-                    type = rankingType,
-                    title = title.ifBlank { "排行榜" },
-                    args = args,
-                    isEnabled = true,
-                    customSetId = effectiveSetId,
-                    sortOrder = allModulesCache.value.count { it.customSetId == effectiveSetId },
-                    isUserCreated = true,
                     syncedAt = System.currentTimeMillis()
                 )
             ))

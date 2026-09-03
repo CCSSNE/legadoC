@@ -375,6 +375,16 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         get() = appCtx.getPrefString(PreferKey.homepageSourceHidden, "") ?: ""
         set(value) = appCtx.putPrefString(PreferKey.homepageSourceHidden, value)
 
+    /** 聚合主页布局模式：0 = 混合列表（默认），1 = 分源Tab */
+    var homepageLayoutMode: Int
+        get() = appCtx.getPrefInt(PreferKey.homepageLayoutMode, 0)
+        set(value) = appCtx.putPrefInt(PreferKey.homepageLayoutMode, value)
+
+    /** 分源Tab 模式预加载：0 = 仅当前集（默认），1 = 当前集 + 相邻集 */
+    var homepagePreload: Int
+        get() = appCtx.getPrefInt(PreferKey.homepagePreload, 0)
+        set(value) = appCtx.putPrefInt(PreferKey.homepagePreload, value)
+
     val modernDiscoveryPage: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.modernDiscoveryPage, true)
 

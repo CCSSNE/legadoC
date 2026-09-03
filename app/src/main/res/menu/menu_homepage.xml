@@ -11,6 +11,18 @@
         tools:ignore="AlwaysShowAction" />
 
     <item
+        android:id="@+id/menu_switch_layout"
+        android:title="@string/homepage_switch_layout"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/menu_preload"
+        android:checkable="true"
+        android:title="@string/homepage_preload"
+        android:visible="false"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/menu_refresh"
         android:icon="@drawable/ic_refresh_black_24dp"
         android:title="@string/refresh"

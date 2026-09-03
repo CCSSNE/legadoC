@@ -2531,11 +2531,6 @@
     <string name="homepage_add_custom_module">添加自定义模块</string>
     <string name="homepage_copy_from_other_sets">从其他集复制模块</string>
     <string name="homepage_joined_modules">已加入模块</string>
-    <string name="homepage_explore_kinds">发现分类</string>
-    <string name="homepage_kinds_hint">多选分类后，可添加为按钮组或排行榜</string>
-    <string name="homepage_kinds_search_hint">搜索分类</string>
-    <string name="homepage_add_as_button_group">添加为按钮组</string>
-    <string name="homepage_add_as_ranking">添加为排行榜</string>
     <string name="homepage_edit_module">编辑模块</string>
     <string name="homepage_module_type">模块类型</string>
     <string name="homepage_module_title">标题</string>
@@ -2560,4 +2555,17 @@
     <string name="module_type_button_group">按钮组</string>
     <string name="module_type_waterfall">瀑布流</string>
     <string name="unknown_type">未知类型</string>
+    <string name="homepage_joined">已加入</string>
+    <string name="homepage_discover">发现</string>
+    <string name="homepage_switch_layout">切换布局</string>
+    <string name="homepage_layout_mixed">混合列表</string>
+    <string name="homepage_layout_source_tab">分源Tab</string>
+    <string name="homepage_preload">预加载相邻集</string>
+    <string name="homepage_select_category">选择分类</string>
+    <string name="homepage_multi_select_hint">按钮组与排行榜类型可选择多个分类</string>
+    <string name="homepage_selected_categories_count">已选 %d 个分类</string>
+    <string name="homepage_loading_categories">正在加载分类</string>
+    <string name="homepage_manual_add_module">手动添加模块</string>
+    <string name="homepage_kind_select_title">选择分类</string>
+    <string name="homepage_kind_select_confirm">确定</string>
 </resources>
