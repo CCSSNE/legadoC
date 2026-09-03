@@ -323,7 +323,7 @@ class HomepageFragment() : VMBaseFragment<HomepageViewModel>(R.layout.fragment_h
 
         fun setRefreshing(refreshing: Boolean) {
             pages.forEach { page ->
-                page.attachedBinding?.swipePage?.isRefreshing = refreshing
+                page.attachedBinding?.root?.isRefreshing = refreshing
             }
         }
 
@@ -365,15 +365,15 @@ class HomepageFragment() : VMBaseFragment<HomepageViewModel>(R.layout.fragment_h
             binding.rvPage.setEdgeEffectColor(accentColor)
             binding.rvPage.applyMainBottomBarPadding()
             binding.rvPage.adapter = adapter
-            binding.swipePage.setColorSchemeColors(accentColor)
-            binding.swipePage.setProgressViewOffset(true, (-28).dpToPx(), 56.dpToPx())
-            binding.swipePage.setOnChildScrollUpCallback { _, _ ->
+            binding.root.setColorSchemeColors(accentColor)
+            binding.root.setProgressViewOffset(true, (-28).dpToPx(), 56.dpToPx())
+            binding.root.setOnChildScrollUpCallback { _, _ ->
                 binding.rvPage.canScrollVertically(-1)
             }
-            binding.swipePage.setOnRefreshListener {
+            binding.root.setOnRefreshListener {
                 fragment.viewModel.onRefresh()
             }
-            binding.swipePage.isRefreshing = fragment.viewModel.uiState.value.isRefreshing
+            binding.root.isRefreshing = fragment.viewModel.uiState.value.isRefreshing
         }
 
         fun detach() {

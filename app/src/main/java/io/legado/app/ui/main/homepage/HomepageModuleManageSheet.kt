@@ -25,6 +25,7 @@ import io.legado.app.databinding.ItemHomepageManageSectionBinding
 import io.legado.app.databinding.ItemHomepageManageSetBinding
 import io.legado.app.databinding.ItemHomepageManageSourceBinding
 import io.legado.app.domain.model.HomepageModuleType
+import io.legado.app.domain.model.ModuleDef
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.utils.GSON
