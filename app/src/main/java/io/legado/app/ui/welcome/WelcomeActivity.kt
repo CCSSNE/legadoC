@@ -2,10 +2,12 @@ package io.legado.app.ui.welcome
 
 import android.content.ComponentName
 import android.content.Intent
+import android.graphics.drawable.AdaptiveIconDrawable
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.InsetDrawable
 import android.graphics.drawable.LayerDrawable
+import android.os.Build
 import android.os.Bundle
 import android.view.View
 import androidx.core.view.ViewCompat
@@ -86,12 +88,20 @@ open class WelcomeActivity : BaseActivity<ActivityWelcomeBinding>() {
     }
 
     private fun createDefaultWelcomeBackground(): Drawable {
-        val logo = packageManager.getActivityIcon(ComponentName(this, javaClass))
-        val logoSize = 112.dpToPx()
+        val icon = packageManager.getActivityIcon(ComponentName(this, javaClass))
+        val foreground: Drawable
+        val artworkSize: Int
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && icon is AdaptiveIconDrawable) {
+            foreground = icon.foreground
+            artworkSize = 168.dpToPx()
+        } else {
+            foreground = icon
+            artworkSize = 112.dpToPx()
+        }
         val metrics = resources.displayMetrics
-        val insetX = ((metrics.widthPixels - logoSize) / 2).coerceAtLeast(0)
-        val insetY = ((metrics.heightPixels - logoSize) / 2).coerceAtLeast(0)
-        val centeredLogo = InsetDrawable(logo, insetX, insetY, insetX, insetY)
+        val insetX = ((metrics.widthPixels - artworkSize) / 2).coerceAtLeast(0)
+        val insetY = ((metrics.heightPixels - artworkSize) / 2).coerceAtLeast(0)
+        val centeredLogo = InsetDrawable(foreground, insetX, insetY, insetX, insetY)
         return LayerDrawable(arrayOf(ColorDrawable(backgroundColor), centeredLogo))
     }
 
