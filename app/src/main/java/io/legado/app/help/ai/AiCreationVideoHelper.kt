@@ -33,12 +33,12 @@ object AiCreationVideoHelper {
         modelId: String,
         prompt: String,
         extraValues: Map<String, String> = emptyMap(),
-        finalPrompt: String = ""
+        llmInput: String = ""
     ): String = withContext(Dispatchers.IO) {
         check(provider.requestTemplate.isNotBlank()) {
             "当前视频供应商「${provider.name}」的视频请求模板为空"
         }
-        val variables = AiCreationConfig.parseVideoDefinition(provider.variablesJson).variables
+        val variables = AiCreationVariables.parse(provider.variablesJson)
         val tokens = buildMap {
             put("model", modelId)
             put("prompt", prompt)
@@ -55,7 +55,7 @@ object AiCreationVideoHelper {
             baseUrl = provider.baseUrl,
             model = modelId,
             variables = tokens.filterKeys { it !in setOf("model", "prompt", "n") },
-            finalPrompt = finalPrompt,
+            llmInput = llmInput,
             prompt = prompt,
             request = body
         )

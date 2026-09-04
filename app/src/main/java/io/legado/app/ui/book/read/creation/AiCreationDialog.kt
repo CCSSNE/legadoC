@@ -26,7 +26,7 @@ import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.databinding.DialogAiCreationBinding
 import io.legado.app.databinding.ItemAiPreviewBinding
 import io.legado.app.help.ai.AI_CREATION_EPHEMERAL_BOOK
-import io.legado.app.help.ai.AI_CREATION_FINAL_PROMPT_KEY
+import io.legado.app.help.ai.AI_CREATION_LLM_INPUT_KEY
 import io.legado.app.help.ai.AI_CREATION_IMAGE_COUNT_KEY
 import io.legado.app.help.ai.AI_CREATION_MODE_KEY
 import io.legado.app.help.ai.AiCreationConfig
@@ -130,22 +130,25 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         session.bookName = bookName
-        val imageDefinition = AiCreationConfig.imageDefinition
-        val videoDefinition = AiCreationConfig.videoDefinition
+        //变量区 = LLM 变量（style，控制发给 LLM 的内容）+ 供应商生图/生视频参数
+        val imageVariables = AiCreationConfig.imageLlmDefinition.variables +
+            AiCreationConfig.imageVariables
+        val videoVariables = AiCreationConfig.videoLlmDefinition.variables +
+            AiCreationConfig.videoVariables
         variableGroups = listOf(
             AiCreationVariableGroup(
                 key = AiCreationVariables.GROUP_IMAGE,
                 label = "图片",
-                variables = imageDefinition.variables
+                variables = imageVariables
             ),
             AiCreationVariableGroup(
                 key = AiCreationVariables.GROUP_VIDEO,
                 label = "视频",
-                variables = videoDefinition.variables
+                variables = videoVariables
             )
         )
         require(variableGroups.all { it.variables.isNotEmpty() }) {
-            "图片和视频供应商的变量定义都不能为空"
+            "图片和视频的 LLM 变量与供应商变量都不能为空"
         }
         //首次使用选图片；已存模式必须是当前新体系的合法值。
         val savedMode = session.paramValue(AI_CREATION_MODE_KEY)
@@ -409,14 +412,32 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         host.update(show = state.shouldShow, taskRunning = state.taskRunning)
     }
 
+    private fun isLlmVariable(variable: AiCreationVariable): Boolean {
+        val definition = if (isVideoMode()) {
+            AiCreationConfig.videoLlmDefinition
+        } else {
+            AiCreationConfig.imageLlmDefinition
+        }
+        return definition.variables.any { it.key == variable.key }
+    }
+
+    /** LLM 变量存 LLM 存储（不随供应商），供应商变量存供应商隔离存储 */
     private fun currentParamValue(variable: AiCreationVariable): String {
         val mode = currentGroup()?.key ?: error("AI 创作模式未选择")
-        return variable.effectiveValue(session.providerVariableValue(mode, variable.key))
+        return if (isLlmVariable(variable)) {
+            variable.effectiveValue(session.llmVariableValue(mode, variable.key))
+        } else {
+            variable.effectiveValue(session.providerVariableValue(mode, variable.key))
+        }
     }
 
     private fun setCurrentParamValue(variable: AiCreationVariable, value: String) {
         val mode = currentGroup()?.key ?: error("AI 创作模式未选择")
-        session.setProviderVariable(mode, variable.key, value)
+        if (isLlmVariable(variable)) {
+            session.setLlmVariable(mode, variable.key, value)
+        } else {
+            session.setProviderVariable(mode, variable.key, value)
+        }
     }
 
     private fun buildVariableControls(group: AiCreationVariableGroup) {
@@ -887,13 +908,13 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         session.setParam(AI_CREATION_IMAGE_COUNT_KEY, count.toString())
         viewLifecycleOwner.lifecycleScope.launch {
             val result = runCatching {
-                val definition = AiCreationConfig.videoDefinition
-                val values = AiCreationHelper.buildRequestValues(session, definition.variables)
+                val providerVariables = AiCreationConfig.videoVariables
+                val values = AiCreationHelper.buildRequestValues(session, providerVariables)
                 AiCreationImageTaskHolder.startVideo(
                     prompt,
                     count,
                     values,
-                    session.paramValue(AI_CREATION_FINAL_PROMPT_KEY).orEmpty()
+                    session.paramValue(AI_CREATION_LLM_INPUT_KEY).orEmpty()
                 )
             }
             result.onSuccess {
@@ -910,14 +931,14 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         session.setParam(AI_CREATION_IMAGE_COUNT_KEY, count.toString())
         viewLifecycleOwner.lifecycleScope.launch {
             val result = runCatching {
-                val definition = AiCreationConfig.imageDefinition
-                val values = AiCreationHelper.buildRequestValues(session, definition.variables)
+                val providerVariables = AiCreationConfig.imageVariables
+                val values = AiCreationHelper.buildRequestValues(session, providerVariables)
                 AiCreationConfig.requireImageApiReady()
                 AiCreationImageTaskHolder.start(
                     prompt,
                     count,
                     values,
-                    session.paramValue(AI_CREATION_FINAL_PROMPT_KEY).orEmpty()
+                    session.paramValue(AI_CREATION_LLM_INPUT_KEY).orEmpty()
                 )
             }
             result.onSuccess {

@@ -4,8 +4,8 @@ import org.json.JSONObject
 
 /**
  * AI 创作工作流：一次生成请求的完整溯源快照，落盘时写入 PNG/MP4 元数据随文件保存。
- * 术语约定（与 finalPrompt 模板严格区分）：
- * - finalPrompt：渲染后发给 LLM 的完整内容（路由选中的提示词模板文本 + 素材组合），
+ * 术语约定（与 llmInputTemplate 模板严格区分）：
+ * - llmInput：渲染后发给 LLM 的完整输入（LLM 输入；路由选中的提示词模板文本 + 素材组合），
  *   手动挡或测试连接不经过 LLM 时为空串
  * - prompt：生成提示词，LLM 产出或手填、经 {{prompt}} 填入请求模板发给生图/生视频 API 的最终文本
  * - request：渲染后的完整请求体（全部占位符已替换为实际值）
@@ -17,7 +17,7 @@ data class AiCreationWorkflow(
     val baseUrl: String,
     val model: String,
     val variables: Map<String, String>,
-    val finalPrompt: String,
+    val llmInput: String,
     val prompt: String,
     val request: String
 ) {
@@ -33,13 +33,13 @@ data class AiCreationWorkflow(
         )
         root.put("model", model)
         root.put("variables", JSONObject(variables))
-        root.put("finalPrompt", finalPrompt)
+        root.put("llmInput", llmInput)
         root.put("prompt", prompt)
         root.put("request", runCatching { JSONObject(request) }.getOrNull() ?: request)
         return root.toString()
     }
 
-    /** 插入媒体时预填备注的可读摘要；finalPrompt 或变量为空时如实跳过对应行 */
+    /** 插入媒体时预填备注的可读摘要；llmInput 或变量为空时如实跳过对应行 */
     fun toSummaryText(): String = buildString {
         appendLine("供应商：$providerName")
         appendLine("Base URL：$baseUrl")
@@ -49,9 +49,9 @@ data class AiCreationWorkflow(
                 "变量：" + variables.entries.joinToString("；") { "${it.key}=${it.value}" }
             )
         }
-        if (finalPrompt.isNotBlank()) {
-            appendLine("FinalPrompt：")
-            appendLine(finalPrompt)
+        if (llmInput.isNotBlank()) {
+            appendLine("LLM 输入：")
+            appendLine(llmInput)
         }
         appendLine("生成提示词：")
         append(prompt)
@@ -85,7 +85,7 @@ data class AiCreationWorkflow(
                         json.keys().forEach { key -> put(key, json.optString(key)) }
                     }
                 }.orEmpty(),
-                finalPrompt = root.optString("finalPrompt"),
+                llmInput = root.optString("llmInput"),
                 prompt = root.optString("prompt"),
                 request = root.opt("request")?.toString().orEmpty()
             )

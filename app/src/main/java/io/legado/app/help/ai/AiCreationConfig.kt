@@ -102,63 +102,37 @@ object AiCreationConfig {
         }
 
     /**
-     * 图片变量定义完全来自当前图片供应商的 JSON。
+     * 全局 LLM 变量设置：控制发给 LLM 的内容（style 变量、提示词路由、LLM 输入模板），
+     * 与图片/视频供应商无关；供应商变量定义只含生图/生视频参数。
      */
-    val imageDefinition: AiCreationDefinition
-        get() = parseImageDefinition(AiCreationProviderStore.requireImageVariablesJson())
+    val defaultLlmVariablesJson: String by lazy { AiCreationVariables.buildLlmDefaultJson() }
 
-    /**
-     * 视频变量定义完全来自当前视频供应商的 JSON。
-     */
-    val videoDefinition: AiCreationDefinition
-        get() = parseVideoDefinition(AiCreationProviderStore.requireVideoVariablesJson())
+    var llmVariablesJson: String
+        get() = appCtx.getPrefString(PreferKey.aiCreationLlmVariables)
+            ?: defaultLlmVariablesJson
+        set(value) {
+            val normalized = value.trim()
+            AiCreationVariables.parseLlm(normalized)
+            appCtx.putPrefString(PreferKey.aiCreationLlmVariables, normalized)
+        }
 
-    fun parseImageDefinition(json: String): AiCreationDefinition =
-        requireStyleDefinition(
-            definition = AiCreationVariables.parse(json),
-            label = "图片",
-            options = listOf("连环画", "单场景"),
-            defaultValue = "单场景"
-        )
+    /** 图片体系的 LLM 变量定义（LLM 变量设置 image 节）。 */
+    val imageLlmDefinition: AiCreationDefinition
+        get() = AiCreationVariables.parseLlm(llmVariablesJson).image
+            ?: error("LLM 变量设置缺少 image 节")
 
-    fun parseVideoDefinition(json: String): AiCreationDefinition =
-        requireStyleDefinition(
-            definition = AiCreationVariables.parse(json),
-            label = "视频",
-            options = listOf("多镜头", "单镜头"),
-            defaultValue = "单镜头"
-        )
+    /** 视频体系的 LLM 变量定义（LLM 变量设置 video 节）。 */
+    val videoLlmDefinition: AiCreationDefinition
+        get() = AiCreationVariables.parseLlm(llmVariablesJson).video
+            ?: error("LLM 变量设置缺少 video 节")
 
-    private fun requireStyleDefinition(
-        definition: AiCreationDefinition,
-        label: String,
-        options: List<String>,
-        defaultValue: String
-    ): AiCreationDefinition {
-        val style = definition.variables.singleOrNull { it.key == "style" }
-            ?: throw IllegalStateException("${label}变量定义必须且只能有一个 style")
-        require(style.format == AiCreationVariable.FORMAT_OPTIONS) {
-            "${label} style 必须是选项式变量"
-        }
-        require(style.options == options && style.effectiveValues() == options) {
-            "${label} style 选项必须是：${options.joinToString("、")}"
-        }
-        require(style.defaultValue == defaultValue) {
-            "${label} style 默认值必须是：${defaultValue}"
-        }
-        options.forEach { styleValue ->
-            val matches = definition.routes.filter { route ->
-                route.conditions == mapOf("style" to styleValue)
-            }
-            require(matches.size == 1) {
-                "${label}变量定义缺少 style=${styleValue} 的提示词路由"
-            }
-        }
-        require(definition.routes.size == options.size) {
-            "${label}变量定义的提示词路由只能由 style 决定"
-        }
-        return definition
-    }
+    /** 当前图片供应商的生图参数变量。 */
+    val imageVariables: List<AiCreationVariable>
+        get() = AiCreationVariables.parse(AiCreationProviderStore.requireImageVariablesJson())
+
+    /** 当前视频供应商的生视频参数变量。 */
+    val videoVariables: List<AiCreationVariable>
+        get() = AiCreationVariables.parse(AiCreationProviderStore.requireVideoVariablesJson())
 
     val promptTemplates: Map<String, String>
         get() = parsePromptTemplates(promptTemplateJson)

@@ -27,6 +27,7 @@ import io.legado.app.help.ai.AiCreationImageTaskHolder
 import io.legado.app.help.ai.AiCreationProviderConfig
 import io.legado.app.help.ai.AiCreationProviderModel
 import io.legado.app.help.ai.AiCreationProviderStore
+import io.legado.app.help.ai.AiCreationVariables
 import io.legado.app.help.ai.AiCreationVideoHelper
 import io.legado.app.help.LogExporter
 import io.legado.app.help.ai.AiLogConfig
@@ -177,6 +178,7 @@ class AiConfigFragment : PreferenceFragment(),
             PreferKey.aiCreationProvider -> showSelectCreationProviderDialog()
             PreferKey.aiCreationModel -> showSelectCreationModelDialog()
             PreferKey.aiCreationPromptTemplate -> showCreationPromptDialog()
+            PreferKey.aiCreationLlmVariables -> showCreationLlmVariablesDialog()
             "aiCreationTestConnection" -> testCreationConnection()
             PreferKey.aiCreationScope -> showCreationScopeSettingsDialog()
             "aiCreationImageAddProvider" -> showCreationProviderEditDialog(null, isVideo = false)
@@ -468,6 +470,37 @@ class AiConfigFragment : PreferenceFragment(),
         }
     }
 
+    private fun showCreationLlmVariablesDialog() {
+        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
+            editView.hint = getString(R.string.ai_creation_llm_variables_hint)
+            editView.inputType = InputType.TYPE_CLASS_TEXT or
+                InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+                InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            editView.minLines = 12
+            editView.setText(AiCreationConfig.llmVariablesJson)
+            editView.setSelection(editView.text?.length ?: 0)
+        }
+        alert(titleResource = R.string.ai_creation_llm_variables) {
+            customView { binding.root }
+            okButton {
+                val value = binding.editView.text?.toString().orEmpty()
+                val error = runCatching {
+                    AiCreationConfig.llmVariablesJson = value
+                }.exceptionOrNull()
+                if (error != null) {
+                    toastOnUi(error.message ?: error.javaClass.simpleName)
+                    return@okButton
+                }
+                refreshUi()
+            }
+            neutralButton(R.string.restore_default) {
+                AiCreationConfig.llmVariablesJson = AiCreationConfig.defaultLlmVariablesJson
+                refreshUi()
+            }
+            cancelButton()
+        }
+    }
+
     private fun testCreationConnection() {
         val target = runCatching { AiCreationConfig.requireModelTarget() }.getOrElse {
             toastOnUi(it.message ?: it.javaClass.simpleName)
@@ -566,10 +599,7 @@ class AiConfigFragment : PreferenceFragment(),
                     title = if (isVideo) R.string.ai_creation_video_variables
                     else R.string.ai_creation_image_variables,
                     content = variablesJson,
-                    validate = {
-                        if (isVideo) AiCreationConfig.parseVideoDefinition(it)
-                        else AiCreationConfig.parseImageDefinition(it)
-                    }
+                    validate = { AiCreationVariables.parse(it) }
                 ) { json ->
                     variablesJson = json
                     tvProviderVariables.text = summarizeJsonText(json)
@@ -2193,6 +2223,8 @@ class AiConfigFragment : PreferenceFragment(),
                 R.string.ai_creation_prompt_template_summary,
                 AiCreationConfig.promptTemplates.size
             )
+        findPreference<Preference>(PreferKey.aiCreationLlmVariables)?.summary =
+            getString(R.string.ai_creation_llm_variables_summary)
         findPreference<Preference>("aiCreationTestConnection")?.isVisible =
             !creationReuseCurrentModel
         val storyboardReuseCurrentModel = AiStoryboardConfig.reuseCurrentModel

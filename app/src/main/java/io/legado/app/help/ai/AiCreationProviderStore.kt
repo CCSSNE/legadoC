@@ -15,13 +15,10 @@ import java.util.UUID
 
 /**
  * AI 创作图片/视频供应商配置：
- * 供应商管连线协议（Base URL / API Key / 请求头 / 变量定义+finalPrompt / 请求模板），
+ * 供应商管连线协议（Base URL / API Key / 请求头 / 变量定义 / 请求模板），
  * 模型挂在供应商下。
- * 图片与视频是两套结构对称、数据零关联的独立体系：
- * 图片供应商变量 JSON 含图片 style、图片参数、图片提示词路由与图片 finalPrompt；
- * 视频供应商变量 JSON 含视频 style、视频参数、视频提示词路由与视频 finalPrompt；
- * 两边 style 各自独立，路由统一引用“提示词模板”JSON 的 key，
- * finalPrompt 把路由纯文本与素材组合后发送给 LLM。
+ * 变量定义 JSON 只含生图/生视频参数变量；
+ * LLM 变量、提示词路由与 LLM 输入模板在全局 LLM 变量设置，与供应商无关。
  */
 @Keep
 data class AiCreationProviderConfig(
@@ -224,7 +221,7 @@ object AiCreationProviderStore {
         val provider = imageCurrentProvider
             ?: error("请先在「管理图片供应商」中设为当前供应商")
         check(provider.baseUrl.isNotBlank()) { "当前图片供应商「${provider.name}」的 API 地址为空" }
-        AiCreationConfig.parseImageDefinition(provider.variablesJson)
+        AiCreationVariables.parse(provider.variablesJson)
         parseImageRequestTemplateJson(provider.requestTemplate)
         val model = imageCurrentModel
             ?: error("请先在「添加图片模型」中为当前供应商添加模型")
@@ -236,7 +233,7 @@ object AiCreationProviderStore {
         val provider = videoCurrentProvider
             ?: error("请先在「管理视频供应商」中设为当前供应商")
         check(provider.baseUrl.isNotBlank()) { "当前视频供应商「${provider.name}」的 API 地址为空" }
-        AiCreationConfig.parseVideoDefinition(provider.variablesJson)
+        AiCreationVariables.parse(provider.variablesJson)
         parseVideoRequestTemplateJson(provider.requestTemplate)
         val model = videoCurrentModel
             ?: error("请先在「添加视频模型」中为当前供应商添加模型")

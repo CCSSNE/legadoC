@@ -276,6 +276,12 @@
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
+            android:key="aiCreationLlmVariables"
+            android:summary="@string/ai_creation_llm_variables_summary"
+            android:title="@string/ai_creation_llm_variables"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
             android:key="aiCreationPromptTemplate"
             android:summary="@string/ai_creation_prompt_template_summary"
             android:title="@string/ai_creation_prompt_template"

@@ -288,7 +288,7 @@ object AiCreationImageTaskHolder {
         return message
     }
 
-    fun start(prompt: String, count: Int, extraValues: Map<String, String>, finalPrompt: String = "") {
+    fun start(prompt: String, count: Int, extraValues: Map<String, String>, llmInput: String = "") {
         val target = AiCreationProviderStore.requireImageTarget()
         val task = GenerationTask((0 until count).map { index -> AiCreationImageSlot(index = index) })
         synchronized(displayLock) {
@@ -300,7 +300,7 @@ object AiCreationImageTaskHolder {
         floatingDismissed = false
         updateFloatingState()
         scope.launch {
-            runGeneration(task, target, prompt, count, extraValues, finalPrompt)
+            runGeneration(task, target, prompt, count, extraValues, llmInput)
         }
     }
 
@@ -313,7 +313,7 @@ object AiCreationImageTaskHolder {
         prompt: String,
         count: Int,
         extraValues: Map<String, String>,
-        finalPrompt: String = ""
+        llmInput: String = ""
     ) {
         val target = AiCreationProviderStore.requireVideoTarget()
         val task = GenerationTask((0 until count).map { index -> AiCreationImageSlot(index = index) })
@@ -325,7 +325,7 @@ object AiCreationImageTaskHolder {
         floatingDismissed = false
         updateFloatingState()
         scope.launch {
-            runVideoGeneration(task, target, prompt, count, extraValues, finalPrompt)
+            runVideoGeneration(task, target, prompt, count, extraValues, llmInput)
         }
     }
 
@@ -335,7 +335,7 @@ object AiCreationImageTaskHolder {
         prompt: String,
         count: Int,
         extraValues: Map<String, String>,
-        finalPrompt: String
+        llmInput: String
     ) {
         val retry = AiCreationConfig.imageRetryCount
         val failedIndexes = mutableListOf<Int>()
@@ -344,7 +344,7 @@ object AiCreationImageTaskHolder {
                 chunk.map { index ->
                     async {
                         index to runCatching {
-                            requestVideo(target, prompt, extraValues, retry, finalPrompt)
+                            requestVideo(target, prompt, extraValues, retry, llmInput)
                         }
                     }
                 }.awaitAll()
@@ -361,7 +361,7 @@ object AiCreationImageTaskHolder {
         //首轮仍失败的槽位串行重试（带完整重试与退避），两轮全败才如实标失败
         for (index in failedIndexes) {
             val single = runCatching {
-                requestVideo(target, prompt, extraValues, retry, finalPrompt)
+                requestVideo(target, prompt, extraValues, retry, llmInput)
             }
             single.onSuccess { fileName ->
                 acceptImage(task, index, fileName)
@@ -377,7 +377,7 @@ object AiCreationImageTaskHolder {
         prompt: String,
         extraValues: Map<String, String>,
         retry: Int,
-        finalPrompt: String
+        llmInput: String
     ): String {
         var lastError: Throwable? = null
         repeat(retry + 1) { attempt ->
@@ -387,7 +387,7 @@ object AiCreationImageTaskHolder {
                     target.modelId,
                     prompt,
                     extraValues,
-                    finalPrompt
+                    llmInput
                 )
             } catch (throwable: Throwable) {
                 if (throwable is CancellationException) throw throwable
@@ -433,11 +433,11 @@ object AiCreationImageTaskHolder {
         prompt: String,
         count: Int,
         extraValues: Map<String, String>,
-        finalPrompt: String
+        llmInput: String
     ) {
         // 第一级：单次批量请求 n 张（智谱等忽略 n 的服务只会返回 1 张，按实际返回数记账）
         val batch = runCatching {
-            requestImages(target, prompt, count, extraValues, finalPrompt = finalPrompt)
+            requestImages(target, prompt, count, extraValues, llmInput = llmInput)
         }
         var completed = 0
         batch.onSuccess { fileNames ->
@@ -466,7 +466,7 @@ object AiCreationImageTaskHolder {
                                 1,
                                 extraValues,
                                 retryEnabled = false,
-                                finalPrompt = finalPrompt
+                                llmInput = llmInput
                             )
                         }
                     }
@@ -491,7 +491,7 @@ object AiCreationImageTaskHolder {
         // 第三级：仍失败的槽位串行逐张重试（带完整重试与退避）
         for (index in failedIndexes) {
             val single = runCatching {
-                requestImages(target, prompt, 1, extraValues, finalPrompt = finalPrompt)
+                requestImages(target, prompt, 1, extraValues, llmInput = llmInput)
             }
             single.onSuccess { fileNames ->
                 if (fileNames.isEmpty()) {
@@ -512,7 +512,7 @@ object AiCreationImageTaskHolder {
         n: Int,
         extraValues: Map<String, String>,
         retryEnabled: Boolean = true,
-        finalPrompt: String = ""
+        llmInput: String = ""
     ): List<String> {
         val retry = AiCreationConfig.imageRetryCount
         val body = renderImageRequestBody(target, prompt, n, extraValues)
@@ -521,7 +521,7 @@ object AiCreationImageTaskHolder {
             target = target,
             prompt = prompt,
             variables = extraValues,
-            finalPrompt = finalPrompt,
+            llmInput = llmInput,
             requestBody = body
         )
         var lastError: Throwable? = null
@@ -544,7 +544,7 @@ object AiCreationImageTaskHolder {
         target: AiCreationProviderTarget,
         prompt: String,
         variables: Map<String, String>,
-        finalPrompt: String,
+        llmInput: String,
         requestBody: String
     ): AiCreationWorkflow {
         return AiCreationWorkflow(
@@ -553,7 +553,7 @@ object AiCreationImageTaskHolder {
             baseUrl = target.provider.baseUrl,
             model = target.modelId,
             variables = variables,
-            finalPrompt = finalPrompt,
+            llmInput = llmInput,
             prompt = prompt,
             request = requestBody
         )
@@ -643,7 +643,7 @@ object AiCreationImageTaskHolder {
         modelId: String
     ): String = withContext(Dispatchers.IO) {
         check(provider.requestTemplate.isNotBlank()) { "当前图片供应商「${provider.name}」的图片请求模板为空" }
-        val variables = AiCreationConfig.parseImageDefinition(provider.variablesJson).variables
+        val variables = AiCreationVariables.parse(provider.variablesJson)
         val tokens = buildMap {
             put("model", modelId)
             put("prompt", AiCreationProviderStore.IMAGE_TEST_PROMPT)
@@ -659,7 +659,7 @@ object AiCreationImageTaskHolder {
             baseUrl = provider.baseUrl,
             model = modelId,
             variables = tokens.filterKeys { it !in setOf("model", "prompt", "n") },
-            finalPrompt = "",
+            llmInput = "",
             prompt = AiCreationProviderStore.IMAGE_TEST_PROMPT,
             request = body
         )
