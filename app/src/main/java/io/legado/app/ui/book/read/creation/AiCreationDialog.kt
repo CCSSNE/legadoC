@@ -370,6 +370,25 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
             page == 4 -> View.VISIBLE
             else -> View.GONE
         }
+        //手动页：复制与生成提示词都是文本按钮（各带12dp内边距，缝隙=12+12），
+        //而生成提示词与生成图片之间只有生成提示词一侧的12dp（图片是实底按钮，边即界）。
+        //去复制按钮的尾边距，使两处空余宽度都是12dp对齐。
+        val barPad = dp(12)
+        if (page == 4) {
+            binding.tvClear.setPadding(
+                barPad,
+                binding.tvClear.paddingTop,
+                0,
+                binding.tvClear.paddingBottom
+            )
+        } else {
+            binding.tvClear.setPadding(
+                barPad,
+                binding.tvClear.paddingTop,
+                barPad,
+                binding.tvClear.paddingBottom
+            )
+        }
         binding.tvManual.visibility = if (page == 1) View.VISIBLE else View.GONE
         binding.tvAction.setText(
             when (page) {
