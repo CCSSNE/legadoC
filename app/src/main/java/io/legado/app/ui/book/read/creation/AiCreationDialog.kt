@@ -838,7 +838,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         viewLifecycleOwner.lifecycleScope.launch {
             val result = runCatching {
                 withContext(IO) {
-                    AiCreationHelper.generatePrompt(session, llmInput)
+                    AiCreationHelper.generatePromptFromLlmInput(session, llmInput)
                 }
             }
             generating = false
@@ -855,22 +855,29 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         }
     }
 
-    /** 手动提示词页LLM输入预填：按当前卡片重新汇总；仅在此期间用户仍未编辑时写入 */
+    /** 手动提示词页LLM输入预填：卡片汇总成素材再经统一入口渲染成完整LLM输入；用户已编辑则保留快照 */
     private fun prefillLlmInput() {
         viewLifecycleOwner.lifecycleScope.launch {
-            val text = withContext(IO) {
-                val cardIds = AiCreationConfig.sectionOrder
-                    .flatMap { session.itemsOf(it) }
-                    .map { it.cardId }
-                    .distinct()
-                val cardsById = cardIds.mapNotNull { appDb.creationCardDao.getById(it) }
-                    .associateBy { it.cardId }
-                session.buildMaterialText(cardsById)
+            val result = runCatching {
+                withContext(IO) {
+                    val cardIds = AiCreationConfig.sectionOrder
+                        .flatMap { session.itemsOf(it) }
+                        .map { it.cardId }
+                        .distinct()
+                    val cardsById = cardIds.mapNotNull { appDb.creationCardDao.getById(it) }
+                        .associateBy { it.cardId }
+                    val material = session.buildMaterialText(cardsById)
+                    AiCreationHelper.buildLlmInput(session, material)
+                }
             }
-            if (currentPage == 4 && session.manualLlmInput.isBlank()) {
-                suppressTextWatcher = true
-                binding.etLlmInput.setText(text)
-                suppressTextWatcher = false
+            result.onSuccess { text ->
+                if (currentPage == 4 && session.manualLlmInput.isBlank()) {
+                    suppressTextWatcher = true
+                    binding.etLlmInput.setText(text)
+                    suppressTextWatcher = false
+                }
+            }.onFailure { throwable ->
+                toastOnUi(throwable.message ?: throwable.javaClass.simpleName)
             }
         }
     }

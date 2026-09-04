@@ -12,12 +12,29 @@ object AiCreationHelper {
         return generatePrompt(session, session.buildMaterialText(cardsById))
     }
 
-    /** 按调用方给定的LLM输入文本生成提示词：手动提示词页用上框编辑结果替代卡片自动汇总 */
+    /** 按调用方给定的素材文本生成提示词：自动流程用卡片汇总的素材渲染成LLM输入再发LLM */
     suspend fun generatePrompt(
         session: AiCreationSession,
-        llmInputText: String
+        materialText: String
     ): String {
-        //LLM 变量与输入模板来自全局 LLM 变量设置；生图/生视频参数变量来自当前供应商，互不引用
+        val llmInput = buildLlmInput(session, materialText)
+        return sendLlmInput(session, llmInput)
+    }
+
+    /** 手动提示词页上框即完整LLM输入：路由提示词与模板已渲染，直接原样发给LLM，不再二次套模板 */
+    suspend fun generatePromptFromLlmInput(
+        session: AiCreationSession,
+        llmInput: String
+    ): String {
+        return sendLlmInput(session, llmInput)
+    }
+
+    /** 统一渲染入口：用LLM输入模板组合路由提示词与素材，得到发给LLM的完整输入；手动页预填与自动流程共用 */
+    fun buildLlmInput(
+        session: AiCreationSession,
+        materialText: String
+    ): String {
+        //LLM 变量与输入模板来自全局 LLM 变量设置，与供应商无关
         val mode = session.paramValue(AI_CREATION_MODE_KEY)
             ?: error("AI 创作模式未设置")
         val llmDefinition = when (mode) {
@@ -25,29 +42,35 @@ object AiCreationHelper {
             AiCreationVariables.GROUP_VIDEO -> AiCreationConfig.videoLlmDefinition
             else -> error("未知 AI 创作模式：$mode")
         }
-        val providerVariables = when (mode) {
-            AiCreationVariables.GROUP_IMAGE -> AiCreationConfig.imageVariables
-            AiCreationVariables.GROUP_VIDEO -> AiCreationConfig.videoVariables
-            else -> error("未知 AI 创作模式：$mode")
-        }
-        val target = AiCreationConfig.requireModelTarget()
-        val requestValues = buildRequestValues(session, providerVariables)
         val routeParams = llmDefinition.variables.associate {
             it.key to it.effectiveValue(session.llmVariableValue(mode, it.key))
         }
         val promptName = AiCreationConfig.resolvePromptName(llmDefinition, routeParams)
         val promptText = AiCreationConfig.promptTextOf(promptName)
-        val llmInput = renderLlmInput(
+        val rendered = renderLlmInput(
             template = llmDefinition.llmInputTemplate,
             prompt = promptText,
-            material = llmInputText
+            material = materialText
         )
+        AppLog.putAi(
+            "AI_CREATION LLM_INPUT\n" +
+                "route=$promptName\n" +
+                "routeParams=${routeParams.entries.joinToString("，") { "${it.key}=${it.value}" }}\n" +
+                "llmInputChars=${rendered.length}"
+        )
+        return rendered
+    }
+
+    /** 统一发送入口：上框已是完整LLM输入，原样发给LLM并落盘溯源 */
+    private suspend fun sendLlmInput(
+        session: AiCreationSession,
+        llmInput: String
+    ): String {
+        val target = AiCreationConfig.requireModelTarget()
         AppLog.putAi(
             "AI_CREATION REQUEST\n" +
                 "provider=${target.provider.name}\n" +
                 "model=${target.modelId}\n" +
-                "route=$promptName\n" +
-                "routeParams=${routeParams.entries.joinToString("，") { "${it.key}=${it.value}" }}\n" +
                 "llmInputChars=${llmInput.length}"
         )
         val response = AiChatService.generatePlainText(
@@ -56,7 +79,7 @@ object AiCreationHelper {
             userContent = llmInput,
             temperature = 0.7
         )
-        //工作流溯源：记录本次渲染后发给 LLM 的完整输入（含提示词模板文本与素材组合）
+        //工作流溯源：记录本次发给 LLM 的完整输入
         session.setParam(AI_CREATION_LLM_INPUT_KEY, llmInput)
         return response
     }
