@@ -168,11 +168,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         binding.ivBack.setOnClickListener { onBack() }
         binding.tvAction.setOnClickListener { onAction() }
         binding.tvClear.setOnClickListener {
-            if (currentPage == 4) {
-                copyLlmInput()
-            } else {
-                confirmClear()
-            }
+            confirmClear()
         }
         binding.btnGenerateImage.setOnClickListener { onGenerateImageClicked() }
         binding.tvGridOne.setOnClickListener {
@@ -350,34 +346,24 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         binding.btnGenerateImage.setText(
             if (isVideo) R.string.ai_creation_generate_video else R.string.ai_creation_generate_image
         )
-        binding.tvClear.setText(
-            when (page) {
-                4 -> R.string.ai_creation_copy
-                else -> R.string.ai_creation_clear
-            }
-        )
-        binding.tvClear.visibility = when {
-            page == 1 -> View.VISIBLE
-            page == 4 -> View.VISIBLE
-            else -> View.GONE
-        }
-        //提示词页：复制与生成提示词都是文本按钮（各带12dp内边距，缝隙=12+12），
-        //而生成提示词与生成图片之间只有生成提示词一侧的12dp（图片是实底按钮，边即界）。
-        //去复制按钮的尾边距，使两处空余宽度都是12dp对齐。
-        val barPad = dp(12)
+        binding.tvClear.setText(R.string.ai_creation_clear)
+        binding.tvClear.visibility = if (page == 1) View.VISIBLE else View.GONE
+        //提示词页底栏两端对齐：生成提示词贴左（左缘12dp靠按钮自带内边距），
+        //生成图片+数字框贴右（数字框右缘12dp），图片按钮与数字框之间10dp；其他页保持原右对齐不动。
+        binding.bottomSpacer.visibility = if (page == 4) View.VISIBLE else View.GONE
         if (page == 4) {
-            binding.tvClear.setPadding(
-                barPad,
-                binding.tvClear.paddingTop,
+            binding.bottomBar.setPadding(
                 0,
-                binding.tvClear.paddingBottom
+                binding.bottomBar.paddingTop,
+                dp(12),
+                binding.bottomBar.paddingBottom
             )
         } else {
-            binding.tvClear.setPadding(
-                barPad,
-                binding.tvClear.paddingTop,
-                barPad,
-                binding.tvClear.paddingBottom
+            binding.bottomBar.setPadding(
+                dp(16),
+                binding.bottomBar.paddingTop,
+                dp(16),
+                binding.bottomBar.paddingBottom
             )
         }
         binding.tvManual.visibility = if (page == 1) View.VISIBLE else View.GONE

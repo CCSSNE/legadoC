@@ -335,6 +335,13 @@
             android:text="@string/ai_creation_next"
             tools:ignore="RtlHardcoded" />
 
+        <Space
+            android:id="@+id/bottom_spacer"
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1"
+            android:visibility="gone" />
+
         <TextView
             android:id="@+id/btn_generate_image"
             android:layout_width="wrap_content"
@@ -354,6 +361,7 @@
             android:id="@+id/et_image_count"
             android:layout_width="56dp"
             android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
             android:gravity="center"
             android:hint="@string/ai_creation_image_count_hint"
             android:inputType="number"
