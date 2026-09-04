@@ -1,5 +1,6 @@
 package io.legado.app.help.ai
 
+import io.legado.app.utils.indexOf
 import java.io.ByteArrayOutputStream
 import java.util.zip.CRC32
 import java.util.zip.Inflater
@@ -18,6 +19,8 @@ object AiCreationMediaMetadata {
     )
 
     private val MP4_TOP_TYPES = setOf("hdlr", "keys", "ilst")
+
+    private val ZERO_BYTE = byteArrayOf(0)
 
     private fun isPng(bytes: ByteArray): Boolean =
         bytes.size > 8 && bytes.copyOfRange(0, 8).contentEquals(PNG_SIGNATURE)
@@ -119,7 +122,7 @@ object AiCreationMediaMetadata {
         length: Int
     ): Pair<String, String>? {
         val data = png.copyOfRange(start, start + length)
-        val keywordEnd = data.indexOf(0.toByte())
+        val keywordEnd = data.indexOf(ZERO_BYTE)
         if (keywordEnd <= 0) return null
         val keyword = String(data, 0, keywordEnd, Charsets.ISO_8859_1)
         return when (type) {
@@ -141,9 +144,9 @@ object AiCreationMediaMetadata {
                 // iTXt：keyword\0 压缩标志(1B) 压缩方法(1B) 语言\0 翻译关键字\0 文本
                 if (data.size <= keywordEnd + 3) return null
                 val compressed = data[keywordEnd + 1].toInt() == 1
-                var pos = data.indexOf(0.toByte(), keywordEnd + 3) + 1
+                var pos = data.indexOf(ZERO_BYTE, keywordEnd + 3) + 1
                 if (pos <= 0) return null
-                pos = data.indexOf(0.toByte(), pos) + 1
+                pos = data.indexOf(ZERO_BYTE, pos) + 1
                 if (pos <= 0 || pos > data.size) return null
                 if (compressed) {
                     val inflated = inflate(data, pos) ?: return null
@@ -295,7 +298,12 @@ object AiCreationMediaMetadata {
 
                 "ilst" -> {
                     if (!handlerIsMdta) break
-                    val text = readMp4IlstEntry(mp4, dataStart, pos + size, keyNames[wantedKey])
+                    val text = readMp4IlstEntry(
+                        mp4,
+                        dataStart,
+                        pos + size,
+                        keyNames.entries.firstOrNull { it.value == wantedKey }?.key
+                    )
                     if (!text.isNullOrBlank()) return text
                 }
             }
