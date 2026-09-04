@@ -222,6 +222,8 @@ class HomepageAdapter(
         private fun bindButtons(module: HomepageModuleUi, state: ModuleLoadState.Buttons) {
             hideAll()
             binding.flButtons.visible()
+            // 多选（多个按钮）时隐藏顶部静态标题，按钮本身即头
+            binding.llTitle.isVisible = state.kinds.size < 2
             binding.flButtons.removeAllViews()
             val kinds = state.kinds
             if (kinds.isEmpty()) return
