@@ -101,10 +101,8 @@ class AiConfigFragment : PreferenceFragment(),
 
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
         when (preference.key) {
-            "aiAddProvider" -> showEditProviderDialog()
             "aiManageProviders" -> showManageProvidersDialog()
             "aiTestCurrentConnection" -> testCurrentAiConnection()
-            "aiAddModel" -> showAddModelOptionsDialog()
             "aiManageModels" -> showManageModelsDialog()
             "aiEditRequest" -> showEditRequestDialog()
             "aiSseIdleTimeoutSeconds" -> showChapterPurifyIntDialog(
@@ -181,15 +179,11 @@ class AiConfigFragment : PreferenceFragment(),
             PreferKey.aiCreationLlmVariables -> showCreationLlmVariablesDialog()
             "aiCreationTestConnection" -> testCreationConnection()
             PreferKey.aiCreationScope -> showCreationScopeSettingsDialog()
-            "aiCreationImageAddProvider" -> showCreationProviderEditDialog(null, isVideo = false)
             "aiCreationImageManageProviders" -> showCreationManageProvidersDialog(isVideo = false)
             "aiCreationImageApiKeyJump" -> openCreationApiKeyJump()
-            "aiCreationImageAddModel" -> showCreationAddModelDialog(isVideo = false)
             "aiCreationImageManageModels" -> showCreationManageModelsDialog(isVideo = false)
             "aiCreationImageTestConnection" -> testCreationImageConnection()
-            "aiCreationVideoAddProvider" -> showCreationProviderEditDialog(null, isVideo = true)
             "aiCreationVideoManageProviders" -> showCreationManageProvidersDialog(isVideo = true)
-            "aiCreationVideoAddModel" -> showCreationAddModelDialog(isVideo = true)
             "aiCreationVideoManageModels" -> showCreationManageModelsDialog(isVideo = true)
             "aiCreationVideoTestConnection" -> testCreationVideoConnection()
             PreferKey.aiCreationImageRetryCount -> showCreationImageRetryDialog()
@@ -721,18 +715,23 @@ class AiConfigFragment : PreferenceFragment(),
         }
     }
 
-    private fun showCreationManageProvidersDialog(isVideo: Boolean) {        val providers = creationProviders(isVideo)
-        if (providers.isEmpty()) {
-            toastOnUi(R.string.ai_no_providers)
-            return
-        }
+    private fun showCreationManageProvidersDialog(isVideo: Boolean) {
+        val providers = creationProviders(isVideo)
+        val addLabel = getString(
+            if (isVideo) R.string.ai_creation_video_add_provider
+            else R.string.ai_creation_image_add_provider
+        )
         context?.selector(
             getString(
                 if (isVideo) R.string.ai_creation_video_manage_providers
                 else R.string.ai_creation_image_manage_providers
             ),
-            providers.map { it.name }
+            providers.map { it.name } + addLabel
         ) { _, _, index ->
+            if (index == providers.size) {
+                showCreationProviderEditDialog(null, isVideo)
+                return@selector
+            }
             val provider = providers[index]
             val actions = buildList {
                 add(getString(R.string.ai_set_current_provider))
@@ -829,17 +828,21 @@ class AiConfigFragment : PreferenceFragment(),
             return
         }
         val models = creationModels(isVideo).filter { it.providerId == provider.id }
-        if (models.isEmpty()) {
-            toastOnUi(R.string.ai_no_models)
-            return
-        }
+        val addLabel = getString(
+            if (isVideo) R.string.ai_creation_video_add_model
+            else R.string.ai_creation_image_add_model
+        )
         context?.selector(
             getString(
                 if (isVideo) R.string.ai_creation_video_manage_models
                 else R.string.ai_creation_image_manage_models
             ),
-            models.map { it.modelId }
+            models.map { it.modelId } + addLabel
         ) { _, _, index ->
+            if (index == models.size) {
+                showCreationAddModelDialog(isVideo)
+                return@selector
+            }
             val model = models[index]
             context?.selector(
                 model.modelId,
@@ -1238,14 +1241,14 @@ class AiConfigFragment : PreferenceFragment(),
 
     private fun showManageProvidersDialog() {
         val providers = AppConfig.aiProviderList
-        if (providers.isEmpty()) {
-            toastOnUi(R.string.ai_no_providers)
-            return
-        }
         context?.selector(
             getString(R.string.ai_manage_providers),
-            providers.map { it.name }
+            providers.map { it.name } + getString(R.string.ai_add_provider)
         ) { _, _, index ->
+            if (index == providers.size) {
+                showEditProviderDialog()
+                return@selector
+            }
             val provider = providers[index]
             context?.selector(
                 provider.name,
@@ -1370,14 +1373,14 @@ class AiConfigFragment : PreferenceFragment(),
             return
         }
         val models = currentProviderModels()
-        if (models.isEmpty()) {
-            toastOnUi(R.string.ai_no_models)
-            return
-        }
         context?.selector(
             getString(R.string.ai_manage_models),
-            models.map { it.modelId }
+            models.map { it.modelId } + getString(R.string.ai_add_model)
         ) { _, _, index ->
+            if (index == models.size) {
+                showAddModelOptionsDialog()
+                return@selector
+            }
             val model = models[index]
             context?.selector(
                 model.modelId,
@@ -2078,8 +2081,6 @@ class AiConfigFragment : PreferenceFragment(),
                 currentModelId
             )
         }
-        findPreference<Preference>("aiAddModel")?.summary =
-            getString(R.string.ai_add_model_summary_modern)
         findPreference<Preference>("aiManageMcpServers")?.summary =
             if (mcpServers.isEmpty()) {
                 getString(R.string.ai_no_mcp_servers)
