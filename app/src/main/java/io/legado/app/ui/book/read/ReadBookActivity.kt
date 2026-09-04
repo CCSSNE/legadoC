@@ -56,6 +56,7 @@ import io.legado.app.help.ai.AiChapterPurifyService
 import io.legado.app.help.ai.AI_CREATION_EPHEMERAL_BOOK
 import io.legado.app.help.ai.AiCreationConfig
 import io.legado.app.help.ai.AiCreationSessionHolder
+import io.legado.app.help.book.AudioTextFusion
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.BookImgClick
 import io.legado.app.help.book.ContentProcessor
@@ -327,6 +328,8 @@ class ReadBookActivity : BaseReadBookActivity(),
     private var bookChanged = false
     private var bookmarkLoadChapterIndex = -1
     private var finishReadAloudBackstage = false
+    /** 回退设置音频书直进听书页的 handoff 模式，upContent（当前章节显示完成）时消费一次 */
+    private var pendingDirectAudioPlayMode: String? = null
     private val readAloudPanelFadeDuration = 140L
     private enum class ReadAloudPanelPresentation {
         HIDDEN,
@@ -368,6 +371,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     @SuppressLint("ClickableViewAccessibility")
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         super.onActivityCreated(savedInstanceState)
+        pendingDirectAudioPlayMode = intent.getStringExtra(EXTRA_DIRECT_AUDIO_PLAY)
         binding.cursorLeft.setColorFilter(accentColor)
         binding.cursorRight.setColorFilter(accentColor)
         binding.cursorLeft.setOnTouchListener(this)
@@ -436,6 +440,7 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        pendingDirectAudioPlayMode = intent.getStringExtra(EXTRA_DIRECT_AUDIO_PLAY)
         viewModel.initData(intent)
     }
 
@@ -1732,6 +1737,40 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     /**
+     * 回退设置：音频书直进沉浸式听书页 handoff。upContent（当前章节显示完成，
+     * 字幕已知）是唯一判定点：有缓存的书瞬间完成即直达，无缓存的书加载完
+     * 无字幕才跳转；标记只消费一次，后续翻章不受影响。
+     */
+    private fun consumeDirectAudioPlayHandoff() {
+        val mode = pendingDirectAudioPlayMode ?: return
+        pendingDirectAudioPlayMode = null
+        if (isFinishing || isDestroyed) return
+        val book = ReadBook.book
+        if (book == null || !book.isAudio) {
+            return
+        }
+        if (mode == DIRECT_AUDIO_PLAY_IF_NO_SUBTITLE) {
+            // 章节还没就绪不消费标记，等下一次 upContent 再判；加载失败留在阅读页暴露错误
+            val chapter = ReadBook.curTextChapter?.chapter ?: return
+            if (AudioTextFusion.effectiveLyric(chapter).isNotBlank()) {
+                pendingDirectAudioPlayMode = null
+                return
+            }
+        }
+        pendingDirectAudioPlayMode = null
+        ReadAloud.openAudioPlayActivity(this)
+        // 自动播放语义与朗读按钮前两个分支一致：未在播则开播，已暂停则继续；已在播不打扰
+        if (AppConfig.audioBookDirectAudioPlayAutoPlay) {
+            if (!BaseReadAloudService.isRun) {
+                ReadBook.readAloud()
+            } else if (BaseReadAloudService.pause) {
+                ReadAloud.resume(this)
+            }
+        }
+        finish()
+    }
+
+    /**
      * 更新内容
      */
     override fun upContent(
@@ -1743,6 +1782,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             binding.readView.upContent(relativePosition, resetPageOffset)
             if (relativePosition == 0) {
                 upSeekBarProgress()
+                consumeDirectAudioPlayHandoff()
             }
             loadStates = false
             success?.invoke()
@@ -3720,6 +3760,10 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     companion object {
         const val RESULT_DELETED = 100
+        /** 回退设置音频书直进听书页：intent extra，值为 handoff 模式 */
+        const val EXTRA_DIRECT_AUDIO_PLAY = "directAudioPlay"
+        const val DIRECT_AUDIO_PLAY_ALL = "all"
+        const val DIRECT_AUDIO_PLAY_IF_NO_SUBTITLE = "ifNoSubtitle"
         private var activeActivityRef: WeakReference<ReadBookActivity>? = null
 
         fun activeActivity(): ReadBookActivity? = activeActivityRef?.get()

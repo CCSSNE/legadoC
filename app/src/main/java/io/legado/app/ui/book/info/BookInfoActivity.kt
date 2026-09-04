@@ -92,6 +92,7 @@ import io.legado.app.ui.book.changecover.ChangeCoverDialog
 import io.legado.app.ui.book.changesource.ChangeBookSourceDialog
 import io.legado.app.ui.book.group.GroupSelectDialog
 import io.legado.app.ui.book.info.edit.BookInfoEditActivity
+import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.read.ReadBookActivity.Companion.RESULT_DELETED
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.model.SourceCallBack
@@ -102,6 +103,7 @@ import io.legado.app.ui.book.toc.TocActivityResult
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.utils.defaultReadingActivityClass
+import io.legado.app.utils.directAudioPlayMode
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.ui.widget.dialog.VariableDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
@@ -1802,6 +1804,9 @@ class BookInfoActivity :
         val readIntent = Intent(this, book.defaultReadingActivityClass())
             .putExtra("bookUrl", book.bookUrl)
             .putExtra("inBookshelf", viewModel.inBookshelf)
+        book.directAudioPlayMode()?.let {
+            readIntent.putExtra(ReadBookActivity.EXTRA_DIRECT_AUDIO_PLAY, it)
+        }
         if (!book.isVideo) {
             readIntent.putExtra("chapterChanged", chapterChanged)
         }

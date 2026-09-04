@@ -17,6 +17,7 @@ import io.legado.app.R
 import io.legado.app.constant.BookMediaType
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
+import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.toc.BookTocLoadingActivity
 import io.legado.app.ui.widget.dialog.TextDialog
 
@@ -95,6 +96,9 @@ fun Fragment.startActivityForBook(
     val intent = Intent(requireActivity(), book.defaultReadingActivityClass())
     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     intent.putExtra("bookUrl", book.bookUrl)
+    book.directAudioPlayMode()?.let {
+        intent.putExtra(ReadBookActivity.EXTRA_DIRECT_AUDIO_PLAY, it)
+    }
     intent.apply(configIntent)
     startActivity(intent)
 }
