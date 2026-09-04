@@ -7,6 +7,7 @@ import android.view.View
 import android.view.ViewGroup
 import io.legado.app.R
 import io.legado.app.help.ai.AiCreationImageTaskHolder
+import io.legado.app.utils.SurfaceBackdrop
 import io.legado.app.utils.dpToPx
 
 /**
@@ -43,6 +44,8 @@ class AiCreationFloatingHost(
             setColor(Color.parseColor("#CC222222"))
         }
         container.addView(view, layoutParams())
+        // 纸模糊背景：悬浮窗属于纸上内容，不参与弹窗/菜单的模糊采集
+        SurfaceBackdrop.excludeFromPaperCapture(view)
         view.setOnClickListener { onOpen() }
         view.findViewById<View>(R.id.iv_floating_close).setOnClickListener {
             AiCreationImageTaskHolder.dismissFloating()
