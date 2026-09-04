@@ -577,8 +577,8 @@ class AiCreationSession {
 
     var prompt: String = ""
 
-    /** 手动提示词页的「总素材」编辑快照：空表示尚未编辑过，进入手动页时按卡片重新汇总预填 */
-    var manualMaterial: String = ""
+    /** 手动提示词页上框LLM输入编辑快照：空表示尚未编辑过，进入手动页时按卡片重新汇总预填 */
+    var manualLlmInput: String = ""
 
     fun paramValue(key: String): String? = params[key]
 
@@ -691,7 +691,7 @@ class AiCreationSession {
         linkGroups.clear()
         pendingLink = null
         prompt = ""
-        manualMaterial = ""
+        manualLlmInput = ""
         //清空即恢复出厂参数记忆，持久层一并清掉
         AiCreationConfig.saveCreationParams(emptyMap())
     }

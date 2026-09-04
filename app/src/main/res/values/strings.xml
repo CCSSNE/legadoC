@@ -391,10 +391,10 @@
     <string name="ai_creation_prompt_title">Prompt</string>
     <string name="ai_creation_prompt_hint">The generated prompt will appear here</string>
     <string name="ai_creation_manual_prompt">Manual Prompt</string>
-    <string name="ai_creation_copy_total_material">Copy Material</string>
-    <string name="ai_creation_total_material_hint">Combined material (editable)</string>
+    <string name="ai_creation_copy_llm_input">Copy LLM input</string>
+    <string name="ai_creation_llm_input_hint">LLM input (editable)</string>
     <string name="ai_creation_manual_prompt_hint">Enter prompt manually; used for image/video generation</string>
-    <string name="ai_creation_total_material_empty">Material is empty</string>
+    <string name="ai_creation_llm_input_empty">LLM input is empty</string>
     <string name="ai_creation_clear">Clear</string>
     <string name="ai_creation_clear_confirm">Clear the current creation session and session-only materials?</string>
     <string name="ai_creation_add">+</string>

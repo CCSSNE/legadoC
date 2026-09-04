@@ -171,6 +171,8 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         binding.tvClear.setOnClickListener {
             if (currentPage == 2) {
                 copyPrompt()
+            } else if (currentPage == 4) {
+                copyLlmInput()
             } else {
                 confirmClear()
             }
@@ -250,9 +252,9 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
             }
         }
         binding.tvManual.setOnClickListener { showPage(4) }
-        binding.etTotalMaterial.addTextChangedListener { text ->
+        binding.etLlmInput.addTextChangedListener { text ->
             if (!suppressTextWatcher) {
-                session.manualMaterial = text?.toString().orEmpty()
+                session.manualLlmInput = text?.toString().orEmpty()
             }
         }
         binding.etManualPrompt.addTextChangedListener { text ->
@@ -314,7 +316,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
             0 -> showPage(1)
             1 -> generatePrompt()
             2 -> generatePrompt()
-            4 -> generatePromptFromMaterial()
+            4 -> generatePromptFromLlmInput()
         }
     }
 
@@ -358,7 +360,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         binding.tvClear.setText(
             when (page) {
                 2 -> R.string.ai_creation_copy_prompt
-                4 -> R.string.ai_creation_copy_total_material
+                4 -> R.string.ai_creation_copy_llm_input
                 else -> R.string.ai_creation_clear
             }
         )
@@ -386,11 +388,11 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         if (page == 4) {
             suppressTextWatcher = true
             binding.etManualPrompt.setText(session.prompt)
-            binding.etTotalMaterial.setText(session.manualMaterial)
+            binding.etLlmInput.setText(session.manualLlmInput)
             suppressTextWatcher = false
-            //从未手动编辑过总素材时按当前卡片重新汇总预填；编辑过则保留用户快照
-            if (session.manualMaterial.isBlank()) {
-                prefillTotalMaterial()
+            //从未手动编辑过LLM输入时按当前卡片重新汇总预填；编辑过则保留用户快照
+            if (session.manualLlmInput.isBlank()) {
+                prefillLlmInput()
             }
         }
         if (page == 3) {
@@ -821,22 +823,22 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         }
     }
 
-    /** 手动提示词页：用上框总素材文本生成提示词，结果只自动填入下框，不跳页 */
-    private fun generatePromptFromMaterial() {
+    /** 手动提示词页：用上框LLM输入文本生成提示词，结果只自动填入下框，不跳页 */
+    private fun generatePromptFromLlmInput() {
         if (generating) return
-        val material = binding.etTotalMaterial.text?.toString()?.trim().orEmpty()
-        if (material.isEmpty()) {
-            toastOnUi(R.string.ai_creation_total_material_empty)
+        val llmInput = binding.etLlmInput.text?.toString()?.trim().orEmpty()
+        if (llmInput.isEmpty()) {
+            toastOnUi(R.string.ai_creation_llm_input_empty)
             return
         }
-        session.manualMaterial = material
+        session.manualLlmInput = llmInput
         generating = true
         binding.rotateLoading.visible()
         binding.tvAction.setText(R.string.ai_creation_generating)
         viewLifecycleOwner.lifecycleScope.launch {
             val result = runCatching {
                 withContext(IO) {
-                    AiCreationHelper.generatePrompt(session, material)
+                    AiCreationHelper.generatePrompt(session, llmInput)
                 }
             }
             generating = false
@@ -853,8 +855,8 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         }
     }
 
-    /** 手动提示词页总素材预填：按当前卡片重新汇总；仅在此期间用户仍未编辑时写入 */
-    private fun prefillTotalMaterial() {
+    /** 手动提示词页LLM输入预填：按当前卡片重新汇总；仅在此期间用户仍未编辑时写入 */
+    private fun prefillLlmInput() {
         viewLifecycleOwner.lifecycleScope.launch {
             val text = withContext(IO) {
                 val cardIds = AiCreationConfig.sectionOrder
@@ -865,9 +867,9 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
                     .associateBy { it.cardId }
                 session.buildMaterialText(cardsById)
             }
-            if (currentPage == 4 && session.manualMaterial.isBlank()) {
+            if (currentPage == 4 && session.manualLlmInput.isBlank()) {
                 suppressTextWatcher = true
-                binding.etTotalMaterial.setText(text)
+                binding.etLlmInput.setText(text)
                 suppressTextWatcher = false
             }
         }
@@ -1180,15 +1182,15 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         toastOnUi(R.string.ai_creation_copied)
     }
 
-    /** 手动提示词页复制的是上框总素材，不是下框提示词 */
-    private fun copyTotalMaterial() {
-        val material = binding.etTotalMaterial.text?.toString()?.trim().orEmpty()
-        if (material.isEmpty()) {
-            toastOnUi(R.string.ai_creation_total_material_empty)
+    /** 手动提示词页复制的是上框LLM输入，不是下框提示词；只做复制，不做其他动作 */
+    private fun copyLlmInput() {
+        val llmInput = binding.etLlmInput.text?.toString()?.trim().orEmpty()
+        if (llmInput.isEmpty()) {
+            toastOnUi(R.string.ai_creation_llm_input_empty)
             return
         }
-        session.manualMaterial = material
-        requireContext().sendToClip(material)
+        session.manualLlmInput = llmInput
+        requireContext().sendToClip(llmInput)
         toastOnUi(R.string.ai_creation_copied)
     }
 

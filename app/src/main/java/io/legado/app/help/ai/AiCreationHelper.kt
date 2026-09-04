@@ -12,10 +12,10 @@ object AiCreationHelper {
         return generatePrompt(session, session.buildMaterialText(cardsById))
     }
 
-    /** 按调用方给定的总素材文本生成提示词：手动提示词页用上框编辑结果替代卡片自动汇总 */
+    /** 按调用方给定的LLM输入文本生成提示词：手动提示词页用上框编辑结果替代卡片自动汇总 */
     suspend fun generatePrompt(
         session: AiCreationSession,
-        materialText: String
+        llmInputText: String
     ): String {
         //LLM 变量与输入模板来自全局 LLM 变量设置；生图/生视频参数变量来自当前供应商，互不引用
         val mode = session.paramValue(AI_CREATION_MODE_KEY)
@@ -40,7 +40,7 @@ object AiCreationHelper {
         val llmInput = renderLlmInput(
             template = llmDefinition.llmInputTemplate,
             prompt = promptText,
-            material = materialText
+            material = llmInputText
         )
         AppLog.putAi(
             "AI_CREATION REQUEST\n" +
