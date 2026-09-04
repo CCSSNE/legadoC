@@ -15,8 +15,6 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.DialogContentSelectMenuConfigBinding
 import io.legado.app.databinding.ItemContentSelectActionBinding
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
-import io.legado.app.utils.checkByIndex
-import io.legado.app.utils.getCheckedIndex
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.getPrefStringSet
 import io.legado.app.utils.putPrefString
@@ -31,7 +29,7 @@ class ContentSelectMenuConfigDialog :
 
     private val binding by viewBinding(DialogContentSelectMenuConfigBinding::bind)
 
-    private data class ActionRow(val id: String, val labelRes: Int, var checked: Boolean)
+    private data class ActionRow(val id: String, val labelRes: Int, var checked: Boolean, var isDefault: Boolean)
 
     private val adapter = ActionAdapter()
     private lateinit var itemTouchHelper: ItemTouchHelper
@@ -47,11 +45,11 @@ class ContentSelectMenuConfigDialog :
             "dict" to R.string.dict,
             "ask_ai" to R.string.ask_ai,
             "ai_create" to R.string.ai_create,
-            "stage" to R.string.stage_text
+            "stage" to R.string.stage_text,
+            "edit_config" to R.string.edit
         )
         private val defaultCheckedIds =
-            setOf("replace", "copy", "bookmark", "paragraph_bookmark", "aloud", "ai_create", "stage")
-        private val defaultOpenValues = listOf("", "web_search", "dict", "ask_ai")
+            setOf("replace", "copy", "bookmark", "paragraph_bookmark", "aloud", "ai_create", "stage", "edit_config")
         private val removedActionIds = setOf("generate_image")
     }
 
@@ -87,8 +85,11 @@ class ContentSelectMenuConfigDialog :
                 if (id !in this) add(id)
             }
         }
+        val defaultOpen = requireContext().getPrefString(PreferKey.contentSelectDefaultOpen, "").orEmpty()
+            .takeIf { it !in removedActionIds }
+            .orEmpty()
         adapter.items = orderedIds.map { id ->
-            ActionRow(id, labelResOf(id), id in checkedIds)
+            ActionRow(id, labelResOf(id), id in checkedIds, id == defaultOpen && defaultOpen.isNotEmpty())
         }
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
@@ -98,11 +99,6 @@ class ContentSelectMenuConfigDialog :
             }
         )
         itemTouchHelper.attachToRecyclerView(binding.recyclerView)
-        val defaultOpen = requireContext().getPrefString(PreferKey.contentSelectDefaultOpen, "").orEmpty()
-            .takeIf { it !in removedActionIds }
-            .orEmpty()
-        val defaultIndex = defaultOpenValues.indexOf(defaultOpen).takeIf { it >= 0 } ?: 0
-        binding.rgDefaultOpen.checkByIndex(defaultIndex)
     }
 
     private fun labelResOf(id: String): Int =
@@ -113,7 +109,7 @@ class ContentSelectMenuConfigDialog :
             .filter { it.checked }
             .map { it.id }
             .toMutableSet()
-        val defaultOpen = defaultOpenValues.getOrElse(binding.rgDefaultOpen.getCheckedIndex()) { "" }
+        val defaultOpen = adapter.items.firstOrNull { it.isDefault }?.id.orEmpty()
         if (defaultOpen.isNotEmpty()) {
             selected += defaultOpen
         }
@@ -165,6 +161,26 @@ class ContentSelectMenuConfigDialog :
                 cbAction.isChecked = row.checked
                 cbAction.setOnCheckedChangeListener { _, checked ->
                     row.checked = checked
+                    if (!checked && row.isDefault) {
+                        row.isDefault = false
+                        rbDefault.isChecked = false
+                    }
+                }
+                rbDefault.setOnCheckedChangeListener(null)
+                rbDefault.isChecked = row.isDefault
+                rbDefault.setOnClickListener {
+                    if (row.isDefault) {
+                        row.isDefault = false
+                        rbDefault.isChecked = false
+                    } else {
+                        items.forEach { it.isDefault = false }
+                        row.isDefault = true
+                        if (!row.checked) {
+                            row.checked = true
+                            cbAction.isChecked = true
+                        }
+                        notifyDataSetChanged()
+                    }
                 }
                 ivDrag.setOnTouchListener { v, event ->
                     if (event.actionMasked == MotionEvent.ACTION_DOWN) {

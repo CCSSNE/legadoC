@@ -63,7 +63,7 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
     private val configuredActionIds: Set<String>
         get() = context.getPrefStringSet(
             PreferKey.contentSelectActions,
-            mutableSetOf("web_search", "replace", "copy", "bookmark", "paragraph_bookmark", "aloud", "ai_create", "stage")
+            mutableSetOf("replace", "copy", "bookmark", "paragraph_bookmark", "aloud", "ai_create", "stage", "edit_config")
         )?.filterNot { it == "generate_image" }?.toSet() ?: emptySet()
 
     private val defaultOpenActionId: String
@@ -87,6 +87,7 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
         R.id.menu_ask_ai -> "ask_ai"
         R.id.menu_ai_create -> "ai_create"
         R.id.menu_stage -> "stage"
+        R.id.menu_edit_config -> "edit_config"
         else -> null
     }
 
@@ -124,7 +125,6 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
             when (item.itemId) {
                 R.id.menu_illustration -> illustrationEnabled
                 R.id.menu_review -> reviewEnabled
-                R.id.menu_edit_config -> true
                 else -> menuItemToActionId(item.itemId)?.let { configuredActionIds.contains(it) } ?: false
             }
         }

@@ -15,6 +15,13 @@
         android:minHeight="40dp"
         tools:text="替换" />
 
+    <io.legado.app.lib.theme.view.ThemeRadioButton
+        android:id="@+id/rb_default"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:contentDescription="@string/content_select_default_open" />
+
     <ImageView
         android:id="@+id/iv_drag"
         android:layout_width="24dp"
