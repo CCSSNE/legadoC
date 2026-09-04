@@ -405,6 +405,7 @@
     <string name="ai_creation_link_done">分区已连线（%s组）</string>
     <string name="ai_creation_link_removed">已取消连线</string>
     <string name="ai_creation_new_card">新建卡片</string>
+    <string name="ai_creation_config_sanitized">AI创作配置非法，已恢复默认：%1$s</string>
     <string name="creation_card_delete_confirm">删除该卡片？将同时从当前创作会话中移除。</string>
     <string name="creation_image_import_failed">图片导入失败</string>
     <string name="rename">重命名</string>

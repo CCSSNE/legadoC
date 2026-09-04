@@ -406,6 +406,7 @@
     <string name="ai_creation_link_done">Sections linked (%s group)</string>
     <string name="ai_creation_link_removed">Link removed</string>
     <string name="ai_creation_new_card">New card</string>
+    <string name="ai_creation_config_sanitized">AI creation config invalid, restored to default: %1$s</string>
     <string name="creation_card_delete_confirm">Delete this card? It will also be removed from the current creation session.</string>
     <string name="creation_image_import_failed">Image import failed</string>
     <string name="rename">Rename</string>

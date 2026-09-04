@@ -9,6 +9,7 @@ import io.legado.app.data.entities.KeyboardAssist
 import io.legado.app.data.entities.RssSource
 import io.legado.app.data.entities.TxtTocRule
 import io.legado.app.data.entities.BookmarkStyle
+import io.legado.app.help.ai.AiCreationConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ThemeConfig
@@ -36,6 +37,8 @@ object DefaultData {
     private const val HIGHLIGHT_RULE_VERSION = 1
     private const val MAX_HIGHLIGHT_RULE_VERSION_KEY = "maxHighlightRuleVersion"
     private const val MAX_HIGHLIGHT_RULE_VERSION = 1
+    private const val AI_CREATION_CONFIG_VERSION_KEY = "aiCreationConfigVersion"
+    private const val AI_CREATION_CONFIG_VERSION = 1
 
     fun upVersion() {
         Coroutine.async {
@@ -56,6 +59,9 @@ object DefaultData {
             }
             migrateDefaultData("Max高亮规则", MAX_HIGHLIGHT_RULE_VERSION_KEY, MAX_HIGHLIGHT_RULE_VERSION) {
                 importDefaultMaxHighlightRules()
+            }
+            migrateDefaultData("AI创作配置", AI_CREATION_CONFIG_VERSION_KEY, AI_CREATION_CONFIG_VERSION) {
+                AiCreationConfig.sanitizeStoredJsons()
             }
         }.onError {
             AppLog.put("启动默认数据升级任务失败\n${it.localizedMessage}", it)

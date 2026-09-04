@@ -1,5 +1,7 @@
 package io.legado.app.help.ai
 
+import io.legado.app.R
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.main.ai.AiModelConfig
@@ -11,6 +13,7 @@ import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.putPrefInt
 import io.legado.app.utils.putPrefString
 import io.legado.app.utils.removePref
+import io.legado.app.utils.toastOnUi
 import org.json.JSONObject
 import splitties.init.appCtx
 
@@ -136,6 +139,36 @@ object AiCreationConfig {
 
     val promptTemplates: Map<String, String>
         get() = parsePromptTemplates(promptTemplateJson)
+
+    /**
+     * 安装/升级后一次性消毒：存量 LLM 变量设置与提示词模板非法时用出厂值覆盖，
+     * 并响亮告知恢复了哪几项；版本戳由调用方（DefaultData）打标，此后用户手写
+     * 错误只报错、不再碰存储。供应商变量定义不在此列：旧格式残留已在读取时
+     * 自愈，其他错误本就是用户自己的问题，原样报错。
+     */
+    fun sanitizeStoredJsons() {
+        val restored = mutableListOf<String>()
+        runCatching { AiCreationVariables.parseLlm(llmVariablesJson) }.onFailure {
+            llmVariablesJson = defaultLlmVariablesJson
+            restored.add(appCtx.getString(R.string.ai_creation_llm_variables))
+        }
+        runCatching { parsePromptTemplates(promptTemplateJson) }.onFailure {
+            promptTemplateJson = defaultPromptTemplateJson
+            restored.add(appCtx.getString(R.string.ai_creation_prompt_template))
+        }
+        if (restored.isNotEmpty()) {
+            AppLog.putAi(
+                "AI_CREATION CONFIG SANITIZED\n" +
+                    "restored=${restored.joinToString("、")}"
+            )
+            appCtx.toastOnUi(
+                appCtx.getString(
+                    R.string.ai_creation_config_sanitized,
+                    restored.joinToString("、")
+                )
+            )
+        }
+    }
 
     fun parsePromptTemplates(json: String): Map<String, String> {
         val objectValue = try {
