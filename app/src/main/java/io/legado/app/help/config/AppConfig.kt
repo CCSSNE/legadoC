@@ -10,6 +10,7 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.help.AppFreezeMonitor
 import io.legado.app.help.DispatchersMonitor
+import io.legado.app.plugin.AiBuiltinDefaults
 import io.legado.app.utils.GSON
 import io.legado.app.utils.canvasrecorder.CanvasRecorderFactory
 import io.legado.app.utils.defaultSharedPreferences
@@ -1082,13 +1083,15 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
     private fun ensureDefaultAiConfigIfNeeded() {
         if (appCtx.getPrefBoolean(PreferKey.aiDefaultConfigSeeded, false)) {
+            fillDefaultAiHeadersIfNeeded()
             return
         }
         if (appCtx.getPrefString(PreferKey.aiProviderList).isNullOrBlank()) {
             val provider = AiProviderConfig(
                 name = DEFAULT_AI_PROVIDER_NAME,
                 baseUrl = DEFAULT_AI_PROVIDER_BASE_URL,
-                apiKey = DEFAULT_AI_PROVIDER_API_KEY
+                apiKey = DEFAULT_AI_PROVIDER_API_KEY,
+                headers = AiBuiltinDefaults.llmHeaders()
             )
             val model = AiModelConfig(providerId = provider.id, modelId = DEFAULT_AI_MODEL_ID)
             persistAiProviders(listOf(provider))
@@ -1097,6 +1100,28 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefString(PreferKey.aiCurrentModelId, model.id)
         }
         appCtx.putPrefBoolean(PreferKey.aiDefaultConfigSeeded, true)
+        appCtx.putPrefBoolean(PreferKey.aiLlmBuiltinHeadersFilled, true)
+    }
+
+    /**
+     * 升级补齐：老安装已种入的默认 LLM 供应商请求头为空时，按注册表出厂值补一次。
+     * 只补与出厂默认供应商同名且请求头为空的项；注册表无出厂值（开源构建）时为无操作。
+     * 标志打过后不再改写，用户之后清空请求头保持清空。
+     */
+    private fun fillDefaultAiHeadersIfNeeded() {
+        if (appCtx.getPrefBoolean(PreferKey.aiLlmBuiltinHeadersFilled)) return
+        appCtx.putPrefBoolean(PreferKey.aiLlmBuiltinHeadersFilled, true)
+        val headers = AiBuiltinDefaults.llmHeaders()
+        if (headers.isBlank()) return
+        val providers = GSON.fromJsonArray<AiProviderConfig>(
+            appCtx.getPrefString(PreferKey.aiProviderList)
+        ).getOrDefault(emptyList())
+        val target = providers.firstOrNull {
+            it.name == DEFAULT_AI_PROVIDER_NAME && it.headers.isNullOrBlank()
+        } ?: return
+        persistAiProviders(
+            providers.map { if (it.id == target.id) it.copy(headers = headers) else it }
+        )
     }
 
     private fun resolveAiProviderName(baseUrl: String): String {

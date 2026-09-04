@@ -2,6 +2,7 @@ package io.legado.app.help.ai
 
 import androidx.annotation.Keep
 import io.legado.app.constant.PreferKey
+import io.legado.app.plugin.AiBuiltinDefaults
 import io.legado.app.utils.GSON
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefString
@@ -452,6 +453,7 @@ object AiCreationProviderStore {
             id = IMAGE_SILICONFLOW_ID,
             name = "硅基流动",
             baseUrl = "https://api.siliconflow.cn/v1/images/generations",
+            apiKey = AiBuiltinDefaults.siliconFlowApiKey(),
             apiKeyUrl = API_KEY_URL_SILICONFLOW,
             variablesJson = AiCreationVariables.buildImageJson(
                 AiCreationVariables.kolorsImageVariables
@@ -463,6 +465,7 @@ object AiCreationProviderStore {
             id = IMAGE_ZHIPU_ID,
             name = "智谱",
             baseUrl = "https://open.bigmodel.cn/api/paas/v4/images/generations",
+            apiKey = AiBuiltinDefaults.zhipuApiKey(),
             apiKeyUrl = API_KEY_URL_ZHIPU,
             variablesJson = AiCreationVariables.defaultJson,
             requestTemplate = ZHIPU_IMAGE_REQUEST_TEMPLATE,
@@ -488,6 +491,7 @@ object AiCreationProviderStore {
             id = VIDEO_ZHIPU_ID,
             name = "智谱",
             baseUrl = "https://open.bigmodel.cn/api/paas/v4/videos/generations",
+            apiKey = AiBuiltinDefaults.zhipuApiKey(),
             apiKeyUrl = API_KEY_URL_ZHIPU,
             variablesJson = AiCreationVariables.zhipuVideoVariablesJson,
             requestTemplate = ZHIPU_VIDEO_REQUEST_TEMPLATE,
@@ -653,10 +657,11 @@ object AiCreationProviderStore {
     }
 
     /**
-     * 首次访问时种入内置图片供应商；键已存在则直接返回，不做任何改写。
+     * 首次访问时种入内置图片供应商；键已存在则做一次出厂 apiKey 补齐后不再改写。
      */
     private fun ensureImageConfigIfNeeded() {
         if (appCtx.getPrefString(PreferKey.aiCreationImageProviderList) != null) {
+            fillBuiltinApiKeysIfNeeded()
             return
         }
         val providers = builtinImageProviders()
@@ -668,10 +673,12 @@ object AiCreationProviderStore {
             PreferKey.aiCreationImageCurrentModelId,
             models.first { it.providerId == IMAGE_SILICONFLOW_ID }.id
         )
+        appCtx.putPrefBoolean(PreferKey.aiCreationBuiltinApiKeysFilled, true)
     }
 
     private fun ensureVideoConfigIfNeeded() {
         if (appCtx.getPrefString(PreferKey.aiCreationVideoProviderList) != null) {
+            fillBuiltinApiKeysIfNeeded()
             return
         }
         val providers = builtinVideoProviders()
@@ -683,5 +690,42 @@ object AiCreationProviderStore {
             PreferKey.aiCreationVideoCurrentModelId,
             models.first { it.providerId == VIDEO_ZHIPU_ID }.id
         )
+        appCtx.putPrefBoolean(PreferKey.aiCreationBuiltinApiKeysFilled, true)
+    }
+
+    /**
+     * 升级补齐：老安装已种入空 apiKey 的内置供应商时，按注册表出厂值补一次。
+     * 只补"内置供应商且 apiKey 为空"的项；注册表无出厂值（开源构建）时为无操作。
+     * 标志打过后不再改写，用户之后清空 key 保持清空。
+     */
+    private fun fillBuiltinApiKeysIfNeeded() {
+        if (appCtx.getPrefBoolean(PreferKey.aiCreationBuiltinApiKeysFilled)) return
+        appCtx.putPrefBoolean(PreferKey.aiCreationBuiltinApiKeysFilled, true)
+        fillBlankApiKeys(
+            PreferKey.aiCreationImageProviderList,
+            mapOf(
+                IMAGE_SILICONFLOW_ID to AiBuiltinDefaults.siliconFlowApiKey(),
+                IMAGE_ZHIPU_ID to AiBuiltinDefaults.zhipuApiKey()
+            )
+        )
+        fillBlankApiKeys(
+            PreferKey.aiCreationVideoProviderList,
+            mapOf(VIDEO_ZHIPU_ID to AiBuiltinDefaults.zhipuApiKey())
+        )
+    }
+
+    private fun fillBlankApiKeys(prefKey: String, factoryKeys: Map<String, String>) {
+        val providers = fromJsonProviders(prefKey)
+        val filled = providers.map { provider ->
+            val factoryKey = factoryKeys[provider.id]
+            if (factoryKey.isNullOrBlank() || provider.apiKey.isNotBlank()) {
+                provider
+            } else {
+                provider.copy(apiKey = factoryKey)
+            }
+        }
+        if (filled != providers) {
+            appCtx.putPrefString(prefKey, GSON.toJson(filled))
+        }
     }
 }
