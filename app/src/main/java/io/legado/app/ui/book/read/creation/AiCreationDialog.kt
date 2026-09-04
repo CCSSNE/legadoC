@@ -301,10 +301,12 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
     }
 
     //左上角返回只在创作体系各页内回退，不退出界面；提示词页入口在组合素材页，返回也回组合素材页；
+    //预览页返回回提示词页（页面体系无 page 2，禁止按页号减一跳到不存在的页）；
     //界面关闭（叉叉/系统返回键）才销毁临时卡片，回预览走生成任务悬浮窗
     private fun onBack() {
         when (currentPage) {
             0 -> Unit
+            3 -> showPage(4)
             4 -> showPage(1)
             else -> showPage(currentPage - 1)
         }
