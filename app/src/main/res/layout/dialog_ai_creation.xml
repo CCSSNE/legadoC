@@ -125,6 +125,15 @@
                     android:textSize="12sp" />
 
                 <TextView
+                    android:id="@+id/tv_save_llm_images"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:padding="8dp"
+                    android:text="@string/ai_creation_save_images"
+                    android:textColor="@color/secondaryText"
+                    android:textSize="12sp" />
+
+                <TextView
                     android:id="@+id/tv_clear_llm_input"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -143,6 +152,24 @@
                     android:textSize="12sp" />
 
             </LinearLayout>
+
+            <!--上框图片条：只显示编号圈不放缩略图，点编号预览原图，×删图并由程序重排标记-->
+            <HorizontalScrollView
+                android:id="@+id/hs_llm_images"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:scrollbars="none"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:id="@+id/ll_llm_image_strip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:paddingTop="2dp"
+                    android:paddingBottom="2dp" />
+
+            </HorizontalScrollView>
 
             <ScrollView
                 android:layout_width="match_parent"

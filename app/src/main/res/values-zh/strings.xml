@@ -489,6 +489,11 @@
     <string name="ai_creation_video_edit_provider">编辑视频供应商</string>
     <string name="ai_creation_image_retry_count">生图重试次数</string>
     <string name="ai_creation_image_retry_count_summary">单张请求失败后的重试次数：%1$d</string>
+    <string name="ai_creation_prompt_regenerate_limit">提示词重新生成上限</string>
+    <string name="ai_creation_prompt_regenerate_limit_summary">返回标记校验不通过时自动重新生成的次数上限：%1$d（0 为不重新生成）</string>
+    <string name="ai_creation_save_images">保存图片</string>
+    <string name="ai_creation_images_empty">没有图片</string>
+    <string name="ai_creation_images_saved">已按序保存 %1$d/%2$d 张图片到相册</string>
     <string name="cache_manage_creation">创作</string>
     <string name="cache_manage_creation_delete_confirm">删除选中的 %1$d 张生成图片？</string>
     <string name="ai_reply">AI回复</string>

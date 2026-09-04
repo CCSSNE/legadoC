@@ -548,6 +548,16 @@ data class CreationSectionItem(
 )
 
 /**
+ * AI 创作多模态编号标记：【图片N】与 materialImageRefs[N-1] 一一对应。
+ * 全篇统一阿拉伯数字，编号由程序按首次出现顺序统一完成。
+ */
+object AiCreationImageMarkers {
+    val REGEX = Regex("【图片(\\d+)】")
+
+    fun markerOf(index: Int): String = "【图片$index】"
+}
+
+/**
  * 连线的对象是分区（素材类型），不是分区里的卡片：
  * 被连到一起的分区，其全部卡片在生成素材时合并为一条「背景加场景」式的条目。
  * label 为会话内稳定的展示组名（A、B、C…）：成员加入或并组时保持不变，
@@ -579,6 +589,12 @@ class AiCreationSession {
 
     /** 提示词页上框LLM输入编辑快照：空表示尚未编辑过，进入提示词页时按卡片重新汇总预填 */
     var manualLlmInput: String = ""
+
+    /**
+     * 上框图片集合：【图片N】对应 refs[N-1]，由 buildMaterialText 按首次出现顺序编号。
+     * 标记与集合是发送与校验的唯一数据源；删标记=对应图片不发，删图=程序收尾重排。
+     */
+    var materialImageRefs: List<String> = emptyList()
 
     fun paramValue(key: String): String? = params[key]
 
@@ -692,6 +708,7 @@ class AiCreationSession {
         pendingLink = null
         prompt = ""
         manualLlmInput = ""
+        materialImageRefs = emptyList()
         //清空即恢复出厂参数记忆，持久层一并清掉
         AiCreationConfig.saveCreationParams(emptyMap())
     }
@@ -705,6 +722,11 @@ class AiCreationSession {
         else -> section
     }
 
+    /**
+     * 组合素材文本：卡片内容按分区/连线组拼接，
+     * 其中的图片引用按首次出现顺序统一编号为【图片N】（同一文件多处出现复用同一标记），
+     * 文本与图片就此分离，编号与 [materialImageRefs] 一一对应。
+     */
     fun buildMaterialText(cardsById: Map<Long, CreationCard>): String {
         val builder = StringBuilder()
         val emittedSections = mutableSetOf<String>()
@@ -726,7 +748,22 @@ class AiCreationSession {
                 appendSectionContents(builder, sections, cardsById)
             }
         }
-        return builder.toString().trim()
+        return replaceImagesWithMarkers(builder.toString().trim())
+    }
+
+    /** 素材里的图片引用按出现顺序编号；编号结果与集合同步落在 materialImageRefs */
+    private fun replaceImagesWithMarkers(material: String): String {
+        val refs = mutableListOf<String>()
+        val indexByRef = mutableMapOf<String, Int>()
+        val marked = AiCreationCardImages.replaceMarkdownRefs(material) { ref ->
+            val index = indexByRef.getOrPut(ref) {
+                refs.add(ref)
+                refs.size
+            }
+            AiCreationImageMarkers.markerOf(index)
+        }
+        materialImageRefs = refs
+        return marked
     }
 
     private fun appendSectionContents(

@@ -29,12 +29,13 @@ import io.legado.app.help.ai.AI_CREATION_EPHEMERAL_BOOK
 import io.legado.app.help.ai.AI_CREATION_LLM_INPUT_KEY
 import io.legado.app.help.ai.AI_CREATION_IMAGE_COUNT_KEY
 import io.legado.app.help.ai.AI_CREATION_MODE_KEY
+import io.legado.app.help.ai.AiCreationCardImages
 import io.legado.app.help.ai.AiCreationConfig
 import io.legado.app.help.ai.AiCreationHelper
 import io.legado.app.help.ai.AiCreationImageFile
+import io.legado.app.help.ai.AiCreationImageMarkers
 import io.legado.app.help.ai.AiCreationImageSlot
 import io.legado.app.help.ai.AiCreationImageSlotState
-import io.legado.app.help.ai.AiCreationInlineImages
 import io.legado.app.help.ai.AiCreationImageTaskHolder
 import io.legado.app.help.ai.AiCreationSessionHolder
 import io.legado.app.help.ai.AiCreationVariable
@@ -58,9 +59,12 @@ import io.legado.app.utils.visible
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
-    AiCreationLibraryDialog.OnCardsAddedListener {
+    AiCreationLibraryDialog.OnCardsAddedListener, AiCreationRefPhotoDialog.CallBack {
 
     companion object {
         const val ARG_BOOK_NAME = "bookName"
@@ -83,6 +87,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
     private var currentPage = 0
     private var generating = false
     private var suppressTextWatcher = false
+    private var pendingGenerateAfterPrompt = false
     private var previewPageSize = 1
     private var previewPage = 0
     private val previewAdapter = PreviewAdapter()
@@ -245,16 +250,15 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         binding.tvCopyPrompt.setOnClickListener { copyPrompt() }
         binding.tvClearLlmInput.setOnClickListener { clearLlmInputBox() }
         binding.tvClearPrompt.setOnClickListener { clearPromptBox() }
+        binding.tvSaveLlmImages.setOnClickListener { saveLlmImagesToAlbum() }
         binding.etLlmInput.addTextChangedListener { text ->
             if (!suppressTextWatcher) {
                 session.manualLlmInput = text?.toString().orEmpty()
-                AiCreationInlineImages.refresh(viewLifecycleOwner.lifecycleScope, binding.etLlmInput)
             }
         }
         binding.etManualPrompt.addTextChangedListener { text ->
             if (!suppressTextWatcher) {
                 session.prompt = text?.toString().orEmpty()
-                AiCreationInlineImages.refresh(viewLifecycleOwner.lifecycleScope, binding.etManualPrompt)
             }
         }
         //生成数量实时持久化：下次进入提示词页直接恢复上次值
@@ -385,8 +389,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
             binding.etManualPrompt.setText(session.prompt)
             binding.etLlmInput.setText(session.manualLlmInput)
             suppressTextWatcher = false
-            AiCreationInlineImages.refresh(viewLifecycleOwner.lifecycleScope, binding.etManualPrompt)
-            AiCreationInlineImages.refresh(viewLifecycleOwner.lifecycleScope, binding.etLlmInput)
+            refreshLlmImageStrip()
             //从未手动编辑过LLM输入时按当前卡片重新汇总预填；编辑过则保留用户快照
             if (session.manualLlmInput.isBlank()) {
                 prefillLlmInput()
@@ -778,11 +781,12 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         cardEditLauncher.launch(intent)
     }
 
-    /** 提示词页：用上框LLM输入文本生成提示词，结果只自动填入下框，不跳页 */
+    /** 提示词页：用上框LLM输入文本生成提示词，结果自动填入下框；若是下框为空触发的连带生成，拿到后直接续发生成 */
     private fun generatePromptFromLlmInput() {
         if (generating) return
         val llmInput = binding.etLlmInput.text?.toString()?.trim().orEmpty()
         if (llmInput.isEmpty()) {
+            pendingGenerateAfterPrompt = false
             toastOnUi(R.string.ai_creation_llm_input_empty)
             return
         }
@@ -804,8 +808,12 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
                 suppressTextWatcher = true
                 binding.etManualPrompt.setText(prompt)
                 suppressTextWatcher = false
-                AiCreationInlineImages.refresh(viewLifecycleOwner.lifecycleScope, binding.etManualPrompt)
+                if (pendingGenerateAfterPrompt) {
+                    pendingGenerateAfterPrompt = false
+                    validateAndStartGeneration(prompt)
+                }
             }.onFailure { throwable ->
+                pendingGenerateAfterPrompt = false
                 toastOnUi(throwable.message ?: throwable.javaClass.simpleName)
             }
         }
@@ -831,7 +839,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
                     suppressTextWatcher = true
                     binding.etLlmInput.setText(text)
                     suppressTextWatcher = false
-                    AiCreationInlineImages.refresh(viewLifecycleOwner.lifecycleScope, binding.etLlmInput)
+                    refreshLlmImageStrip()
                 }
             }.onFailure { throwable ->
                 toastOnUi(throwable.message ?: throwable.javaClass.simpleName)
@@ -839,12 +847,131 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         }
     }
 
+    /** 上框图片条：每张图一个编号圈（①②③），点编号独立窗口预览原图，×删图并重排标记 */
+    private fun refreshLlmImageStrip() {
+        val strip = binding.llLlmImageStrip
+        strip.removeAllViews()
+        val refs = session.materialImageRefs
+        binding.hsLlmImages.visibility = if (refs.isEmpty()) View.GONE else View.VISIBLE
+        refs.forEachIndexed { index, _ ->
+            strip.addView(llmImageCell(index + 1))
+        }
+    }
+
+    private fun llmImageCell(number: Int): View {
+        val cell = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(4), dp(2), dp(4), dp(2))
+        }
+        cell.addView(
+            TextView(requireContext()).apply {
+                text = circledNumber(number)
+                textSize = 13f
+                gravity = Gravity.CENTER
+                setTextColor(context.accentColor)
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setStroke(dp(1), context.accentColor)
+                }
+                layoutParams = LinearLayout.LayoutParams(dp(30), dp(30))
+                setOnClickListener { showRefPreview(number - 1) }
+            }
+        )
+        cell.addView(
+            TextView(requireContext()).apply {
+                text = "×"
+                textSize = 11f
+                gravity = Gravity.CENTER
+                setTextColor(Color.parseColor("#80808080"))
+                setPadding(dp(4), dp(1), dp(4), 0)
+                setOnClickListener { deleteLlmImage(number - 1) }
+            }
+        )
+        return cell
+    }
+
+    private fun circledNumber(number: Int): String {
+        if (number in 1..20) {
+            return (0x2460 + number - 1).toChar().toString()
+        }
+        return "($number)"
+    }
+
+    private fun showRefPreview(index: Int) {
+        AiCreationRefPhotoDialog.newInstance(
+            session.materialImageRefs,
+            index,
+            deletable = true
+        ).show(childFragmentManager, "creationRefPhoto")
+    }
+
+    /** 删图操作程序收尾：从图片集合摘除该图，上框删对应标记并把后面的编号整体前移 */
+    override fun onDeleteRefPhoto(index: Int) {
+        deleteLlmImage(index)
+    }
+
+    private fun deleteLlmImage(index: Int) {
+        val refs = session.materialImageRefs.toMutableList()
+        if (index !in refs.indices) return
+        refs.removeAt(index)
+        session.materialImageRefs = refs
+        val deletedNumber = index + 1
+        val text = binding.etLlmInput.text?.toString().orEmpty()
+        val updated = AiCreationImageMarkers.REGEX.replace(text) { match ->
+            val number = match.groupValues[1].toIntOrNull()
+            when {
+                number == null -> match.value
+                number == deletedNumber -> ""
+                number > deletedNumber -> AiCreationImageMarkers.markerOf(number - 1)
+                else -> match.value
+            }
+        }
+        suppressTextWatcher = true
+        binding.etLlmInput.setText(updated)
+        session.manualLlmInput = updated
+        suppressTextWatcher = false
+        refreshLlmImageStrip()
+    }
+
+    /** 一键按顺序保存全部图片到相册：文件名 = 序号-到秒时间戳，与标记对应 */
+    private fun saveLlmImagesToAlbum() {
+        val refs = session.materialImageRefs
+        if (refs.isEmpty()) {
+            toastOnUi(R.string.ai_creation_images_empty)
+            return
+        }
+        val stamp = SimpleDateFormat("yyyyMMddHHmmss", Locale.US).format(Date())
+        val context = requireContext()
+        viewLifecycleOwner.lifecycleScope.launch {
+            val saved = withContext(IO) {
+                refs.mapIndexed { index, ref ->
+                    val name = "${index + 1}-$stamp.${ref.substringAfterLast('.')}"
+                    AiCreationCardImages.saveToAlbum(context, ref, name)
+                }.count { it }
+            }
+            toastOnUi(getString(R.string.ai_creation_images_saved, saved, refs.size))
+        }
+    }
+
     private fun onGenerateImageClicked() {
-        //提示词页只用下框内容，为空直接报错，不自动代生成；
+        //提示词页只用下框内容；下框为空时先自动生成提示词、拿到后直接续发；
         //上框即本次 LLM 输入，直接生成不经过 LLM 时也如实记入溯源，不用残留旧值
         val prompt = binding.etManualPrompt.text?.toString()?.trim().orEmpty()
         if (prompt.isEmpty()) {
-            toastOnUi(R.string.ai_creation_prompt_empty)
+            pendingGenerateAfterPrompt = true
+            generatePromptFromLlmInput()
+            return
+        }
+        validateAndStartGeneration(prompt)
+    }
+
+    /** 点生成图片时验证下框：标记 vs 图片集合（悬空、重号、跳号错哪指哪）；通过即发起生成 */
+    private fun validateAndStartGeneration(prompt: String) {
+        runCatching {
+            AiCreationHelper.validateMarkers(prompt, session.materialImageRefs)
+        }.onFailure { throwable ->
+            toastOnUi(throwable.message ?: throwable.javaClass.simpleName)
             return
         }
         session.prompt = prompt

@@ -151,6 +151,7 @@ object PreferKey {
     const val aiCreationScopeCharacter = "aiCreationScopeCharacter"
     const val aiCreationScopeNote = "aiCreationScopeNote"
     const val aiCreationImageRetryCount = "aiCreationImageRetryCount"
+    const val aiCreationPromptRegenerateLimit = "aiCreationPromptRegenerateLimit"
     const val aiCreationBuiltinApiKeysFilled = "aiCreationBuiltinApiKeysFilled"
     const val aiCreationImageProviderList = "aiCreationImageProviderList"
     const val aiCreationImageModelList = "aiCreationImageModelList"

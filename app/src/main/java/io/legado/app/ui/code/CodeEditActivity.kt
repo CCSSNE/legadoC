@@ -2,12 +2,16 @@ package io.legado.app.ui.code
 
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.annotation.RequiresApi
@@ -16,6 +20,7 @@ import androidx.core.view.isVisible
 import androidx.core.widget.addTextChangedListener
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.textfield.TextInputEditText
+import io.github.rosemoe.sora.event.ContentChangeEvent
 import io.github.rosemoe.sora.event.PublishSearchResultEvent
 import io.github.rosemoe.sora.event.SelectionChangeEvent
 import io.github.rosemoe.sora.langs.textmate.registry.ThemeRegistry
@@ -33,7 +38,9 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.theme.accentColor
 import io.legado.app.ui.about.AppLogDialog
+import io.legado.app.ui.book.read.creation.AiCreationRefPhotoDialog
 import io.legado.app.ui.code.config.ChangeThemeDialog
 import io.legado.app.ui.code.config.SettingsDialog
 import io.legado.app.ui.widget.keyboard.KeyboardToolPop
@@ -97,6 +104,13 @@ class CodeEditActivity :
                 editable = viewModel.writable
                 menuSaveBtn?.isVisible = viewModel.writable
                 upCreationCardMenu()
+                //创作卡片：文字变化实时刷新图片条（插入/删除引用行都会走到这里）
+                if (isCreationCard) {
+                    subscribeEvent(ContentChangeEvent::class.java) { _, _ ->
+                        refreshCreationImageStrip()
+                    }
+                }
+                refreshCreationImageStrip()
                 requestFocus()
                 postDelayed({
                     val pos = cursor.indexer.getCharPosition(viewModel.cursorPosition)
@@ -423,6 +437,59 @@ class CodeEditActivity :
             val position = editor.cursor?.left ?: 0
             editor.insertText("\n![]($ref)\n", position)
         }
+    }
+
+    /**
+     * 创作卡片图片条：编辑器内不渲染原图（sora 硬做行内图等于 fork 编辑器），
+     * 只显示单行编号圈；同一文件多处出现只计一张，编号按首次出现顺序由程序统一完成。
+     */
+    private fun refreshCreationImageStrip() {
+        if (!isCreationCard) {
+            binding.hsCreationImages.visibility = View.GONE
+            return
+        }
+        val refs = AiCreationCardImages.markdownRefs(editor.text.toString()).distinct()
+        binding.hsCreationImages.visibility = if (refs.isEmpty()) View.GONE else View.VISIBLE
+        val strip = binding.llCreationImageStrip
+        strip.removeAllViews()
+        refs.forEachIndexed { index, _ ->
+            strip.addView(creationImageCell(index + 1))
+        }
+    }
+
+    private fun creationImageCell(number: Int): View {
+        return TextView(this).apply {
+            text = circledNumber(number)
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setTextColor(accentColor)
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setStroke(dp(1), accentColor)
+            }
+            layoutParams = LinearLayout.LayoutParams(dp(30), dp(30)).apply {
+                setMargins(dp(4), 0, dp(4), 0)
+            }
+            setOnClickListener {
+                val refs = AiCreationCardImages.markdownRefs(editor.text.toString()).distinct()
+                if (number - 1 in refs.indices) {
+                    showDialogFragment(
+                        AiCreationRefPhotoDialog.newInstance(refs, number - 1, deletable = false)
+                    )
+                }
+            }
+        }
+    }
+
+    private fun circledNumber(number: Int): String {
+        if (number in 1..20) {
+            return (0x2460 + number - 1).toChar().toString()
+        }
+        return "($number)"
+    }
+
+    private fun dp(value: Int): Int {
+        return (value * resources.displayMetrics.density).toInt()
     }
 
     override fun finish() {

@@ -490,6 +490,11 @@
     <string name="ai_creation_video_edit_provider">Edit video provider</string>
     <string name="ai_creation_image_retry_count">Image retry count</string>
     <string name="ai_creation_image_retry_count_summary">Retries after a failed request: %1$d</string>
+    <string name="ai_creation_prompt_regenerate_limit">Prompt regenerate limit</string>
+    <string name="ai_creation_prompt_regenerate_limit_summary">Regenerations when the returned markers fail validation: %1$d (0 disables regeneration)</string>
+    <string name="ai_creation_save_images">Save images</string>
+    <string name="ai_creation_images_empty">No images</string>
+    <string name="ai_creation_images_saved">Saved %1$d/%2$d images to album in order</string>
     <string name="cache_manage_creation">Creation</string>
     <string name="cache_manage_creation_delete_confirm">Delete %1$d generated image(s)?</string>
     <string name="ai_reply">AI Reply</string>

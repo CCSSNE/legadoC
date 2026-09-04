@@ -187,6 +187,7 @@ class AiConfigFragment : PreferenceFragment(),
             "aiCreationVideoManageModels" -> showCreationManageModelsDialog(isVideo = true)
             "aiCreationVideoTestConnection" -> testCreationVideoConnection()
             PreferKey.aiCreationImageRetryCount -> showCreationImageRetryDialog()
+            PreferKey.aiCreationPromptRegenerateLimit -> showCreationPromptRegenerateLimitDialog()
             PreferKey.aiStoryboardProviderId -> showSelectStoryboardProviderDialog()
             PreferKey.aiStoryboardModelId -> showSelectStoryboardModelDialog()
             PreferKey.aiStoryboardPreloadCount -> showStoryboardPreloadCountDialog()
@@ -500,7 +501,8 @@ class AiConfigFragment : PreferenceFragment(),
             toastOnUi(it.message ?: it.javaClass.simpleName)
             return
         }
-        testAiConnection(target.provider, target.modelId, AiStructuredRequestTemplate.default)
+        //创作与聊天共用全局通用模板，连接测试也用同一份，测出来的就是真实请求形态
+        testAiConnection(target.provider, target.modelId, AiStructuredRequestTemplate.global)
     }
 
     private fun showCreationImageRetryDialog() {
@@ -510,6 +512,15 @@ class AiConfigFragment : PreferenceFragment(),
             AiCreationConfig.MIN_IMAGE_RETRY_COUNT,
             AiCreationConfig.MAX_IMAGE_RETRY_COUNT
         ) { AiCreationConfig.imageRetryCount = it }
+    }
+
+    private fun showCreationPromptRegenerateLimitDialog() {
+        showChapterPurifyIntDialog(
+            R.string.ai_creation_prompt_regenerate_limit,
+            AiCreationConfig.promptRegenerateLimit,
+            AiCreationConfig.MIN_PROMPT_REGENERATE_LIMIT,
+            AiCreationConfig.MAX_PROMPT_REGENERATE_LIMIT
+        ) { AiCreationConfig.promptRegenerateLimit = it }
     }
 
     // ———— AI 创作图片/视频供应商管理（参考 LLM 供应商管理：管理内设当前） ————
@@ -2281,6 +2292,11 @@ class AiConfigFragment : PreferenceFragment(),
             getString(
                 R.string.ai_creation_image_retry_count_summary,
                 AiCreationConfig.imageRetryCount
+            )
+        findPreference<Preference>(PreferKey.aiCreationPromptRegenerateLimit)?.summary =
+            getString(
+                R.string.ai_creation_prompt_regenerate_limit_summary,
+                AiCreationConfig.promptRegenerateLimit
             )
         val skills = AppConfig.aiSkillList
         val enabledSkillCount = skills.count { it.enabled }

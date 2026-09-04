@@ -28,6 +28,10 @@ object AiCreationConfig {
     const val MIN_IMAGE_RETRY_COUNT = 0
     const val MAX_IMAGE_RETRY_COUNT = 10
 
+    const val DEFAULT_PROMPT_REGENERATE_LIMIT = 3
+    const val MIN_PROMPT_REGENERATE_LIMIT = 0
+    const val MAX_PROMPT_REGENERATE_LIMIT = 10
+
     const val SECTION_SELECTED_TEXT = "selected_text"
     const val SECTION_BACKGROUND = "background"
     const val SECTION_SCENE = "scene"
@@ -228,6 +232,20 @@ object AiCreationConfig {
         set(value) = appCtx.putPrefInt(
             PreferKey.aiCreationImageRetryCount,
             value.coerceIn(MIN_IMAGE_RETRY_COUNT, MAX_IMAGE_RETRY_COUNT)
+        )
+
+    /**
+     * 提示词重新生成上限：LLM 返回的标记校验不通过时允许的额外重发次数，
+     * 0 表示不重新生成，校验失败直接报错。
+     */
+    var promptRegenerateLimit: Int
+        get() = appCtx.getPrefInt(
+            PreferKey.aiCreationPromptRegenerateLimit,
+            DEFAULT_PROMPT_REGENERATE_LIMIT
+        ).coerceIn(MIN_PROMPT_REGENERATE_LIMIT, MAX_PROMPT_REGENERATE_LIMIT)
+        set(value) = appCtx.putPrefInt(
+            PreferKey.aiCreationPromptRegenerateLimit,
+            value.coerceIn(MIN_PROMPT_REGENERATE_LIMIT, MAX_PROMPT_REGENERATE_LIMIT)
         )
 
     fun requireModelTarget(): AiCreationModelTarget {

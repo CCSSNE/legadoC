@@ -21,6 +21,24 @@
         app:textSize="18sp"
         tools:text="Hello, world!" />
 
+    <!--创作卡片图片条：编辑器内不渲染原图，只显示单行编号圈，点格子进独立窗口预览原图-->
+    <HorizontalScrollView
+        android:id="@+id/hs_creation_images"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:scrollbars="none"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/ll_creation_image_strip"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp" />
+
+    </HorizontalScrollView>
+
     <LinearLayout
         android:id="@+id/search_group"
         android:layout_width="match_parent"

@@ -262,6 +262,11 @@
             android:title="@string/ai_creation_image_retry_count"
             app:iconSpaceReserved="false" />
 
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiCreationPromptRegenerateLimit"
+            android:title="@string/ai_creation_prompt_regenerate_limit"
+            app:iconSpaceReserved="false" />
+
     </io.legado.app.lib.prefs.PreferenceCategory>
 
     <io.legado.app.lib.prefs.PreferenceCategory
