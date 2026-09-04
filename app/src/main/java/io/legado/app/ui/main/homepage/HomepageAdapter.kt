@@ -375,8 +375,9 @@ class HomepageAdapter(
             }
 
             // Tab 行在内容绑定之后显示：显隐只由本方法管理；
-            // 多分类时隐藏顶部静态标题，只留 tab 行（跳转走 tab 行右侧箭头）
-            binding.llTabs.visible()
+            // 多分类时隐藏顶部静态标题只留 tab 行（跳转走 tab 行右侧箭头），
+            // 单分类时反过来：显示静态标题、隐藏 tab 行（跳转走标题行）
+            binding.llTabs.isVisible = state.tabs.size >= 2
             binding.llTitle.isVisible = state.tabs.size < 2
             binding.ivTabArrow.isVisible = currentTab?.exploreUrl != null
             binding.ivTabArrow.setOnClickListener {
