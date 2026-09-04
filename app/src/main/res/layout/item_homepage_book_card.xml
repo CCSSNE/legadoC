@@ -3,7 +3,7 @@
     android:layout_width="120dp"
     android:layout_height="wrap_content"
     android:layout_marginEnd="8dp"
-    android:background="@drawable/bg_homepage_card_16"
+    android:background="@drawable/bg_homepage_book_card"
     android:orientation="vertical">
 
     <FrameLayout
