@@ -9,6 +9,14 @@ object AiCreationHelper {
         session: AiCreationSession,
         cardsById: Map<Long, CreationCard>
     ): String {
+        return generatePrompt(session, session.buildMaterialText(cardsById))
+    }
+
+    /** 按调用方给定的总素材文本生成提示词：手动提示词页用上框编辑结果替代卡片自动汇总 */
+    suspend fun generatePrompt(
+        session: AiCreationSession,
+        materialText: String
+    ): String {
         //按当前模式取对应体系的变量定义：图片读图片供应商，视频读视频供应商，互不引用
         val mode = session.paramValue(AI_CREATION_MODE_KEY)
             ?: error("AI 创作模式未设置")
@@ -27,7 +35,7 @@ object AiCreationHelper {
         val userContent = renderFinalPrompt(
             finalPrompt = definition.finalPrompt,
             prompt = promptText,
-            material = session.buildMaterialText(cardsById)
+            material = materialText
         )
         AppLog.putAi(
             "AI_CREATION REQUEST\n" +

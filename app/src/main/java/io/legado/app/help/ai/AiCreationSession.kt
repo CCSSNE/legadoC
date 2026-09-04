@@ -477,6 +477,9 @@ class AiCreationSession {
 
     var prompt: String = ""
 
+    /** 手动提示词页的「总素材」编辑快照：空表示尚未编辑过，进入手动页时按卡片重新汇总预填 */
+    var manualMaterial: String = ""
+
     fun paramValue(key: String): String? = params[key]
 
     /** 参数唯一写入口：写内存的同时持久化，应用重启后仍保留上次值 */
@@ -576,6 +579,7 @@ class AiCreationSession {
         linkGroups.clear()
         pendingLink = null
         prompt = ""
+        manualMaterial = ""
         //清空即恢复出厂参数记忆，持久层一并清掉
         AiCreationConfig.saveCreationParams(emptyMap())
     }

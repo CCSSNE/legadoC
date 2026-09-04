@@ -80,7 +80,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
     private var variableGroups: List<AiCreationVariableGroup> = emptyList()
     private var currentPage = 0
     private var generating = false
-    private var suppressPromptWatcher = false
+    private var suppressTextWatcher = false
     private var pendingGenerateAfterPrompt = false
     private var previewPageSize = 1
     private var previewPage = 0
@@ -241,7 +241,18 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
             }
         }
         binding.etPrompt.addTextChangedListener { text ->
-            if (!suppressPromptWatcher) {
+            if (!suppressTextWatcher) {
+                session.prompt = text?.toString().orEmpty()
+            }
+        }
+        binding.tvManual.setOnClickListener { showPage(4) }
+        binding.etTotalMaterial.addTextChangedListener { text ->
+            if (!suppressTextWatcher) {
+                session.manualMaterial = text?.toString().orEmpty()
+            }
+        }
+        binding.etManualPrompt.addTextChangedListener { text ->
+            if (!suppressTextWatcher) {
                 session.prompt = text?.toString().orEmpty()
             }
         }
@@ -284,11 +295,13 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         }
     }
 
-    //左上角返回只在创作体系四页内逐页回退，不退出界面；
+    //左上角返回只在创作体系各页内回退，不退出界面；手动提示词页入口在组合素材页，返回也回组合素材页；
     //界面关闭（叉叉/系统返回键）才销毁临时卡片，回预览走生成任务悬浮窗
     private fun onBack() {
-        if (currentPage > 0) {
-            showPage(currentPage - 1)
+        when (currentPage) {
+            0 -> Unit
+            4 -> showPage(1)
+            else -> showPage(currentPage - 1)
         }
     }
 
@@ -297,6 +310,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
             0 -> showPage(1)
             1 -> generatePrompt()
             2 -> generatePrompt()
+            4 -> generatePromptFromMaterial()
         }
     }
 
@@ -314,6 +328,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         binding.llModePage.visibility = if (page == 0) View.VISIBLE else View.GONE
         binding.svComposePage.visibility = if (page == 1) View.VISIBLE else View.GONE
         binding.llPromptPage.visibility = if (page == 2) View.VISIBLE else View.GONE
+        binding.llManualPage.visibility = if (page == 4) View.VISIBLE else View.GONE
         binding.llPreviewPage.visibility = if (page == 3) View.VISIBLE else View.GONE
         binding.bottomBar.visibility = if (page == 3) View.GONE else View.VISIBLE
         binding.ivBack.visibility = if (page > 0) View.VISIBLE else View.GONE
@@ -322,30 +337,37 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
                 1 -> R.string.ai_creation_compose
                 2 -> R.string.ai_creation_prompt_title
                 3 -> R.string.ai_creation_preview_title
+                4 -> R.string.ai_creation_manual_prompt
                 else -> R.string.ai_creation
             }
         )
         val isVideo = isVideoMode()
-        binding.etImageCount.visibility = if (page == 2) View.VISIBLE else View.GONE
+        binding.etImageCount.visibility = if (page == 2 || page == 4) View.VISIBLE else View.GONE
         binding.etImageCount.setText(
             session.paramValue(AI_CREATION_IMAGE_COUNT_KEY) ?: "1"
         )
-        binding.btnGenerateImage.visibility = if (page == 2) View.VISIBLE else View.GONE
+        binding.btnGenerateImage.visibility =
+            if (page == 2 || page == 4) View.VISIBLE else View.GONE
         binding.btnGenerateImage.setText(
             if (isVideo) R.string.ai_creation_generate_video else R.string.ai_creation_generate_image
         )
         binding.tvClear.setText(
-            if (page == 2) R.string.ai_creation_copy_prompt else R.string.ai_creation_clear
+            when (page) {
+                2 -> R.string.ai_creation_copy_prompt
+                4 -> R.string.ai_creation_copy_total_material
+                else -> R.string.ai_creation_clear
+            }
         )
         binding.tvClear.visibility = when {
             page == 1 -> View.VISIBLE
             page == 2 && !isVideo -> View.VISIBLE
+            page == 4 -> View.VISIBLE
             else -> View.GONE
         }
+        binding.tvManual.visibility = if (page == 1) View.VISIBLE else View.GONE
         binding.tvAction.setText(
             when (page) {
-                1 -> R.string.ai_creation_generate_prompt
-                2 -> R.string.ai_creation_generate_prompt
+                1, 2, 4 -> R.string.ai_creation_generate_prompt
                 else -> R.string.ai_creation_next
             }
         )
@@ -353,9 +375,19 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
             rebuildSections()
         }
         if (page == 2 && session.prompt.isNotBlank()) {
-            suppressPromptWatcher = true
+            suppressTextWatcher = true
             binding.etPrompt.setText(session.prompt)
-            suppressPromptWatcher = false
+            suppressTextWatcher = false
+        }
+        if (page == 4) {
+            suppressTextWatcher = true
+            binding.etManualPrompt.setText(session.prompt)
+            binding.etTotalMaterial.setText(session.manualMaterial)
+            suppressTextWatcher = false
+            //从未手动编辑过总素材时按当前卡片重新汇总预填；编辑过则保留用户快照
+            if (session.manualMaterial.isBlank()) {
+                prefillTotalMaterial()
+            }
         }
         if (page == 3) {
             previewPage = 0
@@ -767,7 +799,70 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         }
     }
 
+    /** 手动提示词页：用上框总素材文本生成提示词，结果只自动填入下框，不跳页 */
+    private fun generatePromptFromMaterial() {
+        if (generating) return
+        val material = binding.etTotalMaterial.text?.toString()?.trim().orEmpty()
+        if (material.isEmpty()) {
+            toastOnUi(R.string.ai_creation_total_material_empty)
+            return
+        }
+        session.manualMaterial = material
+        generating = true
+        binding.rotateLoading.visible()
+        binding.tvAction.setText(R.string.ai_creation_generating)
+        viewLifecycleOwner.lifecycleScope.launch {
+            val result = runCatching {
+                withContext(IO) {
+                    AiCreationHelper.generatePrompt(session, material)
+                }
+            }
+            generating = false
+            binding.rotateLoading.inVisible()
+            binding.tvAction.setText(R.string.ai_creation_generate_prompt)
+            result.onSuccess { prompt ->
+                session.prompt = prompt
+                suppressTextWatcher = true
+                binding.etManualPrompt.setText(prompt)
+                suppressTextWatcher = false
+            }.onFailure { throwable ->
+                toastOnUi(throwable.message ?: throwable.javaClass.simpleName)
+            }
+        }
+    }
+
+    /** 手动提示词页总素材预填：按当前卡片重新汇总；仅在此期间用户仍未编辑时写入 */
+    private fun prefillTotalMaterial() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val text = withContext(IO) {
+                val cardIds = AiCreationConfig.sectionOrder
+                    .flatMap { session.itemsOf(it) }
+                    .map { it.cardId }
+                    .distinct()
+                val cardsById = cardIds.mapNotNull { appDb.creationCardDao.getById(it) }
+                    .associateBy { it.cardId }
+                session.buildMaterialText(cardsById)
+            }
+            if (currentPage == 4 && session.manualMaterial.isBlank()) {
+                suppressTextWatcher = true
+                binding.etTotalMaterial.setText(text)
+                suppressTextWatcher = false
+            }
+        }
+    }
+
     private fun onGenerateImageClicked() {
+        if (currentPage == 4) {
+            //手动挡：只用下框内容，为空直接报错，不自动代生成
+            val prompt = binding.etManualPrompt.text?.toString()?.trim().orEmpty()
+            if (prompt.isEmpty()) {
+                toastOnUi(R.string.ai_creation_prompt_empty)
+                return
+            }
+            session.prompt = prompt
+            startGeneration(prompt)
+            return
+        }
         val prompt = binding.etPrompt.text?.toString()?.trim().orEmpty()
         if (prompt.isEmpty()) {
             pendingGenerateAfterPrompt = true
@@ -1004,6 +1099,18 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         }
         session.prompt = prompt
         requireContext().sendToClip(prompt)
+        toastOnUi(R.string.ai_creation_copied)
+    }
+
+    /** 手动提示词页复制的是上框总素材，不是下框提示词 */
+    private fun copyTotalMaterial() {
+        val material = binding.etTotalMaterial.text?.toString()?.trim().orEmpty()
+        if (material.isEmpty()) {
+            toastOnUi(R.string.ai_creation_total_material_empty)
+            return
+        }
+        session.manualMaterial = material
+        requireContext().sendToClip(material)
         toastOnUi(R.string.ai_creation_copied)
     }
 

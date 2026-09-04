@@ -389,6 +389,11 @@
     <string name="ai_creation_compose">组合素材</string>
     <string name="ai_creation_prompt_title">提示词</string>
     <string name="ai_creation_prompt_hint">生成的提示词将显示在这里</string>
+    <string name="ai_creation_manual_prompt">手动提示词</string>
+    <string name="ai_creation_copy_total_material">复制总素材</string>
+    <string name="ai_creation_total_material_hint">总素材（可编辑）</string>
+    <string name="ai_creation_manual_prompt_hint">手动填入提示词，生成图片/视频时使用</string>
+    <string name="ai_creation_total_material_empty">总素材为空</string>
     <string name="ai_creation_clear">清空</string>
     <string name="ai_creation_clear_confirm">清空当前创作会话与一次性素材？</string>
     <string name="ai_creation_add">+</string>
