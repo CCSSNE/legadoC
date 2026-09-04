@@ -39,7 +39,11 @@ data class AiCreationWorkflow(
         return root.toString()
     }
 
-    /** 插入媒体时预填备注的可读摘要；llmInput 或变量为空时如实跳过对应行 */
+    /**
+     * 插入媒体时预填备注的身份摘要：只记供应商/模型/变量，不带 LLM 输入与提示词原文。
+     * 全文一旦进备注，下轮就会当素材重新吃进去指数滚雪球；完整文本只活在文件元数据
+     * 的 llmInput/prompt/request 字段里（导出/复制/回读都走那边），备注只认出处。
+     */
     fun toSummaryText(): String = buildString {
         appendLine("供应商：$providerName")
         appendLine("Base URL：$baseUrl")
@@ -49,12 +53,6 @@ data class AiCreationWorkflow(
                 "变量：" + variables.entries.joinToString("；") { "${it.key}=${it.value}" }
             )
         }
-        if (llmInput.isNotBlank()) {
-            appendLine("LLM 输入：")
-            appendLine(llmInput)
-        }
-        appendLine("生成提示词：")
-        append(prompt)
     }.trimEnd()
 
     companion object {
