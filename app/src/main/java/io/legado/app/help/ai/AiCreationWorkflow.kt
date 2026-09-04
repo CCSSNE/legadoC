@@ -40,20 +40,10 @@ data class AiCreationWorkflow(
     }
 
     /**
-     * 插入媒体时预填备注的身份摘要：只记供应商/模型/变量，不带 LLM 输入与提示词原文。
-     * 全文一旦进备注，下轮就会当素材重新吃进去指数滚雪球；完整文本只活在文件元数据
-     * 的 llmInput/prompt/request 字段里（导出/复制/回读都走那边），备注只认出处。
+     * 插入媒体时预填备注的提示词原文：存的啥填啥，不包装、不摘要。
+     * 为空如实返回空（调用方不预填）；完整溯源仍在文件元数据的各字段里。
      */
-    fun toSummaryText(): String = buildString {
-        appendLine("供应商：$providerName")
-        appendLine("Base URL：$baseUrl")
-        appendLine("模型：$model")
-        if (variables.isNotEmpty()) {
-            appendLine(
-                "变量：" + variables.entries.joinToString("；") { "${it.key}=${it.value}" }
-            )
-        }
-    }.trimEnd()
+    fun promptForNote(): String = prompt
 
     companion object {
         const val APP_TAG = "legadoC"

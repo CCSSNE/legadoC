@@ -230,9 +230,9 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
         unitNoteEdits.clear()
         unitKeys.clear()
         if (unified) {
-            //自带工作流元数据的媒体：预填可读摘要，仅填空备注，不覆盖用户已输入内容
+            //自带工作流元数据的媒体：预填存的提示词原文，仅填空备注，不覆盖用户已输入内容
             if (binding.etNote.text.isNullOrBlank()) {
-                firstWorkflowSummary()?.let { binding.etNote.setText(it) }
+                firstWorkflowPrompt()?.takeIf { it.isNotBlank() }?.let { binding.etNote.setText(it) }
             }
             return
         }
@@ -254,7 +254,7 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
                 background = null
                 setTextColor(context.getCompatColor(R.color.primaryText))
                 textSize = 14f
-                setText(unitNotes[unit.firstIndex] ?: workflowSummaryOf(unit.firstIndex).orEmpty())
+                setText(unitNotes[unit.firstIndex] ?: workflowPromptOf(unit.firstIndex).orEmpty())
             }
             val labelParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -276,14 +276,14 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
         binding.llNoteItems.applyUiBodyTypefaceDeep(context.uiTypeface())
     }
 
-    /** 指定媒体的解析摘要；非本应用工作流格式（如 ComfyUI 原生图）返回 null 不预填 */
-    private fun workflowSummaryOf(mediaIndex: Int): String? {
+    /** 指定媒体存的提示词原文；非本应用工作流格式（如 ComfyUI 原生图）返回 null 不预填 */
+    private fun workflowPromptOf(mediaIndex: Int): String? {
         val json = parsedWorkflows.getOrNull(mediaIndex) ?: return null
-        return AiCreationWorkflow.fromJsonString(json)?.toSummaryText()
+        return AiCreationWorkflow.fromJsonString(json)?.promptForNote()?.takeIf { it.isNotBlank() }
     }
 
-    private fun firstWorkflowSummary(): String? =
-        parsedWorkflows.indices.firstNotNullOfOrNull { workflowSummaryOf(it) }
+    private fun firstWorkflowPrompt(): String? =
+        parsedWorkflows.indices.firstNotNullOfOrNull { workflowPromptOf(it) }
 
     private fun save() {
         if (parsedMedia.isEmpty()) {
