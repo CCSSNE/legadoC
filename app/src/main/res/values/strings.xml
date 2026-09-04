@@ -996,7 +996,7 @@
     <string name="ai_manage_models">Manage models</string>
     <string name="ai_manage_models_summary">%1$d models added</string>
     <string name="ai_edit_model">Edit model</string>
-    <string name="ai_edit_request">Edit request</string>
+    <string name="ai_edit_request">Edit request body</string>
     <string name="ai_edit_request_summary">Edit the JSON body used by chapter purification and its connection test.</string>
     <string name="ai_edit_request_hint">Structured request JSON</string>
     <string name="ai_edit_request_invalid">Request template is invalid: %s</string>

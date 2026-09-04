@@ -1978,7 +1978,7 @@
     <string name="ai_manage_models">管理模型</string>
     <string name="ai_manage_models_summary">已添加 %1$d 个模型</string>
     <string name="ai_edit_model">编辑模型</string>
-    <string name="ai_edit_request">编辑请求</string>
+    <string name="ai_edit_request">编辑请求体</string>
     <string name="ai_edit_request_summary">编辑章节净化及其连通性测试使用的 JSON 请求体。</string>
     <string name="ai_edit_request_hint">结构化请求 JSON</string>
     <string name="ai_edit_request_invalid">请求模板无效：%s</string>
