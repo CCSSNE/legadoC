@@ -72,14 +72,15 @@ object AiCreationMediaMetadata {
 
     // ———————— PNG chunk ————————
 
-    /** iTXt data：keyword\0 压缩标志(0) 压缩方法(0) 语言\0 翻译关键字\0 UTF-8 文本 */
+    /** iTXt data：keyword\0 压缩标志(0) 压缩方法(0) 语言\0 翻译关键字\0 UTF-8 文本（空语言与空翻译各占一个\0，不可省略） */
     private fun buildTextChunk(keyword: String, text: String): ByteArray {
         val payload = ByteArrayOutputStream().apply {
             write(keyword.toByteArray(Charsets.ISO_8859_1))
-            write(0)
-            write(0)
-            write(0)
-            write(0)
+            write(0) // keyword 结束符
+            write(0) // 压缩标志：不压缩
+            write(0) // 压缩方法
+            write(0) // 空语言结束符
+            write(0) // 空翻译关键字结束符
             write(text.toByteArray(Charsets.UTF_8))
         }.toByteArray()
         val chunkType = "iTXt".toByteArray(Charsets.US_ASCII)
