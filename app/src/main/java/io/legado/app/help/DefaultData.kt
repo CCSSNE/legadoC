@@ -39,7 +39,7 @@ object DefaultData {
     private const val MAX_HIGHLIGHT_RULE_VERSION_KEY = "maxHighlightRuleVersion"
     private const val MAX_HIGHLIGHT_RULE_VERSION = 1
     private const val AI_CREATION_CONFIG_VERSION_KEY = "aiCreationConfigVersion"
-    private const val AI_CREATION_CONFIG_VERSION = 2
+    private const val AI_CREATION_CONFIG_VERSION = 3
 
     fun upVersion() {
         Coroutine.async {

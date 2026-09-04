@@ -160,6 +160,7 @@ object AiCreationConfig {
             promptTemplateJson = defaultPromptTemplateJson
             restored.add(appCtx.getString(R.string.ai_creation_prompt_template))
         }
+        sanitizeCreationParamValues()
         if (restored.isNotEmpty()) {
             AppLog.putAi(
                 "AI_CREATION CONFIG SANITIZED\n" +
@@ -171,6 +172,51 @@ object AiCreationConfig {
                     restored.joinToString("、")
                 )
             )
+        }
+    }
+
+    /**
+     * 存量参数值全量消毒：按当前变量定义检查参数记忆里的所有已存值，
+     * 取值与当前定义不符（选项/开关变更、跨体系残留）的直接重置为定义默认值。
+     * 覆盖 LLM 变量与全部供应商（含非当前）的参数键；
+     * 某个定义本身读不出来时跳过该组，错误由读取路径按既有规则报。
+     */
+    private fun sanitizeCreationParamValues() {
+        val params = loadCreationParams()
+        val groups = mutableListOf<Pair<String, List<AiCreationVariable>>>()
+        runCatching { imageLlmDefinition }.onSuccess {
+            groups.add("llm:image" to it.variables)
+        }
+        runCatching { videoLlmDefinition }.onSuccess {
+            groups.add("llm:video" to it.variables)
+        }
+        AiCreationProviderStore.imageProviderList.forEach { provider ->
+            runCatching { AiCreationVariables.parse(provider.variablesJson) }.onSuccess {
+                groups.add("provider:image:${provider.id}" to it)
+            }
+        }
+        AiCreationProviderStore.videoProviderList.forEach { provider ->
+            runCatching { AiCreationVariables.parse(provider.variablesJson) }.onSuccess {
+                groups.add("provider:video:${provider.id}" to it)
+            }
+        }
+        var changed = false
+        groups.forEach { (prefix, variables) ->
+            variables.forEach { variable ->
+                if (variable.format == AiCreationVariable.FORMAT_INPUT) return@forEach
+                val key = "$prefix:${variable.key}"
+                val stored = params[key] ?: return@forEach
+                if (!variable.accepts(stored)) {
+                    params[key] = variable.defaultValue
+                    changed = true
+                    AppLog.putAi(
+                        "AI_CREATION PARAM RESET\nkey=$key value=$stored -> ${variable.defaultValue}"
+                    )
+                }
+            }
+        }
+        if (changed) {
+            saveCreationParams(params)
         }
     }
 

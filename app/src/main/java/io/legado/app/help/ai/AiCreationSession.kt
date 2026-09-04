@@ -44,13 +44,13 @@ data class AiCreationVariable(
         else -> true
     }
 
-    /** 缺省时采用定义默认值；已有值不合法直接暴露配置错误。 */
+    /**
+     * 缺省或存量值失效（定义变更后的过期参数记忆）时采用定义默认值；
+     * 参数记忆是可过期的用户偏好而非配置，不得因存量值不匹配而崩溃。
+     */
     fun effectiveValue(stored: String?): String {
-        val value = stored ?: defaultValue
-        require(accepts(value)) {
-            "AI 创作变量 $key 的当前值无效：$value"
-        }
-        return value
+        if (stored != null && accepts(stored)) return stored
+        return defaultValue
     }
 }
 
