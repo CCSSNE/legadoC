@@ -280,9 +280,9 @@ uiautomator2 / ADB
 ### Release
 
 - 发布前重新执行第 3 节的 APK 验证。tag 必须为 `v<versionName>`，与 APK 版本名一致；`target_commitish` 指向 `own` 分支最新提交。
-- Release 正文通过 UTF-8 无 BOM JSON 文件提交：设置 `PYTHONUTF8=1`，用 `json.dump(..., ensure_ascii=False)` 生成，并使用 `curl.exe --data-binary "@<file>"`。不得将中文正文或二进制通过 PowerShell 文本管道传递。
+- Release 正文通过 UTF-8 无 BOM JSON 文件提交：设置 `PYTHONUTF8=1`，用 `json.dump(..., ensure_ascii=False)` 生成（本机一律用 `python`；`python3.exe` 只是 WindowsApps 存根，调用无输出无动作），并使用 `curl.exe --data-binary "@<file>"`。不得将中文正文或二进制通过 PowerShell 文本管道传递。
 - APK 上传使用 `Content-Type: application/octet-stream` 和 `curl.exe --data-binary @<apk>`。
-- 发布后通过 API 和 GitHub 网页复查中文、排版、`draft=false`、`prerelease=false`、tag、目标提交、资产大小和下载 200；发现乱码则用 UTF-8 无 BOM JSON PATCH 后重新复查。
+- 发布后通过 API 和 GitHub 网页复查中文、排版、`draft=false`、`prerelease` 与用户要求一致（正式版为 `false`，用户点名 Pre 版时为 `true`）、tag、目标提交、资产大小和下载 200；发现乱码则用 UTF-8 无 BOM JSON PATCH 后重新复查。Pre 版创建时显式传 `"make_latest": "false"`，使 `Latest` 标记保持在正式版不动。
 
 ### Git
 
@@ -298,6 +298,6 @@ uiautomator2 / ADB
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- 最近一次自用版交付为 `3.26.090400` / `10826`，2026-09-04，基于提交 `56be2dc6`（聚合主页单分类隐藏tab行只留静态标题，与多分类留tab藏标题对称）使用 `assembleAppC` 冷编译成功（`--no-daemon --max-workers=1 -Dkotlin.incremental=false -Dksp.incremental=false -Pkotlin.compiler.execution.strategy=in-process`，`BUILD SUCCESSFUL in 3m 33s`；两次 `Start-Process` 拉起均被工具宿主连构建树一起杀掉——日志停在 `compileAppCKotlin`、无 hs_err、JVM 空转，确认死后杀残留重拉也一样，故改用计划任务（schtasks）脱离宿主进程树拉起，构建存活到结束；任务/启动器事后已删）。产物包名 `io.legado.app.dev`、versionName `3.26.090400c`、versionCode `10826`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C-自用`（label-zh 逐字匹配）、`apksigner` 验证通过（退出码 0，`META-INF` 未保护条目提示可接受；校验退出码须完整执行后读取，管道截断会污染 `$LASTEXITCODE`）；APK 位于 `app\build\outputs\apk\app\c\legado_app_3.26.090400_10826.apk`。上一自用版为 `3.26.090323` / `10825`；最近公开版为 `3.26.090318` / `10819`，2026-09-03，使用 `assembleOssRelease` 冷编译成功（`-Pkotlin.compiler.execution.strategy=in-process`）。产物包名 `io.legado.app.c`、versionName `3.26.090318`、versionCode `10819`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C`（label-zh 逐字匹配）、`apksigner` 验证通过；APK 位于 `app\build\outputs\apk\oss\release\legado_oss_3.26.090318_10819.apk`。
+- 最近一次自用版交付为 `3.26.090400` / `10826`，2026-09-04，基于提交 `56be2dc6`（聚合主页单分类隐藏tab行只留静态标题，与多分类留tab藏标题对称）使用 `assembleAppC` 冷编译成功（`--no-daemon --max-workers=1 -Dkotlin.incremental=false -Dksp.incremental=false -Pkotlin.compiler.execution.strategy=in-process`，`BUILD SUCCESSFUL in 3m 33s`；两次 `Start-Process` 拉起均被工具宿主连构建树一起杀掉——日志停在 `compileAppCKotlin`、无 hs_err、JVM 空转，确认死后杀残留重拉也一样，故改用计划任务（schtasks）脱离宿主进程树拉起，构建存活到结束；任务/启动器事后已删）。产物包名 `io.legado.app.dev`、versionName `3.26.090400c`、versionCode `10826`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C-自用`（label-zh 逐字匹配）、`apksigner` 验证通过（退出码 0，`META-INF` 未保护条目提示可接受；校验退出码须完整执行后读取，管道截断会污染 `$LASTEXITCODE`）；APK 位于 `app\build\outputs\apk\app\c\legado_app_3.26.090400_10826.apk`。上一自用版为 `3.26.090323` / `10825`；最近公开版为 `3.26.090400` / `10827`，2026-09-04，基于提交 `e30c31d1`（更新文档截图25并清理org冗余图片）使用 `assembleOssRelease` 冷编译成功（`--no-daemon --max-workers=1 -Dkotlin.incremental=false -Dksp.incremental=false -Pkotlin.compiler.execution.strategy=in-process`，计划任务脱离宿主进程树拉起，`BUILD SUCCESSFUL in 9m 46s`；构建期间分支新增 `e30c31d1`（纯 docs 图片、零构建输入变更），按规则在新分支头重编一次（`BUILD SUCCESSFUL in 32s`，`packageOssRelease` 因版本控制信息嵌入新 revision 重跑导致 APK hash 变化，重编后重新做了 `aapt`/`apksigner` 验证；任务/启动器事后已删）。产物包名 `io.legado.app.c`、versionName `3.26.090400`（无后缀）、versionCode `10827`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C`（label-zh 逐字匹配）、`apksigner` 验证通过（退出码 0，`META-INF` 未保护条目提示可接受）；APK 位于 `app\build\outputs\apk\oss\release\legado_oss_3.26.090400_10827.apk`（34532895 字节）。已按用户要求创建 Pre 版 Release `v3.26.090400`（`prerelease=true`、`make_latest=false`，`Latest` 仍为 `v3.26.090202`），资产下载 200 且 SHA256 与本地一致。上一公开版为 `3.26.090318` / `10819`。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
