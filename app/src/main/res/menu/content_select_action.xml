@@ -65,4 +65,8 @@
         android:id="@+id/menu_illustration"
         android:title="@string/menu_illustration"
         app:showAsAction="never" />
+
+    <item
+        android:id="@+id/menu_edit_config"
+        android:title="@string/edit" />
 </menu>

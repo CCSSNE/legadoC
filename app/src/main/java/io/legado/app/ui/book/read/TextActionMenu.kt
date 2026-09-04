@@ -22,7 +22,6 @@ import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
-import io.legado.app.databinding.ItemMenuEditBinding
 import io.legado.app.databinding.ItemTextBinding
 import io.legado.app.databinding.PopupActionMenuBinding
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
@@ -111,13 +110,6 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
             onInitializeMenu(otherMenu)
         }
         allMenuItems = myMenu.visibleItems + otherMenu.visibleItems
-        adapter.addFooterView { parent ->
-            ItemMenuEditBinding.inflate(adapter.inflater, parent, false).apply {
-                root.setOnClickListener {
-                    callBack.onMenuConfigRequested()
-                }
-            }
-        }
         binding.recyclerView.adapter = adapter
         setOnDismissListener {
             blurGeneration++
@@ -132,6 +124,7 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
             when (item.itemId) {
                 R.id.menu_illustration -> illustrationEnabled
                 R.id.menu_review -> reviewEnabled
+                R.id.menu_edit_config -> true
                 else -> menuItemToActionId(item.itemId)?.let { configuredActionIds.contains(it) } ?: false
             }
         }
