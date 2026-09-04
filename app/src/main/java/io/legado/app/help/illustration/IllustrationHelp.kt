@@ -427,7 +427,8 @@ object IllustrationHelp {
         val layoutType: String = BookIllustration.LAYOUT_SINGLE,
         val displayHeight: Int = 0,
         val pageBreak: Boolean = false,
-        val sortOrder: Int = 0
+        val sortOrder: Int = 0,
+        val note: String = ""
     )
 
     data class IllustrationJson(
@@ -458,7 +459,8 @@ object IllustrationHelp {
                 layoutType = record.layoutType,
                 displayHeight = record.displayHeight,
                 pageBreak = record.pageBreak,
-                sortOrder = record.sortOrder
+                sortOrder = record.sortOrder,
+                note = record.note
             )
         }
         return GSON.toJson(IllustrationJson(bookFile = txtFileName, illustrations = items))
@@ -509,7 +511,8 @@ object IllustrationHelp {
                     layoutType = item.layoutType,
                     displayHeight = item.displayHeight,
                     pageBreak = item.pageBreak,
-                    sortOrder = item.sortOrder
+                    sortOrder = item.sortOrder,
+                    note = item.note
                 )
             )
         }

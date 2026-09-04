@@ -2604,6 +2604,12 @@ Selected text or question:
     <string name="illustration_delete">删除配图</string>
     <string name="illustration_deleted">配图已删除</string>
     <string name="illustration_empty">本书暂无配图</string>
+    <string name="illustration_note">备注</string>
+    <string name="illustration_unified_note">统一备注</string>
+    <string name="illustration_note_hint">支持 Markdown，留空无备注</string>
+    <string name="illustration_view_note">查看备注</string>
+    <string name="illustration_note_image_unit">配图%1$d（共%2$d张）</string>
+    <string name="illustration_note_audio_unit">音频%1$d</string>
     <string name="illustration_list_mode">列表</string>
     <string name="illustration_grid_mode">宫格</string>
     <string name="illustration_export_name">配图书籍</string>

@@ -1,10 +1,13 @@
 package io.legado.app.ui.widget.dialog
 
+import android.app.Activity
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
 import android.view.textclassifier.TextClassifier
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
 import io.legado.app.R
@@ -54,9 +57,33 @@ class TextDialog() : BaseDialogFragment(R.layout.dialog_text_view) {
         this.autoClose = autoClose
     }
 
+    /**
+     * MD 可编辑模式：全屏编辑用可写编辑器打开（Markdown 高亮），
+     * 编辑返回后直接用最新内容重新渲染并回调（如配图备注保存回数据库）。
+     */
+    constructor(
+        title: String,
+        content: String?,
+        onContentEdited: (String) -> Unit
+    ) : this(title, content, Mode.MD) {
+        this.onContentEdited = onContentEdited
+    }
+
     private val binding by viewBinding(DialogTextViewBinding::bind)
     private var time = 0L
     private var autoClose: Boolean = false
+    private var onContentEdited: ((String) -> Unit)? = null
+    private var mdContent = ""
+
+    private val contentEditLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            val text = result.data?.getStringExtra("text")
+            if (result.resultCode == Activity.RESULT_OK && text != null) {
+                mdContent = text
+                renderMd(text)
+                onContentEdited?.invoke(text)
+            }
+        }
 
     override fun onStart() {
         super.onStart()
@@ -73,26 +100,9 @@ class TextDialog() : BaseDialogFragment(R.layout.dialog_text_view) {
             val content = IntentData.get(it.getString("content")) ?: ""
             val mode = it.getString("mode")
             when (mode) {
-                Mode.MD.name -> viewLifecycleOwner.lifecycleScope.launch {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        binding.textView.setTextClassifier(TextClassifier.NO_OP)
-                    }
-                    val markwon: Markwon
-                    val markdown = withContext(IO) {
-                        markwon = Markwon.builder(requireContext())
-                            .usePlugin(GlideImagesPlugin.create(Glide.with(requireContext())))
-                            .usePlugin(HtmlPlugin.create())
-                            .usePlugin(TablePlugin.create(requireContext()))
-                            .build()
-                        markwon.toMarkdown(content)
-                    }
-                    binding.textView.setMarkdown(
-                        markwon,
-                        markdown,
-                        imgOnLongClickListener = { source  ->
-                            showDialogFragment(PhotoDialog(source))
-                        }
-                    )
+                Mode.MD.name -> {
+                    mdContent = content
+                    renderMd(content)
                 }
 
                 Mode.HTML.name -> binding.textView.setHtml(content)
@@ -110,12 +120,26 @@ class TextDialog() : BaseDialogFragment(R.layout.dialog_text_view) {
                 when (menu.itemId) {
                     R.id.menu_close -> dismissAllowingStateLoss()
                     R.id.menu_fullscreen_edit -> {
-                        val cacheKey = "code_text_${System.currentTimeMillis()}"
-                        CacheManager.putMemory(cacheKey, content)
-                        startActivity<CodeEditActivity> {
-                            putExtra("cacheKey", cacheKey)
-                            putExtra("title", title)
-                            putExtra("languageName", if (mode == Mode.MD.name) "text.html.markdown" else "text.html.basic")
+                        if (onContentEdited != null) {
+                            // 可编辑模式：用 "text" extra 进可写编辑器，返回 RESULT_OK + text 才算有修改
+                            contentEditLauncher.launch(
+                                Intent(requireActivity(), CodeEditActivity::class.java).apply {
+                                    putExtra("text", mdContent)
+                                    putExtra("title", title)
+                                    putExtra("languageName", "text.html.markdown")
+                                }
+                            )
+                        } else {
+                            val cacheKey = "code_text_${System.currentTimeMillis()}"
+                            CacheManager.putMemory(cacheKey, content)
+                            startActivity<CodeEditActivity> {
+                                putExtra("cacheKey", cacheKey)
+                                putExtra("title", title)
+                                putExtra(
+                                    "languageName",
+                                    if (mode == Mode.MD.name) "text.html.markdown" else "text.html.basic"
+                                )
+                            }
                         }
                     }
                 }
@@ -142,6 +166,30 @@ class TextDialog() : BaseDialogFragment(R.layout.dialog_text_view) {
             view.post {
                 dialog?.setCancelable(true)
             }
+        }
+    }
+
+    private fun renderMd(content: String) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                binding.textView.setTextClassifier(TextClassifier.NO_OP)
+            }
+            val markwon: Markwon
+            val markdown = withContext(IO) {
+                markwon = Markwon.builder(requireContext())
+                    .usePlugin(GlideImagesPlugin.create(Glide.with(requireContext())))
+                    .usePlugin(HtmlPlugin.create())
+                    .usePlugin(TablePlugin.create(requireContext()))
+                    .build()
+                markwon.toMarkdown(content)
+            }
+            binding.textView.setMarkdown(
+                markwon,
+                markdown,
+                imgOnLongClickListener = { source ->
+                    showDialogFragment(PhotoDialog(source))
+                }
+            )
         }
     }
 

@@ -50,7 +50,9 @@ data class BookIllustration(
     val pageBreak: Boolean = false,
     val sortOrder: Int = 0,
     val pdfPage: Int = -1,
-    val pdfRect: String = ""
+    val pdfRect: String = "",
+    /** 配图备注（Markdown 文本），空串表示无备注 */
+    val note: String = ""
 ) : Parcelable {
 
     companion object {

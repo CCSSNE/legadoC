@@ -350,11 +350,15 @@ class ReadView(context: Context, attrs: AttributeSet) :
                     footerCenterActionPressedIndex = footerActionIndex
                     return true
                 }
-                // 音频块进度条拖动/点击优先级最高：按下即 seek，不触发翻页/长按/选区
+                // 音频块进度条拖动/点击优先级最高：按下即 seek，不触发翻页/选区；
+                // 长按计时照常启动：音频块长按需要弹出菜单（如查看备注），拖动或抬手时再取消。
+                // setStartPoint 必须调用：长按回调按 startX/startY 定位，否则会命中上一次手势的旧位置
                 val trackHit = curPage.hitAudioTrack(event.x, event.y)
                 if (trackHit != null) {
                     audioDragging = true
                     curPage.audioTrackSeek(trackHit, event.x)
+                    setStartPoint(event.x, event.y, false)
+                    postDelayed(longPressRunnable, longPressTimeout)
                     return true
                 }
                 callBack.screenOffTimerStart()
@@ -437,6 +441,8 @@ class ReadView(context: Context, attrs: AttributeSet) :
                     }
                 }
                 if (audioDragging) {
+                    // 拖动即取消长按：音频块长按只在按住不动时生效
+                    removeCallbacks(longPressRunnable)
                     curPage.hitAudioTrack(event.x, event.y)?.let {
                         curPage.audioTrackSeek(it, event.x)
                     }
@@ -505,6 +511,7 @@ class ReadView(context: Context, attrs: AttributeSet) :
                 pullDownArmed = false
                 if (audioDragging) {
                     audioDragging = false
+                    removeCallbacks(longPressRunnable)
                     curPage.hitAudioTrack(event.x, event.y)?.let {
                         curPage.audioTrackSeek(it, event.x)
                     }
@@ -557,6 +564,7 @@ class ReadView(context: Context, attrs: AttributeSet) :
                 pullDownArmed = false
                 if (audioDragging) {
                     audioDragging = false
+                    removeCallbacks(longPressRunnable)
                     return true
                 }
                 removeCallbacks(longPressRunnable)
@@ -637,6 +645,10 @@ class ReadView(context: Context, attrs: AttributeSet) :
     private fun onLongPress() {
         // 长按进入选区后，本次手势不再允许下拉标签
         pullDownArmed = false
+        if (audioDragging) {
+            // 音频块按住不动触发长按：结束拖动状态，后续抬手不再 seek，长按菜单正常弹出
+            audioDragging = false
+        }
         kotlin.runCatching {
             val handled = curPage.longPress(startX, startY) { textPos: TextPos ->
                 isTextSelected = true

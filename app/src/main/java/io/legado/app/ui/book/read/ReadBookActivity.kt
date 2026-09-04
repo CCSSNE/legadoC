@@ -141,6 +141,7 @@ import io.legado.app.ui.highlight.HighlightRuleActivity
 import io.legado.app.ui.replace.edit.ReplaceEditActivity
 import io.legado.app.ui.widget.PopupAction
 import io.legado.app.ui.widget.dialog.PhotoDialog
+import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.ACache
 import io.legado.app.utils.Debounce
 import io.legado.app.utils.LogUtils
@@ -2782,14 +2783,20 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun onImageLongPress(x: Float, y: Float, src: String) {
         val items = arrayListOf<SelectItem<String>>()
         if (src.startsWith(IllustrationHelp.SRC_PREFIX)) {
-            // 配图：只保留保存（前）与删除（后），多图时增加"保存所有"
-            items.add(SelectItem(getString(R.string.illustration_save_to_album), "saveToAlbum"))
-            if (illustrationImageCount(src) >= 2) {
-                items.add(
-                    SelectItem(getString(R.string.illustration_save_all), "saveAllIllustrations")
-                )
+            if (IllustrationHelp.isAudioSrc(src)) {
+                // 配图音频块：长按菜单只有查看备注
+                items.add(SelectItem(getString(R.string.illustration_view_note), "viewIllustrationNote"))
+            } else {
+                // 配图：保存（前）与删除（后），多图时增加"保存所有"，查看备注放删除之前
+                items.add(SelectItem(getString(R.string.illustration_save_to_album), "saveToAlbum"))
+                if (illustrationImageCount(src) >= 2) {
+                    items.add(
+                        SelectItem(getString(R.string.illustration_save_all), "saveAllIllustrations")
+                    )
+                }
+                items.add(SelectItem(getString(R.string.illustration_view_note), "viewIllustrationNote"))
+                items.add(SelectItem(getString(R.string.illustration_delete), "deleteIllustration"))
             }
-            items.add(SelectItem(getString(R.string.illustration_delete), "deleteIllustration"))
         } else {
             // 普通图片：完全保留原始菜单
             items.add(SelectItem(getString(R.string.show), "show"))
@@ -2805,6 +2812,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                 "refresh" -> viewModel.refreshImage(src)
                 "saveToAlbum" -> saveIllustrationToAlbum(src)
                 "saveAllIllustrations" -> saveAllIllustrations(src)
+                "viewIllustrationNote" -> showIllustrationNote(src)
                 "deleteIllustration" -> deleteIllustration(src)
                 "save" -> {
                     val path = ACache.get().getAsString(AppConst.imagePathKey)
@@ -2837,6 +2845,23 @@ class ReadBookActivity : BaseReadBookActivity(),
         return appDb.bookIllustrationDao.getByBook(book.bookUrl)
             .filter { it.imageSrcsFromJson().contains(src) }
             .sumOf { it.imageSrcsFromJson().size }
+    }
+
+    /** 查看配图备注：MD 渲染，可编辑，编辑结果直接保存回该记录 */
+    private fun showIllustrationNote(src: String) {
+        val book = ReadBook.book ?: return
+        val record = appDb.bookIllustrationDao.getByBook(book.bookUrl)
+            .firstOrNull { it.imageSrcsFromJson().contains(src) } ?: return
+        showDialogFragment(
+            TextDialog(
+                getString(R.string.illustration_note),
+                record.note
+            ) { newNote ->
+                lifecycleScope.launch(IO) {
+                    appDb.bookIllustrationDao.update(record.copy(note = newNote))
+                }
+            }
+        )
     }
 
     private fun saveIllustrationToAlbum(src: String) {
