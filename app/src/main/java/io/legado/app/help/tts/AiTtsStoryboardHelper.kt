@@ -525,7 +525,7 @@ object AiTtsStoryboardHelper {
             systemPrompt = readBaseRoutingPrompt(),
             userContent = payload.toString(),
             temperature = 0.0,
-            requestTemplate = AiStructuredRequestTemplate.default
+            requestTemplate = AiStructuredRequestTemplate.structuredDefault
         )
         check(result.isNotBlank()) { "AI 分镜返回为空" }
         val parsed = parseAndValidate(result, units, knownCharacters, knownCastRoles)

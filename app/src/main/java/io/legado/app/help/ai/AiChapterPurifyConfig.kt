@@ -12,7 +12,6 @@ import io.legado.app.utils.getPrefString
 import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.putPrefInt
 import io.legado.app.utils.putPrefString
-import io.legado.app.utils.removePref
 import splitties.init.appCtx
 
 data class AiChapterPurifyModelTarget(
@@ -120,51 +119,15 @@ object AiChapterPurifyConfig {
             )
         }
 
+    /**
+     * 章节净化专用请求模板：净化是唯一需要 response_format=json_object 的消费者，
+     * 不再继承全局通用模板；出厂即 structuredDefault。
+     */
     var requestTemplate: String
-        get() = appCtx.getPrefString(PreferKey.aiRequestTemplate)
-            ?.takeIf { it.isNotBlank() }
-            ?: AiStructuredRequestTemplate.default
-        set(value) = appCtx.putPrefString(PreferKey.aiRequestTemplate, value.trim())
-
-    /** 独立模式的请求模板；未保存时继承全局模板。 */
-    var independentRequestTemplate: String?
         get() = appCtx.getPrefString(PreferKey.aiChapterPurifyRequestTemplate)
-            ?.trim()
             ?.takeIf { it.isNotBlank() }
-        set(value) {
-            val normalized = value?.trim().orEmpty()
-            if (normalized.isBlank()) {
-                appCtx.removePref(PreferKey.aiChapterPurifyRequestTemplate)
-            } else {
-                appCtx.putPrefString(PreferKey.aiChapterPurifyRequestTemplate, normalized)
-            }
-        }
-
-    val hasIndependentRequestTemplate: Boolean
-        get() = independentRequestTemplate != null
-
-    val effectiveRequestTemplate: String
-        get() = resolveRequestTemplate(
-            reuseCurrentModel = reuseCurrentModel,
-            globalTemplate = requestTemplate,
-            independentTemplate = independentRequestTemplate
-        )
-
-    fun clearIndependentRequestTemplate() {
-        appCtx.removePref(PreferKey.aiChapterPurifyRequestTemplate)
-    }
-
-    internal fun resolveRequestTemplate(
-        reuseCurrentModel: Boolean,
-        globalTemplate: String,
-        independentTemplate: String?
-    ): String {
-        return if (!reuseCurrentModel && !independentTemplate.isNullOrBlank()) {
-            independentTemplate
-        } else {
-            globalTemplate
-        }
-    }
+            ?: AiStructuredRequestTemplate.structuredDefault
+        set(value) = appCtx.putPrefString(PreferKey.aiChapterPurifyRequestTemplate, value.trim())
 
     var preprocessJson: String
         get() = GSON.toJson(preprocessRules)

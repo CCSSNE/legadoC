@@ -190,7 +190,7 @@ object AiChapterPurifyHelper {
                     systemPrompt = buildSystemPrompt(enabledTypes),
                     userContent = buildUserContent(paragraphs, enabledTypes),
                     temperature = 0.0,
-                    requestTemplate = AiChapterPurifyConfig.effectiveRequestTemplate,
+                    requestTemplate = AiChapterPurifyConfig.requestTemplate,
                     onRequestAccepted = {
                         onProgress(
                             AiChapterPurifyProgress.RequestAccepted(

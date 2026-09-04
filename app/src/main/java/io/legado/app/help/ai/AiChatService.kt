@@ -144,11 +144,12 @@ object AiChatService {
     /**
      * Sends an isolated completion request. It deliberately does not inherit chat history,
      * the global AI system prompt, skills, MCP tools, or any tool loop state.
+     * AI 创作入口：走全局通用请求模板，userContent 允许传字符串或多模态内容数组。
      */
     suspend fun generatePlainText(
         provider: AiProviderConfig,
         model: String,
-        userContent: String,
+        userContent: Any,
         temperature: Double = 0.0
     ): String = generateText(
         provider = provider,
@@ -156,7 +157,8 @@ object AiChatService {
         systemPrompt = "",
         userContent = userContent,
         temperature = temperature,
-        responseFormat = null
+        responseFormat = null,
+        requestTemplate = AiStructuredRequestTemplate.global
     )
 
     suspend fun generateStructuredText(
@@ -184,7 +186,7 @@ object AiChatService {
         provider: AiProviderConfig,
         model: String,
         systemPrompt: String,
-        userContent: String,
+        userContent: Any,
         temperature: Double,
         responseFormat: String?,
         requestTemplate: String? = null,
@@ -209,7 +211,7 @@ object AiChatService {
             append("url=${resolveChatUrl(baseUrl)}").append('\n')
             append("model=$model").append('\n')
             append("provider=${provider.name}").append('\n')
-            append("messageChars=${systemPrompt.length + userContent.length}").append('\n')
+            append("messageChars=${systemPrompt.length + contentChars(userContent)}").append('\n')
         }
         return try {
             val turn = requestCompletionStream(
@@ -247,6 +249,12 @@ object AiChatService {
                 cause = throwable
             )
         }
+    }
+
+    /** userContent 可能是字符串或多模态内容数组，日志统一按字符串化后计长 */
+    private fun contentChars(content: Any): Int = when (content) {
+        is String -> content.length
+        else -> content.toString().length
     }
 
     /** Sends a minimal completion through the same endpoint used by real AI features. */
@@ -326,7 +334,7 @@ object AiChatService {
                 onThinking = onThinking,
                 onStatus = onStatus,
                 includeStructuredBlocks = includeStructuredBlocks,
-                requestTemplate = AiChapterPurifyConfig.requestTemplate
+                requestTemplate = AiStructuredRequestTemplate.global
             )
         }.getOrElse { throwable ->
             if (throwable is AiChatException) {
@@ -649,9 +657,9 @@ object AiChatService {
                     systemPrompt = messages
                         .filter { it.optString("role") == "system" }
                         .joinToString("\n\n") { it.optString("content") },
+                    //content 可能是字符串或多模态数组：整值原文塞交给模板渲染层处理
                     userContent = messages.lastOrNull { it.optString("role") == "user" }
-                        ?.optString("content")
-                        .orEmpty()
+                        ?.opt("content") ?: ""
                 )
             } ?: buildRequestBody(messages, model, tools, stream = true, options = options)
         } catch (throwable: Throwable) {

@@ -116,7 +116,7 @@
 
         <io.legado.app.lib.prefs.Preference
             android:key="aiChapterPurifyRequestTemplate"
-            android:summary="@string/ai_chapter_purify_request_template_summary_inherited"
+            android:summary="@string/ai_chapter_purify_request_template_summary"
             android:title="@string/ai_chapter_purify_request_template"
             app:iconSpaceReserved="false" />
 

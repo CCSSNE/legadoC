@@ -678,7 +678,7 @@ object BookTtsCastingCoordinator {
                 systemPrompt = appCtx.assets.open(CASTING_ASSET).bufferedReader().use { it.readText() },
                 userContent = payload.toString(),
                 temperature = 0.0,
-                requestTemplate = AiStructuredRequestTemplate.default
+                requestTemplate = AiStructuredRequestTemplate.structuredDefault
             )
         } catch (e: CancellationException) {
             throw e

@@ -1059,23 +1059,28 @@ class AiConfigFragment : PreferenceFragment(),
         }
     }
 
+    /** 全局通用请求模板：AI 聊天（对话/划词/浮动面板）与 AI 创作共用 */
     private fun showEditRequestDialog() {
         showRequestTemplateDialog(
             titleResource = R.string.ai_edit_request,
-            currentTemplate = { AiChapterPurifyConfig.requestTemplate },
-            save = { AiChapterPurifyConfig.requestTemplate = it },
-            restore = { AiChapterPurifyConfig.requestTemplate = AiStructuredRequestTemplate.default },
+            currentTemplate = { AiStructuredRequestTemplate.global },
+            save = { AiStructuredRequestTemplate.global = it },
+            restore = { AiStructuredRequestTemplate.global = AiStructuredRequestTemplate.default },
             restoreLabelResource = R.string.restore_default
         )
     }
 
+    /** 章节净化专用请求模板：净化是唯一需要 response_format=json 的消费者 */
     private fun showChapterPurifyRequestDialog() {
         showRequestTemplateDialog(
             titleResource = R.string.ai_chapter_purify_request_template,
-            currentTemplate = { AiChapterPurifyConfig.effectiveRequestTemplate },
-            save = { AiChapterPurifyConfig.independentRequestTemplate = it },
-            restore = { AiChapterPurifyConfig.clearIndependentRequestTemplate() },
-            restoreLabelResource = R.string.ai_restore_global_request
+            currentTemplate = { AiChapterPurifyConfig.requestTemplate },
+            save = { AiChapterPurifyConfig.requestTemplate = it },
+            restore = {
+                AiChapterPurifyConfig.requestTemplate =
+                    AiStructuredRequestTemplate.structuredDefault
+            },
+            restoreLabelResource = R.string.restore_default
         )
     }
 
@@ -1441,7 +1446,7 @@ class AiConfigFragment : PreferenceFragment(),
             toastOnUi(R.string.ai_connection_test_summary_missing_model)
             return
         }
-        testAiConnection(provider, model, AiChapterPurifyConfig.requestTemplate)
+        testAiConnection(provider, model, AiStructuredRequestTemplate.global)
     }
 
     private fun testChapterPurifyConnection() {
@@ -1452,7 +1457,7 @@ class AiConfigFragment : PreferenceFragment(),
         testAiConnection(
             target.provider,
             target.modelId,
-            AiChapterPurifyConfig.effectiveRequestTemplate
+            AiChapterPurifyConfig.requestTemplate
         )
     }
 
@@ -2173,14 +2178,8 @@ class AiConfigFragment : PreferenceFragment(),
             }
         }
         findPreference<Preference>(PreferKey.aiChapterPurifyRequestTemplate)?.apply {
-            isVisible = advancedSettingsEnabled && !chapterPurifyReuseCurrentModel
-            summary = getString(
-                if (AiChapterPurifyConfig.hasIndependentRequestTemplate) {
-                    R.string.ai_chapter_purify_request_template_summary_custom
-                } else {
-                    R.string.ai_chapter_purify_request_template_summary_inherited
-                }
-            )
+            isVisible = advancedSettingsEnabled
+            summary = getString(R.string.ai_chapter_purify_request_template_summary)
         }
         findPreference<Preference>("aiChapterPurifyTestConnection")?.isVisible =
             advancedSettingsEnabled && !chapterPurifyReuseCurrentModel

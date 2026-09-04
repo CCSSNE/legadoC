@@ -1,11 +1,19 @@
 package io.legado.app.help.ai
 
+import io.legado.app.constant.PreferKey
+import io.legado.app.utils.getPrefString
+import io.legado.app.utils.putPrefString
 import org.json.JSONArray
 import org.json.JSONObject
+import splitties.init.appCtx
 
 /**
- * User-editable JSON body for the structured completion path.
+ * User-editable JSON body for structured / creation / chat completion paths.
  * Provider authentication headers are deliberately kept outside this template.
+ *
+ * 全局默认模板是"干净通用"骨架：不带 response_format（只有章节净化需要 JSON 输出），
+ * 供 AI 聊天（对话/划词/浮动面板）与 AI 创作共用。
+ * {{userContent}} 独占一个字符串值时可装入数组/对象（整值原文塞），多模态内容靠它注入。
  */
 object AiStructuredRequestTemplate {
 
@@ -13,7 +21,35 @@ object AiStructuredRequestTemplate {
     const val SYSTEM_PROMPT_TOKEN = "{{systemPrompt}}"
     const val USER_CONTENT_TOKEN = "{{userContent}}"
 
+    /** 全局干净通用默认：AI 聊天与 AI 创作共用，不带 response_format */
     val default: String = """
+        {
+          "model": "$MODEL_TOKEN",
+          "stream": true,
+          "messages": [
+            {
+              "role": "system",
+              "content": "$SYSTEM_PROMPT_TOKEN"
+            },
+            {
+              "role": "user",
+              "content": "$USER_CONTENT_TOKEN"
+            }
+          ],
+          "temperature": 0,
+          "thinking": {
+            "type": "disabled"
+          },
+          "reasoning_effort": "low",
+          "enable_thinking": false,
+          "extra_body": {
+            "enable_thinking": false
+          }
+        }
+    """.trimIndent()
+
+    /** JSON 输出专用默认：章节净化等结构化消费者的出厂模板（含 response_format） */
+    val structuredDefault: String = """
         {
           "model": "$MODEL_TOKEN",
           "stream": true,
@@ -42,11 +78,12 @@ object AiStructuredRequestTemplate {
         }
     """.trimIndent()
 
-    private val knownTokens = setOf(
-        MODEL_TOKEN,
-        SYSTEM_PROMPT_TOKEN,
-        USER_CONTENT_TOKEN
-    )
+    /** 全局通用请求模板存取：AI 聊天与 AI 创作共用一份（PreferKey.aiRequestTemplate） */
+    var global: String
+        get() = appCtx.getPrefString(PreferKey.aiRequestTemplate)
+            ?.takeIf { it.isNotBlank() }
+            ?: default
+        set(value) = appCtx.putPrefString(PreferKey.aiRequestTemplate, value.trim())
 
     fun validate(template: String) {
         val normalized = template.trim()
@@ -61,11 +98,16 @@ object AiStructuredRequestTemplate {
         }
     }
 
+    /**
+     * 渲染请求模板。[userContent] 允许传字符串或 JSON 数组/对象：
+     * 占位符独占一个字符串值时按"整值原文塞"原样放入（数组即数组，字符串即字符串）；
+     * 占位符嵌在更大字符串里却拿到数组/对象时直接报错，不做静默字符串化。
+     */
     fun render(
         template: String,
         model: String,
         systemPrompt: String,
-        userContent: String
+        userContent: Any
     ): String {
         validate(template)
         val root = JSONObject(template.trim())
@@ -78,10 +120,9 @@ object AiStructuredRequestTemplate {
         return root.toString()
     }
 
-    private fun replaceObject(json: JSONObject, replacements: Map<String, String>) {
-        val keys = json.keys()
-        while (keys.hasNext()) {
-            val key = keys.next()
+    private fun replaceObject(json: JSONObject, replacements: Map<String, Any>) {
+        val keys = json.keys().asSequence().toList()
+        for (key in keys) {
             when (val value = json.opt(key)) {
                 is JSONObject -> replaceObject(value, replacements)
                 is JSONArray -> replaceArray(value, replacements)
@@ -90,19 +131,32 @@ object AiStructuredRequestTemplate {
         }
     }
 
-    private fun replaceArray(array: JSONArray, replacements: Map<String, String>) {
+    private fun replaceArray(array: JSONArray, replacements: Map<String, Any>) {
         for (index in 0 until array.length()) {
             when (val value = array.opt(index)) {
                 is JSONObject -> replaceObject(value, replacements)
                 is JSONArray -> replaceArray(value, replacements)
-                is String -> array.put(index, replaceString(value, replacements))
+                is String -> {
+                    val exact = replacements[value]
+                    array.put(index, exact ?: replaceString(value, replacements))
+                }
             }
         }
     }
 
-    private fun replaceString(value: String, replacements: Map<String, String>): String {
-        return replacements.entries.fold(value) { current, (token, replacement) ->
-            current.replace(token, replacement)
+    private fun replaceString(value: String, replacements: Map<String, Any>): Any {
+        //整值原文塞：值就是占位符本身时，替换值原样放入（可为字符串/数组/对象）
+        replacements[value]?.let { return it }
+        var replaced = value
+        replacements.forEach { (token, replacement) ->
+            if (replacement is String) {
+                replaced = replaced.replace(token, replacement)
+            } else if (replaced.contains(token)) {
+                throw IllegalStateException(
+                    "$token 必须独占一个字符串值才能装入数组或对象，不能与其他文字拼在一起"
+                )
+            }
         }
+        return replaced
     }
 }
