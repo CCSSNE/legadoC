@@ -126,13 +126,13 @@ object AiCreationConfig {
         get() = AiCreationVariables.parseLlm(llmVariablesJson).video
             ?: error("LLM 变量设置缺少 video 节")
 
-    /** 当前图片供应商的生图参数变量。 */
+    /** 当前图片供应商的生图参数变量（旧格式残留自动回出厂）。 */
     val imageVariables: List<AiCreationVariable>
-        get() = AiCreationVariables.parse(AiCreationProviderStore.requireImageVariablesJson())
+        get() = AiCreationProviderStore.parsedImageVariables()
 
-    /** 当前视频供应商的生视频参数变量。 */
+    /** 当前视频供应商的生视频参数变量（旧格式残留自动回出厂）。 */
     val videoVariables: List<AiCreationVariable>
-        get() = AiCreationVariables.parse(AiCreationProviderStore.requireVideoVariablesJson())
+        get() = AiCreationProviderStore.parsedVideoVariables()
 
     val promptTemplates: Map<String, String>
         get() = parsePromptTemplates(promptTemplateJson)

@@ -643,7 +643,7 @@ object AiCreationImageTaskHolder {
         modelId: String
     ): String = withContext(Dispatchers.IO) {
         check(provider.requestTemplate.isNotBlank()) { "当前图片供应商「${provider.name}」的图片请求模板为空" }
-        val variables = AiCreationVariables.parse(provider.variablesJson)
+        val variables = AiCreationProviderStore.parsedVariables(provider, isVideo = false)
         val tokens = buildMap {
             put("model", modelId)
             put("prompt", AiCreationProviderStore.IMAGE_TEST_PROMPT)

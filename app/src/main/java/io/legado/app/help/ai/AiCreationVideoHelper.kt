@@ -38,7 +38,7 @@ object AiCreationVideoHelper {
         check(provider.requestTemplate.isNotBlank()) {
             "当前视频供应商「${provider.name}」的视频请求模板为空"
         }
-        val variables = AiCreationVariables.parse(provider.variablesJson)
+        val variables = AiCreationProviderStore.parsedVariables(provider, isVideo = true)
         val tokens = buildMap {
             put("model", modelId)
             put("prompt", prompt)

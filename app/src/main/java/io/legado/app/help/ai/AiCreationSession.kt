@@ -356,6 +356,22 @@ object AiCreationVariables {
     }
 
     /**
+     * 旧格式残留指纹：供应商变量定义里带 routes/finalPrompt 顶层字段，
+     * 或 variables 里含已搬去 LLM 变量设置的 style。
+     * 命中才允许自动回出厂；其他解析错误一律是用户自己的问题，原样报错。
+     * 自灭式：回出厂后指纹消失，此路以后永远走不到（编辑框校验拦着，老格式存不进来）。
+     */
+    fun isLegacyVariablesJson(json: String): Boolean {
+        val raw = runCatching { JSONObject(json) }.getOrNull() ?: return false
+        if (raw.has("routes") || raw.has("finalPrompt")) return true
+        val variables = raw.optJSONArray("variables") ?: return false
+        for (index in 0 until variables.length()) {
+            if (variables.optJSONObject(index)?.optString("key") == "style") return true
+        }
+        return false
+    }
+
+    /**
      * 解析供应商变量定义 JSON：只认 variables（生图/生视频参数）。
      * 旧格式字段与 LLM 变量一律报错暴露，不做任何兼容。
      */

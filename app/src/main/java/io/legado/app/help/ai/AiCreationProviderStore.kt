@@ -221,7 +221,7 @@ object AiCreationProviderStore {
         val provider = imageCurrentProvider
             ?: error("请先在「管理图片供应商」中设为当前供应商")
         check(provider.baseUrl.isNotBlank()) { "当前图片供应商「${provider.name}」的 API 地址为空" }
-        AiCreationVariables.parse(provider.variablesJson)
+        parsedVariables(provider, isVideo = false)
         parseImageRequestTemplateJson(provider.requestTemplate)
         val model = imageCurrentModel
             ?: error("请先在「添加图片模型」中为当前供应商添加模型")
@@ -233,7 +233,7 @@ object AiCreationProviderStore {
         val provider = videoCurrentProvider
             ?: error("请先在「管理视频供应商」中设为当前供应商")
         check(provider.baseUrl.isNotBlank()) { "当前视频供应商「${provider.name}」的 API 地址为空" }
-        AiCreationVariables.parse(provider.variablesJson)
+        parsedVariables(provider, isVideo = true)
         parseVideoRequestTemplateJson(provider.requestTemplate)
         val model = videoCurrentModel
             ?: error("请先在「添加视频模型」中为当前供应商添加模型")
@@ -241,20 +241,62 @@ object AiCreationProviderStore {
         return AiCreationProviderTarget(provider, model.modelId)
     }
 
-    /** 创作界面与提示词生成使用的变量定义：取当前图片供应商 */
-    fun requireImageVariablesJson(): String {
+    /** 创作界面与提示词生成使用的变量定义：取当前图片供应商，旧格式残留自动回出厂 */
+    fun parsedImageVariables(): List<AiCreationVariable> {
         val provider = imageCurrentProvider
             ?: error("请先在「管理图片供应商」中设为当前供应商")
         check(provider.variablesJson.isNotBlank()) { "当前图片供应商「${provider.name}」的变量定义为空" }
-        return provider.variablesJson
+        return parsedVariables(provider, isVideo = false)
     }
 
-    /** 创作界面与提示词生成使用的变量定义：取当前视频供应商 */
-    fun requireVideoVariablesJson(): String {
+    /** 创作界面与提示词生成使用的变量定义：取当前视频供应商，旧格式残留自动回出厂 */
+    fun parsedVideoVariables(): List<AiCreationVariable> {
         val provider = videoCurrentProvider
             ?: error("请先在「管理视频供应商」中设为当前供应商")
         check(provider.variablesJson.isNotBlank()) { "当前视频供应商「${provider.name}」的变量定义为空" }
-        return provider.variablesJson
+        return parsedVariables(provider, isVideo = true)
+    }
+
+    /**
+     * 解析供应商变量定义：旧格式残留（带 routes/finalPrompt/style 指纹）自动回出厂并重读；
+     * 其他解析错误一律是用户自己的问题，原样报错、不碰存储。
+     * 自灭式：回出厂后指纹消失，此路以后永远走不到；自定义供应商没有出厂可写，继续报错让用户重填。
+     */
+    fun parsedVariables(
+        provider: AiCreationProviderConfig,
+        isVideo: Boolean
+    ): List<AiCreationVariable> {
+        return try {
+            AiCreationVariables.parse(provider.variablesJson)
+        } catch (error: RuntimeException) {
+            if (!AiCreationVariables.isLegacyVariablesJson(provider.variablesJson)) throw error
+            val factory = defaultVariablesJsonOf(provider) ?: throw error
+            updateProviderVariablesJson(provider.id, isVideo, factory)
+            dropStaleStyleKey(provider.id, isVideo)
+            AiCreationVariables.parse(factory)
+        }
+    }
+
+    /** 回出厂写回：只重写内置供应商的变量定义；其他配置不动 */
+    private fun updateProviderVariablesJson(providerId: String, isVideo: Boolean, factoryJson: String) {
+        if (isVideo) {
+            videoProviderList = videoProviderList.map {
+                if (it.id == providerId) it.copy(variablesJson = factoryJson) else it
+            }
+        } else {
+            imageProviderList = imageProviderList.map {
+                if (it.id == providerId) it.copy(variablesJson = factoryJson) else it
+            }
+        }
+    }
+
+    /** 回出厂时顺手清掉已搬走的 style 旧存储键；mode 等正常参数不动 */
+    private fun dropStaleStyleKey(providerId: String, isVideo: Boolean) {
+        val mode = if (isVideo) AiCreationVariables.GROUP_VIDEO else AiCreationVariables.GROUP_IMAGE
+        val params = AiCreationConfig.loadCreationParams()
+        if (params.remove("provider:$mode:$providerId:style") != null) {
+            AiCreationConfig.saveCreationParams(params)
+        }
     }
 
     /** 内置供应商的出厂变量定义（供恢复默认）；自定义供应商无默认 */
