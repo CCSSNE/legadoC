@@ -34,6 +34,7 @@ import io.legado.app.help.ai.AiCreationHelper
 import io.legado.app.help.ai.AiCreationImageFile
 import io.legado.app.help.ai.AiCreationImageSlot
 import io.legado.app.help.ai.AiCreationImageSlotState
+import io.legado.app.help.ai.AiCreationInlineImages
 import io.legado.app.help.ai.AiCreationImageTaskHolder
 import io.legado.app.help.ai.AiCreationSessionHolder
 import io.legado.app.help.ai.AiCreationVariable
@@ -247,11 +248,13 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         binding.etLlmInput.addTextChangedListener { text ->
             if (!suppressTextWatcher) {
                 session.manualLlmInput = text?.toString().orEmpty()
+                AiCreationInlineImages.refresh(viewLifecycleOwner.lifecycleScope, binding.etLlmInput)
             }
         }
         binding.etManualPrompt.addTextChangedListener { text ->
             if (!suppressTextWatcher) {
                 session.prompt = text?.toString().orEmpty()
+                AiCreationInlineImages.refresh(viewLifecycleOwner.lifecycleScope, binding.etManualPrompt)
             }
         }
         //生成数量实时持久化：下次进入提示词页直接恢复上次值
@@ -382,6 +385,8 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
             binding.etManualPrompt.setText(session.prompt)
             binding.etLlmInput.setText(session.manualLlmInput)
             suppressTextWatcher = false
+            AiCreationInlineImages.refresh(viewLifecycleOwner.lifecycleScope, binding.etManualPrompt)
+            AiCreationInlineImages.refresh(viewLifecycleOwner.lifecycleScope, binding.etLlmInput)
             //从未手动编辑过LLM输入时按当前卡片重新汇总预填；编辑过则保留用户快照
             if (session.manualLlmInput.isBlank()) {
                 prefillLlmInput()
@@ -799,6 +804,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
                 suppressTextWatcher = true
                 binding.etManualPrompt.setText(prompt)
                 suppressTextWatcher = false
+                AiCreationInlineImages.refresh(viewLifecycleOwner.lifecycleScope, binding.etManualPrompt)
             }.onFailure { throwable ->
                 toastOnUi(throwable.message ?: throwable.javaClass.simpleName)
             }
@@ -825,6 +831,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
                     suppressTextWatcher = true
                     binding.etLlmInput.setText(text)
                     suppressTextWatcher = false
+                    AiCreationInlineImages.refresh(viewLifecycleOwner.lifecycleScope, binding.etLlmInput)
                 }
             }.onFailure { throwable ->
                 toastOnUi(throwable.message ?: throwable.javaClass.simpleName)
