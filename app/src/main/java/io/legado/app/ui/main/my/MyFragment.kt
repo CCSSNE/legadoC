@@ -171,7 +171,8 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
             SubSearchSource("ai_setting", R.xml.pref_config_ai, ConfigTag.AI_CONFIG),
             SubSearchSource("setting", R.xml.pref_config_other, ConfigTag.OTHER_CONFIG),
             SubSearchSource("setting", R.xml.pref_config_read, ConfigTag.READ_CONFIG),
-            SubSearchSource("setting", R.xml.pref_config_aloud, ConfigTag.ALOUD_CONFIG)
+            SubSearchSource("setting", R.xml.pref_config_aloud, ConfigTag.ALOUD_CONFIG),
+            SubSearchSource("fallback_setting", R.xml.pref_config_fallback, ConfigTag.FALLBACK_CONFIG)
         )
 
         private val subSearchItems by lazy(LazyThreadSafetyMode.NONE) { buildSubSearchItems() }
@@ -528,6 +529,9 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
                 "bookmark" -> startActivity<AllBookmarkActivity>()
                 "setting" -> startActivity<ConfigActivity> {
                     putExtra("configTag", ConfigTag.OTHER_CONFIG)
+                }
+                "fallback_setting" -> startActivity<ConfigActivity> {
+                    putExtra("configTag", ConfigTag.FALLBACK_CONFIG)
                 }
 
                 "web_dav_setting" -> startActivity<ConfigActivity> {

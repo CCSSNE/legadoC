@@ -1852,6 +1852,35 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val readAloudHideFloatingWindow
         get() = appCtx.getPrefBoolean(PreferKey.readAloudHideFloatingWindow, true)
 
+    // 无字幕音频书直接进入沉浸式听书页（AudioPlayActivity），默认开启
+    val audioBookDirectAudioPlayNoSubtitle
+        get() = appCtx.getPrefBoolean(PreferKey.audioBookDirectAudioPlayNoSubtitle, true)
+
+    // 所有音频书直接进入沉浸式听书页，默认关闭，优先级高于无字幕规则
+    val audioBookDirectAudioPlayAll
+        get() = appCtx.getPrefBoolean(PreferKey.audioBookDirectAudioPlayAll, false)
+
+    // 经以上规则进入听书页后自动开始播放，默认关闭
+    val audioBookDirectAudioPlayAutoPlay
+        get() = appCtx.getPrefBoolean(PreferKey.audioBookDirectAudioPlayAutoPlay, false)
+
+    // 朗读悬浮窗在阅读界面外（应用内其他界面）显示，默认开启
+    val readAloudFloatingOutsideReader
+        get() = appCtx.getPrefBoolean(PreferKey.readAloudFloatingOutsideReader, true)
+
+    // AI 创作悬浮窗在阅读界面外显示，默认开启
+    val aiCreationFloatingOutsideReader
+        get() = appCtx.getPrefBoolean(PreferKey.aiCreationFloatingOutsideReader, true)
+
+    const val DEFAULT_AI_CREATION_FLOATING_AUTO_CLOSE_SECONDS = 30
+
+    // AI 创作悬浮窗任务完成后自动关闭秒数；值为空/非数字/非正数=不自动关闭
+    val aiCreationFloatingAutoCloseSeconds: Int?
+        get() = appCtx.getPrefString(
+            PreferKey.aiCreationFloatingAutoCloseSeconds,
+            DEFAULT_AI_CREATION_FLOATING_AUTO_CLOSE_SECONDS.toString()
+        )?.trim()?.takeIf { it.isNotEmpty() }?.toIntOrNull()?.takeIf { it > 0 }
+
     val readAloudHidePlaybackPanel
         get() = appCtx.getPrefBoolean(PreferKey.readAloudHidePlaybackPanel, false)
 

@@ -40,6 +40,7 @@ class ConfigActivity : VMBaseActivity<ActivityConfigBinding, ConfigViewModel>() 
                 setTitle(R.string.aloud_config)
                 replaceFragment(configTag, ReadAloudConfigDialog.ReadAloudPreferenceFragment::class.java)
             }
+            ConfigTag.FALLBACK_CONFIG -> replaceFragment(configTag, FallbackConfigFragment::class.java)
             else -> finish()
         }
     }

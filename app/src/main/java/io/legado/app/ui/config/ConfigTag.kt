@@ -13,5 +13,6 @@ object ConfigTag {
     const val SUBSCRIPTION_CONFIG = "subscriptionConfig"
     const val READ_CONFIG = "readConfig"
     const val ALOUD_CONFIG = "aloudConfig"
+    const val FALLBACK_CONFIG = "fallbackConfig"
 
 }

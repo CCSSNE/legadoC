@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <io.legado.app.lib.prefs.PreferenceCategory
+        android:title="@string/fallback_setting"
+        app:allowDividerAbove="false"
+        app:allowDividerBelow="false"
+        app:iconSpaceReserved="false"
+        app:layout="@layout/view_preference_category">
+
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="true"
+            android:key="audioBookDirectAudioPlayNoSubtitle"
+            android:summary="@string/audio_book_direct_audio_play_no_subtitle_summary"
+            android:title="@string/audio_book_direct_audio_play_no_subtitle"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="false"
+            android:key="audioBookDirectAudioPlayAll"
+            android:summary="@string/audio_book_direct_audio_play_all_summary"
+            android:title="@string/audio_book_direct_audio_play_all"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="false"
+            android:key="audioBookDirectAudioPlayAutoPlay"
+            android:summary="@string/audio_book_direct_audio_play_auto_play_summary"
+            android:title="@string/audio_book_direct_audio_play_auto_play"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="true"
+            android:key="readAloudFloatingOutsideReader"
+            android:summary="@string/read_aloud_floating_outside_reader_summary"
+            android:title="@string/read_aloud_floating_outside_reader"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="true"
+            android:key="aiCreationFloatingOutsideReader"
+            android:summary="@string/ai_creation_floating_outside_reader_summary"
+            android:title="@string/ai_creation_floating_outside_reader"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.EditTextPreference
+            android:defaultValue="30"
+            android:key="aiCreationFloatingAutoCloseSeconds"
+            android:summary="@string/ai_creation_floating_auto_close_summary"
+            android:title="@string/ai_creation_floating_auto_close"
+            app:iconSpaceReserved="false" />
+
+    </io.legado.app.lib.prefs.PreferenceCategory>
+
+</androidx.preference.PreferenceScreen>

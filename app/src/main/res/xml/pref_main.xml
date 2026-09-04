@@ -168,6 +168,13 @@
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
+            android:key="fallback_setting"
+            android:summary="@string/fallback_setting_summary"
+            android:title="@string/fallback_setting"
+            app:allowDividerBelow="false"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
             android:key="bookmark"
             android:summary="@string/all_bookmark"
             android:title="@string/bookmark"
