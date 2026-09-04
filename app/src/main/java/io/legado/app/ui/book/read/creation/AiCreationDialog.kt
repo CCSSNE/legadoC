@@ -903,13 +903,17 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
 
     private fun onGenerateImageClicked() {
         if (currentPage == 4) {
-            //手动挡：只用下框内容，为空直接报错，不自动代生成
+            //手动挡：只用下框内容，为空直接报错，不自动代生成；
+            //上框即本次 LLM 输入，直接生成不经过 LLM 时也如实记入溯源，不用残留旧值
             val prompt = binding.etManualPrompt.text?.toString()?.trim().orEmpty()
             if (prompt.isEmpty()) {
                 toastOnUi(R.string.ai_creation_prompt_empty)
                 return
             }
             session.prompt = prompt
+            val llmInput = binding.etLlmInput.text?.toString()?.trim().orEmpty()
+            session.manualLlmInput = llmInput
+            session.setParam(AI_CREATION_LLM_INPUT_KEY, llmInput)
             startGeneration(prompt)
             return
         }
