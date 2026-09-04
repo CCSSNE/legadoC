@@ -26,6 +26,7 @@ import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.databinding.DialogAiCreationBinding
 import io.legado.app.databinding.ItemAiPreviewBinding
 import io.legado.app.help.ai.AI_CREATION_EPHEMERAL_BOOK
+import io.legado.app.help.ai.AI_CREATION_FINAL_PROMPT_KEY
 import io.legado.app.help.ai.AI_CREATION_IMAGE_COUNT_KEY
 import io.legado.app.help.ai.AI_CREATION_MODE_KEY
 import io.legado.app.help.ai.AiCreationConfig
@@ -888,7 +889,12 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
             val result = runCatching {
                 val definition = AiCreationConfig.videoDefinition
                 val values = AiCreationHelper.buildRequestValues(session, definition.variables)
-                AiCreationImageTaskHolder.startVideo(prompt, count, values)
+                AiCreationImageTaskHolder.startVideo(
+                    prompt,
+                    count,
+                    values,
+                    session.paramValue(AI_CREATION_FINAL_PROMPT_KEY).orEmpty()
+                )
             }
             result.onSuccess {
                 showPage(3)
@@ -907,7 +913,12 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
                 val definition = AiCreationConfig.imageDefinition
                 val values = AiCreationHelper.buildRequestValues(session, definition.variables)
                 AiCreationConfig.requireImageApiReady()
-                AiCreationImageTaskHolder.start(prompt, count, values)
+                AiCreationImageTaskHolder.start(
+                    prompt,
+                    count,
+                    values,
+                    session.paramValue(AI_CREATION_FINAL_PROMPT_KEY).orEmpty()
+                )
             }
             result.onSuccess {
                 showPage(3)
@@ -1034,16 +1045,12 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
                 .show(childFragmentManager, "creationPhoto")
         }
         ivPhoto.setOnLongClickListener {
-            val ok = AiCreationImageFile.saveToAlbum(requireContext(), slot.fileName)
-            toastOnUi(
-                if (ok) R.string.illustration_saved_to_album
-                else R.string.illustration_save_failed
-            )
+            showSlotSaveMenu(slot.fileName)
             true
         }
     }
 
-    /** 视频槽位：首帧做缩略图，点击内置播放器播放，长按保存到相册 */
+    /** 视频槽位：首帧做缩略图，点击内置播放器播放，长按弹保存菜单 */
     private fun bindVideoResult(
         itemBinding: ItemAiPreviewBinding,
         slot: AiCreationImageSlot
@@ -1082,13 +1089,63 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
                 .show(childFragmentManager, "creationPhoto")
         }
         ivPhoto.setOnLongClickListener {
-            val ok = AiCreationImageFile.saveToAlbum(requireContext(), slot.fileName)
-            toastOnUi(
-                if (ok) R.string.illustration_saved_to_album
-                else R.string.illustration_save_failed
-            )
+            showSlotSaveMenu(slot.fileName)
             true
         }
+    }
+
+    /** 生成结果长按菜单：保存到相册、保存工作流、复制工作流；图片视频同一菜单 */
+    private fun showSlotSaveMenu(fileName: String) {
+        requireContext().selector(
+            AiCreationImageFile.fileOf(fileName).name,
+            listOf(
+                getString(R.string.illustration_save_to_album),
+                getString(R.string.ai_creation_save_workflow),
+                getString(R.string.ai_creation_copy_workflow)
+            )
+        ) { _, _, which ->
+            when (which) {
+                0 -> saveSlotToAlbum(fileName)
+                1 -> exportWorkflow(fileName)
+                else -> copyWorkflow(fileName)
+            }
+        }
+    }
+
+    private fun saveSlotToAlbum(fileName: String) {
+        val ok = AiCreationImageFile.saveToAlbum(requireContext(), fileName)
+        toastOnUi(
+            if (ok) R.string.illustration_saved_to_album
+            else R.string.illustration_save_failed
+        )
+    }
+
+    private fun exportWorkflow(fileName: String) {
+        val json = AiCreationImageFile.readWorkflowJson(fileName)
+        if (json == null) {
+            toastOnUi(R.string.ai_creation_workflow_missing)
+            return
+        }
+        val context = requireContext()
+        viewLifecycleOwner.lifecycleScope.launch {
+            val ok = withContext(IO) {
+                AiCreationImageFile.saveWorkflowToDownloads(context, fileName, json)
+            }
+            toastOnUi(
+                if (ok) R.string.ai_creation_workflow_saved
+                else R.string.ai_creation_workflow_save_failed
+            )
+        }
+    }
+
+    private fun copyWorkflow(fileName: String) {
+        val json = AiCreationImageFile.readWorkflowJson(fileName)
+        if (json == null) {
+            toastOnUi(R.string.ai_creation_workflow_missing)
+            return
+        }
+        requireContext().sendToClip(json)
+        toastOnUi(R.string.ai_creation_workflow_copied)
     }
 
     private fun copyPrompt() {

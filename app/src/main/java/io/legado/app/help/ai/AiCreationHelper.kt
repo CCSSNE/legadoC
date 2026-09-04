@@ -51,6 +51,8 @@ object AiCreationHelper {
             userContent = userContent,
             temperature = 0.7
         )
+        //工作流溯源：记录本次渲染后发给 LLM 的 finalPrompt 完整内容（含提示词模板文本与素材组合）
+        session.setParam(AI_CREATION_FINAL_PROMPT_KEY, userContent)
         return response
     }
 

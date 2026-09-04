@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
+import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.recyclerview.widget.RecyclerView
@@ -19,8 +20,12 @@ import io.legado.app.help.glide.ImageLoader
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.ui.widget.dialog.showActionBottomSheet
 import io.legado.app.utils.setLayout
+import io.legado.app.utils.sendToClip
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 全屏查看创作结果：图片 / 视频。
@@ -173,13 +178,52 @@ class AiCreationPhotoDialog : BaseDialogFragment(R.layout.dialog_photo_view) {
     private fun showSaveSheet(fileName: String) {
         showActionBottomSheet(
             requireContext(),
-            listOf(SelectItem(getString(R.string.illustration_save_to_album), "save"))
-        ) {
-            val ok = AiCreationImageFile.saveToAlbum(requireContext(), fileName)
+            listOf(
+                SelectItem(getString(R.string.illustration_save_to_album), "save"),
+                SelectItem(getString(R.string.ai_creation_save_workflow), "workflow"),
+                SelectItem(getString(R.string.ai_creation_copy_workflow), "copy")
+            )
+        ) { action ->
+            when (action) {
+                "save" -> {
+                    val ok = AiCreationImageFile.saveToAlbum(requireContext(), fileName)
+                    toastOnUi(
+                        if (ok) R.string.illustration_saved_to_album
+                        else R.string.illustration_save_failed
+                    )
+                }
+
+                "workflow" -> exportWorkflow(fileName)
+                else -> copyWorkflow(fileName)
+            }
+        }
+    }
+
+    private fun exportWorkflow(fileName: String) {
+        val json = AiCreationImageFile.readWorkflowJson(fileName)
+        if (json == null) {
+            toastOnUi(R.string.ai_creation_workflow_missing)
+            return
+        }
+        val context = requireContext()
+        viewLifecycleOwner.lifecycleScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                AiCreationImageFile.saveWorkflowToDownloads(context, fileName, json)
+            }
             toastOnUi(
-                if (ok) R.string.illustration_saved_to_album
-                else R.string.illustration_save_failed
+                if (ok) R.string.ai_creation_workflow_saved
+                else R.string.ai_creation_workflow_save_failed
             )
         }
+    }
+
+    private fun copyWorkflow(fileName: String) {
+        val json = AiCreationImageFile.readWorkflowJson(fileName)
+        if (json == null) {
+            toastOnUi(R.string.ai_creation_workflow_missing)
+            return
+        }
+        requireContext().sendToClip(json)
+        toastOnUi(R.string.ai_creation_workflow_copied)
     }
 }

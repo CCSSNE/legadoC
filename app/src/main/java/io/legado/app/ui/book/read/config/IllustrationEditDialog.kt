@@ -23,6 +23,8 @@ import io.legado.app.databinding.ItemImageSimpleBinding
 import io.legado.app.help.illustration.IllustrationAnchor
 import io.legado.app.help.illustration.IllustrationHelp
 import io.legado.app.help.illustration.imageSrcsToJson
+import io.legado.app.help.ai.AiCreationMediaMetadata
+import io.legado.app.help.ai.AiCreationWorkflow
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.uiTypeface
@@ -72,6 +74,9 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
     // 选择时统一读取字节并解析类型，保存与逐条备注分组共用这份结果
     private val parsedMedia = arrayListOf<Pair<ByteArray, String>>() // bytes to ext
 
+    // 与 parsedMedia 平行索引：各媒体内嵌的工作流 JSON 原文（无元数据为 null）
+    private val parsedWorkflows = arrayListOf<String?>()
+
     private val unitNoteEdits = arrayListOf<EditText>()
     private val unitKeys = arrayListOf<Int>()
     private val unitNotes = LinkedHashMap<Int, String>() // 单元 firstIndex -> 备注
@@ -112,6 +117,13 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
             selectedUris.addAll(it.uris)
             parsedMedia.clear()
             parsedMedia.addAll(parsed)
+            parsedWorkflows.clear()
+            parsedWorkflows.addAll(
+                parsed.map { (bytes, _) ->
+                    //AI 创作生成的文件自带工作流元数据（PNG 文本块 / MP4 meta box），按签名读取
+                    runCatching { AiCreationMediaMetadata.readWorkflowJson(bytes) }.getOrNull()
+                }
+            )
             upSelected()
             rebuildNoteInputs()
         }
@@ -217,7 +229,13 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
         binding.llNoteItems.removeAllViews()
         unitNoteEdits.clear()
         unitKeys.clear()
-        if (unified) return
+        if (unified) {
+            //自带工作流元数据的媒体：预填可读摘要，仅填空备注，不覆盖用户已输入内容
+            if (binding.etNote.text.isNullOrBlank()) {
+                firstWorkflowSummary()?.let { binding.etNote.setText(it) }
+            }
+            return
+        }
         val context = requireContext()
         computeUnits().forEachIndexed { unitIndex, unit ->
             val label = TextView(context).apply {
@@ -236,7 +254,7 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
                 background = null
                 setTextColor(context.getCompatColor(R.color.primaryText))
                 textSize = 14f
-                setText(unitNotes[unit.firstIndex].orEmpty())
+                setText(unitNotes[unit.firstIndex] ?: workflowSummaryOf(unit.firstIndex).orEmpty())
             }
             val labelParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -257,6 +275,15 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
         }
         binding.llNoteItems.applyUiBodyTypefaceDeep(context.uiTypeface())
     }
+
+    /** 指定媒体的解析摘要；非本应用工作流格式（如 ComfyUI 原生图）返回 null 不预填 */
+    private fun workflowSummaryOf(mediaIndex: Int): String? {
+        val json = parsedWorkflows.getOrNull(mediaIndex) ?: return null
+        return AiCreationWorkflow.fromJsonString(json)?.toSummaryText()
+    }
+
+    private fun firstWorkflowSummary(): String? =
+        parsedWorkflows.indices.firstNotNullOfOrNull { workflowSummaryOf(it) }
 
     private fun save() {
         if (parsedMedia.isEmpty()) {

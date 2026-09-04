@@ -26,13 +26,14 @@ object AiCreationVideoHelper {
 
     /**
      * 生成一个视频：渲染请求模板（运行值完整传入；测试才取定义默认值）→ 提交 → 轮询 →
-     * 下载 mp4 落盘，返回文件名。真实生成与测试连接共用本入口。
+     * 下载 mp4 落盘（写入工作流元数据），返回文件名。真实生成与测试连接共用本入口。
      */
     suspend fun generateVideo(
         provider: AiCreationProviderConfig,
         modelId: String,
         prompt: String,
-        extraValues: Map<String, String> = emptyMap()
+        extraValues: Map<String, String> = emptyMap(),
+        finalPrompt: String = ""
     ): String = withContext(Dispatchers.IO) {
         check(provider.requestTemplate.isNotBlank()) {
             "当前视频供应商「${provider.name}」的视频请求模板为空"
@@ -47,6 +48,17 @@ object AiCreationVideoHelper {
             }
         }
         val body = AiCreationProviderStore.renderRequestTemplate(provider.requestTemplate, tokens)
+        //工作流溯源快照：变量与请求体都是填好实际值的成品，不含 API Key
+        val workflow = AiCreationWorkflow(
+            type = AiCreationWorkflow.TYPE_VIDEO,
+            providerName = provider.name,
+            baseUrl = provider.baseUrl,
+            model = modelId,
+            variables = tokens.filterKeys { it !in setOf("model", "prompt", "n") },
+            finalPrompt = finalPrompt,
+            prompt = prompt,
+            request = body
+        )
 
         val submitText = postForText(provider, provider.baseUrl, body)
         val submitRoot = JSONObject(submitText)
@@ -58,7 +70,7 @@ object AiCreationVideoHelper {
                 pollBigModel(provider, submitRoot.optString("id"))
             else -> throw IllegalStateException("视频提交响应无法识别：${submitText.take(300)}")
         }
-        AiCreationImageFile.saveVideoBytes(downloadVideoBytes(url))
+        AiCreationImageFile.saveVideoBytes(downloadVideoBytes(url), workflow)
     }
 
     /** 测试连接：真实生成一个视频验证链路，验证后删除文件，不进创作库 */

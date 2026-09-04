@@ -44,24 +44,80 @@ object AiCreationImageFile {
     private val nameSeq = AtomicInteger(0)
 
     /** 文件名单点保证唯一：时间戳 + 进程内自增序号，并发任务同时落盘也不会撞名覆盖 */
-    fun saveBytes(bytes: ByteArray): String {
+    fun saveBytes(bytes: ByteArray, workflow: AiCreationWorkflow? = null): String {
         val fileName = "img_${System.currentTimeMillis()}_${nameSeq.incrementAndGet()}.png"
         val target = File(dir, fileName)
+        //工作流写入 PNG 文本块（ComfyUI 同款做法）；非真 PNG 或注入失败如实原样落盘
+        val outBytes = workflow?.let { meta ->
+            runCatching { AiCreationMediaMetadata.injectPngWorkflow(bytes, meta.toJsonString()) }
+                .getOrNull()
+        } ?: bytes
         FileOutputStream(target).use { out ->
-            out.write(bytes)
+            out.write(outBytes)
         }
         return fileName
     }
 
-    /** 视频落盘：vid_ 前缀 mp4，预览与图库按前缀区分视频条目 */
-    fun saveVideoBytes(bytes: ByteArray): String {
+    /** 视频落盘：vid_ 前缀 mp4，预览与图库按前缀区分视频条目；工作流写入 MP4 meta box */
+    fun saveVideoBytes(bytes: ByteArray, workflow: AiCreationWorkflow? = null): String {
         val fileName = "vid_${System.currentTimeMillis()}_${nameSeq.incrementAndGet()}.mp4"
         val target = File(dir, fileName)
+        val outBytes = workflow?.let { meta ->
+            runCatching { AiCreationMediaMetadata.injectMp4Workflow(bytes, meta.toJsonString()) }
+                .getOrNull()
+        } ?: bytes
         FileOutputStream(target).use { out ->
-            out.write(bytes)
+            out.write(outBytes)
         }
         return fileName
     }
+
+    /** 读取文件内的工作流 JSON 原文（无元数据返回 null）；复制与导出用原文，不经过重序列化 */
+    fun readWorkflowJson(fileName: String): String? =
+        runCatching {
+            AiCreationMediaMetadata.readWorkflowJson(fileOf(fileName).readBytes())
+        }.getOrNull()
+
+    /** 导出工作流 JSON 到公共 Download/Legado 目录，命名 <原文件名>_workflow.json */
+    fun saveWorkflowToDownloads(
+        context: android.content.Context,
+        fileName: String,
+        workflowJson: String
+    ): Boolean =
+        kotlin.runCatching {
+            val exportName = fileName.substringBeforeLast('.') + "_workflow.json"
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val values = ContentValues().apply {
+                    put(MediaStore.Downloads.DISPLAY_NAME, exportName)
+                    put(MediaStore.Downloads.MIME_TYPE, "application/json")
+                    put(
+                        MediaStore.Downloads.RELATIVE_PATH,
+                        "${Environment.DIRECTORY_DOWNLOADS}/Legado"
+                    )
+                    put(MediaStore.Downloads.IS_PENDING, 1)
+                }
+                val uri = context.contentResolver.insert(
+                    MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                    values
+                ) ?: return false
+                context.contentResolver.openOutputStream(uri)?.use { out ->
+                    out.write(workflowJson.toByteArray(Charsets.UTF_8))
+                } ?: return false
+                values.clear()
+                values.put(MediaStore.Downloads.IS_PENDING, 0)
+                context.contentResolver.update(uri, values, null, null)
+                true
+            } else {
+                @Suppress("DEPRECATION")
+                val legacyDir = File(
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                    "Legado"
+                )
+                if (!legacyDir.exists() && !legacyDir.mkdirs()) return false
+                File(legacyDir, exportName).writeText(workflowJson, Charsets.UTF_8)
+                true
+            }
+        }.getOrDefault(false)
 
     fun delete(fileName: String) {
         runCatching { fileOf(fileName).delete() }
@@ -232,7 +288,7 @@ object AiCreationImageTaskHolder {
         return message
     }
 
-    fun start(prompt: String, count: Int, extraValues: Map<String, String>) {
+    fun start(prompt: String, count: Int, extraValues: Map<String, String>, finalPrompt: String = "") {
         val target = AiCreationProviderStore.requireImageTarget()
         val task = GenerationTask((0 until count).map { index -> AiCreationImageSlot(index = index) })
         synchronized(displayLock) {
@@ -244,7 +300,7 @@ object AiCreationImageTaskHolder {
         floatingDismissed = false
         updateFloatingState()
         scope.launch {
-            runGeneration(task, target, prompt, count, extraValues)
+            runGeneration(task, target, prompt, count, extraValues, finalPrompt)
         }
     }
 
@@ -253,7 +309,12 @@ object AiCreationImageTaskHolder {
      * （变量值由调用方按视频体系解析传入）。展示与提示复用图片任务的槽位机制，
      * 槽位文件名以 vid_ 前缀区分视频。视频一次请求只产出一个视频，按并发上限分批提交。
      */
-    fun startVideo(prompt: String, count: Int, extraValues: Map<String, String>) {
+    fun startVideo(
+        prompt: String,
+        count: Int,
+        extraValues: Map<String, String>,
+        finalPrompt: String = ""
+    ) {
         val target = AiCreationProviderStore.requireVideoTarget()
         val task = GenerationTask((0 until count).map { index -> AiCreationImageSlot(index = index) })
         synchronized(displayLock) {
@@ -264,7 +325,7 @@ object AiCreationImageTaskHolder {
         floatingDismissed = false
         updateFloatingState()
         scope.launch {
-            runVideoGeneration(task, target, prompt, count, extraValues)
+            runVideoGeneration(task, target, prompt, count, extraValues, finalPrompt)
         }
     }
 
@@ -273,7 +334,8 @@ object AiCreationImageTaskHolder {
         target: AiCreationProviderTarget,
         prompt: String,
         count: Int,
-        extraValues: Map<String, String>
+        extraValues: Map<String, String>,
+        finalPrompt: String
     ) {
         val retry = AiCreationConfig.imageRetryCount
         val failedIndexes = mutableListOf<Int>()
@@ -282,7 +344,7 @@ object AiCreationImageTaskHolder {
                 chunk.map { index ->
                     async {
                         index to runCatching {
-                            requestVideo(target, prompt, extraValues, retry)
+                            requestVideo(target, prompt, extraValues, retry, finalPrompt)
                         }
                     }
                 }.awaitAll()
@@ -298,7 +360,9 @@ object AiCreationImageTaskHolder {
         }
         //首轮仍失败的槽位串行重试（带完整重试与退避），两轮全败才如实标失败
         for (index in failedIndexes) {
-            val single = runCatching { requestVideo(target, prompt, extraValues, retry) }
+            val single = runCatching {
+                requestVideo(target, prompt, extraValues, retry, finalPrompt)
+            }
             single.onSuccess { fileName ->
                 acceptImage(task, index, fileName)
             }.onFailure { throwable ->
@@ -312,7 +376,8 @@ object AiCreationImageTaskHolder {
         target: AiCreationProviderTarget,
         prompt: String,
         extraValues: Map<String, String>,
-        retry: Int
+        retry: Int,
+        finalPrompt: String
     ): String {
         var lastError: Throwable? = null
         repeat(retry + 1) { attempt ->
@@ -321,7 +386,8 @@ object AiCreationImageTaskHolder {
                     target.provider,
                     target.modelId,
                     prompt,
-                    extraValues
+                    extraValues,
+                    finalPrompt
                 )
             } catch (throwable: Throwable) {
                 if (throwable is CancellationException) throw throwable
@@ -366,10 +432,13 @@ object AiCreationImageTaskHolder {
         target: AiCreationProviderTarget,
         prompt: String,
         count: Int,
-        extraValues: Map<String, String>
+        extraValues: Map<String, String>,
+        finalPrompt: String
     ) {
         // 第一级：单次批量请求 n 张（智谱等忽略 n 的服务只会返回 1 张，按实际返回数记账）
-        val batch = runCatching { requestImages(target, prompt, count, extraValues) }
+        val batch = runCatching {
+            requestImages(target, prompt, count, extraValues, finalPrompt = finalPrompt)
+        }
         var completed = 0
         batch.onSuccess { fileNames ->
             fileNames.take(count).forEach { fileName ->
@@ -391,7 +460,14 @@ object AiCreationImageTaskHolder {
                 chunk.map { index ->
                     async {
                         index to runCatching {
-                            requestImages(target, prompt, 1, extraValues, retryEnabled = false)
+                            requestImages(
+                                target,
+                                prompt,
+                                1,
+                                extraValues,
+                                retryEnabled = false,
+                                finalPrompt = finalPrompt
+                            )
                         }
                     }
                 }.awaitAll()
@@ -414,7 +490,9 @@ object AiCreationImageTaskHolder {
         }
         // 第三级：仍失败的槽位串行逐张重试（带完整重试与退避）
         for (index in failedIndexes) {
-            val single = runCatching { requestImages(target, prompt, 1, extraValues) }
+            val single = runCatching {
+                requestImages(target, prompt, 1, extraValues, finalPrompt = finalPrompt)
+            }
             single.onSuccess { fileNames ->
                 if (fileNames.isEmpty()) {
                     failSlot(task, index, "服务未返回图片")
@@ -433,15 +511,24 @@ object AiCreationImageTaskHolder {
         prompt: String,
         n: Int,
         extraValues: Map<String, String>,
-        retryEnabled: Boolean = true
+        retryEnabled: Boolean = true,
+        finalPrompt: String = ""
     ): List<String> {
         val retry = AiCreationConfig.imageRetryCount
         val body = renderImageRequestBody(target, prompt, n, extraValues)
+        val workflow = buildWorkflow(
+            type = AiCreationWorkflow.TYPE_IMAGE,
+            target = target,
+            prompt = prompt,
+            variables = extraValues,
+            finalPrompt = finalPrompt,
+            requestBody = body
+        )
         var lastError: Throwable? = null
         val attempts = if (retryEnabled) retry + 1 else 1
         repeat(attempts) { attempt ->
             try {
-                return fetchImages(target.provider, body)
+                return fetchImages(target.provider, body, workflow)
             } catch (throwable: Throwable) {
                 if (throwable is CancellationException) throw throwable
                 lastError = throwable
@@ -451,9 +538,31 @@ object AiCreationImageTaskHolder {
         throw lastError ?: IllegalStateException("生成失败")
     }
 
+    /** 工作流溯源快照：变量与请求体都是填好实际值的成品，不含 API Key */
+    private fun buildWorkflow(
+        type: String,
+        target: AiCreationProviderTarget,
+        prompt: String,
+        variables: Map<String, String>,
+        finalPrompt: String,
+        requestBody: String
+    ): AiCreationWorkflow {
+        return AiCreationWorkflow(
+            type = type,
+            providerName = target.provider.name,
+            baseUrl = target.provider.baseUrl,
+            model = target.modelId,
+            variables = variables,
+            finalPrompt = finalPrompt,
+            prompt = prompt,
+            request = requestBody
+        )
+    }
+
     private suspend fun fetchImages(
         provider: AiCreationProviderConfig,
-        body: String
+        body: String,
+        workflow: AiCreationWorkflow? = null
     ): List<String> = withContext(Dispatchers.IO) {
         val response = okHttpClient.newCallResponse {
             url(provider.baseUrl)
@@ -484,25 +593,29 @@ object AiCreationImageTaskHolder {
                 val b64 = item.optString("b64_json")
                 if (b64.isNotBlank()) {
                     return@mapNotNull AiCreationImageFile.saveBytes(
-                        Base64.decode(b64, Base64.DEFAULT)
+                        Base64.decode(b64, Base64.DEFAULT),
+                        workflow
                     )
                 }
                 val imageUrl = item.optString("url")
                 if (imageUrl.isNotBlank()) {
-                    return@mapNotNull downloadImage(imageUrl)
+                    return@mapNotNull downloadImage(imageUrl, workflow)
                 }
                 null
             }
         }
     }
 
-    private suspend fun downloadImage(url: String): String = withContext(Dispatchers.IO) {
+    private suspend fun downloadImage(
+        url: String,
+        workflow: AiCreationWorkflow? = null
+    ): String = withContext(Dispatchers.IO) {
         val response = okHttpClient.newCallResponse { url(url) }
         response.use { rawResponse ->
             require(rawResponse.isSuccessful) { "图片下载失败 HTTP ${rawResponse.code}" }
             val bytes = rawResponse.body?.bytes()
                 ?: throw IllegalStateException("图片下载内容为空")
-            AiCreationImageFile.saveBytes(bytes)
+            AiCreationImageFile.saveBytes(bytes, workflow)
         }
     }
 
@@ -540,7 +653,17 @@ object AiCreationImageTaskHolder {
             }
         }
         val body = AiCreationProviderStore.renderRequestTemplate(provider.requestTemplate, tokens)
-        val fileNames = fetchImages(provider, body)
+        val workflow = AiCreationWorkflow(
+            type = AiCreationWorkflow.TYPE_IMAGE,
+            providerName = provider.name,
+            baseUrl = provider.baseUrl,
+            model = modelId,
+            variables = tokens.filterKeys { it !in setOf("model", "prompt", "n") },
+            finalPrompt = "",
+            prompt = AiCreationProviderStore.IMAGE_TEST_PROMPT,
+            request = body
+        )
+        val fileNames = fetchImages(provider, body, workflow)
         val fileName = fileNames.firstOrNull()
             ?: throw IllegalStateException("服务未返回图片")
         appDb.creationResultDao.insert(CreationResult(fileName = fileName))

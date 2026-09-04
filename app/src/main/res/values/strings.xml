@@ -475,6 +475,12 @@
     <string name="ai_creation_image_variables">Image variables and final prompt</string>
     <string name="ai_creation_video_variables">Video variables and final prompt</string>
     <string name="ai_creation_video_request_template">Video request template</string>
+    <string name="ai_creation_save_workflow">Save workflow</string>
+    <string name="ai_creation_copy_workflow">Copy workflow</string>
+    <string name="ai_creation_workflow_missing">Workflow metadata not found</string>
+    <string name="ai_creation_workflow_saved">Workflow saved to Download/Legado</string>
+    <string name="ai_creation_workflow_save_failed">Failed to save workflow</string>
+    <string name="ai_creation_workflow_copied">Workflow copied</string>
     <string name="ai_creation_provider_builtin">Built-in provider cannot be removed</string>
     <string name="ai_creation_provider_required">Set a current provider in Manage Providers first</string>
     <string name="ai_creation_model_required">Add a model for the current provider first</string>
@@ -2475,6 +2481,8 @@
     <string name="cache_manage_no_cache">No cache to upload</string>
     <string name="cache_manage_pack_failed">Failed to pack cache</string>
     <string name="cache_manage_upload_all">Upload all</string>
+    <string name="cache_manage_workflow_exported">Exported %1$d workflow file(s)</string>
+    <string name="cache_manage_workflow_missing_part">; %1$d item(s) without workflow metadata</string>
     <string name="cache_manage_delete_all">Delete all</string>
     <string name="cache_manage_batch_empty">No cache to operate</string>
     <string name="cache_manage_batch_upload_done">Batch upload finished: %1$d succeeded, %2$d failed</string>

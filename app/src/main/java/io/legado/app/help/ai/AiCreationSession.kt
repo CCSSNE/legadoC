@@ -10,6 +10,9 @@ const val AI_CREATION_EPHEMERAL_BOOK = "\u0000ephemeral"
 const val AI_CREATION_MODE_KEY = "mode"
 const val AI_CREATION_IMAGE_COUNT_KEY = "imageCount"
 
+/** 工作流溯源：最近一次渲染后发给 LLM 的 finalPrompt 完整内容（不经 LLM 生成时为空串） */
+const val AI_CREATION_FINAL_PROMPT_KEY = "finalPrompt"
+
 data class AiCreationVariable(
     val key: String,
     val label: String,

@@ -38,6 +38,7 @@ import io.legado.app.ui.book.read.creation.AiCreationPhotoDialog
 import io.legado.app.utils.applyNavigationBarMargin
 import io.legado.app.utils.applyNavigationBarPadding
 import io.legado.app.utils.gone
+import io.legado.app.utils.sendToClip
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.toastOnUi
@@ -355,6 +356,59 @@ class CacheManageActivity :
                     R.string.illustration_save_failed
                 }
             )
+        }
+    }
+
+    private fun saveWorkflowSelection() {
+        val selected = creationItems.filter { it.resultId in creationSelection }
+        lifecycleScope.launch {
+            var exported = 0
+            var missing = 0
+            selected.forEach { item ->
+                val json = withContext(Dispatchers.IO) {
+                    AiCreationImageFile.readWorkflowJson(item.fileName)
+                }
+                val ok = if (json == null) {
+                    false
+                } else {
+                    withContext(Dispatchers.IO) {
+                        AiCreationImageFile.saveWorkflowToDownloads(
+                            this@CacheManageActivity,
+                            item.fileName,
+                            json
+                        )
+                    }
+                }
+                if (ok) exported++ else missing++
+            }
+            val message = getString(R.string.cache_manage_workflow_exported, exported)
+            if (missing > 0) {
+                toastOnUi(message + getString(R.string.cache_manage_workflow_missing_part, missing))
+            } else {
+                toastOnUi(message)
+            }
+        }
+    }
+
+    private fun copyWorkflowSelection() {
+        val selected = creationItems.filter { it.resultId in creationSelection }
+        lifecycleScope.launch {
+            val entries = selected.mapNotNull { item ->
+                val json = withContext(Dispatchers.IO) {
+                    AiCreationImageFile.readWorkflowJson(item.fileName)
+                } ?: return@mapNotNull null
+                runCatching {
+                    org.json.JSONObject()
+                        .put("fileName", item.fileName)
+                        .put("workflow", org.json.JSONObject(json))
+                }.getOrNull()
+            }
+            if (entries.isEmpty()) {
+                toastOnUi(R.string.ai_creation_workflow_missing)
+                return@launch
+            }
+            sendToClip(org.json.JSONArray(entries).toString())
+            toastOnUi(R.string.ai_creation_workflow_copied)
         }
     }
 
@@ -704,13 +758,17 @@ class CacheManageActivity :
             listOf(
                 getString(R.string.cache_manage_upload),
                 getString(R.string.illustration_save_to_album),
+                getString(R.string.ai_creation_save_workflow),
+                getString(R.string.ai_creation_copy_workflow),
                 getString(R.string.delete)
             )
         ) { _, _, index ->
             when (index) {
                 0 -> uploadCreationSelection()
                 1 -> saveCreationSelection()
-                2 -> deleteCreationSelection()
+                2 -> saveWorkflowSelection()
+                3 -> copyWorkflowSelection()
+                4 -> deleteCreationSelection()
             }
         }
     }
