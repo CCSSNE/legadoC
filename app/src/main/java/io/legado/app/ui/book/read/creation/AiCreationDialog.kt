@@ -246,6 +246,8 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         binding.tvManual.setOnClickListener { showPage(4) }
         binding.tvCopyLlmInput.setOnClickListener { copyLlmInput() }
         binding.tvCopyPrompt.setOnClickListener { copyPrompt() }
+        binding.tvClearLlmInput.setOnClickListener { clearLlmInputBox() }
+        binding.tvClearPrompt.setOnClickListener { clearPromptBox() }
         binding.etLlmInput.addTextChangedListener { text ->
             if (!suppressTextWatcher) {
                 session.manualLlmInput = text?.toString().orEmpty()
@@ -1144,6 +1146,16 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         session.prompt = prompt
         requireContext().sendToClip(prompt)
         toastOnUi(R.string.ai_creation_copied)
+    }
+
+    /** 提示词页上框清空：只清上框LLM输入；下框不动 */
+    private fun clearLlmInputBox() {
+        binding.etLlmInput.setText("")
+    }
+
+    /** 提示词页下框清空：只清下框最终提示词；上框不动 */
+    private fun clearPromptBox() {
+        binding.etManualPrompt.setText("")
     }
 
     /** 提示词页上框复制：复制上框LLM输入；只做复制，不做其他动作 */

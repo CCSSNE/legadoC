@@ -125,6 +125,15 @@
                     android:textSize="12sp" />
 
                 <TextView
+                    android:id="@+id/tv_clear_llm_input"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:padding="8dp"
+                    android:text="@string/ai_creation_clear"
+                    android:textColor="@color/secondaryText"
+                    android:textSize="12sp" />
+
+                <TextView
                     android:id="@+id/tv_copy_llm_input"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -169,6 +178,15 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:text="@string/ai_creation_manual_prompt_hint"
+                    android:textColor="@color/secondaryText"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:id="@+id/tv_clear_prompt"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:padding="8dp"
+                    android:text="@string/ai_creation_clear"
                     android:textColor="@color/secondaryText"
                     android:textSize="12sp" />
 
