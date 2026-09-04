@@ -39,12 +39,6 @@ data class AiCreationWorkflow(
         return root.toString()
     }
 
-    /**
-     * 插入媒体时预填备注的提示词原文：存的啥填啥，不包装、不摘要。
-     * 为空如实返回空（调用方不预填）；完整溯源仍在文件元数据的各字段里。
-     */
-    fun promptForNote(): String = prompt
-
     companion object {
         const val APP_TAG = "legadoC"
 

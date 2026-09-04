@@ -24,7 +24,6 @@ import io.legado.app.help.illustration.IllustrationAnchor
 import io.legado.app.help.illustration.IllustrationHelp
 import io.legado.app.help.illustration.imageSrcsToJson
 import io.legado.app.help.ai.AiCreationMediaMetadata
-import io.legado.app.help.ai.AiCreationWorkflow
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.uiTypeface
@@ -230,9 +229,9 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
         unitNoteEdits.clear()
         unitKeys.clear()
         if (unified) {
-            //自带工作流元数据的媒体：预填存的提示词原文，仅填空备注，不覆盖用户已输入内容
+            //自带工作流元数据的媒体：预填内嵌工作流 JSON 完整原文，仅填空备注，不覆盖用户已输入内容
             if (binding.etNote.text.isNullOrBlank()) {
-                firstWorkflowPrompt()?.takeIf { it.isNotBlank() }?.let { binding.etNote.setText(it) }
+                firstWorkflowJson()?.let { binding.etNote.setText(it) }
             }
             return
         }
@@ -254,7 +253,7 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
                 background = null
                 setTextColor(context.getCompatColor(R.color.primaryText))
                 textSize = 14f
-                setText(unitNotes[unit.firstIndex] ?: workflowPromptOf(unit.firstIndex).orEmpty())
+                setText(unitNotes[unit.firstIndex] ?: workflowJsonOf(unit.firstIndex).orEmpty())
             }
             val labelParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -276,14 +275,12 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
         binding.llNoteItems.applyUiBodyTypefaceDeep(context.uiTypeface())
     }
 
-    /** 指定媒体存的提示词原文；非本应用工作流格式（如 ComfyUI 原生图）返回 null 不预填 */
-    private fun workflowPromptOf(mediaIndex: Int): String? {
-        val json = parsedWorkflows.getOrNull(mediaIndex) ?: return null
-        return AiCreationWorkflow.fromJsonString(json)?.promptForNote()?.takeIf { it.isNotBlank() }
-    }
+    /** 指定媒体内嵌的工作流 JSON 原文：存的啥填啥，不解析、不提取；无元数据返回 null 不预填 */
+    private fun workflowJsonOf(mediaIndex: Int): String? =
+        parsedWorkflows.getOrNull(mediaIndex)?.takeIf { it.isNotBlank() }
 
-    private fun firstWorkflowPrompt(): String? =
-        parsedWorkflows.indices.firstNotNullOfOrNull { workflowPromptOf(it) }
+    private fun firstWorkflowJson(): String? =
+        parsedWorkflows.indices.firstNotNullOfOrNull { workflowJsonOf(it) }
 
     private fun save() {
         if (parsedMedia.isEmpty()) {
