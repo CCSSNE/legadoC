@@ -21,7 +21,7 @@ object AiStructuredRequestTemplate {
     const val SYSTEM_PROMPT_TOKEN = "{{systemPrompt}}"
     const val USER_CONTENT_TOKEN = "{{userContent}}"
 
-    /** 全局干净通用默认：AI 聊天与 AI 创作共用，不带 response_format */
+    /** 全局干净通用默认：AI 聊天与 AI 创作共用，不带 response_format，创作温度 0.7 */
     val default: String = """
         {
           "model": "$MODEL_TOKEN",
@@ -36,7 +36,7 @@ object AiStructuredRequestTemplate {
               "content": "$USER_CONTENT_TOKEN"
             }
           ],
-          "temperature": 0,
+          "temperature": 0.7,
           "thinking": {
             "type": "disabled"
           },
@@ -48,8 +48,42 @@ object AiStructuredRequestTemplate {
         }
     """.trimIndent()
 
-    /** JSON 输出专用默认：章节净化等结构化消费者的出厂模板（含 response_format） */
+    /** JSON 输出专用默认：章节净化等结构化消费者的出厂模板（含 response_format，温度 0） */
     val structuredDefault: String = """
+        {
+          "model": "$MODEL_TOKEN",
+          "stream": true,
+          "messages": [
+            {
+              "role": "system",
+              "content": "$SYSTEM_PROMPT_TOKEN"
+            },
+            {
+              "role": "user",
+              "content": "$USER_CONTENT_TOKEN"
+            }
+          ],
+          "temperature": 0,
+          "response_format": {
+            "type": "json_object"
+          },
+          "thinking": {
+            "type": "disabled"
+          },
+          "reasoning_effort": "low",
+          "enable_thinking": false,
+          "extra_body": {
+            "enable_thinking": false
+          }
+        }
+    """.trimIndent()
+
+    /**
+     * 旧版全局出厂默认（含 response_format、温度 0）：
+     * 仅用于升级迁移识别"从未定制过全局模板"的存量，并作为净化固化继承快照的取值；
+     * 不再作为任何出口默认。
+     */
+    val legacyDefault: String = """
         {
           "model": "$MODEL_TOKEN",
           "stream": true,
@@ -84,6 +118,27 @@ object AiStructuredRequestTemplate {
             ?.takeIf { it.isNotBlank() }
             ?: default
         set(value) = appCtx.putPrefString(PreferKey.aiRequestTemplate, value.trim())
+
+    /**
+     * 请求模板归属迁移（AI创作配置 v2 经 DefaultData 版本戳一次性执行）：
+     * 旧版全局模板被聊天与净化共用（净化未配置独立模板时继承全局）；重构后全局归
+     * 聊天+创作、净化独立。迁移规则：
+     * - 全局存量等于旧出厂默认（或为空）＝从未定制，覆盖为新干净默认（温度 0.7、无 response_format）；
+     * - 用户定制过的全局模板原样保留（其中的 response_format 是用户自己的选择）；
+     * - 净化键为空时，把升级前净化实际生效的值（继承快照）固化进净化键，净化行为不变。
+     * 先固化净化再覆盖全局，中途失败重试依然正确（幂等）。
+     */
+    fun migrateTemplateOwnership() {
+        val stored = appCtx.getPrefString(PreferKey.aiRequestTemplate)
+        val customized = !stored.isNullOrBlank() && stored.trim() != legacyDefault.trim()
+        if (appCtx.getPrefString(PreferKey.aiChapterPurifyRequestTemplate).isNullOrBlank()) {
+            val inherited = if (customized) stored!!.trim() else legacyDefault.trim()
+            appCtx.putPrefString(PreferKey.aiChapterPurifyRequestTemplate, inherited)
+        }
+        if (!customized) {
+            appCtx.putPrefString(PreferKey.aiRequestTemplate, default)
+        }
+    }
 
     fun validate(template: String) {
         val normalized = template.trim()

@@ -10,6 +10,7 @@ import io.legado.app.data.entities.RssSource
 import io.legado.app.data.entities.TxtTocRule
 import io.legado.app.data.entities.BookmarkStyle
 import io.legado.app.help.ai.AiCreationConfig
+import io.legado.app.help.ai.AiStructuredRequestTemplate
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ThemeConfig
@@ -38,7 +39,7 @@ object DefaultData {
     private const val MAX_HIGHLIGHT_RULE_VERSION_KEY = "maxHighlightRuleVersion"
     private const val MAX_HIGHLIGHT_RULE_VERSION = 1
     private const val AI_CREATION_CONFIG_VERSION_KEY = "aiCreationConfigVersion"
-    private const val AI_CREATION_CONFIG_VERSION = 1
+    private const val AI_CREATION_CONFIG_VERSION = 2
 
     fun upVersion() {
         Coroutine.async {
@@ -62,6 +63,8 @@ object DefaultData {
             }
             migrateDefaultData("AI创作配置", AI_CREATION_CONFIG_VERSION_KEY, AI_CREATION_CONFIG_VERSION) {
                 AiCreationConfig.sanitizeStoredJsons()
+                //v2：请求模板归属迁移——全局归聊天+创作（未定制切新干净默认），净化固化继承快照
+                AiStructuredRequestTemplate.migrateTemplateOwnership()
             }
         }.onError {
             AppLog.put("启动默认数据升级任务失败\n${it.localizedMessage}", it)
