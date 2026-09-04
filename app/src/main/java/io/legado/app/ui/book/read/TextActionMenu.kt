@@ -163,14 +163,17 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
             }
         }
         val margin = 4.dpToPx()
-        // 弹窗宽度固定：只由窗口宽度决定，不随可见菜单项数量变化，
-        // 避免按内容测量出不同宽度导致弹窗反复改尺寸、按钮跨行跳动。
-        // 内容区 RecyclerView 为 match_parent，预测量与窗口布局两趟拿到的都是
-        // EXACTLY 同一宽度，Flexbox 换行行数两趟必然一致；wrap_content 宽度下
-        // 测量上报的内容宽度会溢出父容器约束，两趟宽度漂移导致行数判定不一致，
-        // 弹窗高度按多出的行创建、底部出现整行空白
+        // 弹窗宽度两趟测量必须一致，避免 Flexbox 换行行数在预测量与窗口布局
+        // 两趟间漂移导致弹窗高度多出空行：先用可用宽度做 AT_MOST 预测量拿到
+        // 内容实际宽度（最宽行 + 内边距），再以该内容宽度做 EXACTLY 正式测量。
+        // 弹窗最终宽度只取内容宽度，换行后第一行不强行占满整窗，菜单整体居中。
         val windowWidth = if (view.width > 0) view.width else context.resources.displayMetrics.widthPixels
-        val popupWidth = (windowWidth - 2 * margin).coerceAtLeast(margin)
+        val availableWidth = (windowWidth - 2 * margin).coerceAtLeast(margin)
+        contentView.measure(
+            View.MeasureSpec.makeMeasureSpec(availableWidth, View.MeasureSpec.AT_MOST),
+            View.MeasureSpec.UNSPECIFIED,
+        )
+        val popupWidth = contentView.measuredWidth.coerceIn(margin, availableWidth)
         contentView.measure(
             View.MeasureSpec.makeMeasureSpec(popupWidth, View.MeasureSpec.EXACTLY),
             View.MeasureSpec.UNSPECIFIED,
