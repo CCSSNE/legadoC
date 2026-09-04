@@ -133,6 +133,7 @@ import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.toc.TocActivityResult
 import io.legado.app.ui.book.toc.rule.TxtTocRuleDialog
 import io.legado.app.ui.browser.WebViewActivity
+import io.legado.app.ui.code.CodeEditActivity
 import io.legado.app.ui.dict.DictDialog
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.login.SourceLoginActivity
@@ -141,7 +142,6 @@ import io.legado.app.ui.highlight.HighlightRuleActivity
 import io.legado.app.ui.replace.edit.ReplaceEditActivity
 import io.legado.app.ui.widget.PopupAction
 import io.legado.app.ui.widget.dialog.PhotoDialog
-import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.ACache
 import io.legado.app.utils.Debounce
 import io.legado.app.utils.LogUtils
@@ -234,6 +234,23 @@ class ReadBookActivity : BaseReadBookActivity(),
             if (it.resultCode == RESULT_OK) {
                 // 高亮规则变更与书签变更共用当前章重排
                 reloadCurrentChapterForBookmark()
+            }
+        }
+    /** 配图备注直跳全屏编辑：待写回记录的 bookUrl + src，返回后按此找回记录 */
+    private var pendingIllustrationNote: Pair<String, String>? = null
+    private val illustrationNoteEditLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            val text = result.data?.getStringExtra("text")
+            val pending = pendingIllustrationNote
+            pendingIllustrationNote = null
+            if (result.resultCode == RESULT_OK && text != null && pending != null) {
+                lifecycleScope.launch(IO) {
+                    val record = appDb.bookIllustrationDao.getByBook(pending.first)
+                        .firstOrNull { it.imageSrcsFromJson().contains(pending.second) }
+                    if (record != null) {
+                        appDb.bookIllustrationDao.update(record.copy(note = text))
+                    }
+                }
             }
         }
     private val searchContentActivity =
@@ -2847,19 +2864,17 @@ class ReadBookActivity : BaseReadBookActivity(),
             .sumOf { it.imageSrcsFromJson().size }
     }
 
-    /** 查看配图备注：MD 渲染，可编辑，编辑结果直接保存回该记录 */
+    /** 查看配图备注：直跳全屏编辑器，保存后直接写回该记录，不再经过中间预览 */
     private fun showIllustrationNote(src: String) {
         val book = ReadBook.book ?: return
         val record = appDb.bookIllustrationDao.getByBook(book.bookUrl)
             .firstOrNull { it.imageSrcsFromJson().contains(src) } ?: return
-        showDialogFragment(
-            TextDialog(
-                getString(R.string.illustration_note),
-                record.note
-            ) { newNote ->
-                lifecycleScope.launch(IO) {
-                    appDb.bookIllustrationDao.update(record.copy(note = newNote))
-                }
+        pendingIllustrationNote = book.bookUrl to src
+        illustrationNoteEditLauncher.launch(
+            Intent(this, CodeEditActivity::class.java).apply {
+                putExtra("text", record.note)
+                putExtra("title", getString(R.string.illustration_note))
+                putExtra("languageName", "text.html.markdown")
             }
         )
     }
