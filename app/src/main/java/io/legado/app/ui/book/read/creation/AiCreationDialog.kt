@@ -135,6 +135,10 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         session.bookName = bookName
+        if (savedInstanceState == null) {
+            //下框最终提示词只限当前这次生产：新进入创作界面即清空，不残留上次结果
+            session.prompt = ""
+        }
         //变量区 = LLM 变量（style，控制发给 LLM 的内容）+ 供应商生图/生视频参数
         val imageVariables = AiCreationConfig.imageLlmDefinition.variables +
             AiCreationConfig.imageVariables
