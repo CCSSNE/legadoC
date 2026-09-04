@@ -382,15 +382,12 @@
     <string name="ai_creation_next">下一步</string>
     <string name="ai_creation_generate_prompt">生成提示词</string>
     <string name="ai_creation_generating">生成中…</string>
-    <string name="ai_creation_copy_prompt">复制提示词</string>
+    <string name="ai_creation_copy">复制</string>
     <string name="ai_creation_copied">已复制</string>
     <string name="ai_creation_staged">已暂存到 AI 创作选中文本</string>
     <string name="ai_creation_prompt_empty">提示词为空</string>
     <string name="ai_creation_compose">组合素材</string>
     <string name="ai_creation_prompt_title">提示词</string>
-    <string name="ai_creation_prompt_hint">生成的提示词将显示在这里</string>
-    <string name="ai_creation_manual_prompt">手动提示词</string>
-    <string name="ai_creation_copy_llm_input">复制LLM输入</string>
     <string name="ai_creation_llm_input_hint">LLM输入（可编辑）</string>
     <string name="ai_creation_manual_prompt_hint">手动填入提示词，生成图片/视频时使用</string>
     <string name="ai_creation_llm_input_empty">LLM输入为空</string>
@@ -407,7 +404,6 @@
     <string name="ai_creation_linking_hint">请点击或长按另一分区的名称完成连线</string>
     <string name="ai_creation_link_done">分区已连线（%s组）</string>
     <string name="ai_creation_link_removed">已取消连线</string>
-    <string name="ai_creation_select_card_first">请先添加素材卡片</string>
     <string name="ai_creation_new_card">新建卡片</string>
     <string name="creation_card_delete_confirm">删除该卡片？将同时从当前创作会话中移除。</string>
     <string name="creation_image_import_failed">图片导入失败</string>

@@ -82,7 +82,6 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
     private var currentPage = 0
     private var generating = false
     private var suppressTextWatcher = false
-    private var pendingGenerateAfterPrompt = false
     private var previewPageSize = 1
     private var previewPage = 0
     private val previewAdapter = PreviewAdapter()
@@ -169,9 +168,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         binding.ivBack.setOnClickListener { onBack() }
         binding.tvAction.setOnClickListener { onAction() }
         binding.tvClear.setOnClickListener {
-            if (currentPage == 2) {
-                copyPrompt()
-            } else if (currentPage == 4) {
+            if (currentPage == 4) {
                 copyLlmInput()
             } else {
                 confirmClear()
@@ -246,12 +243,9 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
                 upInDialogFloating()
             }
         }
-        binding.etPrompt.addTextChangedListener { text ->
-            if (!suppressTextWatcher) {
-                session.prompt = text?.toString().orEmpty()
-            }
-        }
         binding.tvManual.setOnClickListener { showPage(4) }
+        binding.tvCopyLlmInput.setOnClickListener { copyLlmInput() }
+        binding.tvCopyPrompt.setOnClickListener { copyPrompt() }
         binding.etLlmInput.addTextChangedListener { text ->
             if (!suppressTextWatcher) {
                 session.manualLlmInput = text?.toString().orEmpty()
@@ -301,7 +295,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         }
     }
 
-    //左上角返回只在创作体系各页内回退，不退出界面；手动提示词页入口在组合素材页，返回也回组合素材页；
+    //左上角返回只在创作体系各页内回退，不退出界面；提示词页入口在组合素材页，返回也回组合素材页；
     //界面关闭（叉叉/系统返回键）才销毁临时卡片，回预览走生成任务悬浮窗
     private fun onBack() {
         when (currentPage) {
@@ -314,8 +308,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
     private fun onAction() {
         when (currentPage) {
             0 -> showPage(1)
-            1 -> generatePrompt()
-            2 -> generatePrompt()
+            1 -> showPage(4)
             4 -> generatePromptFromLlmInput()
         }
     }
@@ -333,7 +326,6 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         currentPage = page
         binding.llModePage.visibility = if (page == 0) View.VISIBLE else View.GONE
         binding.svComposePage.visibility = if (page == 1) View.VISIBLE else View.GONE
-        binding.llPromptPage.visibility = if (page == 2) View.VISIBLE else View.GONE
         binding.llManualPage.visibility = if (page == 4) View.VISIBLE else View.GONE
         binding.llPreviewPage.visibility = if (page == 3) View.VISIBLE else View.GONE
         binding.bottomBar.visibility = if (page == 3) View.GONE else View.VISIBLE
@@ -341,36 +333,33 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         binding.tvTitle.setText(
             when (page) {
                 1 -> R.string.ai_creation_compose
-                2 -> R.string.ai_creation_prompt_title
                 3 -> R.string.ai_creation_preview_title
-                4 -> R.string.ai_creation_manual_prompt
+                4 -> R.string.ai_creation_prompt_title
                 else -> R.string.ai_creation
             }
         )
         val isVideo = isVideoMode()
-        binding.etImageCount.visibility = if (page == 2 || page == 4) View.VISIBLE else View.GONE
+        binding.etImageCount.visibility = if (page == 4) View.VISIBLE else View.GONE
         binding.etImageCount.setText(
             session.paramValue(AI_CREATION_IMAGE_COUNT_KEY) ?: "1"
         )
         binding.btnGenerateImage.visibility =
-            if (page == 2 || page == 4) View.VISIBLE else View.GONE
+            if (page == 4) View.VISIBLE else View.GONE
         binding.btnGenerateImage.setText(
             if (isVideo) R.string.ai_creation_generate_video else R.string.ai_creation_generate_image
         )
         binding.tvClear.setText(
             when (page) {
-                2 -> R.string.ai_creation_copy_prompt
-                4 -> R.string.ai_creation_copy_llm_input
+                4 -> R.string.ai_creation_copy
                 else -> R.string.ai_creation_clear
             }
         )
         binding.tvClear.visibility = when {
             page == 1 -> View.VISIBLE
-            page == 2 && !isVideo -> View.VISIBLE
             page == 4 -> View.VISIBLE
             else -> View.GONE
         }
-        //手动页：复制与生成提示词都是文本按钮（各带12dp内边距，缝隙=12+12），
+        //提示词页：复制与生成提示词都是文本按钮（各带12dp内边距，缝隙=12+12），
         //而生成提示词与生成图片之间只有生成提示词一侧的12dp（图片是实底按钮，边即界）。
         //去复制按钮的尾边距，使两处空余宽度都是12dp对齐。
         val barPad = dp(12)
@@ -390,19 +379,15 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
             )
         }
         binding.tvManual.visibility = if (page == 1) View.VISIBLE else View.GONE
+        binding.tvAction.visibility = if (page == 1) View.GONE else View.VISIBLE
         binding.tvAction.setText(
             when (page) {
-                1, 2, 4 -> R.string.ai_creation_generate_prompt
+                4 -> R.string.ai_creation_generate_prompt
                 else -> R.string.ai_creation_next
             }
         )
         if (page == 1) {
             rebuildSections()
-        }
-        if (page == 2 && session.prompt.isNotBlank()) {
-            suppressTextWatcher = true
-            binding.etPrompt.setText(session.prompt)
-            suppressTextWatcher = false
         }
         if (page == 4) {
             suppressTextWatcher = true
@@ -800,49 +785,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         cardEditLauncher.launch(intent)
     }
 
-    private fun generatePrompt() {
-        if (generating) return
-        val cardIds = AiCreationConfig.sectionOrder
-            .flatMap { session.itemsOf(it) }
-            .map { it.cardId }
-            .distinct()
-        if (cardIds.isEmpty()) {
-            toastOnUi(R.string.ai_creation_select_card_first)
-            return
-        }
-        generating = true
-        binding.rotateLoading.visible()
-        binding.tvAction.setText(R.string.ai_creation_generating)
-        viewLifecycleOwner.lifecycleScope.launch {
-            val result = runCatching {
-                val cardsById = withContext(IO) {
-                    cardIds.mapNotNull { appDb.creationCardDao.getById(it) }
-                        .associateBy { it.cardId }
-                }
-                withContext(IO) {
-                    AiCreationHelper.generatePrompt(session, cardsById)
-                }
-            }
-            generating = false
-            binding.rotateLoading.inVisible()
-            binding.tvAction.setText(R.string.ai_creation_generate_prompt)
-            result.onSuccess { prompt ->
-                session.prompt = prompt
-                if (pendingGenerateAfterPrompt) {
-                    pendingGenerateAfterPrompt = false
-                    startGeneration(prompt)
-                } else {
-                    showPage(2)
-                }
-            }.onFailure { throwable ->
-                pendingGenerateAfterPrompt = false
-                binding.tvAction.setText(R.string.ai_creation_generate_prompt)
-                toastOnUi(throwable.message ?: throwable.javaClass.simpleName)
-            }
-        }
-    }
-
-    /** 手动提示词页：用上框LLM输入文本生成提示词，结果只自动填入下框，不跳页 */
+    /** 提示词页：用上框LLM输入文本生成提示词，结果只自动填入下框，不跳页 */
     private fun generatePromptFromLlmInput() {
         if (generating) return
         val llmInput = binding.etLlmInput.text?.toString()?.trim().orEmpty()
@@ -874,7 +817,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         }
     }
 
-    /** 手动提示词页LLM输入预填：卡片汇总成素材再经统一入口渲染成完整LLM输入；用户已编辑则保留快照 */
+    /** 提示词页LLM输入预填：卡片汇总成素材再经统一入口渲染成完整LLM输入；用户已编辑则保留快照 */
     private fun prefillLlmInput() {
         viewLifecycleOwner.lifecycleScope.launch {
             val result = runCatching {
@@ -902,27 +845,17 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
     }
 
     private fun onGenerateImageClicked() {
-        if (currentPage == 4) {
-            //手动挡：只用下框内容，为空直接报错，不自动代生成；
-            //上框即本次 LLM 输入，直接生成不经过 LLM 时也如实记入溯源，不用残留旧值
-            val prompt = binding.etManualPrompt.text?.toString()?.trim().orEmpty()
-            if (prompt.isEmpty()) {
-                toastOnUi(R.string.ai_creation_prompt_empty)
-                return
-            }
-            session.prompt = prompt
-            val llmInput = binding.etLlmInput.text?.toString()?.trim().orEmpty()
-            session.manualLlmInput = llmInput
-            session.setParam(AI_CREATION_LLM_INPUT_KEY, llmInput)
-            startGeneration(prompt)
-            return
-        }
-        val prompt = binding.etPrompt.text?.toString()?.trim().orEmpty()
+        //提示词页只用下框内容，为空直接报错，不自动代生成；
+        //上框即本次 LLM 输入，直接生成不经过 LLM 时也如实记入溯源，不用残留旧值
+        val prompt = binding.etManualPrompt.text?.toString()?.trim().orEmpty()
         if (prompt.isEmpty()) {
-            pendingGenerateAfterPrompt = true
-            generatePrompt()
+            toastOnUi(R.string.ai_creation_prompt_empty)
             return
         }
+        session.prompt = prompt
+        val llmInput = binding.etLlmInput.text?.toString()?.trim().orEmpty()
+        session.manualLlmInput = llmInput
+        session.setParam(AI_CREATION_LLM_INPUT_KEY, llmInput)
         startGeneration(prompt)
     }
 
@@ -1201,8 +1134,9 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         toastOnUi(R.string.ai_creation_workflow_copied)
     }
 
+    /** 提示词页下框复制：复制最终提示词；只做复制，不做其他动作 */
     private fun copyPrompt() {
-        val prompt = binding.etPrompt.text?.toString()?.trim().orEmpty()
+        val prompt = binding.etManualPrompt.text?.toString()?.trim().orEmpty()
         if (prompt.isEmpty()) {
             toastOnUi(R.string.ai_creation_prompt_empty)
             return
@@ -1212,7 +1146,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         toastOnUi(R.string.ai_creation_copied)
     }
 
-    /** 手动提示词页复制的是上框LLM输入，不是下框提示词；只做复制，不做其他动作 */
+    /** 提示词页上框复制：复制上框LLM输入；只做复制，不做其他动作 */
     private fun copyLlmInput() {
         val llmInput = binding.etLlmInput.text?.toString()?.trim().orEmpty()
         if (llmInput.isEmpty()) {

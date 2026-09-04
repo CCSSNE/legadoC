@@ -383,15 +383,12 @@
     <string name="ai_creation_next">Next</string>
     <string name="ai_creation_generate_prompt">Generate Prompt</string>
     <string name="ai_creation_generating">Generating…</string>
-    <string name="ai_creation_copy_prompt">Copy Prompt</string>
+    <string name="ai_creation_copy">Copy</string>
     <string name="ai_creation_copied">Copied</string>
     <string name="ai_creation_staged">Staged to AI creation selected text</string>
     <string name="ai_creation_prompt_empty">Prompt is empty</string>
     <string name="ai_creation_compose">Compose</string>
     <string name="ai_creation_prompt_title">Prompt</string>
-    <string name="ai_creation_prompt_hint">The generated prompt will appear here</string>
-    <string name="ai_creation_manual_prompt">Manual Prompt</string>
-    <string name="ai_creation_copy_llm_input">Copy LLM input</string>
     <string name="ai_creation_llm_input_hint">LLM input (editable)</string>
     <string name="ai_creation_manual_prompt_hint">Enter prompt manually; used for image/video generation</string>
     <string name="ai_creation_llm_input_empty">LLM input is empty</string>
@@ -408,7 +405,6 @@
     <string name="ai_creation_linking_hint">Tap or long-press another section name to link</string>
     <string name="ai_creation_link_done">Sections linked (%s group)</string>
     <string name="ai_creation_link_removed">Link removed</string>
-    <string name="ai_creation_select_card_first">Add at least one material card</string>
     <string name="ai_creation_new_card">New card</string>
     <string name="creation_card_delete_confirm">Delete this card? It will also be removed from the current creation session.</string>
     <string name="creation_image_import_failed">Image import failed</string>

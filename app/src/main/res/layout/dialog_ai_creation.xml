@@ -103,33 +103,6 @@
         </ScrollView>
 
         <LinearLayout
-            android:id="@+id/ll_prompt_page"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:orientation="vertical"
-            android:padding="16dp"
-            android:visibility="gone">
-
-            <ScrollView
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1">
-
-                <EditText
-                    android:id="@+id/et_prompt"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:background="@null"
-                    android:gravity="top"
-                    android:hint="@string/ai_creation_prompt_hint"
-                    android:minHeight="200dp"
-                    android:textSize="14sp" />
-
-            </ScrollView>
-
-        </LinearLayout>
-
-        <LinearLayout
             android:id="@+id/ll_manual_page"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
@@ -137,12 +110,30 @@
             android:padding="16dp"
             android:visibility="gone">
 
-            <TextView
-                android:layout_width="wrap_content"
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/ai_creation_llm_input_hint"
-                android:textColor="@color/secondaryText"
-                android:textSize="12sp" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/ai_creation_llm_input_hint"
+                    android:textColor="@color/secondaryText"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:id="@+id/tv_copy_llm_input"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:padding="8dp"
+                    android:text="@string/ai_creation_copy"
+                    android:textColor="@color/secondaryText"
+                    android:textSize="12sp" />
+
+            </LinearLayout>
 
             <ScrollView
                 android:layout_width="match_parent"
@@ -167,12 +158,30 @@
                 android:layout_marginBottom="8dp"
                 android:background="#33808080" />
 
-            <TextView
-                android:layout_width="wrap_content"
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/ai_creation_manual_prompt_hint"
-                android:textColor="@color/secondaryText"
-                android:textSize="12sp" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/ai_creation_manual_prompt_hint"
+                    android:textColor="@color/secondaryText"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:id="@+id/tv_copy_prompt"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:padding="8dp"
+                    android:text="@string/ai_creation_copy"
+                    android:textColor="@color/secondaryText"
+                    android:textSize="12sp" />
+
+            </LinearLayout>
 
             <EditText
                 android:id="@+id/et_manual_prompt"
@@ -292,14 +301,12 @@
             android:visibility="gone"
             tools:ignore="RtlHardcoded" />
 
-        <TextView
+        <io.legado.app.ui.widget.text.AccentTextView
             android:id="@+id/tv_manual"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:padding="12dp"
-            android:text="@string/ai_creation_manual_prompt"
-            android:textColor="@color/secondaryText"
-            android:visibility="gone"
+            android:text="@string/ai_creation_prompt_title"
             tools:ignore="RtlHardcoded" />
 
         <io.legado.app.ui.widget.text.AccentTextView

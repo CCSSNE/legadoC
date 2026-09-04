@@ -1,27 +1,10 @@
 package io.legado.app.help.ai
 
 import io.legado.app.constant.AppLog
-import io.legado.app.data.entities.CreationCard
 
 object AiCreationHelper {
 
-    suspend fun generatePrompt(
-        session: AiCreationSession,
-        cardsById: Map<Long, CreationCard>
-    ): String {
-        return generatePrompt(session, session.buildMaterialText(cardsById))
-    }
-
-    /** 按调用方给定的素材文本生成提示词：自动流程用卡片汇总的素材渲染成LLM输入再发LLM */
-    suspend fun generatePrompt(
-        session: AiCreationSession,
-        materialText: String
-    ): String {
-        val llmInput = buildLlmInput(session, materialText)
-        return sendLlmInput(session, llmInput)
-    }
-
-    /** 手动提示词页上框即完整LLM输入：路由提示词与模板已渲染，直接原样发给LLM，不再二次套模板 */
+    /** 提示词页上框即完整LLM输入：路由提示词与模板已渲染，直接原样发给LLM，不再二次套模板 */
     suspend fun generatePromptFromLlmInput(
         session: AiCreationSession,
         llmInput: String
@@ -29,7 +12,7 @@ object AiCreationHelper {
         return sendLlmInput(session, llmInput)
     }
 
-    /** 统一渲染入口：用LLM输入模板组合路由提示词与素材，得到发给LLM的完整输入；手动页预填与自动流程共用 */
+    /** 统一渲染入口：用LLM输入模板组合路由提示词与素材，得到发给LLM的完整输入；提示词页预填用 */
     fun buildLlmInput(
         session: AiCreationSession,
         materialText: String
