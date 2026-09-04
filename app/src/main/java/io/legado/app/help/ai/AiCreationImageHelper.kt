@@ -7,12 +7,14 @@ import android.os.Environment
 import android.provider.MediaStore
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.CreationResult
+import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.newCallResponse
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.help.http.postJson
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -272,6 +274,9 @@ object AiCreationImageTaskHolder {
 
     private var previewBlocking = false
 
+    /** 回退设置定时关闭的计时任务：状态变化/新任务开始时取消重排 */
+    private var autoCloseJob: Job? = null
+
     fun setPreviewBlocking(blocking: Boolean) {
         previewBlocking = blocking
         updateFloatingState()
@@ -407,6 +412,24 @@ object AiCreationImageTaskHolder {
             dismissed = floatingDismissed,
             previewBlocking = previewBlocking
         )
+        scheduleAutoCloseIfNeeded()
+    }
+
+    /**
+     * 回退设置：AI 创作悬浮窗定时关闭。任务完成（转圈结束、悬浮窗仍在显示）后
+     * 按设定秒数自动关闭，效果同手动点叉叉；新任务开始/状态变化时取消重排；
+     * 秒数为空=不自动关闭。
+     */
+    private fun scheduleAutoCloseIfNeeded() {
+        autoCloseJob?.cancel()
+        autoCloseJob = null
+        val state = _floatingState.value
+        if (!state.shouldShow || state.taskRunning) return
+        val seconds = AppConfig.aiCreationFloatingAutoCloseSeconds ?: return
+        autoCloseJob = scope.launch {
+            delay(seconds * 1000L)
+            dismissFloating()
+        }
     }
 
     /** 过程提示只归最新任务；被接管的老任务静默，报错也不管 */

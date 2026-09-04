@@ -28,6 +28,7 @@ import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.Theme
 import io.legado.app.help.ai.AiCreationImageTaskHolder
+import io.legado.app.help.ai.AiCreationFloatingState
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.lib.theme.ThemeStore
@@ -35,6 +36,7 @@ import io.legado.app.lib.theme.applyUiBodyTypeface
 import io.legado.app.lib.theme.applyUiMenuTypefaceDeep
 import io.legado.app.model.ReadBook
 import io.legado.app.service.ExportBookService
+import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.read.creation.AiCreationDialog
 import io.legado.app.ui.book.read.creation.AiCreationFloatingHost
 import io.legado.app.ui.widget.TitleBar
@@ -68,6 +70,8 @@ abstract class BaseActivity<VB : ViewBinding>(
     protected abstract val binding: VB
     private var lastThemeValuesChanged = 0L
     private var surfaceOverflowPopup: SurfacePopupMenu? = null
+    /** AI 创作悬浮窗最近一次状态：onResume 重算外显门控用 */
+    private var lastAiCreationFloatingState: AiCreationFloatingState? = null
 
     //AI 创作生成任务悬浮窗：应用内所有 Activity 统一挂载（预览页在前台时由状态统一拦截）
     private val aiCreationFloatingHost by lazy {
@@ -147,10 +151,21 @@ abstract class BaseActivity<VB : ViewBinding>(
         observeLiveBus()
         lifecycleScope.launch {
             AiCreationImageTaskHolder.floatingState.collect { state ->
-                aiCreationFloatingHost.update(state.shouldShow, state.taskRunning)
+                lastAiCreationFloatingState = state
+                applyAiCreationFloating(state)
             }
         }
         onActivityCreated(savedInstanceState)
+    }
+
+    /**
+     * 回退设置：关闭“AI 创作悬浮窗在阅读界面外显示”后，悬浮窗只在阅读界面显示；
+     * AI 创作对话框/预览页由各自宿主独立挂载，不受此开关影响。
+     */
+    private fun applyAiCreationFloating(state: AiCreationFloatingState) {
+        val show = state.shouldShow &&
+            (AppConfig.aiCreationFloatingOutsideReader || this is ReadBookActivity)
+        aiCreationFloatingHost.update(show, state.taskRunning)
     }
 
     override fun onResume() {
@@ -158,6 +173,8 @@ abstract class BaseActivity<VB : ViewBinding>(
         ExportBookService.clearFinishedNotification()
         applyPreferredRefreshRate()
         refreshThemeBackgroundIfChanged()
+        // 开关可能在设置页被修改，回到前台时按最新值重算悬浮窗外显门控
+        lastAiCreationFloatingState?.let(::applyAiCreationFloating)
     }
 
     private fun refreshThemeBackgroundIfChanged() {

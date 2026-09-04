@@ -247,6 +247,14 @@ abstract class BaseReadAloudService : BaseService(),
                 upReadAloudNotification()
                 return
             }
+            // 回退设置：关闭“朗读悬浮窗在阅读界面外显示”后，应用内非阅读界面不显示悬浮窗
+            if (!AppConfig.readAloudFloatingOutsideReader &&
+                activity !is ReadBookActivity && activity !is AudioPlayActivity
+            ) {
+                removeReadAloudFloatingWindow()
+                upReadAloudNotification()
+                return
+            }
             if (AppConfig.readAloudFloatOnDesktop && canDrawFloatingWindow()) {
                 if (!isDesktopFloating) {
                     removeAppReadAloudFloatingWindow()
@@ -323,6 +331,16 @@ abstract class BaseReadAloudService : BaseService(),
             lifecycleScope.launch(Main) {
                 showReadAloudFloatingWindow()
             }
+            return
+        }
+        // 回退设置：关闭“朗读悬浮窗在阅读界面外显示”后，应用内前台是非阅读界面时不显示；
+        // 前台无 Activity（已退到桌面）时仍由“悬浮到桌面”独立决定，不受此开关影响
+        val foreground = appFloatingActivity
+        if (!AppConfig.readAloudFloatingOutsideReader &&
+            foreground != null && foreground !is ReadBookActivity && foreground !is AudioPlayActivity
+        ) {
+            removeReadAloudFloatingWindow()
+            upReadAloudNotification()
             return
         }
         if (AppConfig.readAloudHideFloatingWindow) {
@@ -879,6 +897,10 @@ abstract class BaseReadAloudService : BaseService(),
                     rebuildReadAloudFloatingWindow()
                     upReadAloudNotification()
                     postEvent(PreferKey.readAloudHideFloatingWindow, "")
+                }
+                PreferKey.readAloudFloatingOutsideReader -> {
+                    rebuildReadAloudFloatingWindow()
+                    postEvent(PreferKey.readAloudFloatingOutsideReader, "")
                 }
                 PreferKey.readAloudCoverRotation -> {
                     updateFloatingCoverAnimation()
