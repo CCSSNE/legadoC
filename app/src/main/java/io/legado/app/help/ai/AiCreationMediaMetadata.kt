@@ -272,10 +272,10 @@ object AiCreationMediaMetadata {
             val dataStart = pos + 8
             when (type) {
                 "hdlr" -> {
-                    // size(4) type(4) version/flags(4) pre_defined(4) handler_type(4)
-                    if (size >= 24 && dataStart + 20 <= end) {
+                    // payload：version/flags(4) pre_defined(4) handler_type(4)，与写入端一致
+                    if (size >= 24 && dataStart + 12 <= end) {
                         handlerIsMdta =
-                            String(mp4, dataStart + 16, 4, Charsets.US_ASCII) == "mdta"
+                            String(mp4, dataStart + 8, 4, Charsets.US_ASCII) == "mdta"
                     }
                 }
 
