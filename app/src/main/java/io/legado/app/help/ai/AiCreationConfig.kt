@@ -8,6 +8,7 @@ import io.legado.app.ui.main.ai.AiModelConfig
 import io.legado.app.ui.main.ai.AiProviderConfig
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefInt
+import io.legado.app.utils.getPrefLong
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.putPrefInt
@@ -172,20 +173,33 @@ object AiCreationConfig {
     /**
      * 版本号一变就按开关处理，不另维护升级号：完整比对版本名加版本号，
      * 有一个不一样就算变（同号不同时间戳的包也能分出来）。
-     * 没记号=新装或老版本上来，只记号不炸不弹；
+     * 两个记号都没有=新装，只记号不炸不弹；
      * 记号跟当前不一样=升级上来了，开关开着直接全炸，关着只把内置回出厂。
-     * 每次启动都跑，便宜的一次读值比对。
+     * 老版本记的是纯数字旧记号，先读它再删，读不到才算新装；
+     * 之前先删后读，把老用户全当成了新装，这是 bug，已改。
+     * 每次启动都跑，便宜的几次读值比对。
      */
     fun nukeOnAppVersionChange() {
-        //旧的纯数字记号废弃，删掉，不跟新记号打架
+        val currentTag = runCatching { appVersionTag() }.getOrNull() ?: return
+        val currentCode = currentTag.substringAfterLast('|', "").toLongOrNull()
+        val lastTag = appCtx.getPrefString(PreferKey.aiNukeAppVersion, "").orEmpty()
+        //老记号（纯数字版本号）：先读出来比对，再删，不跟新记号打架
+        val legacyCode = appCtx.getPrefLong("aiNukeVersionCode", 0L)
         appCtx.removePref("aiNukeVersionCode")
-        val current = runCatching { appVersionTag() }.getOrNull() ?: return
-        val last = appCtx.getPrefString(PreferKey.aiNukeAppVersion, "").orEmpty()
-        if (last.isBlank()) {
-            appCtx.putPrefString(PreferKey.aiNukeAppVersion, current)
+        if (lastTag.isBlank() && legacyCode == 0L) {
+            appCtx.putPrefString(PreferKey.aiNukeAppVersion, currentTag)
             return
         }
-        if (last == current) return
+        val changed = if (lastTag.isNotBlank()) {
+            lastTag != currentTag
+        } else {
+            currentCode == null || legacyCode != currentCode
+        }
+        if (!changed) {
+            //记号对上了只是格式老，把新记号对齐，不炸
+            appCtx.putPrefString(PreferKey.aiNukeAppVersion, currentTag)
+            return
+        }
         if (NUKE_CUSTOM_AI_CONFIG_ON_UPGRADE) {
             nukeAllAiJsonConfigs()
         } else {
@@ -193,7 +207,7 @@ object AiCreationConfig {
         }
         sanitizeStoredJsons()
         AiStructuredRequestTemplate.migrateTemplateOwnership()
-        appCtx.putPrefString(PreferKey.aiNukeAppVersion, current)
+        appCtx.putPrefString(PreferKey.aiNukeAppVersion, currentTag)
     }
 
     private fun appVersionTag(): String {
