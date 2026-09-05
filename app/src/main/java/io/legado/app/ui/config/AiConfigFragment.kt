@@ -588,7 +588,7 @@ class AiConfigFragment : PreferenceFragment(),
         provider: AiCreationProviderConfig?,
         isVideo: Boolean
     ) {
-        //变量定义与请求模板经行内点击弹窗编辑，保存到临时状态，随外层确认一并写入
+        //变量定义与请求体经行内点击弹窗编辑，保存到临时状态，随外层确认一并写入
         var variablesJson = provider?.variablesJson.orEmpty()
         var requestTemplate = provider?.requestTemplate.orEmpty()
         val binding = DialogAiCreationProviderEditBinding.inflate(layoutInflater).apply {
@@ -674,7 +674,7 @@ class AiConfigFragment : PreferenceFragment(),
                         toastOnUi(
                             getString(
                                 R.string.ai_creation_request_template_invalid,
-                                "请求模板为空，请先编辑请求模板"
+                                "请求体为空，请先编辑请求体"
                             )
                         )
                         return@okButton
@@ -1077,7 +1077,7 @@ class AiConfigFragment : PreferenceFragment(),
         }
     }
 
-    /** 全局通用请求模板：AI 聊天（对话/划词/浮动面板）与 AI 创作共用 */
+    /** 全局通用请求体：AI 聊天（对话/划词/浮动面板）与 AI 创作共用 */
     private fun showEditRequestDialog() {
         showRequestTemplateDialog(
             titleResource = R.string.ai_edit_request,
@@ -1088,7 +1088,7 @@ class AiConfigFragment : PreferenceFragment(),
         )
     }
 
-    /** 章节净化专用请求模板：净化是唯一需要 response_format=json 的消费者 */
+    /** 章节净化专用请求体：净化是唯一需要 response_format=json 的消费者 */
     private fun showChapterPurifyRequestDialog() {
         showRequestTemplateDialog(
             titleResource = R.string.ai_chapter_purify_request_template,

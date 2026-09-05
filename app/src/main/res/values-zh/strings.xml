@@ -440,8 +440,8 @@
     <string name="ai_creation_prompt_template">提示词模板</string>
     <string name="ai_creation_prompt_template_summary">JSON 对象，共 %d 条；key 供供应商路由引用，value 必须是无占位符的纯文本</string>
     <string name="ai_creation_prompt_template_hint">JSON 对象：{ &quot;连环画&quot;: &quot;将素材拆分为连续分镜。&quot; }。这里的 value 不允许占位符；由 LLM 变量设置中的输入模板统一组合路由文本与素材</string>
-    <string name="ai_creation_request_template">请求模板</string>
-    <string name="ai_creation_request_template_invalid">请求模板无效：%1$s</string>
+    <string name="ai_creation_request_template">请求体</string>
+    <string name="ai_creation_request_template_invalid">请求体无效：%1$s</string>
     <string name="ai_creation_test_connection">测试连接</string>
     <string name="ai_creation_test_connection_summary">测试 AI 创作模型连接</string>
     <string name="ai_creation_scope_selected_text">作用域：选中文本</string>
@@ -463,7 +463,7 @@
     <string name="ai_creation_page_info">%1$d/%2$d</string>
     <string name="ai_creation_done_mark">✓</string>
     <string name="ai_creation_slot_failed">生成失败：%1$s</string>
-    <string name="ai_creation_image_request_template">图片请求模板</string>
+    <string name="ai_creation_image_request_template">图片请求体</string>
     <string name="ai_creation_image_add_provider">添加图片供应商</string>
     <string name="ai_creation_image_add_provider_summary">添加自定义图片供应商，内置免费供应商</string>
     <string name="ai_creation_image_manage_providers">管理图片供应商</string>
@@ -489,7 +489,7 @@
     <string name="ai_creation_connection_test_failed">测试失败：%1$s</string>
     <string name="ai_creation_image_variables">图片变量定义</string>
     <string name="ai_creation_video_variables">视频变量定义</string>
-    <string name="ai_creation_video_request_template">视频请求模板</string>
+    <string name="ai_creation_video_request_template">视频请求体</string>
     <string name="ai_creation_save_workflow">保存工作流</string>
     <string name="ai_creation_copy_workflow">复制工作流</string>
     <string name="ai_creation_workflow_missing">未找到工作流元数据</string>
@@ -2005,7 +2005,7 @@
     <string name="ai_send_image_max_resolution">发送图片最大分辨率</string>
     <string name="ai_send_image_max_resolution_summary">总像素（万像素，10–5000）。发给 AI 的图片保持长宽比压到该预算附近；默认 100。</string>
     <string name="ai_edit_request_hint">结构化请求 JSON</string>
-    <string name="ai_edit_request_invalid">请求模板无效：%s</string>
+    <string name="ai_edit_request_invalid">请求体无效：%s</string>
     <string name="ai_model_saved">已保存模型</string>
     <string name="ai_chapter_purify">AI 章节净化</string>
     <string name="ai_connection_test">测试当前模型连接</string>

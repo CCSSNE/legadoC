@@ -441,8 +441,8 @@
     <string name="ai_creation_prompt_template">Prompt template</string>
     <string name="ai_creation_prompt_template_summary">JSON object with %d entries; keys are route targets and values must be plain text without placeholders</string>
     <string name="ai_creation_prompt_template_hint">JSON object: { &quot;连环画&quot;: &quot;Split material into sequential shots.&quot; }. Values cannot contain placeholders; the LLM variable settings combine the routed text and material</string>
-    <string name="ai_creation_request_template">Request template</string>
-    <string name="ai_creation_request_template_invalid">Invalid request templates: %1$s</string>
+    <string name="ai_creation_request_template">Request body</string>
+    <string name="ai_creation_request_template_invalid">Invalid request body: %1$s</string>
     <string name="ai_creation_test_connection">Test connection</string>
     <string name="ai_creation_test_connection_summary">Test the creation model connection</string>
     <string name="ai_creation_scope_selected_text">Scope: Selected text</string>
@@ -464,7 +464,7 @@
     <string name="ai_creation_page_info">%1$d/%2$d</string>
     <string name="ai_creation_done_mark">✓</string>
     <string name="ai_creation_slot_failed">Failed: %1$s</string>
-    <string name="ai_creation_image_request_template">Image request template</string>
+    <string name="ai_creation_image_request_template">Image request body</string>
     <string name="ai_creation_image_add_provider">Add image provider</string>
     <string name="ai_creation_image_add_provider_summary">Add a custom provider; built-in: free providers</string>
     <string name="ai_creation_image_manage_providers">Manage image providers</string>
@@ -490,7 +490,7 @@
     <string name="ai_creation_connection_test_failed">Test failed: %1$s</string>
     <string name="ai_creation_image_variables">Image variables</string>
     <string name="ai_creation_video_variables">Video variables</string>
-    <string name="ai_creation_video_request_template">Video request template</string>
+    <string name="ai_creation_video_request_template">Video request body</string>
     <string name="ai_creation_save_workflow">Save workflow</string>
     <string name="ai_creation_copy_workflow">Copy workflow</string>
     <string name="ai_creation_workflow_missing">Workflow metadata not found</string>
