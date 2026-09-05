@@ -648,6 +648,12 @@ class AiConfigFragment : PreferenceFragment(),
             )
         ) {
             customView { binding.root }
+            //删除放最左（neutral）：取消/确定左侧，编辑态才有，含内置图片/视频供应商
+            if (provider != null) {
+                neutralButton(R.string.ai_remove_provider) {
+                    confirmRemoveCreationProvider(provider, isVideo)
+                }
+            }
             okButton {
                 val name = binding.editProviderName.text?.toString()?.trim().orEmpty()
                 val baseUrl = binding.editProviderBaseUrl.text?.toString()?.trim().orEmpty()
@@ -739,40 +745,32 @@ class AiConfigFragment : PreferenceFragment(),
 
     private fun showCreationManageProvidersDialog(isVideo: Boolean) {
         val providers = creationProviders(isVideo)
+        val ctx = context ?: return
         val addLabel = getString(
             if (isVideo) R.string.ai_creation_video_add_provider
             else R.string.ai_creation_image_add_provider
         )
-        context?.selector(
+        //短按=设为当前，长按=编辑；删除收进编辑页左下（neutral），不再二级弹窗
+        val dialog = ctx.alert(
             getString(
                 if (isVideo) R.string.ai_creation_video_manage_providers
                 else R.string.ai_creation_image_manage_providers
-            ),
-            providers.map { it.name } + addLabel
-        ) { _, _, index ->
-            if (index == providers.size) {
-                showCreationProviderEditDialog(null, isVideo)
-                return@selector
-            }
-            val provider = providers[index]
-            val actions = buildList {
-                add(getString(R.string.ai_set_current_provider))
-                add(getString(R.string.ai_edit_provider))
-                if (!provider.builtIn) {
-                    add(getString(R.string.ai_remove_provider))
+            )
+        ) {
+            items(providers.map { it.name } + addLabel) { _, index ->
+                if (index == providers.size) {
+                    showCreationProviderEditDialog(null, isVideo)
+                    return@items
                 }
+                setCreationCurrentProviderId(isVideo, providers[index].id)
+                refreshUi()
             }
-            context?.selector(provider.name, actions) { _, action ->
-                when {
-                    action == 0 -> {
-                        setCreationCurrentProviderId(isVideo, provider.id)
-                        refreshUi()
-                    }
-
-                    action == 1 -> showCreationProviderEditDialog(provider, isVideo)
-                    else -> confirmRemoveCreationProvider(provider, isVideo)
-                }
-            }
+        }
+        dialog.listView?.setOnItemLongClickListener { _, _, position, _ ->
+            if (position == providers.size) return@setOnItemLongClickListener false
+            dialog.dismiss()
+            showCreationProviderEditDialog(providers[position], isVideo)
+            true
         }
     }
 
@@ -780,10 +778,7 @@ class AiConfigFragment : PreferenceFragment(),
         provider: AiCreationProviderConfig,
         isVideo: Boolean
     ) {
-        if (provider.builtIn) {
-            toastOnUi(R.string.ai_creation_provider_builtin)
-            return
-        }
+        //内置图片/视频供应商同样允许删除：存储层已支持删空不再重种内置项
         val relatedModelCount = creationModels(isVideo).count { it.providerId == provider.id }
         alert(
             title = provider.name,
@@ -1252,6 +1247,12 @@ class AiConfigFragment : PreferenceFragment(),
             )
         ) {
             customView { binding.root }
+            //删除放最左（neutral）：取消/确定左侧，编辑态才有
+            if (provider != null) {
+                neutralButton(R.string.ai_remove_provider) {
+                    confirmRemoveProvider(provider)
+                }
+            }
             okButton {
                 val name = binding.editProviderName.text?.toString()?.trim().orEmpty()
                 val baseUrl = binding.editProviderBaseUrl.text?.toString()?.trim().orEmpty()
@@ -1300,33 +1301,23 @@ class AiConfigFragment : PreferenceFragment(),
 
     private fun showManageProvidersDialog() {
         val providers = AppConfig.aiProviderList
-        context?.selector(
-            getString(R.string.ai_manage_providers),
-            providers.map { it.name } + getString(R.string.ai_add_provider)
-        ) { _, _, index ->
-            if (index == providers.size) {
-                showEditProviderDialog()
-                return@selector
-            }
-            val provider = providers[index]
-            context?.selector(
-                provider.name,
-                arrayListOf(
-                    getString(R.string.ai_set_current_provider),
-                    getString(R.string.ai_edit_provider),
-                    getString(R.string.ai_remove_provider)
-                )
-            ) { _, action ->
-                when (action) {
-                    0 -> {
-                        AppConfig.aiCurrentProviderId = provider.id
-                        refreshUi()
-                    }
-
-                    1 -> showEditProviderDialog(provider)
-                    2 -> confirmRemoveProvider(provider)
+        val ctx = context ?: return
+        //短按=设为当前，长按=编辑；删除收进编辑页左下（neutral），不再二级弹窗
+        val dialog = ctx.alert(getString(R.string.ai_manage_providers)) {
+            items(providers.map { it.name } + getString(R.string.ai_add_provider)) { _, index ->
+                if (index == providers.size) {
+                    showEditProviderDialog()
+                    return@items
                 }
+                AppConfig.aiCurrentProviderId = providers[index].id
+                refreshUi()
             }
+        }
+        dialog.listView?.setOnItemLongClickListener { _, _, position, _ ->
+            if (position == providers.size) return@setOnItemLongClickListener false
+            dialog.dismiss()
+            showEditProviderDialog(providers[position])
+            true
         }
     }
 
