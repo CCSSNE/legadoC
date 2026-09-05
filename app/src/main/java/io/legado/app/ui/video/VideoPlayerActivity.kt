@@ -659,7 +659,6 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
             }
             val mark = intro.substring(4, lastIndex)
             showMdIntro(mark)
-        }
         } else {
             tvIntro.text = intro
         }
