@@ -623,6 +623,12 @@ class AiCreationSession {
     var llmOutput: String = ""
 
     /**
+     * 最后一次实际发给 LLM 的输入：只由 LLM 调用写入，按下后改上框不影响它；
+     * 与 llmOutput 是同一对证据，工作流上框优先记它，没调过 LLM 时才记按下瞬间。
+     */
+    var llmSentInput: String = ""
+
+    /**
      * 上框图片集合：【图片N】对应 refs[N-1]，由 buildMaterialText 按首次出现顺序编号。
      * 标记与集合是发送与校验的唯一数据源；删标记=对应图片不发，删图=程序收尾重排。
      */
@@ -741,6 +747,7 @@ class AiCreationSession {
         prompt = ""
         manualLlmInput = ""
         llmOutput = ""
+        llmSentInput = ""
         materialImageRefs = emptyList()
         //清空即恢复出厂参数记忆，持久层一并清掉
         AiCreationConfig.saveCreationParams(emptyMap())

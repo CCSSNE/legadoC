@@ -38,9 +38,10 @@ object AiCreationHelper {
         //标记校验只看用户带没带图：带了图，返回必须保留标记给下游生图用；
         //眼睛看不见不是理由，规则照发、校验照跑
         val response = sendWithMarkerValidation(target, content, imageCount)
-        //工作流溯源：记录本次发给 LLM 的完整输入与 LLM 返回；
+        //工作流溯源：记录本次实际发给 LLM 的输入与 LLM 返回；
         //返回只记 llmOutput 一份，下框二次编辑或手填只动 prompt，不覆盖它
         session.setParam(AI_CREATION_LLM_INPUT_KEY, llmInput)
+        session.llmSentInput = llmInput
         session.llmOutput = response
         return response
     }
