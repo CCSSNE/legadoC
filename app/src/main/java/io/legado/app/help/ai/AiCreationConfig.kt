@@ -168,7 +168,7 @@ object AiCreationConfig {
      * 开机硬自检：AI 下面所有对外暴露的 JSON 配置逐项校验，
      * 坏的当场回出厂（只动坏的那一项，钥匙名字地址与可用配置不动），
      * 合法的用户定制一律不碰；最后弹一个汇总吐司让过程看得见，明细进 AI 日志。
-     * 每次启动都跑。
+     * 只在装新版本时跑一次，平时启动不跑。
      */
     fun verifyAiJsonConfigs() {
         val passed = mutableListOf<String>()
