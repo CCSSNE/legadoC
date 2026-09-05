@@ -154,6 +154,7 @@ object PreferKey {
     const val aiCreationPromptRegenerateLimit = "aiCreationPromptRegenerateLimit"
     const val aiCreationBuiltinApiKeysFilled = "aiCreationBuiltinApiKeysFilled"
     const val aiNukeAppVersion = "aiNukeAppVersion"
+    const val aiCreationGridImageHeight = "aiCreationGridImageHeight"
     const val aiCreationImageProviderList = "aiCreationImageProviderList"
     const val aiCreationImageModelList = "aiCreationImageModelList"
     const val aiCreationImageCurrentProviderId = "aiCreationImageCurrentProviderId"

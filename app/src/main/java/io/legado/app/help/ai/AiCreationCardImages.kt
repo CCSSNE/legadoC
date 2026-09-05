@@ -34,6 +34,11 @@ object AiCreationCardImages {
     const val MIN_SEND_IMAGE_WAN_PIXELS = 10
     const val MAX_SEND_IMAGE_WAN_PIXELS = 5000
 
+    /** 编辑器宫格图片总高度默认值（像素，近似 dp），单张/两宫格/四宫格共用 */
+    const val DEFAULT_GRID_IMAGE_HEIGHT = 240
+    const val MIN_GRID_IMAGE_HEIGHT = 80
+    const val MAX_GRID_IMAGE_HEIGHT = 1000
+
     /** 压缩重编码 JPEG 质量 */
     private const val SEND_IMAGE_JPEG_QUALITY = 85
 
@@ -54,6 +59,18 @@ object AiCreationCardImages {
 
     private val sendImageMaxTotalPixels: Long
         get() = sendImageMaxWanPixels.toLong() * 1_000_000L
+
+    /**
+     * 编辑器宫格图片总高度：插入图片弹窗里调，全局一个值，单张与宫格共用；
+     * 编辑器内按此高度成框显示（宫格按比例缩到框满，单张按比例限高）。
+     */
+    var gridImageHeight: Int
+        get() = appCtx.getPrefInt(PreferKey.aiCreationGridImageHeight, DEFAULT_GRID_IMAGE_HEIGHT)
+            .coerceIn(MIN_GRID_IMAGE_HEIGHT, MAX_GRID_IMAGE_HEIGHT)
+        set(value) = appCtx.putPrefInt(
+            PreferKey.aiCreationGridImageHeight,
+            value.coerceIn(MIN_GRID_IMAGE_HEIGHT, MAX_GRID_IMAGE_HEIGHT)
+        )
 
     fun import(uri: Uri, prefix: String): String? {
         return runCatching {

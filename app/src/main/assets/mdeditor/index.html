@@ -15,6 +15,25 @@ html, body {
 #editor {
     height: 100%;
 }
+/* 图片成框：单张按比例限高，宫格表格按设定总高度框满裁齐，不同比例同高 */
+.vditor-ir img {
+    max-height: var(--grid-img-h, 240px);
+    width: auto;
+    max-width: 100%;
+    object-fit: contain;
+    vertical-align: top;
+}
+.vditor-ir table {
+    width: 100%;
+    table-layout: fixed;
+}
+.vditor-ir table img {
+    width: 100%;
+    height: var(--grid-img-h, 240px);
+    max-height: none;
+    object-fit: cover;
+    display: block;
+}
 </style>
 </head>
 <body>
@@ -62,6 +81,9 @@ html, body {
 
     function boot() {
         var dark = !!(window.AndroidBridge && AndroidBridge.isDark());
+        //宫格总高度（像素）：插入弹窗里调，全局一个值，成框显示用
+        var imgH = (window.AndroidBridge && AndroidBridge.gridImageHeight()) || 240;
+        document.documentElement.style.setProperty('--grid-img-h', imgH + 'px');
         initialContent = window.AndroidBridge ? AndroidBridge.loadContent() : '';
         vditor = new Vditor('editor', {
             cdn: '/assets/mdeditor/vditor',

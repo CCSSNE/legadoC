@@ -491,6 +491,11 @@
     <string name="ai_creation_image_variables">Image variables</string>
     <string name="ai_creation_video_variables">Video variables</string>
     <string name="ai_creation_video_request_template">Video request body</string>
+    <string name="ai_creation_insert_image_title">Insert image</string>
+    <string name="ai_creation_grid_single">Single</string>
+    <string name="ai_creation_grid_two">2-grid</string>
+    <string name="ai_creation_grid_four">4-grid</string>
+    <string name="ai_creation_grid_height">Total height (px)</string>
     <string name="ai_creation_save_workflow">Save workflow</string>
     <string name="ai_creation_copy_workflow">Copy workflow</string>
     <string name="ai_creation_workflow_missing">Workflow metadata not found</string>

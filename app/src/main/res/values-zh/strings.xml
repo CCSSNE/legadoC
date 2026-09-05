@@ -490,6 +490,11 @@
     <string name="ai_creation_image_variables">图片变量定义</string>
     <string name="ai_creation_video_variables">视频变量定义</string>
     <string name="ai_creation_video_request_template">视频请求体</string>
+    <string name="ai_creation_insert_image_title">插入图片</string>
+    <string name="ai_creation_grid_single">单张</string>
+    <string name="ai_creation_grid_two">两宫格</string>
+    <string name="ai_creation_grid_four">四宫格</string>
+    <string name="ai_creation_grid_height">总高度</string>
     <string name="ai_creation_save_workflow">保存工作流</string>
     <string name="ai_creation_copy_workflow">复制工作流</string>
     <string name="ai_creation_workflow_missing">未找到工作流元数据</string>
