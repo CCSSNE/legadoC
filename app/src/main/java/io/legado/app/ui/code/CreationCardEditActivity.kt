@@ -170,7 +170,7 @@ class CreationCardEditActivity :
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.creation_card_edit, menu)
+        menuInflater.inflate(R.menu.menu_creation_card_edit, menu)
         return super.onCompatCreateOptionsMenu(menu)
     }
 

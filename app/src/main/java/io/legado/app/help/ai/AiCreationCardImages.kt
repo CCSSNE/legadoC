@@ -139,8 +139,8 @@ object AiCreationCardImages {
         val totalPixels = effectiveWidth.toLong() * effectiveHeight.toLong()
         if (totalPixels <= maxPixels) return null
         val scale = sqrt(maxPixels.toDouble() / totalPixels)
-        val targetWidth = max(1, (effectiveWidth * scale).roundToInt())
-        val targetHeight = max(1, (effectiveHeight * scale).roundToInt())
+        val targetWidth = maxOf(1, (effectiveWidth * scale).roundToInt())
+        val targetHeight = maxOf(1, (effectiveHeight * scale).roundToInt())
         //先按采样率粗解码限制内存，再精确缩放到目标尺寸
         var sampleSize = 1
         while (width / (sampleSize * 2) >= targetWidth && height / (sampleSize * 2) >= targetHeight) {
