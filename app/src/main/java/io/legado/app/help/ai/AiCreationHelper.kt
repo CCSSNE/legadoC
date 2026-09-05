@@ -8,9 +8,11 @@ object AiCreationHelper {
 
     /**
      * 提示词页上框即完整LLM输入：路由提示词与模板已渲染，直接原样发给LLM，不再二次套模板。
+     * 铁律：上框文本发送时一字不动，不追加、不删减；想让模型守规则，预填时就写进上框
+     * （看得见、改得掉、删得掉），发送时只拼图片部件、只做标记校验，不碰文本。
      * 发送前先校验上框标记（重号/跳号/悬空错哪指哪）；供应商支持多模态时 userContent 变为
-     * 多模态数组，第一块永远是上框文本，图片按标记顺序转 base64 跟在后面；
-     * 供应商不支持时图片就地转成文字占位嵌回数组（DSH 同款），文字照发、请求不报错；
+     * 多模态数组，第一块永远是上框原文，图片按标记顺序转 base64 跟在后面；
+     * 供应商不支持时图片就地转成文字占位嵌回数组（DSH 同款），原文不动、请求不报错；
      * 标记校验只看用户带没带图（上框有没有标记），跟模型长没长眼睛无关：
      * 标记是给下游生图步骤的路由，LLM 看不见图也必须原样保留，否则下游收不到图；
      * 返回后校验标记，不合格重新生成。
@@ -24,15 +26,7 @@ object AiCreationHelper {
         val imageCount = parseMarkers(llmInput).size
         val target = AiCreationConfig.requireModelTarget()
         val vision = target.provider.supportsVision
-        //有图规则路由：本节 markerRule 点名的提示词库条目，只要用户带了图就追加，
-        //跟供应商支不支持多模态无关（规则管的是返回，不是眼睛）
-        val mode = session.paramValue(AI_CREATION_MODE_KEY)
-        val markerRule = when (mode) {
-            AiCreationVariables.GROUP_IMAGE -> AiCreationConfig.imageLlmDefinition.markerRule
-            AiCreationVariables.GROUP_VIDEO -> AiCreationConfig.videoLlmDefinition.markerRule
-            else -> error("未知 AI 创作模式：$mode")
-        }
-        val content = buildLlmUserContent(llmInput, refs, imageCount, vision, markerRule)
+        val content = buildLlmUserContent(llmInput, refs, imageCount, vision)
         AppLog.putAi(
             "AI_CREATION REQUEST\n" +
                 "provider=${target.provider.name}\n" +
@@ -113,45 +107,21 @@ object AiCreationHelper {
     }
 
     /**
-     * 组装 LLM userContent：无图保持字符串不动（预填带进来的规则句同步摘掉，删标记=纯文生，
-     * 不给模型留复活标记的借口）；有图时文本在前、本节 markerRule 点名的提示词库规则紧随其后
-     * （预填已带就不重复缀；校验要模型保留标记，规则必须先告诉模型，
-     * 眼睛支不支持都一样：标记是下游生图的路由，不是给眼睛看的），图片按标记顺序跟后；
-     * 库里没有该条目直接报错；本节没点名就不追加，校验照跑；
-     * 供应商不支持时图片转成文字占位嵌回数组（图没发出去，但位置和意图留下了）。
+     * 组装 LLM userContent：上框原文一字不动，只在后面拼图片部件。
+     * 无图：字符串原样返回；有图且供应商支持多模态：原文文本块 + 图片块；
+     * 有图但供应商不支持：原文文本块 + 每张图的"已省略"文字占位块（原文不动）；
+     * 标记校验只看原文里的标记，拼包过程不增不减任何文字。
      */
     private fun buildLlmUserContent(
         llmInput: String,
         refs: List<String>,
         imageCount: Int,
-        supportVision: Boolean,
-        markerRule: String?
+        supportVision: Boolean
     ): Any {
-        val ruleText = markerRule?.takeIf { it.isNotBlank() }?.let { ruleName ->
-            if (imageCount == 0) {
-                //纯文生用不上规则：库里有没有条目都无所谓，不报错
-                runCatching { AiCreationConfig.promptTextOf(ruleName) }.getOrNull()
-            } else {
-                //有标记必须有规则：库里没条目直接报错
-                AiCreationConfig.promptTextOf(ruleName)
-            }
-        }
-        if (imageCount == 0) {
-            //用户删光标记=纯文生：预填带进来的规则句同步摘掉，不给模型留复活标记的借口
-            if (ruleText == null) return llmInput
-            return llmInput.replace("\n\n$ruleText", "").replace(ruleText, "").trim()
-        }
+        if (imageCount == 0) return llmInput
         if (!supportVision) {
             val array = JSONArray()
-            val firstText = buildString {
-                append(llmInput)
-                //预填已带规则就不重复缀；图片后挂载的不经过预填，发送时补上
-                if (ruleText != null && !llmInput.contains(ruleText)) {
-                    append("\n\n")
-                    append(ruleText)
-                }
-            }
-            array.put(JSONObject().put("type", "text").put("text", firstText))
+            array.put(JSONObject().put("type", "text").put("text", llmInput))
             for (index in 1..imageCount) {
                 array.put(
                     JSONObject().put("type", "text").put(
@@ -162,15 +132,8 @@ object AiCreationHelper {
             }
             return array
         }
-        val text = buildString {
-            append(llmInput)
-            if (ruleText != null && !llmInput.contains(ruleText)) {
-                append("\n\n")
-                append(ruleText)
-            }
-        }
         val array = JSONArray()
-        array.put(JSONObject().put("type", "text").put("text", text))
+        array.put(JSONObject().put("type", "text").put("text", llmInput))
         for (index in 1..imageCount) {
             val ref = refs[index - 1]
             array.put(
