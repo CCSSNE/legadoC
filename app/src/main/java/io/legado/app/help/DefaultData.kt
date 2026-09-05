@@ -70,6 +70,8 @@ object DefaultData {
                 //v2：请求模板归属迁移——全局归聊天+创作（未定制切新干净默认），净化固化继承快照
                 AiStructuredRequestTemplate.migrateTemplateOwnership()
             }
+            //开机硬自检：每次启动都跑，坏的当场回出厂并弹汇总，对的也弹
+            AiCreationConfig.verifyAiJsonConfigs()
         }.onError {
             AppLog.put("启动默认数据升级任务失败\n${it.localizedMessage}", it)
         }
