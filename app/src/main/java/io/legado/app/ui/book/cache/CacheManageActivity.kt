@@ -800,7 +800,9 @@ class CacheManageActivity :
                 Intent(this@CacheManageActivity, CodeEditActivity::class.java).apply {
                     putExtra("cacheKey", cacheKey)
                     putExtra("title", getString(R.string.ai_creation_view_workflow))
-                    putExtra("languageName", "source.json")
+                    // textmate/languages.json 只注册了 source.js / text.html.basic / text.html.markdown，
+                    // JSON 工作流复用 source.js 高亮，禁止传未注册的 source.json
+                    putExtra("languageName", "source.js")
                 }
             )
         }
