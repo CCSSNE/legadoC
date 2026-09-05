@@ -68,7 +68,6 @@ object AiCreationVideoHelper {
             variables = tokens.filterKeys { it !in setOf("model", "prompt", "n", "image_url", "request_id") },
             llmInput = llmInput,
             llmOutput = llmOutput,
-            prompt = prompt,
             request = body,
             images = imageDataUrls,
             llmImages = llmImages

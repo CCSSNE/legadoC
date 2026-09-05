@@ -651,7 +651,6 @@ object AiCreationImageTaskHolder {
         val workflow = buildWorkflow(
             type = AiCreationWorkflow.TYPE_IMAGE,
             target = target,
-            prompt = prompt,
             variables = extraValues,
             llmInput = llmInput,
             requestBody = body,
@@ -677,7 +676,6 @@ object AiCreationImageTaskHolder {
     private fun buildWorkflow(
         type: String,
         target: AiCreationProviderTarget,
-        prompt: String,
         variables: Map<String, String>,
         llmInput: String,
         requestBody: String,
@@ -693,7 +691,6 @@ object AiCreationImageTaskHolder {
             variables = variables,
             llmInput = llmInput,
             llmOutput = llmOutput,
-            prompt = prompt,
             request = requestBody,
             images = imageDataUrls,
             llmImages = llmImages
@@ -817,7 +814,6 @@ object AiCreationImageTaskHolder {
             model = modelId,
             variables = tokens.filterKeys { it !in setOf("model", "prompt", "n", "image", "image2", "image3", "seed") },
             llmInput = "",
-            prompt = AiCreationProviderStore.IMAGE_TEST_PROMPT,
             request = body
         )
         val fileNames = fetchImages(provider, body, workflow)
