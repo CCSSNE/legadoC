@@ -11,7 +11,9 @@ object AiCreationHelper {
      * 发送前先校验上框标记（重号/跳号/悬空错哪指哪）；供应商支持多模态时 userContent 变为
      * 多模态数组，第一块永远是上框文本，图片按标记顺序转 base64 跟在后面；
      * 供应商不支持时图片就地转成文字占位嵌回数组（DSH 同款），文字照发、请求不报错；
-     * 返回后校验标记（纯文本替换时不校验），不合格重新生成。
+     * 标记校验只看用户带没带图（上框有没有标记），跟模型长没长眼睛无关：
+     * 标记是给下游生图步骤的路由，LLM 看不见图也必须原样保留，否则下游收不到图；
+     * 返回后校验标记，不合格重新生成。
      */
     suspend fun generatePromptFromLlmInput(
         session: AiCreationSession,
@@ -22,8 +24,8 @@ object AiCreationHelper {
         val imageCount = parseMarkers(llmInput).size
         val target = AiCreationConfig.requireModelTarget()
         val vision = target.provider.supportsVision
-        //有图规则路由：本节 markerRule 点名的提示词库条目，有图真发图时才追加；
-        //纯文本替换（没发图）不追加，返回校验也同步让开
+        //有图规则路由：本节 markerRule 点名的提示词库条目，只要用户带了图就追加，
+        //跟供应商支不支持多模态无关（规则管的是返回，不是眼睛）
         val mode = session.paramValue(AI_CREATION_MODE_KEY)
         val markerRule = when (mode) {
             AiCreationVariables.GROUP_IMAGE -> AiCreationConfig.imageLlmDefinition.markerRule
@@ -39,8 +41,9 @@ object AiCreationHelper {
                 "imageCount=$imageCount\n" +
                 "supportVision=$vision"
         )
-        //图被转成文字时没发图也不要求返回标记，按纯文生校验
-        val response = sendWithMarkerValidation(target, content, if (vision) imageCount else 0)
+        //标记校验只看用户带没带图：带了图，返回必须保留标记给下游生图用；
+        //眼睛看不见不是理由，规则照发、校验照跑
+        val response = sendWithMarkerValidation(target, content, imageCount)
         //工作流溯源：记录本次发给 LLM 的完整输入
         session.setParam(AI_CREATION_LLM_INPUT_KEY, llmInput)
         return response
@@ -110,9 +113,10 @@ object AiCreationHelper {
     }
 
     /**
-     * 组装 LLM userContent：无图保持字符串不动；有图且供应商支持多模态时文本在前、
-     * 本节 markerRule 点名的提示词库规则紧随其后（校验要模型保留标记，规则必须先告诉模型），
-     * 图片按标记顺序跟后；库里没有该条目直接报错；本节没点名就不追加，校验照跑；
+     * 组装 LLM userContent：无图保持字符串不动；有图时文本在前、
+     * 本节 markerRule 点名的提示词库规则紧随其后（校验要模型保留标记，规则必须先告诉模型，
+     * 眼睛支不支持都一样：标记是下游生图的路由，不是给眼睛看的），图片按标记顺序跟后；
+     * 库里没有该条目直接报错；本节没点名就不追加，校验照跑；
      * 供应商不支持时图片转成文字占位嵌回数组（图没发出去，但位置和意图留下了）。
      */
     private fun buildLlmUserContent(
@@ -123,9 +127,19 @@ object AiCreationHelper {
         markerRule: String?
     ): Any {
         if (imageCount == 0) return llmInput
+        val ruleText = markerRule?.takeIf { it.isNotBlank() }?.let { ruleName ->
+            AiCreationConfig.promptTextOf(ruleName)
+        }
         if (!supportVision) {
             val array = JSONArray()
-            array.put(JSONObject().put("type", "text").put("text", llmInput))
+            val firstText = buildString {
+                append(llmInput)
+                if (ruleText != null) {
+                    append("\n\n")
+                    append(ruleText)
+                }
+            }
+            array.put(JSONObject().put("type", "text").put("text", firstText))
             for (index in 1..imageCount) {
                 array.put(
                     JSONObject().put("type", "text").put(
@@ -138,9 +152,9 @@ object AiCreationHelper {
         }
         val text = buildString {
             append(llmInput)
-            markerRule?.takeIf { it.isNotBlank() }?.let { ruleName ->
+            if (ruleText != null) {
                 append("\n\n")
-                append(AiCreationConfig.promptTextOf(ruleName))
+                append(ruleText)
             }
         }
         val array = JSONArray()
