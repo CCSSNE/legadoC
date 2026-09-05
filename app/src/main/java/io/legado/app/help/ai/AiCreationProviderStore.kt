@@ -66,10 +66,10 @@ object AiCreationProviderStore {
         """{"model":"{{model}}","prompt":"{{prompt}}","n":{{n}},"size":"{{size}}","quality":"{{quality}}","watermark_enabled":{{watermark_enabled}}}"""
 
     const val SILICONFLOW_IMAGE_REQUEST_TEMPLATE =
-        """{"model":"{{model}}","prompt":"{{prompt}}","negative_prompt":"{{negative_prompt}}","image_size":"{{image_size}}","batch_size":{{n}},"num_inference_steps":{{num_inference_steps}},"guidance_scale":{{guidance_scale}},"image":"{{image}}"}"""
+        """{"model":"{{model}}","prompt":"{{prompt}}","negative_prompt":"{{negative_prompt}}","image_size":"{{image_size}}","batch_size":{{n}},"num_inference_steps":{{num_inference_steps}},"guidance_scale":{{guidance_scale}},"seed":{{seed}},"image":"{{image}}"}"""
 
     const val ZHIPU_VIDEO_REQUEST_TEMPLATE =
-        """{"model":"{{model}}","prompt":"{{prompt}}","quality":"{{video_quality}}","with_audio":{{video_with_audio}},"size":"{{video_size}}","fps":{{video_fps}},"duration":{{video_duration}},"watermark_enabled":{{watermark_enabled}},"image_url":{{image_url}}}"""
+        """{"model":"{{model}}","prompt":"{{prompt}}","quality":"{{video_quality}}","with_audio":{{video_with_audio}},"size":"{{video_size}}","fps":{{video_fps}},"duration":{{video_duration}},"watermark_enabled":{{watermark_enabled}},"request_id":"{{request_id}}","image_url":{{image_url}}}"""
 
     // ———————— 图片供应商 ————————
 

@@ -580,7 +580,10 @@ object AiCreationImageTaskHolder {
         llmImages: List<String> = emptyList()
     ): List<String> {
         val retry = AiCreationConfig.imageRetryCount
-        val body = renderImageRequestBody(target, prompt, n, extraValues, imageDataUrls)
+        //种子空着=每次随机：模板下不了"省略字段"，空串发过去会被打回来，所以这里填真随机数
+        val resolvedSeed = extraValues["seed"]?.takeIf { it.isNotBlank() }
+            ?: kotlin.random.Random.nextLong(0, 10_000_000_000L).toString()
+        val body = renderImageRequestBody(target, prompt, n, extraValues, imageDataUrls, resolvedSeed)
         val workflow = buildWorkflow(
             type = AiCreationWorkflow.TYPE_IMAGE,
             target = target,
@@ -695,7 +698,8 @@ object AiCreationImageTaskHolder {
         prompt: String,
         n: Int,
         extraValues: Map<String, String>,
-        imageDataUrls: List<String> = emptyList()
+        imageDataUrls: List<String> = emptyList(),
+        resolvedSeed: String = ""
     ): String {
         val tokens = buildMap {
             put("model", target.modelId)
@@ -707,6 +711,8 @@ object AiCreationImageTaskHolder {
             put("image2", imageDataUrls.getOrElse(1) { "" })
             put("image3", imageDataUrls.getOrElse(2) { "" })
             putAll(extraValues)
+            //种子后放：用户填了用填的，没填用本次随机数；旧模板没这个位置则忽略
+            if (resolvedSeed.isNotBlank()) put("seed", resolvedSeed)
         }
         return AiCreationProviderStore.renderRequestTemplate(target.provider.requestTemplate, tokens)
     }
@@ -732,6 +738,9 @@ object AiCreationImageTaskHolder {
             variables.forEach { variable ->
                 put(variable.key, variable.effectiveValue(null))
             }
+            //种子没有省略写法：测试也填真随机数，不发空串
+            put("seed", get("seed")?.takeIf { it.isNotBlank() }
+                ?: kotlin.random.Random.nextLong(0, 10_000_000_000L).toString())
         }
         val body = AiCreationProviderStore.renderRequestTemplate(provider.requestTemplate, tokens)
         val workflow = AiCreationWorkflow(
@@ -739,7 +748,7 @@ object AiCreationImageTaskHolder {
             providerName = provider.name,
             baseUrl = provider.baseUrl,
             model = modelId,
-            variables = tokens.filterKeys { it !in setOf("model", "prompt", "n", "image", "image2", "image3") },
+            variables = tokens.filterKeys { it !in setOf("model", "prompt", "n", "image", "image2", "image3", "seed") },
             llmInput = "",
             prompt = AiCreationProviderStore.IMAGE_TEST_PROMPT,
             request = body

@@ -214,12 +214,21 @@ object AiCreationVariables {
         defaultValue = "7.5",
     )
 
+    //硅基随机种子：填数字=每次出固定图，不填=每次随机（请求时填真随机数，不发空串）
+    private val kolorsSeedVariable = AiCreationVariable(
+        key = "seed",
+        label = "随机种子",
+        format = AiCreationVariable.FORMAT_INPUT,
+        defaultValue = "",
+    )
+
     /** 硅基流动 Kolors 生图参数变量（style 属于 LLM 变量设置，不在此列） */
     val kolorsImageVariables = listOf(
         kolorsImageSizeVariable,
         kolorsNegativePromptVariable,
         kolorsStepsVariable,
-        kolorsGuidanceVariable
+        kolorsGuidanceVariable,
+        kolorsSeedVariable
     )
 
     //视频供应商按智谱 CogVideoX 官方参数定义；key 统一加 video_ 前缀保证全局唯一
@@ -279,6 +288,13 @@ object AiCreationVariables {
             defaultValue = "5",
             onValue = "10",
             offValue = "5",
+        ),
+        //视频请求编号：填了就用填的，不填每次自动生成唯一号（请求时填真值，不发空串）
+        AiCreationVariable(
+            key = "request_id",
+            label = "请求编号",
+            format = AiCreationVariable.FORMAT_INPUT,
+            defaultValue = "",
         )
     )
 

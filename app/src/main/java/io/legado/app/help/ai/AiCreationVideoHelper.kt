@@ -53,6 +53,9 @@ object AiCreationVideoHelper {
             variables.forEach { variable ->
                 put(variable.key, extraValues[variable.key] ?: variable.effectiveValue(null))
             }
+            //编号空着=每次自动生成唯一号：模板下不了"省略字段"，空串发过去可能被打回来，所以填真值
+            put("request_id", get("request_id")?.takeIf { it.isNotBlank() }
+                ?: java.util.UUID.randomUUID().toString())
         }
         val body = AiCreationProviderStore.renderRequestTemplate(provider.requestTemplate, tokens)
         //工作流溯源快照：变量与请求体都是填好实际值的成品，不含 API Key；images 为随请求发出的图片 data URL，llmImages 为 LLM 输入份图片
@@ -61,7 +64,7 @@ object AiCreationVideoHelper {
             providerName = provider.name,
             baseUrl = provider.baseUrl,
             model = modelId,
-            variables = tokens.filterKeys { it !in setOf("model", "prompt", "n", "image_url") },
+            variables = tokens.filterKeys { it !in setOf("model", "prompt", "n", "image_url", "request_id") },
             llmInput = llmInput,
             prompt = prompt,
             request = body,
