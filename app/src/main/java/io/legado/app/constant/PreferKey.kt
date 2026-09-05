@@ -153,6 +153,7 @@ object PreferKey {
     const val aiCreationImageRetryCount = "aiCreationImageRetryCount"
     const val aiCreationPromptRegenerateLimit = "aiCreationPromptRegenerateLimit"
     const val aiCreationBuiltinApiKeysFilled = "aiCreationBuiltinApiKeysFilled"
+    const val aiNukeVersionCode = "aiNukeVersionCode"
     const val aiCreationImageProviderList = "aiCreationImageProviderList"
     const val aiCreationImageModelList = "aiCreationImageModelList"
     const val aiCreationImageCurrentProviderId = "aiCreationImageCurrentProviderId"

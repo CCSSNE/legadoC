@@ -17,6 +17,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.webkit.WebViewAssetLoader
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
+import io.legado.app.constant.AppLog
 import io.legado.app.databinding.ActivityCreationCardEditBinding
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.ai.AiCreationCardImages
@@ -106,10 +107,14 @@ class CreationCardEditActivity :
     /** creation_images 引用原图：由应用私有目录按文件名直接提供 */
     private val creationImagesHandler =
         WebViewAssetLoader.PathHandler { path ->
-            val name = path.substringAfterLast('/')
+            //Vditor 偶尔会在地址后带查询串，先剥掉再取文件名，否则按缺失处理
+            val name = path.substringAfterLast('/').substringBefore('?').substringBefore('#')
             if (name.isBlank() || name.contains("..")) return@PathHandler null
             val file = File(AiCreationCardImages.dir, name)
-            if (!file.isFile) return@PathHandler null
+            if (!file.isFile) {
+                AppLog.put("创作卡片图片加载失败，文件不存在：$name")
+                return@PathHandler null
+            }
             val mime = when (file.extension.lowercase()) {
                 "png" -> "image/png"
                 "webp" -> "image/webp"
@@ -163,7 +168,7 @@ class CreationCardEditActivity :
                 toastOnUi(R.string.creation_image_import_failed)
                 return@launch
             }
-            val literal = JSONObject.quote("![]($ref)")
+            val literal = JSONObject.quote("![](/$ref)")
             binding.webView.evaluateJavascript("window.editorApi.insertText($literal)", null)
             binding.webView.evaluateJavascript("window.editorApi.focusEditor()", null)
         }

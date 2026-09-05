@@ -8,9 +8,11 @@ import io.legado.app.ui.main.ai.AiModelConfig
 import io.legado.app.ui.main.ai.AiProviderConfig
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefInt
+import io.legado.app.utils.getPrefLong
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.putPrefInt
+import io.legado.app.utils.putPrefLong
 import io.legado.app.utils.putPrefString
 import io.legado.app.utils.removePref
 import io.legado.app.utils.toastOnUi
@@ -168,6 +170,39 @@ object AiCreationConfig {
      * 没有破坏性更新的版本把它置 false，升级时只把内置回出厂，自加的不动。
      */
     const val NUKE_CUSTOM_AI_CONFIG_ON_UPGRADE = true
+
+    /**
+     * 版本号一变就按开关处理，不另维护升级号：没记号=新装，只记号不炸不弹；
+     * 记号跟当前不一样=升级上来了，开关开着直接全炸，关着只把内置回出厂。
+     * 每次启动都跑，便宜的一次读值比对。
+     */
+    fun nukeOnAppVersionChange() {
+        val current = runCatching { appVersionCode() }.getOrNull() ?: return
+        val last = appCtx.getPrefLong(PreferKey.aiNukeVersionCode, 0L)
+        if (last == 0L) {
+            appCtx.putPrefLong(PreferKey.aiNukeVersionCode, current)
+            return
+        }
+        if (last == current) return
+        if (NUKE_CUSTOM_AI_CONFIG_ON_UPGRADE) {
+            nukeAllAiJsonConfigs()
+        } else {
+            forceRestoreFactoryDefaults()
+        }
+        sanitizeStoredJsons()
+        AiStructuredRequestTemplate.migrateTemplateOwnership()
+        appCtx.putPrefLong(PreferKey.aiNukeVersionCode, current)
+    }
+
+    private fun appVersionCode(): Long {
+        val info = appCtx.packageManager.getPackageInfo(appCtx.packageName, 0)
+        return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            info.longVersionCode
+        } else {
+            @Suppress("DEPRECATION")
+            info.versionCode.toLong()
+        }
+    }
 
     /**
      * 炸：AI 下面所有 JSON 配置全部回到出厂。
