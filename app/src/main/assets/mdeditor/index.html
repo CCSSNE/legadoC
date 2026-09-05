@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<link rel="stylesheet" href="/assets/vditor/dist/index.css">
+<link rel="stylesheet" href="/assets/mdeditor/vditor/dist/index.css">
 <style>
 html, body {
     margin: 0;
@@ -19,7 +19,7 @@ html, body {
 </head>
 <body>
 <div id="editor"></div>
-<script src="/assets/vditor/dist/index.min.js"></script>
+<script src="/assets/mdeditor/vditor/dist/index.min.js"></script>
 <script>
 (function () {
     var IMAGE_BASE = '/creation_images/';
@@ -64,7 +64,7 @@ html, body {
         var dark = !!(window.AndroidBridge && AndroidBridge.isDark());
         initialContent = window.AndroidBridge ? AndroidBridge.loadContent() : '';
         vditor = new Vditor('editor', {
-            cdn: '/assets/vditor',
+            cdn: '/assets/mdeditor/vditor',
             mode: 'ir',
             lang: 'zh_CN',
             icon: 'ant',
