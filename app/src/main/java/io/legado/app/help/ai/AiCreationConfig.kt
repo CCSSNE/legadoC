@@ -6,8 +6,6 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.main.ai.AiModelConfig
 import io.legado.app.ui.main.ai.AiProviderConfig
-import io.legado.app.utils.GSON
-import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.getPrefString
@@ -16,7 +14,6 @@ import io.legado.app.utils.putPrefInt
 import io.legado.app.utils.putPrefString
 import io.legado.app.utils.removePref
 import io.legado.app.utils.toastOnUi
-import org.json.JSONArray
 import org.json.JSONObject
 import splitties.init.appCtx
 
@@ -166,151 +163,18 @@ object AiCreationConfig {
     }
 
     /**
-     * 装新版本时跑一次的硬自检：只查不动手，逐字比对。
-     * 内置的东西（供应商变量定义与请求体、LLM变量、提示词模板、全局请求体）
-     * 必须跟出厂逐字一致，差一个字就算不行；自加的供应商按有效性查。
-     * 全部通过就弹成功；任何一项不行，直接掀桌——自加的供应商 whole 删除，
-     * 内置的全部回到出厂，再弹结果，明细进 AI 日志。平时启动不跑。
+     * 破坏性更新硬开关：true 表示本版本有破坏性更新，升级时不检测、
+     * 直接把 AI 下面所有 JSON 配置全部炸回出厂（自加的供应商整家删除）。
+     * 没有破坏性更新的版本把它置 false，升级时只把内置回出厂，自加的不动。
      */
-    fun verifyAiJsonConfigs() {
-        val failures = mutableListOf<String>()
-        val detail = StringBuilder()
+    const val NUKE_CUSTOM_AI_CONFIG_ON_UPGRADE = true
 
-        fun check(name: String, problem: () -> String?) {
-            val found = runCatching { problem() }.getOrElse { it.message ?: it.javaClass.simpleName }
-            if (found == null) {
-                detail.append("PASS $name\n")
-            } else {
-                failures.add("$name（$found）")
-                detail.append("FAIL $name：$found\n")
-            }
-        }
-
-        check("图片供应商") {
-            val rawJson = appCtx.getPrefString(PreferKey.aiCreationImageProviderList)
-            if (!rawJson.isNullOrBlank() &&
-                runCatching {
-                    GSON.fromJsonArray<AiCreationProviderConfig>(rawJson).getOrThrow()
-                }.isFailure
-            ) {
-                return@check "名单损坏"
-            }
-            //内置逐字比对出厂，自加的按有效性查
-            val bad = AiCreationProviderStore.imageProviderList.filterNot { provider ->
-                val factoryVariables = AiCreationProviderStore.defaultVariablesJsonOf(provider)
-                val factoryTemplate = AiCreationProviderStore.defaultRequestTemplateOf(provider)
-                if (factoryVariables != null && factoryTemplate != null) {
-                    provider.variablesJson.trim() == factoryVariables.trim() &&
-                        provider.requestTemplate.trim() == factoryTemplate.trim()
-                } else {
-                    runCatching {
-                        AiCreationVariables.parse(provider.variablesJson)
-                        AiCreationProviderStore.parseImageRequestTemplateJson(provider.requestTemplate)
-                    }.isSuccess
-                }
-            }
-            if (bad.isNotEmpty()) "走样${bad.size}家" else null
-        }
-
-        check("视频供应商") {
-            val rawJson = appCtx.getPrefString(PreferKey.aiCreationVideoProviderList)
-            if (!rawJson.isNullOrBlank() &&
-                runCatching {
-                    GSON.fromJsonArray<AiCreationProviderConfig>(rawJson).getOrThrow()
-                }.isFailure
-            ) {
-                return@check "名单损坏"
-            }
-            val bad = AiCreationProviderStore.videoProviderList.filterNot { provider ->
-                val factoryVariables = AiCreationProviderStore.defaultVariablesJsonOf(provider)
-                val factoryTemplate = AiCreationProviderStore.defaultRequestTemplateOf(provider)
-                if (factoryVariables != null && factoryTemplate != null) {
-                    provider.variablesJson.trim() == factoryVariables.trim() &&
-                        provider.requestTemplate.trim() == factoryTemplate.trim()
-                } else {
-                    runCatching {
-                        AiCreationVariables.parse(provider.variablesJson)
-                        AiCreationProviderStore.parseVideoRequestTemplateJson(provider.requestTemplate)
-                    }.isSuccess
-                }
-            }
-            if (bad.isNotEmpty()) "走样${bad.size}家" else null
-        }
-
-        check("图片模型") {
-            modelListProblem(
-                PreferKey.aiCreationImageModelList,
-                AiCreationProviderStore.imageModelList.size
-            )
-        }
-
-        check("视频模型") {
-            modelListProblem(
-                PreferKey.aiCreationVideoModelList,
-                AiCreationProviderStore.videoModelList.size
-            )
-        }
-
-        check("LLM变量") {
-            if (llmVariablesJson.trim() != defaultLlmVariablesJson.trim()) "与出厂不一致" else null
-        }
-
-        check("提示词模板") {
-            if (promptTemplateJson.trim() != defaultPromptTemplateJson.trim()) "与出厂不一致" else null
-        }
-
-        check("全局请求模板") {
-            val raw = appCtx.getPrefString(PreferKey.aiRequestTemplate)
-            if (!raw.isNullOrBlank() &&
-                raw.trim() != AiStructuredRequestTemplate.default.trim()
-            ) {
-                "与出厂不一致"
-            } else null
-        }
-
-        check("净化请求模板") {
-            val raw = appCtx.getPrefString(PreferKey.aiChapterPurifyRequestTemplate)
-            if (!raw.isNullOrBlank() &&
-                runCatching { AiStructuredRequestTemplate.validate(raw) }.isFailure
-            ) {
-                "内容非法"
-            } else null
-        }
-
-        check("创作参数") {
-            val raw = appCtx.getPrefString(PreferKey.aiCreationParams)
-            if (!raw.isNullOrBlank() && runCatching { JSONObject(raw) }.isFailure) "内容非法" else null
-        }
-
-        check("AI供应商") {
-            val raw = appCtx.getPrefString(PreferKey.aiProviderList)
-            if (!raw.isNullOrBlank() &&
-                runCatching {
-                    GSON.fromJsonArray<AiProviderConfig>(raw).getOrThrow()
-                }.isFailure
-            ) {
-                return@check "名单损坏"
-            }
-            val bad = AppConfig.aiProviderList.filter { it.name.isBlank() || it.id.isBlank() }
-            if (bad.isNotEmpty()) "坏行${bad.size}条" else null
-        }
-
-        check("AI模型") {
-            modelListProblem(
-                PreferKey.aiModelConfigList,
-                AppConfig.aiModelConfigList.size
-            )
-        }
-
-        if (failures.isEmpty()) {
-            val summary = "AI配置自检：11项全部通过"
-            AppLog.putAi("AI_CONFIG VERIFY\n$detail$summary")
-            appCtx.toastOnUi(summary)
-            return
-        }
-        //掀桌：内置全部回出厂，自加的供应商整家删除（模型由存写入口连带清掉），名单删了下次读重种
-        forceRestoreFactoryDefaults()
-        saveCreationParams(emptyMap())
+    /**
+     * 炸：AI 下面所有 JSON 配置全部回到出厂。
+     * 名单删了下次读自动重种内置；自加的供应商整家消失（模型连带清掉）；
+     * 钥匙名字地址跟着自加行一起走，认了。只在版本升级时调一次。
+     */
+    fun nukeAllAiJsonConfigs() {
         appCtx.removePref(PreferKey.aiCreationImageProviderList)
         appCtx.removePref(PreferKey.aiCreationImageModelList)
         appCtx.removePref(PreferKey.aiCreationVideoProviderList)
@@ -318,22 +182,11 @@ object AiCreationConfig {
         appCtx.removePref(PreferKey.aiProviderList)
         appCtx.removePref(PreferKey.aiModelConfigList)
         appCtx.putPrefBoolean(PreferKey.aiDefaultConfigSeeded, false)
-        val summary = "AI配置自检失败（${failures.joinToString("、")}），" +
-            "已全部强制恢复出厂，自加供应商已删除"
-        AppLog.putAi("AI_CONFIG VERIFY NUKED\n$detail$summary")
+        saveCreationParams(emptyMap())
+        forceRestoreFactoryDefaults()
+        val summary = "本版本含破坏性更新，AI配置已全部恢复出厂，自加供应商已删除"
+        AppLog.putAi("AI_CONFIG NUKED\n$summary")
         appCtx.toastOnUi(summary)
-    }
-
-    /** 模型名单核验：名单损坏、空行、悬空（供应商没了，读时已被忽略）都算不行 */
-    private fun modelListProblem(key: String, normalizedSize: Int): String? {
-        val rawJson = appCtx.getPrefString(key)
-        if (rawJson.isNullOrBlank()) {
-            return if (normalizedSize == 0) null else "行数对不上"
-        }
-        val rawCount = runCatching { JSONArray(rawJson).length() }.getOrNull()
-            ?: return "名单损坏"
-        if (rawCount != normalizedSize) return "坏行${rawCount - normalizedSize}条"
-        return null
     }
 
     /**

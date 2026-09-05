@@ -64,10 +64,13 @@ object DefaultData {
                 importDefaultMaxHighlightRules()
             }
             migrateDefaultData("AI创作配置", AI_CREATION_CONFIG_VERSION_KEY, AI_CREATION_CONFIG_VERSION) {
-                //先验后盖：先对装机原样逐字核验（有走样直接掀桌弹汇总），
-                //再强回出厂、消毒参数、迁移模板归属，保证出去时是干净出厂态
-                AiCreationConfig.verifyAiJsonConfigs()
-                AiCreationConfig.forceRestoreFactoryDefaults()
+                //硬开关开着=本版本有破坏性更新：不检测，直接全炸；
+                //关着=只把内置回出厂，自加的不动
+                if (AiCreationConfig.NUKE_CUSTOM_AI_CONFIG_ON_UPGRADE) {
+                    AiCreationConfig.nukeAllAiJsonConfigs()
+                } else {
+                    AiCreationConfig.forceRestoreFactoryDefaults()
+                }
                 AiCreationConfig.sanitizeStoredJsons()
                 //v2：请求模板归属迁移——全局归聊天+创作（未定制切新干净默认），净化固化继承快照
                 AiStructuredRequestTemplate.migrateTemplateOwnership()
