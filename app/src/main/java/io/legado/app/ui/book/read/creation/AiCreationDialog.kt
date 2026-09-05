@@ -34,6 +34,7 @@ import io.legado.app.help.ai.AiCreationCardImages
 import io.legado.app.help.ai.AiCreationConfig
 import io.legado.app.help.ai.AiCreationHelper
 import io.legado.app.help.ai.AiCreationImageFile
+import io.legado.app.help.ai.AiCreationInsertStash
 import io.legado.app.help.ai.AiCreationImageMarkers
 import io.legado.app.help.ai.AiCreationImageSlot
 import io.legado.app.help.ai.AiCreationImageSlotState
@@ -1264,20 +1265,22 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         }
     }
 
-    /** 生成结果长按菜单：保存到相册、保存工作流、复制工作流；图片视频同一菜单 */
+    /** 生成结果长按菜单：保存到相册、保存工作流、复制工作流、插入正文；图片视频同一菜单 */
     private fun showSlotSaveMenu(fileName: String) {
         requireContext().selector(
             AiCreationImageFile.fileOf(fileName).name,
             listOf(
                 getString(R.string.illustration_save_to_album),
                 getString(R.string.ai_creation_save_workflow),
-                getString(R.string.ai_creation_copy_workflow)
+                getString(R.string.ai_creation_copy_workflow),
+                getString(R.string.ai_creation_insert)
             )
         ) { _, _, which ->
             when (which) {
                 0 -> saveSlotToAlbum(fileName)
                 1 -> exportWorkflow(fileName)
-                else -> copyWorkflow(fileName)
+                2 -> copyWorkflow(fileName)
+                else -> AiCreationInsertStash.stashWithToast(requireContext(), listOf(fileName))
             }
         }
     }

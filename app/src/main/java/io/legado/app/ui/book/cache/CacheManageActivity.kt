@@ -23,6 +23,7 @@ import io.legado.app.data.entities.CreationResult
 import io.legado.app.databinding.ActivityCacheManageBinding
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.ai.AiCreationImageFile
+import io.legado.app.help.ai.AiCreationInsertStash
 import io.legado.app.help.cache.CacheCoordinator
 import io.legado.app.help.cache.CacheLifecycle
 import io.legado.app.help.cache.CacheTaskStatus
@@ -760,6 +761,7 @@ class CacheManageActivity :
                 getString(R.string.illustration_save_to_album),
                 getString(R.string.ai_creation_save_workflow),
                 getString(R.string.ai_creation_copy_workflow),
+                getString(R.string.ai_creation_insert),
                 getString(R.string.delete)
             )
         ) { _, _, index ->
@@ -768,7 +770,11 @@ class CacheManageActivity :
                 1 -> saveCreationSelection()
                 2 -> saveWorkflowSelection()
                 3 -> copyWorkflowSelection()
-                4 -> deleteCreationSelection()
+                4 -> AiCreationInsertStash.stashWithToast(
+                    this,
+                    creationItems.filter { it.resultId in creationSelection }.map { it.fileName }
+                )
+                else -> deleteCreationSelection()
             }
         }
     }

@@ -16,6 +16,7 @@ import io.legado.app.base.BaseDialogFragment
 import io.legado.app.databinding.ItemPhotoPagerBinding
 import io.legado.app.databinding.ItemPhotoPagerVideoBinding
 import io.legado.app.help.ai.AiCreationImageFile
+import io.legado.app.help.ai.AiCreationInsertStash
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.ui.widget.dialog.showActionBottomSheet
@@ -181,7 +182,8 @@ class AiCreationPhotoDialog : BaseDialogFragment(R.layout.dialog_photo_view) {
             listOf(
                 SelectItem(getString(R.string.illustration_save_to_album), "save"),
                 SelectItem(getString(R.string.ai_creation_save_workflow), "workflow"),
-                SelectItem(getString(R.string.ai_creation_copy_workflow), "copy")
+                SelectItem(getString(R.string.ai_creation_copy_workflow), "copy"),
+                SelectItem(getString(R.string.ai_creation_insert), "insert")
             )
         ) { action ->
             when (action) {
@@ -194,6 +196,7 @@ class AiCreationPhotoDialog : BaseDialogFragment(R.layout.dialog_photo_view) {
                 }
 
                 "workflow" -> exportWorkflow(fileName)
+                "insert" -> AiCreationInsertStash.stashWithToast(requireContext(), listOf(fileName))
                 else -> copyWorkflow(fileName)
             }
         }

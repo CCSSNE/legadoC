@@ -23,6 +23,8 @@ import io.legado.app.databinding.ItemImageSimpleBinding
 import io.legado.app.help.illustration.IllustrationAnchor
 import io.legado.app.help.illustration.IllustrationHelp
 import io.legado.app.help.illustration.imageSrcsToJson
+import io.legado.app.help.ai.AiCreationImageFile
+import io.legado.app.help.ai.AiCreationInsertStash
 import io.legado.app.help.ai.AiCreationMediaMetadata
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.primaryColor
@@ -162,7 +164,47 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
         binding.cbUnifiedNote.setOnCheckedChangeListener { _, _ ->
             rebuildNoteInputs()
         }
+        prefillStashedMedia()
         rebuildNoteInputs()
+    }
+
+    /**
+     * 暂存预填：别处长按点的"插入"攒在这里，开弹窗就把媒体装进来（只看不拿，等插完再清）；
+     * 内嵌工作流照读，备注预填走后面统一逻辑；文件没了整批作废并明说。
+     */
+    private fun prefillStashedMedia() {
+        val stashed = AiCreationInsertStash.peek()
+        if (stashed.isEmpty()) return
+        val parsed = arrayListOf<Pair<ByteArray, String>>()
+        val workflows = arrayListOf<String?>()
+        val uris = arrayListOf<Uri>()
+        stashed.forEach { name ->
+            val file = AiCreationImageFile.fileOf(name)?.takeIf { it.isFile } ?: return@forEach
+            val bytes = runCatching { file.readBytes() }.getOrNull()
+            if (bytes.isNullOrEmpty()) return@forEach
+            val ext = name.substringAfterLast('.', "").lowercase()
+            if (ext !in IllustrationHelp.VIDEO_EXTS &&
+                ext !in IllustrationHelp.AUDIO_EXTS &&
+                ext !in IllustrationHelp.IMAGE_EXTS
+            ) {
+                return@forEach
+            }
+            parsed.add(bytes to ext)
+            workflows.add(runCatching { AiCreationMediaMetadata.readWorkflowJson(bytes) }.getOrNull())
+            uris.add(Uri.fromFile(file))
+        }
+        if (parsed.isEmpty()) {
+            AiCreationInsertStash.clear()
+            toastOnUi(R.string.ai_creation_stash_gone)
+            return
+        }
+        selectedUris.clear()
+        selectedUris.addAll(uris)
+        parsedMedia.clear()
+        parsedMedia.addAll(parsed)
+        parsedWorkflows.clear()
+        parsedWorkflows.addAll(workflows)
+        upSelected()
     }
 
     private fun upSelected() {
@@ -321,6 +363,8 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
         }
         if (records.isEmpty()) return
         appDb.bookIllustrationDao.insert(*records.toTypedArray())
+        //插完暂存清掉，下次不再默认带入
+        AiCreationInsertStash.clear()
         dismissAllowingStateLoss()
         toastOnUi(R.string.illustration_inserted)
         callback?.invoke()

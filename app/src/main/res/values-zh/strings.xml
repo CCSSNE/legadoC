@@ -496,6 +496,9 @@
     <string name="ai_creation_save_md">保存 MD（含图片）</string>
     <string name="ai_creation_md_saved">MD 已保存到 Download/Legado</string>
     <string name="ai_creation_md_save_failed">MD 保存失败</string>
+    <string name="ai_creation_insert">插入</string>
+    <string name="ai_creation_stash_hint">已暂存%1$d个，请选择插入位置</string>
+    <string name="ai_creation_stash_gone">暂存的图片已不在</string>
     <string name="ai_creation_save_workflow">保存工作流</string>
     <string name="ai_creation_copy_workflow">复制工作流</string>
     <string name="ai_creation_workflow_missing">未找到工作流元数据</string>
