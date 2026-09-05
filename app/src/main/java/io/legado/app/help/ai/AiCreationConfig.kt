@@ -142,6 +142,17 @@ object AiCreationConfig {
     val videoVariables: List<AiCreationVariable>
         get() = AiCreationProviderStore.parsedVideoVariables()
 
+    /**
+     * AI 创作发 LLM 专用请求模板：不再蹭全局通用模板，出厂即干净 default；
+     * 独占的 {{userContent}} 就是图片位（数组进来时图从这里发），模板里删了它，
+     * 有图直接报错不发，无图连文本都无处可去同样报错。
+     */
+    var requestTemplate: String
+        get() = appCtx.getPrefString(PreferKey.aiCreationRequestTemplate)
+            ?.takeIf { it.isNotBlank() }
+            ?: AiStructuredRequestTemplate.default
+        set(value) = appCtx.putPrefString(PreferKey.aiCreationRequestTemplate, value.trim())
+
     val promptTemplates: Map<String, String>
         get() = parsePromptTemplates(promptTemplateJson)
 
@@ -156,9 +167,10 @@ object AiCreationConfig {
         llmVariablesJson = defaultLlmVariablesJson
         promptTemplateJson = defaultPromptTemplateJson
         AiStructuredRequestTemplate.global = AiStructuredRequestTemplate.default
+        requestTemplate = AiStructuredRequestTemplate.default
         AppLog.putAi(
             "AI_CREATION CONFIG FORCE RESTORED\n" +
-                "scope=providerVariables,requestTemplate,llmVariables,promptTemplate,globalRequestTemplate\n" +
+                "scope=providerVariables,requestTemplate,llmVariables,promptTemplate,globalRequestTemplate,creationRequestTemplate\n" +
                 "kept=providerId,name,baseUrl,apiKey,headers,models,currentSelection"
         )
     }

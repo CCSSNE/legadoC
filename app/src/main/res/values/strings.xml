@@ -2662,9 +2662,15 @@ Selected text or question:
     <string name="ai_provider_and_model">Providers and models</string>
     <string name="ai_logs_category">Logs</string>
     <string name="ai_timeout">Timeout</string>
-    <string name="ai_edit_request_summary_global">Global JSON request body shared by AI chat (chat / selection / floating panel) and AI creation.</string>
+    <string name="ai_edit_request_summary_global">Global JSON request body for AI chat only (chat / selection / floating panel); creation, storyboard, casting and purification each use their own.</string>
     <string name="ai_chapter_purify_request_template">Edit request</string>
     <string name="ai_chapter_purify_request_template_summary">JSON request body dedicated to chapter purification; defaults to response_format=json_object.</string>
+    <string name="ai_creation_request_template">Edit creation request</string>
+    <string name="ai_creation_request_template_summary">JSON request body for AI creation LLM calls. An exclusive {{userContent}} value is the image slot: images are sent from there, and calls fail loudly if it is missing.</string>
+    <string name="ai_storyboard_request_template">Edit storyboard request</string>
+    <string name="ai_storyboard_request_template_summary">JSON request body dedicated to AI storyboarding; defaults to response_format=json_object.</string>
+    <string name="ai_casting_request_template">Edit casting request</string>
+    <string name="ai_casting_request_template_summary">JSON request body dedicated to AI casting; defaults to response_format=json_object.</string>
     <string name="disable_source_toast">Hide book-source bottom messages</string>
     <string name="disable_source_toast_summary">Do not show bottom messages sent by book-source scripts through toast or longToast.</string>
     <string name="disable_all_toast">Hide all bottom messages</string>

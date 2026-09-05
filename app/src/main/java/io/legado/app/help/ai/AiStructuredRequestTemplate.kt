@@ -12,8 +12,10 @@ import splitties.init.appCtx
  * Provider authentication headers are deliberately kept outside this template.
  *
  * 全局默认模板是"干净通用"骨架：不带 response_format（只有章节净化需要 JSON 输出），
- * 供 AI 聊天（对话/划词/浮动面板）与 AI 创作共用。
- * {{userContent}} 独占一个字符串值时可装入数组/对象（整值原文塞），多模态内容靠它注入。
+ * 供 AI 聊天（对话/划词/浮动面板）专用；AI 创作、分镜、选角、净化各有自己的请求体设置，
+ * 谁也不蹭全局，发出去的包长什么样全由各自模板决定，没有黑箱。
+ * {{userContent}} 独占一个字符串值时可装入数组/对象（整值原文塞），多模态内容靠它注入：
+ * 独占位就是图片位，有图时数组从这里发；模板里没有这个位置，有图无图都直接报错不发。
  */
 object AiStructuredRequestTemplate {
 
@@ -21,7 +23,7 @@ object AiStructuredRequestTemplate {
     const val SYSTEM_PROMPT_TOKEN = "{{systemPrompt}}"
     const val USER_CONTENT_TOKEN = "{{userContent}}"
 
-    /** 全局干净通用默认：AI 聊天与 AI 创作共用，不带 response_format，创作温度 0.7 */
+    /** 全局干净通用默认：AI 聊天专用，不带 response_format，温度 0.7 */
     val default: String = """
         {
           "model": "$MODEL_TOKEN",
@@ -112,7 +114,7 @@ object AiStructuredRequestTemplate {
         }
     """.trimIndent()
 
-    /** 全局通用请求模板存取：AI 聊天与 AI 创作共用一份（PreferKey.aiRequestTemplate） */
+    /** 全局通用请求模板存取：AI 聊天专用（PreferKey.aiRequestTemplate） */
     var global: String
         get() = appCtx.getPrefString(PreferKey.aiRequestTemplate)
             ?.takeIf { it.isNotBlank() }
@@ -165,6 +167,10 @@ object AiStructuredRequestTemplate {
         userContent: Any
     ): String {
         validate(template)
+        //用户内容必须有位置：模板里没有 {{userContent}}，文本和图片都无处可去，直接报错不发
+        require(template.contains(USER_CONTENT_TOKEN)) {
+            "请求模板缺少{{userContent}}：用户内容无处可去，有图无图都发不出去"
+        }
         val root = JSONObject(template.trim())
         val replacements = mapOf(
             MODEL_TOKEN to model,

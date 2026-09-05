@@ -240,6 +240,12 @@
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
+            android:key="aiCreationRequestTemplate"
+            android:summary="@string/ai_creation_request_template_summary"
+            android:title="@string/ai_creation_request_template"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
             android:key="aiCreationTestConnection"
             android:summary="@string/ai_creation_test_connection_summary"
             android:title="@string/ai_creation_test_connection"
@@ -298,6 +304,18 @@
         <io.legado.app.lib.prefs.Preference
             android:key="aiStoryboardModelId"
             android:title="@string/ai_storyboard_model"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiStoryboardRequestTemplate"
+            android:summary="@string/ai_storyboard_request_template_summary"
+            android:title="@string/ai_storyboard_request_template"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiCastingRequestTemplate"
+            android:summary="@string/ai_casting_request_template_summary"
+            android:title="@string/ai_casting_request_template"
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference

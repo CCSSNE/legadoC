@@ -10,7 +10,6 @@ import io.legado.app.data.entities.BookTtsCastRole
 import io.legado.app.data.entities.BookTtsVoiceBinding
 import io.legado.app.help.ai.AiChatService
 import io.legado.app.help.ai.AiStoryboardConfig
-import io.legado.app.help.ai.AiStructuredRequestTemplate
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.model.ReadAloud
 import io.legado.app.plugin.ReadAloudEngines
@@ -678,7 +677,7 @@ object BookTtsCastingCoordinator {
                 systemPrompt = appCtx.assets.open(CASTING_ASSET).bufferedReader().use { it.readText() },
                 userContent = payload.toString(),
                 temperature = 0.0,
-                requestTemplate = AiStructuredRequestTemplate.structuredDefault
+                requestTemplate = AiStoryboardConfig.castingRequestTemplate
             )
         } catch (e: CancellationException) {
             throw e

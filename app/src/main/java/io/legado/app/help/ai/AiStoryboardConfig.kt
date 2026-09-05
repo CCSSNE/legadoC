@@ -37,6 +37,24 @@ object AiStoryboardConfig {
         get() = appCtx.getPrefInt(PreferKey.aiStoryboardPreloadCount, 2).coerceIn(0, 10)
         set(value) = appCtx.putPrefInt(PreferKey.aiStoryboardPreloadCount, value)
 
+    /**
+     * AI 分镜专用请求模板：不再用硬编码出厂，出厂即 structuredDefault（含 response_format）。
+     */
+    var storyboardRequestTemplate: String
+        get() = appCtx.getPrefString(PreferKey.aiStoryboardRequestTemplate)
+            ?.takeIf { it.isNotBlank() }
+            ?: AiStructuredRequestTemplate.structuredDefault
+        set(value) = appCtx.putPrefString(PreferKey.aiStoryboardRequestTemplate, value.trim())
+
+    /**
+     * AI 选角专用请求模板：与分镜各用各的，出厂即 structuredDefault（含 response_format）。
+     */
+    var castingRequestTemplate: String
+        get() = appCtx.getPrefString(PreferKey.aiCastingRequestTemplate)
+            ?.takeIf { it.isNotBlank() }
+            ?: AiStructuredRequestTemplate.structuredDefault
+        set(value) = appCtx.putPrefString(PreferKey.aiCastingRequestTemplate, value.trim())
+
     /** 超长章节按段落边界拆成多次请求；关闭时整章一次请求（失败两段重试）。 */
     var splitLongChapters: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.aiStoryboardSplitLongChapters, true)

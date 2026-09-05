@@ -182,6 +182,7 @@ class AiConfigFragment : PreferenceFragment(),
             ) { AiChapterPurifyConfig.concurrency = it }
             PreferKey.aiCreationProvider -> showSelectCreationProviderDialog()
             PreferKey.aiCreationModel -> showSelectCreationModelDialog()
+            PreferKey.aiCreationRequestTemplate -> showCreationRequestDialog()
             PreferKey.aiCreationPromptTemplate -> showCreationPromptDialog()
             PreferKey.aiCreationLlmVariables -> showCreationLlmVariablesDialog()
             "aiCreationTestConnection" -> testCreationConnection()
@@ -197,6 +198,8 @@ class AiConfigFragment : PreferenceFragment(),
             PreferKey.aiCreationPromptRegenerateLimit -> showCreationPromptRegenerateLimitDialog()
             PreferKey.aiStoryboardProviderId -> showSelectStoryboardProviderDialog()
             PreferKey.aiStoryboardModelId -> showSelectStoryboardModelDialog()
+            PreferKey.aiStoryboardRequestTemplate -> showStoryboardRequestDialog()
+            PreferKey.aiCastingRequestTemplate -> showCastingRequestDialog()
             PreferKey.aiStoryboardPreloadCount -> showStoryboardPreloadCountDialog()
         }
         return super.onPreferenceTreeClick(preference)
@@ -207,6 +210,9 @@ class AiConfigFragment : PreferenceFragment(),
             key == PreferKey.aiAdvancedSettingsEnabled ||
             key == PreferKey.aiChapterPurifyReuseCurrentModel ||
             key == PreferKey.aiChapterPurifyRequestTemplate ||
+            key == PreferKey.aiCreationRequestTemplate ||
+            key == PreferKey.aiStoryboardRequestTemplate ||
+            key == PreferKey.aiCastingRequestTemplate ||
             key == PreferKey.aiCreationReuseCurrentModel ||
             key == PreferKey.aiStoryboardReuseCurrentModel ||
             key == PreferKey.aiSseIdleTimeoutSeconds ||
@@ -508,8 +514,8 @@ class AiConfigFragment : PreferenceFragment(),
             toastOnUi(it.message ?: it.javaClass.simpleName)
             return
         }
-        //创作与聊天共用全局通用模板，连接测试也用同一份，测出来的就是真实请求形态
-        testAiConnection(target.provider, target.modelId, AiStructuredRequestTemplate.global)
+        //创作发 LLM 只走创作专用模板，连接测试用同一份，测出来的就是真实请求形态
+        testAiConnection(target.provider, target.modelId, AiCreationConfig.requestTemplate)
     }
 
     private fun showCreationImageRetryDialog() {
@@ -1077,13 +1083,54 @@ class AiConfigFragment : PreferenceFragment(),
         }
     }
 
-    /** 全局通用请求体：AI 聊天（对话/划词/浮动面板）与 AI 创作共用 */
+    /** 全局通用请求体：AI 聊天（对话/划词/浮动面板）专用 */
     private fun showEditRequestDialog() {
         showRequestTemplateDialog(
             titleResource = R.string.ai_edit_request,
             currentTemplate = { AiStructuredRequestTemplate.global },
             save = { AiStructuredRequestTemplate.global = it },
             restore = { AiStructuredRequestTemplate.global = AiStructuredRequestTemplate.default },
+            restoreLabelResource = R.string.restore_default
+        )
+    }
+
+    /** AI 创作专用请求体：创作发 LLM 只走这一份；独占的 {{userContent}} 就是图片位 */
+    private fun showCreationRequestDialog() {
+        showRequestTemplateDialog(
+            titleResource = R.string.ai_creation_request_template,
+            currentTemplate = { AiCreationConfig.requestTemplate },
+            save = { AiCreationConfig.requestTemplate = it },
+            restore = {
+                AiCreationConfig.requestTemplate = AiStructuredRequestTemplate.default
+            },
+            restoreLabelResource = R.string.restore_default
+        )
+    }
+
+    /** AI 分镜专用请求体：默认带 response_format=json_object */
+    private fun showStoryboardRequestDialog() {
+        showRequestTemplateDialog(
+            titleResource = R.string.ai_storyboard_request_template,
+            currentTemplate = { AiStoryboardConfig.storyboardRequestTemplate },
+            save = { AiStoryboardConfig.storyboardRequestTemplate = it },
+            restore = {
+                AiStoryboardConfig.storyboardRequestTemplate =
+                    AiStructuredRequestTemplate.structuredDefault
+            },
+            restoreLabelResource = R.string.restore_default
+        )
+    }
+
+    /** AI 选角专用请求体：与分镜各用各的，默认带 response_format=json_object */
+    private fun showCastingRequestDialog() {
+        showRequestTemplateDialog(
+            titleResource = R.string.ai_casting_request_template,
+            currentTemplate = { AiStoryboardConfig.castingRequestTemplate },
+            save = { AiStoryboardConfig.castingRequestTemplate = it },
+            restore = {
+                AiStoryboardConfig.castingRequestTemplate =
+                    AiStructuredRequestTemplate.structuredDefault
+            },
             restoreLabelResource = R.string.restore_default
         )
     }
@@ -2236,6 +2283,8 @@ class AiConfigFragment : PreferenceFragment(),
                 else -> getString(R.string.ai_creation_model_summary_empty)
             }
         }
+        findPreference<Preference>(PreferKey.aiCreationRequestTemplate)?.summary =
+            getString(R.string.ai_creation_request_template_summary)
         findPreference<Preference>(PreferKey.aiCreationPromptTemplate)?.summary =
             getString(
                 R.string.ai_creation_prompt_template_summary,
@@ -2270,6 +2319,10 @@ class AiConfigFragment : PreferenceFragment(),
         }
         findPreference<Preference>(PreferKey.aiStoryboardPreloadCount)?.summary =
             getString(R.string.ai_storyboard_preload_count_summary, AiStoryboardConfig.preloadCount)
+        findPreference<Preference>(PreferKey.aiStoryboardRequestTemplate)?.summary =
+            getString(R.string.ai_storyboard_request_template_summary)
+        findPreference<Preference>(PreferKey.aiCastingRequestTemplate)?.summary =
+            getString(R.string.ai_casting_request_template_summary)
         findPreference<Preference>(PreferKey.aiCreationScope)?.summary =
             getString(R.string.ai_creation_scope_summary)
         // —— 图片供应商 ——

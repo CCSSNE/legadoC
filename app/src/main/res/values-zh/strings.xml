@@ -2511,9 +2511,15 @@
     <string name="ai_provider_and_model">供应商与模型</string>
     <string name="ai_logs_category">日志</string>
     <string name="ai_timeout">超时</string>
-    <string name="ai_edit_request_summary_global">AI 聊天（对话/划词/浮动面板）与 AI 创作共用的全局 JSON 请求体。</string>
+    <string name="ai_edit_request_summary_global">只供 AI 聊天（对话/划词/浮动面板）用的全局 JSON 请求体，创作/分镜/选角/净化各用各的。</string>
     <string name="ai_chapter_purify_request_template">编辑请求</string>
     <string name="ai_chapter_purify_request_template_summary">章节净化专用 JSON 请求体，默认带 response_format=json_object。</string>
+    <string name="ai_creation_request_template">编辑创作请求体</string>
+    <string name="ai_creation_request_template_summary">AI 创作发 LLM 专用 JSON 请求体；独占的 {{userContent}} 就是图片位，图从这里发，删了它有图直接报错不发。</string>
+    <string name="ai_storyboard_request_template">编辑分镜请求体</string>
+    <string name="ai_storyboard_request_template_summary">AI 分镜专用 JSON 请求体，默认带 response_format=json_object。</string>
+    <string name="ai_casting_request_template">编辑选角请求体</string>
+    <string name="ai_casting_request_template_summary">AI 选角专用 JSON 请求体，默认带 response_format=json_object。</string>
     <string name="disable_source_toast">关闭书源底部弹窗</string>
     <string name="disable_source_toast_summary">不显示书源脚本通过 toast 或 longToast 发出的底部弹窗</string>
     <string name="disable_all_toast">关闭所有底部弹窗</string>

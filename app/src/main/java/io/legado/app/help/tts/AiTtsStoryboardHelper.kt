@@ -10,7 +10,6 @@ import io.legado.app.data.entities.BookRole
 import io.legado.app.data.entities.BookTtsCastRole
 import io.legado.app.help.ai.AiChatService
 import io.legado.app.help.ai.AiStoryboardConfig
-import io.legado.app.help.ai.AiStructuredRequestTemplate
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
 import kotlinx.coroutines.CancellationException
@@ -525,7 +524,7 @@ object AiTtsStoryboardHelper {
             systemPrompt = readBaseRoutingPrompt(),
             userContent = payload.toString(),
             temperature = 0.0,
-            requestTemplate = AiStructuredRequestTemplate.structuredDefault
+            requestTemplate = AiStoryboardConfig.storyboardRequestTemplate
         )
         check(result.isNotBlank()) { "AI 分镜返回为空" }
         val parsed = parseAndValidate(result, units, knownCharacters, knownCastRoles)
