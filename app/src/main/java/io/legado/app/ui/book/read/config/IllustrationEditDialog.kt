@@ -37,10 +37,12 @@ import io.legado.app.utils.setLayout
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.visible
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import org.json.JSONObject
 
 /**
  * 插入媒体对话框：选择图片、视频或音频，设置显示高度、布局、独占一页、备注。
- * 备注默认统一填写（本次插入的所有记录共用）；取消"统一备注"后按成组单元逐条填写。
+ * 备注默认统一填写（本次插入的所有记录共用）；取消"统一备注"后按媒体逐条填写，
+ * 排版只管显示分组，不管备注条数，两者解构。
  */
 class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration_edit, true) {
 
@@ -80,7 +82,7 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
 
     private val unitNoteEdits = arrayListOf<EditText>()
     private val unitKeys = arrayListOf<Int>()
-    private val unitNotes = LinkedHashMap<Int, String>() // 单元 firstIndex -> 备注
+    private val unitNotes = LinkedHashMap<Int, String>() // 媒体下标 -> 备注（排版只管显示分组，不管备注）
 
     private val selectImages = registerForActivityResult(SelectImagesContract()) {
         if (it.uris.isNotEmpty()) {
@@ -157,9 +159,7 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
             save()
         }
         binding.rgLayout.check(binding.rbSingle.id)
-        binding.rgLayout.setOnCheckedChangeListener { _, _ ->
-            rebuildNoteInputs()
-        }
+        //排版只管显示分组，不管备注条数：切排版不重建备注输入
         binding.cbUnifiedNote.isChecked = false
         binding.cbUnifiedNote.setOnCheckedChangeListener { _, _ ->
             rebuildNoteInputs()
@@ -261,7 +261,7 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
         }
     }
 
-    /** 备注输入区：统一备注勾选时单个输入框；取消勾选后按成组单元逐条输入 */
+    /** 备注输入区：统一备注勾选时单个输入框；取消勾选后按媒体逐条输入（与排版无关） */
     private fun rebuildNoteInputs() {
         snapshotUnitNotes()
         val unified = binding.cbUnifiedNote.isChecked
@@ -278,9 +278,10 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
             return
         }
         val context = requireContext()
-        computeUnits().forEachIndexed { unitIndex, unit ->
+        //一媒体一条：四宫格 4 张图就是 4 条备注，排版只决定显示分组，不合并备注
+        parsedMedia.forEachIndexed { mediaIndex, m ->
             //每条备注默认收成一行：点预览展开输入，点标题收起；有 workflow 的各读各的
-            val initial = unitNotes[unit.firstIndex] ?: workflowJsonOf(unit.firstIndex).orEmpty()
+            val initial = unitNotes[mediaIndex] ?: workflowJsonOf(mediaIndex).orEmpty()
             val row = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 val rowParams = LinearLayout.LayoutParams(
@@ -291,10 +292,10 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
                 layoutParams = rowParams
             }
             val label = TextView(context).apply {
-                text = if (unit.isAudio) {
-                    getString(R.string.illustration_note_audio_unit, unitIndex + 1)
+                text = if (m.second in IllustrationHelp.AUDIO_EXTS) {
+                    getString(R.string.illustration_note_audio_unit, mediaIndex + 1)
                 } else {
-                    getString(R.string.illustration_note_image_unit, unitIndex + 1, unit.indexes.size)
+                    getString(R.string.illustration_note_image_unit, mediaIndex + 1, 1)
                 }
                 setTextColor(context.getCompatColor(R.color.primaryText))
                 textSize = 14f
@@ -325,7 +326,7 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
             row.addView(edit)
             binding.llNoteItems.addView(row)
             unitNoteEdits.add(edit)
-            unitKeys.add(unit.firstIndex)
+            unitKeys.add(mediaIndex)
         }
         binding.llNoteItems.applyUiBodyTypefaceDeep(context.uiTypeface())
     }
@@ -388,7 +389,19 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
         val records = arrayListOf<BookIllustration>()
         units.forEach { unit ->
             val unitSrcs = unit.indexes.map { srcs[it] }
-            val note = if (unified) unifiedNote else unitNotes[unit.firstIndex].orEmpty()
+            //记录按排版分组存（宫格渲染靠它），备注按媒体各写各的：
+            //统一备注/单媒体组走 note 字段；多媒体组 note 置空，每图备注进 srcNotes
+            val (note, srcNotes) = if (unified) {
+                unifiedNote to "{}"
+            } else if (unit.indexes.size == 1) {
+                unitNotes[unit.firstIndex].orEmpty() to "{}"
+            } else {
+                val map = unit.indexes.mapNotNull { mediaIndex ->
+                    val text = unitNotes[mediaIndex].orEmpty()
+                    if (text.isBlank()) null else srcs[mediaIndex] to text
+                }.toMap()
+                "" to JSONObject(map as Map<*, *>).toString()
+            }
             records.add(
                 newRecord(
                     book,
@@ -398,6 +411,7 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
                     pageBreak,
                     records.size,
                     note = note,
+                    srcNotes = srcNotes,
                     single = unit.isAudio
                 )
             )
@@ -419,6 +433,7 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
         pageBreak: Boolean,
         sortOrder: Int,
         note: String,
+        srcNotes: String = "{}",
         single: Boolean = false
     ): BookIllustration {
         return BookIllustration(
@@ -437,7 +452,8 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
             displayHeight = displayHeight,
             pageBreak = pageBreak,
             sortOrder = sortOrder,
-            note = note
+            note = note,
+            srcNotes = srcNotes
         )
     }
 

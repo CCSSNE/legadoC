@@ -249,7 +249,13 @@ class ReadBookActivity : BaseReadBookActivity(),
                     val record = appDb.bookIllustrationDao.getByBook(pending.first)
                         .firstOrNull { it.imageSrcsFromJson().contains(pending.second) }
                     if (record != null) {
-                        appDb.bookIllustrationDao.update(record.copy(note = text))
+                        //每图备注优先写回 srcNotes；老记录/单图/统一备注走 note 字段
+                        val updated = if (record.srcNotesMap().containsKey(pending.second)) {
+                            record.withSrcNote(pending.second, text)
+                        } else {
+                            record.copy(note = text)
+                        }
+                        appDb.bookIllustrationDao.update(updated)
                     }
                 }
             }
@@ -2912,7 +2918,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         pendingIllustrationNote = book.bookUrl to src
         illustrationNoteEditLauncher.launch(
             Intent(this, CodeEditActivity::class.java).apply {
-                putExtra("text", record.note)
+                putExtra("text", record.srcNotesMap()[src] ?: record.note)
                 putExtra("title", getString(R.string.illustration_note))
                 putExtra("languageName", "text.html.markdown")
             }

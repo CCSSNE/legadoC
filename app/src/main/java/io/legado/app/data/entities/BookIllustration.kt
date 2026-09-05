@@ -6,6 +6,7 @@ import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import kotlinx.parcelize.Parcelize
+import org.json.JSONObject
 
 /**
  * 配图（插图）记录
@@ -52,7 +53,12 @@ data class BookIllustration(
     val pdfPage: Int = -1,
     val pdfRect: String = "",
     /** 配图备注（Markdown 文本），空串表示无备注 */
-    val note: String = ""
+    val note: String = "",
+    /**
+     * 每图备注：src -> 备注（宫格多图各写各的，排版只管显示不管备注）；
+     * 单图、统一备注走 note 字段，本字段为空对象。
+     */
+    val srcNotes: String = "{}"
 ) : Parcelable {
 
     companion object {
@@ -64,5 +70,18 @@ data class BookIllustration(
         const val LAYOUT_TRIPLE = "triple"
         const val LAYOUT_QUAD = "quad"
         const val LAYOUT_QUAD_GRID = "quad_grid"
+    }
+
+    /** 每图备注表：非法 JSON 直接视为空，不抛 */
+    fun srcNotesMap(): Map<String, String> = runCatching {
+        val obj = JSONObject(srcNotes)
+        obj.keys().asSequence().associateWith { obj.optString(it).orEmpty() }
+    }.getOrDefault(emptyMap())
+
+    /** 写回单图备注：空串摘掉该图条目 */
+    fun withSrcNote(src: String, note: String): BookIllustration {
+        val map = srcNotesMap().toMutableMap()
+        if (note.isBlank()) map.remove(src) else map[src] = note
+        return copy(srcNotes = JSONObject(map as Map<*, *>).toString())
     }
 }
