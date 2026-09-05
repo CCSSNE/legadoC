@@ -28,6 +28,12 @@
             android:textColor="@color/secondaryText"
             android:textIsSelectable="true" />
 
+        <io.legado.app.ui.widget.MarkdownPreviewView
+            android:id="@+id/md_preview"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone" />
+
         <io.legado.app.ui.widget.text.BadgeView
             android:id="@+id/badge_view"
             android:layout_width="wrap_content"

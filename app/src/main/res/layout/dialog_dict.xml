@@ -31,6 +31,14 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintTop_toBottomOf="@id/tab_layout" />
 
+    <io.legado.app.ui.widget.MarkdownPreviewView
+        android:id="@+id/md_preview"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/tab_layout" />
+
     <io.legado.app.ui.widget.anima.RotateLoading
         android:id="@+id/rotate_loading"
         android:layout_width="60dp"

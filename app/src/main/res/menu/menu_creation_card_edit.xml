@@ -16,6 +16,11 @@
         app:showAsAction="never" />
 
     <item
+        android:id="@+id/menu_save_md"
+        android:title="@string/ai_creation_save_md"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/menu_rename_card"
         android:title="@string/rename"
         app:showAsAction="never" />

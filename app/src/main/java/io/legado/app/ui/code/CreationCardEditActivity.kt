@@ -29,6 +29,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.databinding.ActivityCreationCardEditBinding
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.ai.AiCreationCardImages
+import io.legado.app.help.ai.AiCreationImageFile
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -287,10 +288,29 @@ class CreationCardEditActivity :
         when (item.itemId) {
             R.id.menu_save -> save()
             R.id.menu_insert_image -> showInsertImageDialog()
+            R.id.menu_save_md -> saveMarkdown()
             R.id.menu_rename_card -> renameCreationCard()
             R.id.menu_delete_card -> confirmDeleteCreationCard()
         }
         return super.onCompatOptionsItemSelected(item)
+    }
+
+    /** 保存 MD 连图片：正文与引用图片一起落到 Download/Legado，引用指向相对目录 */
+    private fun saveMarkdown() {
+        fetchEditorContent { text ->
+            val card = viewModel.creationCard
+            val baseName = card?.name?.trim().orEmpty().ifBlank { "card_${viewModel.creationCardId}" }
+            val context = this
+            lifecycleScope.launch {
+                val ok = withContext(IO) {
+                    AiCreationImageFile.saveMarkdownWithImages(context, baseName, text)
+                }
+                toastOnUi(
+                    if (ok) R.string.ai_creation_md_saved
+                    else R.string.ai_creation_md_save_failed
+                )
+            }
+        }
     }
 
     private fun renameCreationCard() {

@@ -22,8 +22,8 @@ import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
+import android.view.ViewGroup
 import io.legado.app.ui.widget.text.ScrollTextView
-import android.view.textclassifier.TextClassifier
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -40,8 +40,6 @@ import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
-import com.bumptech.glide.Glide
-import com.bumptech.glide.request.RequestOptions
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.BookMediaType
@@ -122,17 +120,13 @@ import io.legado.app.utils.openFileUri
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.setHtml
-import io.legado.app.utils.setMarkdown
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
 import io.legado.app.utils.windowSize
-import io.noties.markwon.Markwon
-import io.noties.markwon.ext.tables.TablePlugin
-import io.noties.markwon.html.HtmlPlugin
-import io.noties.markwon.image.glide.GlideImagesPlugin
+import io.legado.app.ui.widget.MarkdownPreviewView
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -151,6 +145,9 @@ class BookInfoActivity :
     companion object {
         private const val COLLAPSED_INTRO_LINES = 8
         private const val COLLAPSED_INTRO_CHARS = 220
+
+        /** Markdown 简介浏览器折叠高度：内容量大时先收拢，点开展开全文 */
+        private const val COLLAPSED_MD_PREVIEW_DP = 220
     }
 
     private enum class DetailPage {
@@ -714,6 +711,7 @@ class BookInfoActivity :
             if (initIntroView || this.pooledWebView == null) {
                 initIntroView = false
                 this.pooledWebView = pooledWebView
+                destroyMdPreview()
                 binding.tvIntroContainer.removeAllViews()
                 binding.tvIntroContainer.addView(webView, introContentLayoutParams())
             }
@@ -770,38 +768,7 @@ class BookInfoActivity :
                 return
             }
             val mark = intro.substring(4, lastIndex)
-            lifecycleScope.launch {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    tvIntro.setTextClassifier(TextClassifier.NO_OP)
-                }
-                val context = this@BookInfoActivity
-                val markwon: Markwon
-                val markdown = withContext(IO) {
-                    markwon = Markwon.builder(context)
-                        .usePlugin(
-                            GlideImagesPlugin.create(
-                                Glide.with(context)
-                                    .applyDefaultRequestOptions(
-                                        RequestOptions()
-                                            .override(imgAvailableWidth)
-                                            .encodeQuality(88)
-                                    )
-                            )
-                        )
-                        .usePlugin(HtmlPlugin.create())
-                        .usePlugin(TablePlugin.create(context))
-                        .build()
-                    markwon.toMarkdown(mark)
-                }
-                tvIntro.setMarkdown(
-                    markwon,
-                    markdown,
-                    imgOnLongClickListener = { source ->
-                        showDialogFragment(PhotoDialog(source, viewModel.bookSource?.bookSourceUrl))
-                    }
-                )
-                setIntroContent(tvIntro.text)
-            }
+            showMdIntro(mark)
         } else {
             tvIntro.text = intro
             setIntroContent(tvIntro.text)
@@ -812,9 +779,72 @@ class BookInfoActivity :
         val textView = introTextView
         if (pooledWebView != null || binding.tvIntroContainer.getChildAt(0) !== textView) {
             destroyWeb()
+            destroyMdPreview()
             binding.tvIntroContainer.removeAllViews()
             binding.tvIntroContainer.addView(textView, introContentLayoutParams())
         }
+    }
+
+    /** Markdown 简介浏览器：与卡片编辑器同一套渲染，长按图片进大图；折叠用固定高度 */
+    private var mdPreviewView: MarkdownPreviewView? = null
+    private var mdExpanded = false
+    private var mdFullHeightPx = 0
+
+    private fun showMdIntro(mark: String) {
+        var preview = mdPreviewView
+        if (preview == null) {
+            preview = MarkdownPreviewView(this)
+            mdPreviewView = preview
+        }
+        mdExpanded = false
+        mdFullHeightPx = 0
+        binding.tvIntroContainer.removeAllViews()
+        (preview.parent as? ViewGroup)?.removeView(preview)
+        binding.tvIntroContainer.addView(preview, introContentLayoutParams())
+        preview.onImageLongPress = { source ->
+            showDialogFragment(PhotoDialog(source, viewModel.bookSource?.bookSourceUrl))
+        }
+        preview.onContentHeightChanged = { heightPx ->
+            mdFullHeightPx = heightPx
+            applyMdCollapseState()
+        }
+        preview.setMarkdown(mark)
+    }
+
+    private fun applyMdCollapseState() {
+        val preview = mdPreviewView ?: return
+        if (preview.parent == null) return
+        if (mdExpanded || mdFullHeightPx <= 0) {
+            binding.tvIntroToggle.gone()
+            return
+        }
+        binding.tvIntroToggle.visible()
+        binding.tvIntroToggle.text = getString(R.string.expand)
+        preview.layoutParams?.let { params ->
+            params.height = (COLLAPSED_MD_PREVIEW_DP * resources.displayMetrics.density).toInt()
+            preview.layoutParams = params
+        }
+    }
+
+    private fun toggleMdPreview() {
+        val preview = mdPreviewView ?: return
+        mdExpanded = !mdExpanded
+        if (mdExpanded && mdFullHeightPx > 0) {
+            preview.layoutParams?.let { params ->
+                params.height = mdFullHeightPx
+                preview.layoutParams = params
+            }
+            binding.tvIntroToggle.text = getString(R.string.collapse)
+        } else {
+            applyMdCollapseState()
+        }
+    }
+
+    private fun destroyMdPreview() {
+        mdPreviewView?.destroyPreview()
+        mdPreviewView = null
+        mdExpanded = false
+        mdFullHeightPx = 0
     }
 
     private fun setIntroContent(content: CharSequence) {
@@ -994,6 +1024,7 @@ class BookInfoActivity :
         introRawText = ""
         tvIntroToggle.gone()
         destroyWeb()
+        destroyMdPreview()
         tvIntroContainer.removeAllViews()
         tvIntroContainer.addView(
             loadingContent(getString(R.string.data_loading)),
@@ -1466,8 +1497,12 @@ class BookInfoActivity :
             }
         }
         tvIntroToggle.setOnClickListener {
-            introExpanded = !introExpanded
-            applyIntroCollapseState()
+            if (mdPreviewView?.parent != null) {
+                toggleMdPreview()
+            } else {
+                introExpanded = !introExpanded
+                applyIntroCollapseState()
+            }
         }
         tvTocView.setOnClickListener { openChapterListSafely() }
         ivTocFullscreen.setOnClickListener { openChapterListSafely() }
@@ -1872,6 +1907,7 @@ class BookInfoActivity :
 
     override fun onDestroy() {
         destroyWeb()
+        destroyMdPreview()
         super.onDestroy()
         if (initGetter) {
             glideImageGetter.clear()

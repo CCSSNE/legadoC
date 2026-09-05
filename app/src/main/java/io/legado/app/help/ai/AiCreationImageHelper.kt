@@ -85,16 +85,70 @@ object AiCreationImageFile {
         context: android.content.Context,
         fileName: String,
         workflowJson: String
+    ): Boolean {
+        val exportName = fileName.substringBeforeLast('.') + "_workflow.json"
+        return writeTextToDownloads(context, "Legado", exportName, workflowJson)
+    }
+
+    /**
+     * 保存 MD 连图片：正文引用逐个复制到 Download/Legado/< base>_files/，
+     * 引用改写为该相对目录；引用缺文件直接失败，不静默丢图。
+     */
+    fun saveMarkdownWithImages(
+        context: android.content.Context,
+        baseName: String,
+        markdown: String
+    ): Boolean {
+        val safeBase = baseName.trim().ifBlank { "card" }
+            .replace(Regex("[\\\\/:*?\"<>|]"), "_")
+        val dirName = "Legado/${safeBase}_files"
+        val refs = AiCreationCardImages.markdownRefs(markdown).distinct()
+        val copied = linkedMapOf<String, String>()
+        refs.forEach { ref ->
+            val file = AiCreationCardImages.fileOf(ref) ?: return false
+            val name = ref.substringAfterLast('/')
+            val bytes = runCatching { file.readBytes() }.getOrNull() ?: return false
+            if (!writeBytesToDownloads(context, dirName, name, bytes, "image/*")) return false
+            copied[ref] = name
+        }
+        //长引用先换，避免短引用误伤带后缀的长引用
+        var out = markdown
+        copied.entries.sortedByDescending { it.key.length }.forEach { (ref, name) ->
+            out = out.replace(ref, "${dirName.substringAfterLast('/')}/$name")
+        }
+        return writeTextToDownloads(context, "Legado", "$safeBase.md", out)
+    }
+
+    /** 写文本到公共 Download/<relativeDir> 目录 */
+    private fun writeTextToDownloads(
+        context: android.content.Context,
+        relativeDir: String,
+        displayName: String,
+        text: String
+    ): Boolean = writeBytesToDownloads(
+        context,
+        relativeDir,
+        displayName,
+        text.toByteArray(Charsets.UTF_8),
+        if (displayName.endsWith(".json", true)) "application/json" else "text/markdown"
+    )
+
+    /** 写字节到公共 Download/<relativeDir> 目录（Q 用 MediaStore，Q 以下直写文件） */
+    private fun writeBytesToDownloads(
+        context: android.content.Context,
+        relativeDir: String,
+        displayName: String,
+        bytes: ByteArray,
+        mimeType: String
     ): Boolean =
         kotlin.runCatching {
-            val exportName = fileName.substringBeforeLast('.') + "_workflow.json"
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val values = ContentValues().apply {
-                    put(MediaStore.Downloads.DISPLAY_NAME, exportName)
-                    put(MediaStore.Downloads.MIME_TYPE, "application/json")
+                    put(MediaStore.Downloads.DISPLAY_NAME, displayName)
+                    put(MediaStore.Downloads.MIME_TYPE, mimeType)
                     put(
                         MediaStore.Downloads.RELATIVE_PATH,
-                        "${Environment.DIRECTORY_DOWNLOADS}/Legado"
+                        "${Environment.DIRECTORY_DOWNLOADS}/$relativeDir"
                     )
                     put(MediaStore.Downloads.IS_PENDING, 1)
                 }
@@ -103,7 +157,7 @@ object AiCreationImageFile {
                     values
                 ) ?: return false
                 context.contentResolver.openOutputStream(uri)?.use { out ->
-                    out.write(workflowJson.toByteArray(Charsets.UTF_8))
+                    out.write(bytes)
                 } ?: return false
                 values.clear()
                 values.put(MediaStore.Downloads.IS_PENDING, 0)
@@ -113,10 +167,12 @@ object AiCreationImageFile {
                 @Suppress("DEPRECATION")
                 val legacyDir = File(
                     Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-                    "Legado"
+                    relativeDir
                 )
                 if (!legacyDir.exists() && !legacyDir.mkdirs()) return false
-                File(legacyDir, exportName).writeText(workflowJson, Charsets.UTF_8)
+                File(legacyDir, displayName).outputStream().use { out ->
+                    out.write(bytes)
+                }
                 true
             }
         }.getOrDefault(false)

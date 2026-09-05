@@ -2,14 +2,11 @@ package io.legado.app.ui.widget.dialog
 
 import android.app.Activity
 import android.content.Intent
-import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
-import android.view.textclassifier.TextClassifier
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
-import com.bumptech.glide.Glide
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.databinding.DialogTextViewBinding
@@ -18,20 +15,15 @@ import io.legado.app.help.IntentData
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.code.CodeEditActivity
 import io.legado.app.utils.applyUiMenuStyle
+import io.legado.app.utils.gone
 import io.legado.app.utils.setHtml
 import io.legado.app.utils.setLayout
-import io.legado.app.utils.setMarkdown
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.viewbindingdelegate.viewBinding
-import io.noties.markwon.Markwon
-import io.noties.markwon.ext.tables.TablePlugin
-import io.noties.markwon.html.HtmlPlugin
-import io.noties.markwon.image.glide.GlideImagesPlugin
-import kotlinx.coroutines.Dispatchers.IO
+import io.legado.app.utils.visible
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 
 class TextDialog() : BaseDialogFragment(R.layout.dialog_text_view) {
@@ -170,27 +162,17 @@ class TextDialog() : BaseDialogFragment(R.layout.dialog_text_view) {
     }
 
     private fun renderMd(content: String) {
-        viewLifecycleOwner.lifecycleScope.launch {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                binding.textView.setTextClassifier(TextClassifier.NO_OP)
-            }
-            val markwon: Markwon
-            val markdown = withContext(IO) {
-                markwon = Markwon.builder(requireContext())
-                    .usePlugin(GlideImagesPlugin.create(Glide.with(requireContext())))
-                    .usePlugin(HtmlPlugin.create())
-                    .usePlugin(TablePlugin.create(requireContext()))
-                    .build()
-                markwon.toMarkdown(content)
-            }
-            binding.textView.setMarkdown(
-                markwon,
-                markdown,
-                imgOnLongClickListener = { source ->
-                    showDialogFragment(PhotoDialog(source))
-                }
-            )
+        binding.textView.gone()
+        binding.mdPreview.visible()
+        binding.mdPreview.onImageLongPress = { source ->
+            showDialogFragment(PhotoDialog(source))
         }
+        binding.mdPreview.setMarkdown(content)
+    }
+
+    override fun onDestroyView() {
+        binding.mdPreview.destroyPreview()
+        super.onDestroyView()
     }
 
 }

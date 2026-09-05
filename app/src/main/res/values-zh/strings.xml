@@ -495,6 +495,9 @@
     <string name="ai_creation_grid_two">两宫格</string>
     <string name="ai_creation_grid_four">四宫格</string>
     <string name="ai_creation_grid_height">总高度</string>
+    <string name="ai_creation_save_md">保存 MD（含图片）</string>
+    <string name="ai_creation_md_saved">MD 已保存到 Download/Legado</string>
+    <string name="ai_creation_md_save_failed">MD 保存失败</string>
     <string name="ai_creation_save_workflow">保存工作流</string>
     <string name="ai_creation_copy_workflow">复制工作流</string>
     <string name="ai_creation_workflow_missing">未找到工作流元数据</string>

@@ -11,11 +11,12 @@ import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
-import android.view.textclassifier.TextClassifier
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import androidx.activity.addCallback
 import androidx.activity.viewModels
@@ -27,7 +28,6 @@ import androidx.media3.common.util.UnstableApi
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
-import com.bumptech.glide.request.RequestOptions
 import com.shuyu.gsyvideoplayer.listener.GSYSampleCallBack
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
@@ -97,7 +97,6 @@ import io.legado.app.utils.openUrl
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.setHtml
 import io.legado.app.utils.setLightStatusBar
-import io.legado.app.utils.setMarkdown
 import io.legado.app.utils.setTintMutate
 import io.legado.app.utils.statusBarHeight
 import io.legado.app.utils.showDialogFragment
@@ -106,10 +105,7 @@ import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.toggleSystemBar
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
-import io.noties.markwon.Markwon
-import io.noties.markwon.ext.tables.TablePlugin
-import io.noties.markwon.html.HtmlPlugin
-import io.noties.markwon.image.glide.GlideImagesPlugin
+import io.legado.app.ui.widget.MarkdownPreviewView
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -617,6 +613,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
             if (initIntroView || this.pooledWebView == null) {
                 initIntroView = false
                 this.pooledWebView = pooledWebView
+                destroyMdPreview()
                 binding.tvIntroContainer.removeAllViews()
                 binding.tvIntroContainer.addView(webView)
             }
@@ -628,6 +625,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         }
         if (!initIntroView || pooledWebView != null) {
             destroyWeb()
+            destroyMdPreview()
             binding.tvIntroContainer.removeAllViews()
             binding.tvIntroContainer.addView(introTextView)
         }
@@ -660,37 +658,8 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
                 return
             }
             val mark = intro.substring(4, lastIndex)
-            lifecycleScope.launch {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    tvIntro.setTextClassifier(TextClassifier.NO_OP)
-                }
-                val context = this@VideoPlayerActivity
-                val markwon: Markwon
-                val markdown = withContext(IO) {
-                    markwon = Markwon.builder(context)
-                        .usePlugin(
-                            GlideImagesPlugin.create(
-                                Glide.with(context)
-                                    .applyDefaultRequestOptions(
-                                        RequestOptions()
-                                            .override(imgAvailableWidth)
-                                            .encodeQuality(88)
-                                    )
-                            )
-                        )
-                        .usePlugin(HtmlPlugin.create())
-                        .usePlugin(TablePlugin.create(context))
-                        .build()
-                    markwon.toMarkdown(mark)
-                }
-                tvIntro.setMarkdown(
-                    markwon,
-                    markdown,
-                    imgOnLongClickListener = { source ->
-                        showDialogFragment(PhotoDialog(source, VideoPlay.source?.getKey()))
-                    }
-                )
-            }
+            showMdIntro(mark)
+        }
         } else {
             tvIntro.text = intro
         }
@@ -1327,6 +1296,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
 
     override fun onDestroy() {
         destroyWeb()
+        destroyMdPreview()
         super.onDestroy()
         if (initGetter) {
             glideImageGetter.clear()
@@ -1345,5 +1315,34 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
     private fun destroyWeb() {
         pooledWebView?.let { WebViewPool.release(it) }
         pooledWebView = null
+    }
+
+    /** Markdown 简介浏览器：与卡片编辑器同一套渲染，长按图片进大图 */
+    private var mdPreviewView: MarkdownPreviewView? = null
+
+    private fun showMdIntro(mark: String) {
+        var preview = mdPreviewView
+        if (preview == null) {
+            preview = MarkdownPreviewView(this)
+            mdPreviewView = preview
+        }
+        binding.tvIntroContainer.removeAllViews()
+        (preview.parent as? ViewGroup)?.removeView(preview)
+        binding.tvIntroContainer.addView(
+            preview,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+        preview.onImageLongPress = { source ->
+            showDialogFragment(PhotoDialog(source, VideoPlay.source?.getKey()))
+        }
+        preview.setMarkdown(mark)
+    }
+
+    private fun destroyMdPreview() {
+        mdPreviewView?.destroyPreview()
+        mdPreviewView = null
     }
 }

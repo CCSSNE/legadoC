@@ -1,15 +1,12 @@
 package io.legado.app.ui.dict
 
-import android.os.Build
 import android.os.Bundle
 import android.text.method.LinkMovementMethod
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.view.textclassifier.TextClassifier
 import android.widget.TextView
 import androidx.fragment.app.viewModels
-import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
 import com.bumptech.glide.request.RequestOptions
 import com.google.android.material.tabs.TabLayout
@@ -27,19 +24,13 @@ import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.utils.dpToPx
+import io.legado.app.utils.gone
 import io.legado.app.utils.setHtml
 import io.legado.app.utils.setLayout
-import io.legado.app.utils.setMarkdown
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
-import io.noties.markwon.Markwon
-import io.noties.markwon.ext.tables.TablePlugin
-import io.noties.markwon.html.HtmlPlugin
-import io.noties.markwon.image.glide.GlideImagesPlugin
-import kotlinx.coroutines.Dispatchers.IO
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import io.legado.app.utils.visible
 
 /**
  * 词典
@@ -103,40 +94,18 @@ class DictDialog() : BaseDialogFragment(R.layout.dialog_dict) {
                     if (contentTrimS.startsWith("<md>")) {
                         val lastIndex = contentTrimS.lastIndexOf("<")
                         if (lastIndex < 4) {
+                            binding.mdPreview.gone()
+                            binding.tvDict.visible()
                             binding.tvDict.text = contentTrimS
                             return@dict
                         }
                         val mark = contentTrimS.substring(4, lastIndex)
-                        viewLifecycleOwner.lifecycleScope.launch {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                binding.tvDict.setTextClassifier(TextClassifier.NO_OP)
-                            }
-                            val markwon: Markwon
-                            val markdown = withContext(IO) {
-                                markwon = Markwon.builder(requireContext())
-                                    .usePlugin(
-                                        GlideImagesPlugin.create(
-                                            Glide.with(requireContext())
-                                                .applyDefaultRequestOptions(
-                                                    RequestOptions()
-                                                        .override(imgAvailableWidth)
-                                                        .encodeQuality(88)
-                                                )
-                                        )
-                                    )
-                                    .usePlugin(HtmlPlugin.create())
-                                    .usePlugin(TablePlugin.create(requireContext()))
-                                    .build()
-                                markwon.toMarkdown(mark)
-                            }
-                            binding.tvDict.setMarkdown(
-                                markwon,
-                                markdown,
-                                imgOnLongClickListener = { source ->
-                                    showDialogFragment(PhotoDialog(source))
-                                }
-                            )
+                        binding.tvDict.gone()
+                        binding.mdPreview.visible()
+                        binding.mdPreview.onImageLongPress = { source ->
+                            showDialogFragment(PhotoDialog(source))
                         }
+                        binding.mdPreview.setMarkdown(mark)
                         return@dict
                     }
                     val textViewTagHandler = TextViewTagHandler(object : TextViewTagHandler.OnButtonClickListener {
@@ -144,6 +113,8 @@ class DictDialog() : BaseDialogFragment(R.layout.dialog_dict) {
                             viewModel.onButtonClick(dictRule, "button $name", click)
                         }
                     })
+                    binding.mdPreview.gone()
+                    binding.tvDict.visible()
                     binding.tvDict.setHtml(
                         it,
                         glideImageGetter,
@@ -213,6 +184,7 @@ class DictDialog() : BaseDialogFragment(R.layout.dialog_dict) {
     }
 
     override fun onDestroyView() {
+        binding.mdPreview.destroyPreview()
         super.onDestroyView()
         if (initGetter) {
             glideImageGetter.clear()

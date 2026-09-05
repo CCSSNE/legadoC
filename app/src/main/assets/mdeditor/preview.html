@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+html, body {
+    margin: 0;
+    padding: 0;
+    -webkit-text-size-adjust: 100%;
+}
+#preview {
+    padding: 4px 2px;
+    overflow-wrap: break-word;
+}
+#preview img {
+    max-width: 100%;
+    height: auto;
+}
+#preview table {
+    display: block;
+    overflow-x: auto;
+}
+</style>
+</head>
+<body>
+<div id="preview"></div>
+<script src="/assets/mdeditor/vditor/dist/index.min.js"></script>
+<script>
+(function () {
+    function reportHeight() {
+        try {
+            if (window.AndroidBridge && AndroidBridge.onReady) {
+                AndroidBridge.onReady(Math.ceil(document.documentElement.scrollHeight));
+            }
+        } catch (ignore) {}
+    }
+
+    function showText(md) {
+        document.getElementById('preview').innerText = md;
+        reportHeight();
+    }
+
+    function boot() {
+        var dark = !!(window.AndroidBridge && AndroidBridge.isDark());
+        var md = window.AndroidBridge ? AndroidBridge.loadContent() : '';
+        try {
+            if (window.Vditor && Vditor.preview) {
+                Vditor.preview(document.getElementById('preview'), md, {
+                    cdn: '/assets/mdeditor/vditor',
+                    mode: dark ? 'dark' : 'light',
+                    lang: 'zh_CN',
+                    icon: 'ant',
+                    hljs: { style: dark ? 'github-dark' : 'github' },
+                    theme: { current: dark ? 'dark' : 'light' }
+                });
+            } else {
+                showText(md);
+                return;
+            }
+        } catch (e) {
+            showText(md);
+            return;
+        }
+        reportHeight();
+        window.addEventListener('load', function () { reportHeight(); });
+        setTimeout(function () { reportHeight(); }, 1500);
+    }
+
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        boot();
+    } else {
+        document.addEventListener('DOMContentLoaded', boot);
+    }
+})();
+</script>
+</body>
+</html>
