@@ -113,8 +113,9 @@ object AiCreationHelper {
     }
 
     /**
-     * 组装 LLM userContent：无图保持字符串不动；有图时文本在前、
-     * 本节 markerRule 点名的提示词库规则紧随其后（校验要模型保留标记，规则必须先告诉模型，
+     * 组装 LLM userContent：无图保持字符串不动（预填带进来的规则句同步摘掉，删标记=纯文生，
+     * 不给模型留复活标记的借口）；有图时文本在前、本节 markerRule 点名的提示词库规则紧随其后
+     * （预填已带就不重复缀；校验要模型保留标记，规则必须先告诉模型，
      * 眼睛支不支持都一样：标记是下游生图的路由，不是给眼睛看的），图片按标记顺序跟后；
      * 库里没有该条目直接报错；本节没点名就不追加，校验照跑；
      * 供应商不支持时图片转成文字占位嵌回数组（图没发出去，但位置和意图留下了）。
@@ -126,15 +127,26 @@ object AiCreationHelper {
         supportVision: Boolean,
         markerRule: String?
     ): Any {
-        if (imageCount == 0) return llmInput
         val ruleText = markerRule?.takeIf { it.isNotBlank() }?.let { ruleName ->
-            AiCreationConfig.promptTextOf(ruleName)
+            if (imageCount == 0) {
+                //纯文生用不上规则：库里有没有条目都无所谓，不报错
+                runCatching { AiCreationConfig.promptTextOf(ruleName) }.getOrNull()
+            } else {
+                //有标记必须有规则：库里没条目直接报错
+                AiCreationConfig.promptTextOf(ruleName)
+            }
+        }
+        if (imageCount == 0) {
+            //用户删光标记=纯文生：预填带进来的规则句同步摘掉，不给模型留复活标记的借口
+            if (ruleText == null) return llmInput
+            return llmInput.replace("\n\n$ruleText", "").replace(ruleText, "").trim()
         }
         if (!supportVision) {
             val array = JSONArray()
             val firstText = buildString {
                 append(llmInput)
-                if (ruleText != null) {
+                //预填已带规则就不重复缀；图片后挂载的不经过预填，发送时补上
+                if (ruleText != null && !llmInput.contains(ruleText)) {
                     append("\n\n")
                     append(ruleText)
                 }
@@ -152,7 +164,7 @@ object AiCreationHelper {
         }
         val text = buildString {
             append(llmInput)
-            if (ruleText != null) {
+            if (ruleText != null && !llmInput.contains(ruleText)) {
                 append("\n\n")
                 append(ruleText)
             }
@@ -242,11 +254,18 @@ object AiCreationHelper {
         }
         val promptName = AiCreationConfig.resolvePromptName(llmDefinition, routeParams)
         val promptText = AiCreationConfig.promptTextOf(promptName)
-        val rendered = renderLlmInput(
+        var rendered = renderLlmInput(
             template = llmDefinition.llmInputTemplate,
             prompt = promptText,
             material = materialText
         )
+        //预填就把规则带上框：素材里有标记才缀，用户在上框看得见、改得掉、删得掉；
+        //库里没该条目直接报错，不留到发送时
+        if (parseMarkers(rendered).isNotEmpty()) {
+            llmDefinition.markerRule?.takeIf { it.isNotBlank() }?.let { ruleName ->
+                rendered += "\n\n" + AiCreationConfig.promptTextOf(ruleName)
+            }
+        }
         AppLog.putAi(
             "AI_CREATION LLM_INPUT\n" +
                 "route=$promptName\n" +
