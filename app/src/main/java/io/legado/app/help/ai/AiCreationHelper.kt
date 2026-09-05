@@ -22,7 +22,15 @@ object AiCreationHelper {
         val imageCount = parseMarkers(llmInput).size
         val target = AiCreationConfig.requireModelTarget()
         val vision = target.provider.supportsVision
-        val content = buildLlmUserContent(llmInput, refs, imageCount, vision)
+        //有图规则路由：本节 markerRule 点名的提示词库条目，有图真发图时才追加；
+        //纯文本替换（没发图）不追加，返回校验也同步让开
+        val mode = session.paramValue(AI_CREATION_MODE_KEY)
+        val markerRule = when (mode) {
+            AiCreationVariables.GROUP_IMAGE -> AiCreationConfig.imageLlmDefinition.markerRule
+            AiCreationVariables.GROUP_VIDEO -> AiCreationConfig.videoLlmDefinition.markerRule
+            else -> error("未知 AI 创作模式：$mode")
+        }
+        val content = buildLlmUserContent(llmInput, refs, imageCount, vision, markerRule)
         AppLog.putAi(
             "AI_CREATION REQUEST\n" +
                 "provider=${target.provider.name}\n" +
@@ -102,14 +110,17 @@ object AiCreationHelper {
     }
 
     /**
-     * 组装 LLM userContent：无图保持字符串不动；有图且供应商支持多模态时文本+条件拼接句在前，
-     * 图片按标记顺序跟后；供应商不支持时图片转成文字占位嵌回数组（图没发出去，但位置和意图留下了）。
+     * 组装 LLM userContent：无图保持字符串不动；有图且供应商支持多模态时文本在前、
+     * 本节 markerRule 点名的提示词库规则紧随其后（校验要模型保留标记，规则必须先告诉模型），
+     * 图片按标记顺序跟后；库里没有该条目直接报错；本节没点名就不追加，校验照跑；
+     * 供应商不支持时图片转成文字占位嵌回数组（图没发出去，但位置和意图留下了）。
      */
     private fun buildLlmUserContent(
         llmInput: String,
         refs: List<String>,
         imageCount: Int,
-        supportVision: Boolean
+        supportVision: Boolean,
+        markerRule: String?
     ): Any {
         if (imageCount == 0) return llmInput
         if (!supportVision) {
@@ -127,9 +138,10 @@ object AiCreationHelper {
         }
         val text = buildString {
             append(llmInput)
-            append("\n\n")
-            //N 动态，写不进静态模板，由代码在有图时拼接
-            append("本次共 $imageCount 张图，返回的提示词须原样保留标记、数量必须为 $imageCount")
+            markerRule?.takeIf { it.isNotBlank() }?.let { ruleName ->
+                append("\n\n")
+                append(AiCreationConfig.promptTextOf(ruleName))
+            }
         }
         val array = JSONArray()
         array.put(JSONObject().put("type", "text").put("text", text))

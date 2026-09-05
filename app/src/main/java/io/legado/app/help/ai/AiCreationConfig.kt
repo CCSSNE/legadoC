@@ -74,6 +74,8 @@ object AiCreationConfig {
                 "单镜头",
                 "一个连续镜头，涵盖主体、动作、环境与运镜。"
             )
+            //有图时路由追加：校验要求模型保留标记，规则必须先告诉模型，不能只在代码里校验
+            put(AiCreationVariables.MARKER_RULE_PROMPT, AiCreationVariables.MARKER_RULE_TEXT)
         }.toString()
     }
 

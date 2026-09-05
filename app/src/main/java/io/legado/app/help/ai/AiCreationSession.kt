@@ -72,12 +72,14 @@ data class AiCreationVariableDoc(
 
 /**
  * LLM 变量设置的一节：style 变量 + 提示词路由 + LLM 输入模板，
- * 三者共同决定发给 LLM 的内容，与图片/视频供应商无关。
+ * 三者共同决定发给 LLM 的内容，与图片/视频供应商无关；
+ * markerRule 是有图时路由追加的提示词库条目名（告诉模型保留标记），空表示不追加。
  */
 data class AiCreationDefinition(
     val variables: List<AiCreationVariable>,
     val routes: List<AiCreationRoute>,
-    val llmInputTemplate: String
+    val llmInputTemplate: String,
+    val markerRule: String? = null
 )
 
 /**
@@ -92,6 +94,12 @@ object AiCreationVariables {
 
     const val GROUP_IMAGE = "image"
     const val GROUP_VIDEO = "video"
+
+    /** 有图时路由追加的提示词库条目：告诉模型原样保留图片标记 */
+    const val MARKER_RULE_PROMPT = "图片标记规则"
+
+    /** 图片标记规则出厂正文：纯静态文本，条数由代码校验，不占位 */
+    const val MARKER_RULE_TEXT = "返回的提示词须原样保留【图片N】标记，一个不能少，位置保持不变。"
 
     private const val IMAGE_LLM_INPUT_TEMPLATE =
         "根据素材生成绘画提示词。\n生成要求：\n\${prompt}\n素材：\n\${素材}"
@@ -330,19 +338,21 @@ object AiCreationVariables {
         return GSON.toJson(AiCreationVariableDoc(variables = imageVariables))
     }
 
-    /** 全局 LLM 变量设置的出厂 JSON：image/video 两节，各含 style、路由与输入模板。 */
+    /** 全局 LLM 变量设置的出厂 JSON：image/video 两节，各含 style、路由、输入模板与有图标记规则。 */
     fun buildLlmDefaultJson(): String {
         return GSON.toJson(
             AiCreationLlmVariableDoc(
                 image = AiCreationDefinition(
                     variables = listOf(imageStyleVariable),
                     routes = imageRoutes,
-                    llmInputTemplate = IMAGE_LLM_INPUT_TEMPLATE
+                    llmInputTemplate = IMAGE_LLM_INPUT_TEMPLATE,
+                    markerRule = MARKER_RULE_PROMPT
                 ),
                 video = AiCreationDefinition(
                     variables = listOf(videoStyleVariable),
                     routes = videoRoutes,
-                    llmInputTemplate = VIDEO_LLM_INPUT_TEMPLATE
+                    llmInputTemplate = VIDEO_LLM_INPUT_TEMPLATE,
+                    markerRule = MARKER_RULE_PROMPT
                 )
             )
         )
