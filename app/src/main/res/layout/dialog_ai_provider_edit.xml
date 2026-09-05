@@ -69,6 +69,13 @@
 
         </io.legado.app.ui.widget.text.TextInputLayout>
 
+        <CheckBox
+            android:id="@+id/check_provider_vision"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="@string/ai_provider_support_vision" />
+
     </LinearLayout>
 
 </androidx.core.widget.NestedScrollView>

@@ -8,8 +8,10 @@ object AiCreationHelper {
 
     /**
      * 提示词页上框即完整LLM输入：路由提示词与模板已渲染，直接原样发给LLM，不再二次套模板。
-     * 发送前先校验上框标记（重号/跳号/悬空错哪指哪）；有图时 userContent 变为多模态数组，
-     * 第一块永远是上框文本，图片按标记顺序转 base64 跟在后面；返回后校验标记，不合格重新生成。
+     * 发送前先校验上框标记（重号/跳号/悬空错哪指哪）；供应商支持多模态时 userContent 变为
+     * 多模态数组，第一块永远是上框文本，图片按标记顺序转 base64 跟在后面；
+     * 供应商不支持时图片就地转成文字占位嵌回数组（DSH 同款），文字照发、请求不报错；
+     * 返回后校验标记（纯文本替换时不校验），不合格重新生成。
      */
     suspend fun generatePromptFromLlmInput(
         session: AiCreationSession,
@@ -18,16 +20,19 @@ object AiCreationHelper {
         val refs = session.materialImageRefs
         validateMarkers(llmInput, refs)
         val imageCount = parseMarkers(llmInput).size
-        val content = buildLlmUserContent(llmInput, refs, imageCount)
         val target = AiCreationConfig.requireModelTarget()
+        val vision = target.provider.supportsVision
+        val content = buildLlmUserContent(llmInput, refs, imageCount, vision)
         AppLog.putAi(
             "AI_CREATION REQUEST\n" +
                 "provider=${target.provider.name}\n" +
                 "model=${target.modelId}\n" +
                 "llmInputChars=${llmInput.length}\n" +
-                "imageCount=$imageCount"
+                "imageCount=$imageCount\n" +
+                "supportVision=$vision"
         )
-        val response = sendWithMarkerValidation(target, content, imageCount)
+        //图被转成文字时没发图也不要求返回标记，按纯文生校验
+        val response = sendWithMarkerValidation(target, content, if (vision) imageCount else 0)
         //工作流溯源：记录本次发给 LLM 的完整输入
         session.setParam(AI_CREATION_LLM_INPUT_KEY, llmInput)
         return response
@@ -96,13 +101,30 @@ object AiCreationHelper {
             .map { number -> AiCreationCardImages.dataUrlOf(refs[number - 1]) }
     }
 
-    /** 组装 LLM userContent：无图保持字符串不动；有图时文本+条件拼接句在前，图片按标记顺序跟后 */
+    /**
+     * 组装 LLM userContent：无图保持字符串不动；有图且供应商支持多模态时文本+条件拼接句在前，
+     * 图片按标记顺序跟后；供应商不支持时图片转成文字占位嵌回数组（图没发出去，但位置和意图留下了）。
+     */
     private fun buildLlmUserContent(
         llmInput: String,
         refs: List<String>,
-        imageCount: Int
+        imageCount: Int,
+        supportVision: Boolean
     ): Any {
         if (imageCount == 0) return llmInput
+        if (!supportVision) {
+            val array = JSONArray()
+            array.put(JSONObject().put("type", "text").put("text", llmInput))
+            for (index in 1..imageCount) {
+                array.put(
+                    JSONObject().put("type", "text").put(
+                        "text",
+                        "${AiCreationImageMarkers.markerOf(index)}已省略：当前供应商不支持图片输入"
+                    )
+                )
+            }
+            return array
+        }
         val text = buildString {
             append(llmInput)
             append("\n\n")

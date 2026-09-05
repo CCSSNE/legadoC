@@ -1243,6 +1243,7 @@ class AiConfigFragment : PreferenceFragment(),
             editProviderBaseUrl.setText(provider?.baseUrl.orEmpty())
             editProviderApiKey.setText(provider?.apiKey.orEmpty())
             editProviderHeaders.setText(provider?.headers.orEmpty())
+            checkProviderVision.isChecked = provider?.supportsVision ?: true
         }
         applyApiKeyInputPolicy(binding.editProviderApiKey)
         alert(
@@ -1268,16 +1269,19 @@ class AiConfigFragment : PreferenceFragment(),
                     }
                 }
                 val providers = AppConfig.aiProviderList.toMutableList()
+                val supportVision = binding.checkProviderVision.isChecked
                 val updated = provider?.copy(
                     name = name,
                     baseUrl = baseUrl,
                     apiKey = apiKey,
-                    headers = headers
+                    headers = headers,
+                    supportVision = supportVision
                 ) ?: AiProviderConfig(
                     name = name,
                     baseUrl = baseUrl,
                     apiKey = apiKey,
-                    headers = headers
+                    headers = headers,
+                    supportVision = supportVision
                 )
                 val targetIndex = providers.indexOfFirst { it.id == updated.id }
                 if (targetIndex >= 0) {

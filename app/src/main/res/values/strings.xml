@@ -986,6 +986,7 @@
     <string name="ai_api_key">API Key</string>
     <string name="ai_api_key_summary">Used for Authorization authentication</string>
     <string name="ai_custom_headers">Custom headers</string>
+    <string name="ai_provider_support_vision">Supports multimodal (image input)</string>
     <string name="ai_web_tools">AI web tools</string>
     <string name="ai_tavily_enable">Enable Tavily search</string>
     <string name="ai_tavily_enable_summary">Expose Tavily as a real-time web search tool for AI.</string>

@@ -1091,7 +1091,9 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
                 name = DEFAULT_AI_PROVIDER_NAME,
                 baseUrl = DEFAULT_AI_PROVIDER_BASE_URL,
                 apiKey = DEFAULT_AI_PROVIDER_API_KEY,
-                headers = AiBuiltinDefaults.llmHeaders()
+                headers = AiBuiltinDefaults.llmHeaders(),
+                //opencode-zen 不支持多模态：有图进来转文字占位，不拼图数组
+                supportVision = false
             )
             val model = AiModelConfig(providerId = provider.id, modelId = DEFAULT_AI_MODEL_ID)
             persistAiProviders(listOf(provider))

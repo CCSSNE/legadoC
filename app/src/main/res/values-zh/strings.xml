@@ -1968,6 +1968,7 @@
     <string name="ai_api_key">API Key</string>
     <string name="ai_api_key_summary">用于 Authorization 鉴权</string>
     <string name="ai_custom_headers">自定义请求头</string>
+    <string name="ai_provider_support_vision">支持多模态（图片输入）</string>
     <string name="ai_web_tools">AI 联网工具</string>
     <string name="ai_tavily_enable">启用 Tavily 搜索</string>
     <string name="ai_tavily_enable_summary">将 Tavily 暴露给 AI 作为实时联网搜索工具</string>
