@@ -187,50 +187,76 @@ object AiCreationConfig {
         }
 
         check("图片供应商") {
+            val rawJson = appCtx.getPrefString(PreferKey.aiCreationImageProviderList)
+            //整份坏掉（连数组都不是）：删了，下次读自动重种内置；钥匙本来就救不回来，不留着炸
+            if (!rawJson.isNullOrBlank() &&
+                runCatching {
+                    GSON.fromJsonArray<AiCreationProviderConfig>(rawJson).getOrThrow()
+                }.isFailure
+            ) {
+                appCtx.removePref(PreferKey.aiCreationImageProviderList)
+                healed.add("图片供应商名单损坏已清空重种")
+                return@check null
+            }
             val raw = AiCreationProviderStore.imageProviderList
-            var fixed = 0
-            val repaired = raw.map { provider ->
+            var factoryFixed = 0
+            var deleted = 0
+            val repaired = raw.mapNotNull { provider ->
                 val ok = runCatching {
                     AiCreationVariables.parse(provider.variablesJson)
                     AiCreationProviderStore.parseImageRequestTemplateJson(provider.requestTemplate)
                 }.isSuccess
-                if (ok) return@map provider
+                if (ok) return@mapNotNull provider
                 val factoryVariables = AiCreationProviderStore.defaultVariablesJsonOf(provider)
                 val factoryTemplate = AiCreationProviderStore.defaultRequestTemplateOf(provider)
                 if (factoryVariables != null && factoryTemplate != null) {
-                    fixed++
+                    factoryFixed++
                     provider.copy(variablesJson = factoryVariables, requestTemplate = factoryTemplate)
                 } else {
-                    broken.add("图片供应商「${provider.name}」")
-                    provider
+                    //用户自加的：整家删掉，它下面的模型由存写入口连带清掉
+                    deleted++
+                    null
                 }
             }
             if (repaired != raw) AiCreationProviderStore.imageProviderList = repaired
-            if (fixed > 0) healed.add("图片供应商（重置${fixed}家）")
+            if (factoryFixed > 0) healed.add("图片供应商（恢复出厂${factoryFixed}家）")
+            if (deleted > 0) healed.add("图片供应商（删除坏掉的自加${deleted}家）")
             null
         }
 
         check("视频供应商") {
+            val rawJson = appCtx.getPrefString(PreferKey.aiCreationVideoProviderList)
+            if (!rawJson.isNullOrBlank() &&
+                runCatching {
+                    GSON.fromJsonArray<AiCreationProviderConfig>(rawJson).getOrThrow()
+                }.isFailure
+            ) {
+                appCtx.removePref(PreferKey.aiCreationVideoProviderList)
+                healed.add("视频供应商名单损坏已清空重种")
+                return@check null
+            }
             val raw = AiCreationProviderStore.videoProviderList
-            var fixed = 0
-            val repaired = raw.map { provider ->
+            var factoryFixed = 0
+            var deleted = 0
+            val repaired = raw.mapNotNull { provider ->
                 val ok = runCatching {
                     AiCreationVariables.parse(provider.variablesJson)
                     AiCreationProviderStore.parseVideoRequestTemplateJson(provider.requestTemplate)
                 }.isSuccess
-                if (ok) return@map provider
+                if (ok) return@mapNotNull provider
                 val factoryVariables = AiCreationProviderStore.defaultVariablesJsonOf(provider)
                 val factoryTemplate = AiCreationProviderStore.defaultRequestTemplateOf(provider)
                 if (factoryVariables != null && factoryTemplate != null) {
-                    fixed++
+                    factoryFixed++
                     provider.copy(variablesJson = factoryVariables, requestTemplate = factoryTemplate)
                 } else {
-                    broken.add("视频供应商「${provider.name}」")
-                    provider
+                    deleted++
+                    null
                 }
             }
             if (repaired != raw) AiCreationProviderStore.videoProviderList = repaired
-            if (fixed > 0) healed.add("视频供应商（重置${fixed}家）")
+            if (factoryFixed > 0) healed.add("视频供应商（恢复出厂${factoryFixed}家）")
+            if (deleted > 0) healed.add("视频供应商（删除坏掉的自加${deleted}家）")
             null
         }
 
@@ -301,7 +327,7 @@ object AiCreationConfig {
             null
         }
 
-        //AI 供应商与模型名单：只清理无用行（空名字/悬空模型），损坏的 JSON 不删（里面有钥匙），只报
+        //AI 供应商与模型名单：坏行直接删（钥匙在坏行里救不回来也认了）；整份坏掉就清空，下次读重种默认
         check("AI供应商") {
             val raw = appCtx.getPrefString(PreferKey.aiProviderList)
             if (!raw.isNullOrBlank() &&
@@ -309,13 +335,15 @@ object AiCreationConfig {
                     GSON.fromJsonArray<AiProviderConfig>(raw).getOrThrow()
                 }.isFailure
             ) {
-                broken.add("AI供应商名单（JSON损坏，请手动检查，钥匙未动）")
+                appCtx.removePref(PreferKey.aiProviderList)
+                appCtx.removePref(PreferKey.aiModelConfigList)
+                healed.add("AI供应商名单损坏已清空重种")
                 return@check null
             }
             val rawCount = rawJsonArraySize<AiProviderConfig>(PreferKey.aiProviderList)
             AppConfig.aiProviderList = AppConfig.aiProviderList
             val dropped = rawCount - AppConfig.aiProviderList.size
-            if (dropped > 0) healed.add("AI供应商（清理${dropped}条）")
+            if (dropped > 0) healed.add("AI供应商（删除坏行${dropped}条，连带模型）")
             null
         }
 
@@ -326,13 +354,14 @@ object AiCreationConfig {
                     GSON.fromJsonArray<AiModelConfig>(raw).getOrThrow()
                 }.isFailure
             ) {
-                broken.add("AI模型名单（JSON损坏，请手动检查）")
+                appCtx.removePref(PreferKey.aiModelConfigList)
+                healed.add("AI模型名单损坏已清空")
                 return@check null
             }
             val rawCount = rawJsonArraySize<AiModelConfig>(PreferKey.aiModelConfigList)
             AppConfig.aiModelConfigList = AppConfig.aiModelConfigList
             val dropped = rawCount - AppConfig.aiModelConfigList.size
-            if (dropped > 0) healed.add("AI模型（清理${dropped}条）")
+            if (dropped > 0) healed.add("AI模型（删除坏行${dropped}条）")
             null
         }
 
