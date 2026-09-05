@@ -493,8 +493,6 @@
     <string name="ai_creation_video_request_template">Video request body</string>
     <string name="ai_creation_insert_image_title">Insert image</string>
     <string name="ai_creation_grid_single">Single</string>
-    <string name="ai_creation_grid_two">2-grid</string>
-    <string name="ai_creation_grid_four">4-grid</string>
     <string name="ai_creation_grid_height">Total height (px)</string>
     <string name="ai_creation_save_md">Save MD with images</string>
     <string name="ai_creation_md_saved">MD saved to Download/Legado</string>

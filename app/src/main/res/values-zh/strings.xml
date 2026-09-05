@@ -492,8 +492,6 @@
     <string name="ai_creation_video_request_template">视频请求体</string>
     <string name="ai_creation_insert_image_title">插入图片</string>
     <string name="ai_creation_grid_single">单张</string>
-    <string name="ai_creation_grid_two">两宫格</string>
-    <string name="ai_creation_grid_four">四宫格</string>
     <string name="ai_creation_grid_height">总高度</string>
     <string name="ai_creation_save_md">保存 MD（含图片）</string>
     <string name="ai_creation_md_saved">MD 已保存到 Download/Legado</string>
