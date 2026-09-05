@@ -500,6 +500,7 @@
     <string name="ai_creation_insert">Insert</string>
     <string name="ai_creation_stash_hint">Stashed %1$d item(s), now choose where to insert</string>
     <string name="ai_creation_stash_gone">Stashed media no longer exists</string>
+    <string name="illustration_note_empty">No note – tap to input</string>
     <string name="ai_creation_save_workflow">Save workflow</string>
     <string name="ai_creation_copy_workflow">Copy workflow</string>
     <string name="ai_creation_workflow_missing">Workflow metadata not found</string>

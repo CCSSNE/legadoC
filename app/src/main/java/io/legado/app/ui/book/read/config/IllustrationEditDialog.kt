@@ -160,7 +160,7 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
         binding.rgLayout.setOnCheckedChangeListener { _, _ ->
             rebuildNoteInputs()
         }
-        binding.cbUnifiedNote.isChecked = true
+        binding.cbUnifiedNote.isChecked = false
         binding.cbUnifiedNote.setOnCheckedChangeListener { _, _ ->
             rebuildNoteInputs()
         }
@@ -279,6 +279,17 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
         }
         val context = requireContext()
         computeUnits().forEachIndexed { unitIndex, unit ->
+            //每条备注默认收成一行：点预览展开输入，点标题收起；有 workflow 的各读各的
+            val initial = unitNotes[unit.firstIndex] ?: workflowJsonOf(unit.firstIndex).orEmpty()
+            val row = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                val rowParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                rowParams.topMargin = 12.dpToPx()
+                layoutParams = rowParams
+            }
             val label = TextView(context).apply {
                 text = if (unit.isAudio) {
                     getString(R.string.illustration_note_audio_unit, unitIndex + 1)
@@ -288,6 +299,15 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
                 setTextColor(context.getCompatColor(R.color.primaryText))
                 textSize = 14f
             }
+            val preview = TextView(context).apply {
+                text = previewTextOf(initial)
+                setTextColor(context.getCompatColor(R.color.secondaryText))
+                textSize = 14f
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                isClickable = true
+                isFocusable = true
+            }
             val edit = EditText(context).apply {
                 hint = getString(R.string.illustration_note_hint)
                 inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
@@ -295,26 +315,47 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
                 background = null
                 setTextColor(context.getCompatColor(R.color.primaryText))
                 textSize = 14f
-                setText(unitNotes[unit.firstIndex] ?: workflowJsonOf(unit.firstIndex).orEmpty())
+                setText(initial)
+                visibility = View.GONE
             }
-            val labelParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            labelParams.topMargin = 12.dpToPx()
-            label.layoutParams = labelParams
-            val editParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            editParams.topMargin = 4.dpToPx()
-            edit.layoutParams = editParams
-            binding.llNoteItems.addView(label)
-            binding.llNoteItems.addView(edit)
+            preview.setOnClickListener { expandNoteRow(preview, edit) }
+            label.setOnClickListener { toggleNoteRow(preview, edit) }
+            row.addView(label)
+            row.addView(preview)
+            row.addView(edit)
+            binding.llNoteItems.addView(row)
             unitNoteEdits.add(edit)
             unitKeys.add(unit.firstIndex)
         }
         binding.llNoteItems.applyUiBodyTypefaceDeep(context.uiTypeface())
+    }
+
+    /** 备注收起行：取首个非空行，空的就是无备注 */
+    private fun previewTextOf(text: CharSequence): String {
+        val first = text.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }.orEmpty()
+        return first.ifBlank { getString(R.string.illustration_note_empty) }
+    }
+
+    private fun expandNoteRow(preview: TextView, edit: EditText) {
+        preview.visibility = View.GONE
+        edit.visibility = View.VISIBLE
+        edit.requestFocus()
+        val imm = requireContext().getSystemService(android.content.Context.INPUT_METHOD_SERVICE)
+            as? android.view.inputmethod.InputMethodManager
+        imm?.showSoftInput(edit, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+    }
+
+    private fun toggleNoteRow(preview: TextView, edit: EditText) {
+        if (edit.visibility == View.VISIBLE) {
+            preview.text = previewTextOf(edit.text ?: "")
+            edit.visibility = View.GONE
+            preview.visibility = View.VISIBLE
+            val imm = requireContext().getSystemService(android.content.Context.INPUT_METHOD_SERVICE)
+                as? android.view.inputmethod.InputMethodManager
+            imm?.hideSoftInputFromWindow(edit.windowToken, 0)
+        } else {
+            expandNoteRow(preview, edit)
+        }
     }
 
     /** 指定媒体内嵌的工作流 JSON 原文：存的啥填啥，不解析、不提取；无元数据返回 null 不预填 */
