@@ -39,7 +39,9 @@ object DefaultData {
     private const val MAX_HIGHLIGHT_RULE_VERSION_KEY = "maxHighlightRuleVersion"
     private const val MAX_HIGHLIGHT_RULE_VERSION = 1
     private const val AI_CREATION_CONFIG_VERSION_KEY = "aiCreationConfigVersion"
-    private const val AI_CREATION_CONFIG_VERSION = 3
+    //v4：强升级——AI 全部 JSON 配置回到出厂（只留钥匙名字地址与模型选择），
+    //此后出厂再加参数/改模板，用户升级即自动对齐，不用手动恢复默认
+    private const val AI_CREATION_CONFIG_VERSION = 4
 
     fun upVersion() {
         Coroutine.async {
@@ -62,6 +64,8 @@ object DefaultData {
                 importDefaultMaxHighlightRules()
             }
             migrateDefaultData("AI创作配置", AI_CREATION_CONFIG_VERSION_KEY, AI_CREATION_CONFIG_VERSION) {
+                //先强回出厂（只留身份与连线），再消毒存量参数值，最后做模板归属迁移
+                AiCreationConfig.forceRestoreFactoryDefaults()
                 AiCreationConfig.sanitizeStoredJsons()
                 //v2：请求模板归属迁移——全局归聊天+创作（未定制切新干净默认），净化固化继承快照
                 AiStructuredRequestTemplate.migrateTemplateOwnership()

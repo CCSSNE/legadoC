@@ -145,6 +145,24 @@ object AiCreationConfig {
         get() = parsePromptTemplates(promptTemplateJson)
 
     /**
+     * 强升级：AI 全部 JSON 配置回到出厂（内置图片/视频供应商的变量定义与请求模板、
+     * 全局 LLM 变量设置、提示词模板、全局通用请求模板）。
+     * 只保留身份与连线信息：供应商 id、名字、地址、钥匙、自定义请求头、模型列表与当前选择；
+     * 自定义供应商一律不动。调用方只在版本戳升级时调一次，平时不碰用户配置。
+     */
+    fun forceRestoreFactoryDefaults() {
+        AiCreationProviderStore.restoreBuiltinToFactory()
+        llmVariablesJson = defaultLlmVariablesJson
+        promptTemplateJson = defaultPromptTemplateJson
+        AiStructuredRequestTemplate.global = AiStructuredRequestTemplate.default
+        AppLog.putAi(
+            "AI_CREATION CONFIG FORCE RESTORED\n" +
+                "scope=providerVariables,requestTemplate,llmVariables,promptTemplate,globalRequestTemplate\n" +
+                "kept=providerId,name,baseUrl,apiKey,headers,models,currentSelection"
+        )
+    }
+
+    /**
      * 安装/升级后一次性消毒：存量 LLM 变量设置与提示词模板非法时用出厂值覆盖，
      * 并响亮告知恢复了哪几项；版本戳由调用方（DefaultData）打标，此后用户手写
      * 错误只报错、不再碰存储。供应商变量定义不在此列：旧格式残留已在读取时

@@ -316,6 +316,25 @@ object AiCreationProviderStore {
         }
     }
 
+    /**
+     * 强升级：内置供应商的变量定义与请求模板回到出厂；
+     * 身份与连线信息（id、名字、地址、钥匙、自定义请求头、Key 获取地址）原样保留，
+     * 自定义供应商没有出厂可对照，一律不动。
+     */
+    fun restoreBuiltinToFactory() {
+        imageProviderList = imageProviderList.map { restoreBuiltinProvider(it) }
+        videoProviderList = videoProviderList.map { restoreBuiltinProvider(it) }
+    }
+
+    private fun restoreBuiltinProvider(provider: AiCreationProviderConfig): AiCreationProviderConfig {
+        val factoryVariables = defaultVariablesJsonOf(provider) ?: return provider
+        val factoryTemplate = defaultRequestTemplateOf(provider) ?: return provider
+        if (provider.variablesJson == factoryVariables && provider.requestTemplate == factoryTemplate) {
+            return provider
+        }
+        return provider.copy(variablesJson = factoryVariables, requestTemplate = factoryTemplate)
+    }
+
     /** 回出厂时顺手清掉已搬走的 style 旧存储键；mode 等正常参数不动 */
     private fun dropStaleStyleKey(providerId: String, isVideo: Boolean) {
         val mode = if (isVideo) AiCreationVariables.GROUP_VIDEO else AiCreationVariables.GROUP_IMAGE
