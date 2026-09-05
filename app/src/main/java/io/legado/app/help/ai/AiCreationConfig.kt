@@ -142,23 +142,12 @@ object AiCreationConfig {
     val videoVariables: List<AiCreationVariable>
         get() = AiCreationProviderStore.parsedVideoVariables()
 
-    /**
-     * AI 创作发 LLM 专用请求模板：不再蹭全局通用模板，出厂即干净 default；
-     * 独占的 {{userContent}} 就是图片位（数组进来时图从这里发），模板里删了它，
-     * 有图直接报错不发，无图连文本都无处可去同样报错。
-     */
-    var requestTemplate: String
-        get() = appCtx.getPrefString(PreferKey.aiCreationRequestTemplate)
-            ?.takeIf { it.isNotBlank() }
-            ?: AiStructuredRequestTemplate.default
-        set(value) = appCtx.putPrefString(PreferKey.aiCreationRequestTemplate, value.trim())
-
     val promptTemplates: Map<String, String>
         get() = parsePromptTemplates(promptTemplateJson)
 
     /**
      * 强升级：AI 全部 JSON 配置回到出厂（内置图片/视频供应商的变量定义与请求模板、
-     * 全局 LLM 变量设置、提示词模板、全局通用请求模板、创作/分镜/选角/净化请求模板）。
+     * 全局 LLM 变量设置、提示词模板、全局通用请求模板、分镜/选角/净化请求模板）。
      * 只保留身份与连线信息：供应商 id、名字、地址、钥匙、自定义请求头、模型列表与当前选择；
      * 自定义供应商一律不动。调用方只在版本戳升级时调一次，平时不碰用户配置。
      */
@@ -167,13 +156,12 @@ object AiCreationConfig {
         llmVariablesJson = defaultLlmVariablesJson
         promptTemplateJson = defaultPromptTemplateJson
         AiStructuredRequestTemplate.global = AiStructuredRequestTemplate.default
-        requestTemplate = AiStructuredRequestTemplate.default
         AiStoryboardConfig.storyboardRequestTemplate = AiStructuredRequestTemplate.structuredDefault
         AiStoryboardConfig.castingRequestTemplate = AiStructuredRequestTemplate.structuredDefault
         AiChapterPurifyConfig.requestTemplate = AiStructuredRequestTemplate.structuredDefault
         AppLog.putAi(
             "AI_CREATION CONFIG FORCE RESTORED\n" +
-                "scope=providerVariables,requestTemplate,llmVariables,promptTemplate,globalRequestTemplate,creationRequestTemplate,storyboardRequestTemplate,castingRequestTemplate,purifyRequestTemplate\n" +
+                "scope=providerVariables,requestTemplate,llmVariables,promptTemplate,globalRequestTemplate,storyboardRequestTemplate,castingRequestTemplate,purifyRequestTemplate\n" +
                 "kept=providerId,name,baseUrl,apiKey,headers,models,currentSelection"
         )
     }

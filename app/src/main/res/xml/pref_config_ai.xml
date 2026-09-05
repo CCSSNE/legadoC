@@ -240,12 +240,6 @@
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
-            android:key="aiCreationRequestTemplate"
-            android:summary="@string/ai_creation_request_template_summary"
-            android:title="@string/ai_creation_request_template"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.Preference
             android:key="aiCreationTestConnection"
             android:summary="@string/ai_creation_test_connection_summary"
             android:title="@string/ai_creation_test_connection"

@@ -145,7 +145,7 @@ object AiChatService {
     /**
      * Sends an isolated completion request. It deliberately does not inherit chat history,
      * the global AI system prompt, skills, MCP tools, or any tool loop state.
-     * AI 创作入口：走创作专用请求模板，userContent 允许传字符串或多模态内容数组。
+     * AI 创作入口：走全局通用请求模板，userContent 允许传字符串或多模态内容数组。
      */
     suspend fun generatePlainText(
         provider: AiProviderConfig,
@@ -159,7 +159,7 @@ object AiChatService {
         userContent = userContent,
         temperature = temperature,
         responseFormat = null,
-        requestTemplate = AiCreationConfig.requestTemplate
+        requestTemplate = AiStructuredRequestTemplate.global
     )
 
     suspend fun generateStructuredText(

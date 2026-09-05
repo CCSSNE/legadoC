@@ -143,7 +143,6 @@ object PreferKey {
     const val aiCreationReuseCurrentModel = "aiCreationReuseCurrentModel"
     const val aiCreationProvider = "aiCreationProvider"
     const val aiCreationModel = "aiCreationModel"
-    const val aiCreationRequestTemplate = "aiCreationRequestTemplate"
     const val aiCreationPromptTemplate = "aiCreationPromptTemplate"
     const val aiCreationLlmVariables = "aiCreationLlmVariables"
     const val aiCreationParams = "aiCreationParams"
