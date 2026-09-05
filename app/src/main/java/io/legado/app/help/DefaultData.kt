@@ -41,7 +41,8 @@ object DefaultData {
     private const val AI_CREATION_CONFIG_VERSION_KEY = "aiCreationConfigVersion"
     //v4：强升级——AI 全部 JSON 配置回到出厂（只留钥匙名字地址与模型选择），
     //此后出厂再加参数/改模板，用户升级即自动对齐，不用手动恢复默认
-    private const val AI_CREATION_CONFIG_VERSION = 4
+    //v5：炸只炸升级上来的；新装本来就是出厂，不炸不弹（之前不分新装升级见面就炸是错的）
+    private const val AI_CREATION_CONFIG_VERSION = 5
 
     fun upVersion() {
         Coroutine.async {
@@ -64,9 +65,11 @@ object DefaultData {
                 importDefaultMaxHighlightRules()
             }
             migrateDefaultData("AI创作配置", AI_CREATION_CONFIG_VERSION_KEY, AI_CREATION_CONFIG_VERSION) {
+                //新装（之前没戳）本来就是出厂，不炸不弹；只有升级上来的才按开关处理
+                val freshInstall = LocalConfig.defaultDataVersion(AI_CREATION_CONFIG_VERSION_KEY) <= 0
                 //硬开关开着=本版本有破坏性更新：不检测，直接全炸；
                 //关着=只把内置回出厂，自加的不动
-                if (AiCreationConfig.NUKE_CUSTOM_AI_CONFIG_ON_UPGRADE) {
+                if (AiCreationConfig.NUKE_CUSTOM_AI_CONFIG_ON_UPGRADE && !freshInstall) {
                     AiCreationConfig.nukeAllAiJsonConfigs()
                 } else {
                     AiCreationConfig.forceRestoreFactoryDefaults()
