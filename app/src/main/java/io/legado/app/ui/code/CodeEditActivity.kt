@@ -2,17 +2,11 @@ package io.legado.app.ui.code
 
 import android.annotation.SuppressLint
 import android.content.Intent
-import android.graphics.drawable.GradientDrawable
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
-import android.widget.LinearLayout
-import android.widget.TextView
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.annotation.RequiresApi
 import androidx.core.view.isGone
@@ -20,7 +14,6 @@ import androidx.core.view.isVisible
 import androidx.core.widget.addTextChangedListener
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.textfield.TextInputEditText
-import io.github.rosemoe.sora.event.ContentChangeEvent
 import io.github.rosemoe.sora.event.PublishSearchResultEvent
 import io.github.rosemoe.sora.event.SelectionChangeEvent
 import io.github.rosemoe.sora.langs.textmate.registry.ThemeRegistry
@@ -32,15 +25,11 @@ import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.ActivityCodeEditBinding
-import io.legado.app.databinding.DialogEditTextBinding
-import io.legado.app.help.ai.AiCreationCardImages
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.theme.accentColor
 import io.legado.app.ui.about.AppLogDialog
-import io.legado.app.ui.book.read.creation.AiCreationRefPhotoDialog
 import io.legado.app.ui.code.config.ChangeThemeDialog
 import io.legado.app.ui.code.config.SettingsDialog
 import io.legado.app.ui.widget.keyboard.KeyboardToolPop
@@ -49,11 +38,7 @@ import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
-import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
-import kotlinx.coroutines.Dispatchers.IO
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class CodeEditActivity :
     VMBaseActivity<ActivityCodeEditBinding, CodeEditViewModel>(),
@@ -73,15 +58,6 @@ class CodeEditActivity :
     private val editorSearcher: EditorSearcher by lazy { editor.searcher }
     private var searchOptions: SearchOptions? = null
     private var menuSaveBtn: MenuItem? = null
-
-    private val isCreationCard get() = viewModel.creationCardId > 0
-
-    private val imagePicker = registerForActivityResult(
-        ActivityResultContracts.GetContent()
-    ) { uri ->
-        uri ?: return@registerForActivityResult
-        insertCreationImage(uri)
-    }
 
     private val isDark
         get() = AppConfig.editTemeAuto && ThemeConfig.isDarkTheme()
@@ -103,14 +79,6 @@ class CodeEditActivity :
                 setText(viewModel.initialText)
                 editable = viewModel.writable
                 menuSaveBtn?.isVisible = viewModel.writable
-                upCreationCardMenu()
-                //创作卡片：文字变化实时刷新图片条（插入/删除引用行都会走到这里）
-                if (isCreationCard) {
-                    subscribeEvent(ContentChangeEvent::class.java) { _, _ ->
-                        refreshCreationImageStrip()
-                    }
-                }
-                refreshCreationImageStrip()
                 requestFocus()
                 postDelayed({
                     val pos = cursor.indexer.getCharPosition(viewModel.cursorPosition)
@@ -138,16 +106,6 @@ class CodeEditActivity :
      * 使用super.finish(),防止循环回调
      * */
     private fun save(check: Boolean) {
-        if (isCreationCard) {
-            val cardId = viewModel.creationCardId
-            val text = editor.text.toString()
-            viewModel.saveCreationCard(
-                text,
-                onBlankDeleted = { finishCreationCard(deleted = true, cardId = cardId) },
-                onSaved = { finishCreationCard(deleted = false, cardId = cardId) }
-            )
-            return
-        }
         if (!viewModel.writable) return super.finish()
         val text = editor.text.toString()
         val cursorPos = editor.cursor?.left ?: 0
@@ -236,11 +194,6 @@ class CodeEditActivity :
 
     override fun onPrepareOptionsMenu(menu: Menu): Boolean {
         menu.findItem(R.id.menu_auto_wrap)?.isChecked = AppConfig.editAutoWrap
-        val cardMode = isCreationCard
-        menu.findItem(R.id.menu_insert_image)?.isVisible = cardMode
-        menu.findItem(R.id.menu_rename_card)?.isVisible = cardMode
-        menu.findItem(R.id.menu_delete_card)?.isVisible = cardMode
-        menu.findItem(R.id.menu_format_code)?.isVisible = !cardMode
         return super.onPrepareOptionsMenu(menu)
     }
 
@@ -370,9 +323,6 @@ class CodeEditActivity :
             R.id.menu_format_code -> viewModel.formatCode(editor)
             R.id.menu_change_theme -> showDialogFragment(ChangeThemeDialog())
             R.id.menu_config_settings -> showDialogFragment(SettingsDialog(this, this))
-            R.id.menu_insert_image -> imagePicker.launch("image/*")
-            R.id.menu_rename_card -> renameCreationCard()
-            R.id.menu_delete_card -> confirmDeleteCreationCard()
             R.id.menu_auto_wrap -> {
                 item.isChecked = !AppConfig.editAutoWrap
                 upEdit(autoWarp = !AppConfig.editAutoWrap)
@@ -381,115 +331,6 @@ class CodeEditActivity :
             R.id.menu_log -> showDialogFragment<AppLogDialog>()
         }
         return super.onCompatOptionsItemSelected(item)
-    }
-
-    private fun upCreationCardMenu() {
-        invalidateOptionsMenu()
-    }
-
-    private fun finishCreationCard(deleted: Boolean, cardId: Long) {
-        val result = Intent().apply {
-            putExtra("creationCardDeleted", deleted)
-            putExtra("creationCardId", cardId)
-        }
-        setResult(RESULT_OK, result)
-        super.finish()
-    }
-
-    private fun renameCreationCard() {
-        val card = viewModel.creationCard ?: return
-        val editBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-            editView.setText(card.name)
-            editView.setSelection(card.name.length)
-        }
-        alert(titleResource = R.string.rename) {
-            customView { editBinding.root }
-            okButton {
-                viewModel.renameCreationCard(editBinding.editView.text?.toString().orEmpty()) { updated ->
-                    binding.titleBar.title = updated.name
-                }
-            }
-            cancelButton()
-        }
-    }
-
-    private fun confirmDeleteCreationCard() {
-        alert(titleResource = R.string.delete) {
-            setMessage(R.string.creation_card_delete_confirm)
-            okButton {
-                val cardId = viewModel.creationCardId
-                viewModel.deleteCreationCard {
-                    finishCreationCard(deleted = true, cardId = cardId)
-                }
-            }
-            cancelButton()
-        }
-    }
-
-    private fun insertCreationImage(uri: Uri) {
-        val card = viewModel.creationCard ?: return
-        lifecycleScope.launch {
-            val ref = withContext(IO) { AiCreationCardImages.import(uri, card.cardId) }
-            if (ref == null) {
-                toastOnUi(R.string.creation_image_import_failed)
-                return@launch
-            }
-            val position = editor.cursor?.left ?: 0
-            editor.insertText("\n![]($ref)\n", position)
-        }
-    }
-
-    /**
-     * 创作卡片图片条：编辑器内不渲染原图（sora 硬做行内图等于 fork 编辑器），
-     * 只显示单行编号圈；同一文件多处出现只计一张，编号按首次出现顺序由程序统一完成。
-     */
-    private fun refreshCreationImageStrip() {
-        if (!isCreationCard) {
-            binding.hsCreationImages.visibility = View.GONE
-            return
-        }
-        val refs = AiCreationCardImages.markdownRefs(editor.text.toString()).distinct()
-        binding.hsCreationImages.visibility = if (refs.isEmpty()) View.GONE else View.VISIBLE
-        val strip = binding.llCreationImageStrip
-        strip.removeAllViews()
-        refs.forEachIndexed { index, _ ->
-            strip.addView(creationImageCell(index + 1))
-        }
-    }
-
-    private fun creationImageCell(number: Int): View {
-        return TextView(this).apply {
-            text = circledNumber(number)
-            textSize = 13f
-            gravity = Gravity.CENTER
-            setTextColor(accentColor)
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setStroke(dp(1), accentColor)
-            }
-            layoutParams = LinearLayout.LayoutParams(dp(30), dp(30)).apply {
-                setMargins(dp(4), 0, dp(4), 0)
-            }
-            setOnClickListener {
-                val refs = AiCreationCardImages.markdownRefs(editor.text.toString()).distinct()
-                if (number - 1 in refs.indices) {
-                    showDialogFragment(
-                        AiCreationRefPhotoDialog.newInstance(refs, number - 1, deletable = false)
-                    )
-                }
-            }
-        }
-    }
-
-    private fun circledNumber(number: Int): String {
-        if (number in 1..20) {
-            return (0x2460 + number - 1).toChar().toString()
-        }
-        return "($number)"
-    }
-
-    private fun dp(value: Int): Int {
-        return (value * resources.displayMetrics.density).toInt()
     }
 
     override fun finish() {

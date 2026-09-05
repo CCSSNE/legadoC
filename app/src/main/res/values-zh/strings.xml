@@ -2002,6 +2002,8 @@
     <string name="ai_edit_model">编辑模型</string>
     <string name="ai_edit_request">编辑请求体</string>
     <string name="ai_edit_request_summary">编辑章节净化及其连通性测试使用的 JSON 请求体。</string>
+    <string name="ai_send_image_max_resolution">发送图片最大分辨率</string>
+    <string name="ai_send_image_max_resolution_summary">总像素（万像素，10–5000）。发给 AI 的图片保持长宽比压到该预算附近；默认 100。</string>
     <string name="ai_edit_request_hint">结构化请求 JSON</string>
     <string name="ai_edit_request_invalid">请求模板无效：%s</string>
     <string name="ai_model_saved">已保存模型</string>

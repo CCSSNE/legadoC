@@ -28,6 +28,12 @@
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
+            android:key="aiSendImageMaxPixels"
+            android:summary="@string/ai_send_image_max_resolution_summary"
+            android:title="@string/ai_send_image_max_resolution"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
             android:key="aiTestCurrentConnection"
             android:summary="@string/ai_connection_test_summary"
             android:title="@string/ai_connection_test"

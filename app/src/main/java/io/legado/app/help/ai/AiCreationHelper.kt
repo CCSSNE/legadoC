@@ -82,6 +82,20 @@ object AiCreationHelper {
         }
     }
 
+    /**
+     * LLM 输入份图片溯源：按上框（llmInput）标记解析对应图片 base64 data URL，
+     * 只要涉及图片就 100% 记录，不管这次有没有实际请求 LLM；
+     * 编号超出图片集合的悬空标记跳过（llmInput 文本本身仍如实记录该标记），
+     * 文件缺失由 dataUrlOf 直接抛错，不静默丢图。
+     */
+    fun resolveLlmInputImageDataUrls(llmInput: String, refs: List<String>): List<String> {
+        val markers = parseMarkers(llmInput)
+        if (markers.isEmpty()) return emptyList()
+        return markers.distinct().sorted()
+            .filter { it in 1..refs.size }
+            .map { number -> AiCreationCardImages.dataUrlOf(refs[number - 1]) }
+    }
+
     /** 组装 LLM userContent：无图保持字符串不动；有图时文本+条件拼接句在前，图片按标记顺序跟后 */
     private fun buildLlmUserContent(
         llmInput: String,

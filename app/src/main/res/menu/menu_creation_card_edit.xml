@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:ignore="AlwaysShowAction">
+
+    <item
+        android:id="@+id/menu_save"
+        android:icon="@drawable/ic_save"
+        android:title="@string/action_save"
+        app:showAsAction="always" />
+
+    <item
+        android:id="@+id/menu_insert_image"
+        android:title="@string/menu_insert_image"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/menu_rename_card"
+        android:title="@string/rename"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/menu_delete_card"
+        android:title="@string/delete"
+        app:showAsAction="never" />
+
+</menu>

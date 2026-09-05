@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<link rel="stylesheet" href="/assets/vditor/dist/index.css">
+<style>
+html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+    -webkit-text-size-adjust: 100%;
+}
+#editor {
+    height: 100%;
+}
+</style>
+</head>
+<body>
+<div id="editor"></div>
+<script src="/assets/vditor/dist/index.min.js"></script>
+<script>
+(function () {
+    var IMAGE_BASE = '/creation_images/';
+
+    //卡片存储格式保持 creation_images/xxx 相对引用：
+    //载入时改写为绝对资源路径供 WebView 加载原图，导出时还原，存库内容与历史格式完全一致。
+    var LOAD_REF = /(!\[[^\]]*\]\()(creation_images\/[^)\s]+)(\))/g;
+    var SAVE_REF = /(!\[[^\]]*\]\()(\/creation_images\/[^)\s]+)(\))/g;
+
+    var vditor = null;
+    var initialContent = '';
+
+    function withImageBase(md) {
+        return md.replace(LOAD_REF, function (all, head, ref, tail) {
+            return head + IMAGE_BASE + ref + tail;
+        });
+    }
+
+    function withoutImageBase(md) {
+        return md.replace(SAVE_REF, function (all, head, ref, tail) {
+            return head + ref.substring(1) + tail;
+        });
+    }
+
+    window.editorApi = {
+        exportContent: function () {
+            return vditor ? withoutImageBase(vditor.getValue()) : initialContent;
+        },
+        insertText: function (text) {
+            if (vditor) {
+                vditor.insertValue(text);
+            }
+        },
+        focusEditor: function () {
+            if (vditor) {
+                vditor.focus();
+            }
+        }
+    };
+
+    function boot() {
+        var dark = !!(window.AndroidBridge && AndroidBridge.isDark());
+        initialContent = window.AndroidBridge ? AndroidBridge.loadContent() : '';
+        vditor = new Vditor('editor', {
+            cdn: '/assets/vditor',
+            mode: 'ir',
+            lang: 'zh_CN',
+            icon: 'ant',
+            theme: dark ? 'dark' : 'light',
+            value: withImageBase(initialContent),
+            cache: { enable: false },
+            toolbar: [
+                'undo', 'redo', '|',
+                'headings', 'bold', 'italic', 'strike', '|',
+                'list', 'ordered-list', 'check', '|',
+                'quote', 'line', 'table'
+            ],
+            preview: {
+                theme: { current: dark ? 'dark' : 'light' },
+                hljs: { style: dark ? 'github-dark' : 'github' }
+            },
+            height: '100%',
+            after: function () {
+                if (window.AndroidBridge) {
+                    AndroidBridge.onReady();
+                }
+            }
+        });
+    }
+
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        boot();
+    } else {
+        document.addEventListener('DOMContentLoaded', boot);
+    }
+})();
+</script>
+</body>
+</html>

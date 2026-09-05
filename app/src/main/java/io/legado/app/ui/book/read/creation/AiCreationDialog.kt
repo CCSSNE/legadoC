@@ -4,6 +4,7 @@ import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.content.DialogInterface
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.text.InputType
 import android.view.Gravity
@@ -48,7 +49,7 @@ import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.primaryTextColor
-import io.legado.app.ui.code.CodeEditActivity
+import io.legado.app.ui.code.CreationCardEditActivity
 import io.legado.app.ui.widget.text.AccentTextView
 import io.legado.app.utils.gone
 import io.legado.app.utils.sendToClip
@@ -106,6 +107,13 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         if (currentPage == 1) {
             rebuildSections()
         }
+    }
+
+    private val llmImagePicker = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri ?: return@registerForActivityResult
+        importLlmImage(uri)
     }
 
     override fun onStart() {
@@ -781,7 +789,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
     }
 
     private fun openCardEditor(cardId: Long) {
-        val intent = Intent(requireContext(), CodeEditActivity::class.java).apply {
+        val intent = Intent(requireContext(), CreationCardEditActivity::class.java).apply {
             putExtra("creationCardId", cardId)
         }
         cardEditLauncher.launch(intent)
@@ -853,14 +861,60 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         }
     }
 
-    /** 上框图片条：每张图一个编号圈（①②③），点编号独立窗口预览原图，×删图并重排标记 */
+    /** 上框图片条：每张图一个编号圈（①②③）+×删除；末尾固定“+”格加图，提示词页无图也显示以便加第一张 */
     private fun refreshLlmImageStrip() {
         val strip = binding.llLlmImageStrip
         strip.removeAllViews()
         val refs = session.materialImageRefs
-        binding.hsLlmImages.visibility = if (refs.isEmpty()) View.GONE else View.VISIBLE
+        binding.hsLlmImages.visibility =
+            if (refs.isEmpty() && currentPage != 4) View.GONE else View.VISIBLE
         refs.forEachIndexed { index, _ ->
             strip.addView(llmImageCell(index + 1))
+        }
+        if (currentPage == 4) {
+            strip.addView(llmImageAddCell())
+        }
+    }
+
+    /** 图片条末尾“+”格：与编号圈同款圆圈样式，点击选图导入并在光标处插入标记 */
+    private fun llmImageAddCell(): View {
+        return TextView(requireContext()).apply {
+            text = "+"
+            textSize = 16f
+            gravity = Gravity.CENTER
+            setTextColor(context.accentColor)
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setStroke(dp(1), context.accentColor)
+            }
+            layoutParams = LinearLayout.LayoutParams(dp(30), dp(30)).apply {
+                setMargins(dp(4), 0, dp(4), 0)
+            }
+            setOnClickListener { llmImagePicker.launch("image/*") }
+        }
+    }
+
+    /** 导入图片到提示词页：文件入库、追加图片集合，标记插入上框光标处（无光标则追加末尾） */
+    private fun importLlmImage(uri: Uri) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val ref = withContext(IO) { AiCreationCardImages.import(uri, "prompt") }
+            if (ref == null) {
+                toastOnUi(R.string.creation_image_import_failed)
+                return@launch
+            }
+            session.materialImageRefs = session.materialImageRefs + ref
+            val marker = AiCreationImageMarkers.markerOf(session.materialImageRefs.size)
+            val editView = binding.etLlmInput
+            val current = editView.text?.toString().orEmpty()
+            var pos = editView.selectionEnd
+            if (pos < 0 || pos > current.length) pos = current.length
+            val updated = current.substring(0, pos) + marker + current.substring(pos)
+            suppressTextWatcher = true
+            editView.setText(updated)
+            editView.setSelection(pos + marker.length)
+            session.manualLlmInput = updated
+            suppressTextWatcher = false
+            refreshLlmImageStrip()
         }
     }
 

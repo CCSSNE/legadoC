@@ -351,9 +351,11 @@ object AiCreationImageTaskHolder {
         llmInput: String,
         imageRefs: List<String>
     ) {
-        //图片一次解析复用：标记与集合不一致或文件缺失直接全槽失败，不静默丢图
-        val imageDataUrls = try {
-            AiCreationHelper.resolvePromptImageDataUrls(prompt, imageRefs)
+        //图片一次解析复用：标记与集合不一致或文件缺失直接全槽失败，不静默丢图；
+        //llmImages 为 LLM 输入份图片（按上框标记解析），只要涉及图片就 100% 记入溯源
+        val (imageDataUrls, llmImages) = try {
+            AiCreationHelper.resolvePromptImageDataUrls(prompt, imageRefs) to
+                AiCreationHelper.resolveLlmInputImageDataUrls(llmInput, imageRefs)
         } catch (throwable: Throwable) {
             if (throwable is CancellationException) throw throwable
             for (index in 0 until count) {
@@ -368,7 +370,7 @@ object AiCreationImageTaskHolder {
                 chunk.map { index ->
                     async {
                         index to runCatching {
-                            requestVideo(target, prompt, extraValues, retry, llmInput, imageDataUrls)
+                            requestVideo(target, prompt, extraValues, retry, llmInput, imageDataUrls, llmImages)
                         }
                     }
                 }.awaitAll()
@@ -385,7 +387,7 @@ object AiCreationImageTaskHolder {
         //首轮仍失败的槽位串行重试（带完整重试与退避），两轮全败才如实标失败
         for (index in failedIndexes) {
             val single = runCatching {
-                requestVideo(target, prompt, extraValues, retry, llmInput, imageDataUrls)
+                requestVideo(target, prompt, extraValues, retry, llmInput, imageDataUrls, llmImages)
             }
             single.onSuccess { fileName ->
                 acceptImage(task, index, fileName)
@@ -402,7 +404,8 @@ object AiCreationImageTaskHolder {
         extraValues: Map<String, String>,
         retry: Int,
         llmInput: String,
-        imageDataUrls: List<String> = emptyList()
+        imageDataUrls: List<String> = emptyList(),
+        llmImages: List<String> = emptyList()
     ): String {
         var lastError: Throwable? = null
         repeat(retry + 1) { attempt ->
@@ -413,7 +416,8 @@ object AiCreationImageTaskHolder {
                     prompt,
                     extraValues,
                     llmInput,
-                    imageDataUrls
+                    imageDataUrls,
+                    llmImages
                 )
             } catch (throwable: Throwable) {
                 if (throwable is CancellationException) throw throwable
@@ -480,9 +484,11 @@ object AiCreationImageTaskHolder {
         llmInput: String,
         imageRefs: List<String>
     ) {
-        //图片一次解析复用：标记与集合不一致或文件缺失直接全槽失败，不静默丢图
-        val imageDataUrls = try {
-            AiCreationHelper.resolvePromptImageDataUrls(prompt, imageRefs)
+        //图片一次解析复用：标记与集合不一致或文件缺失直接全槽失败，不静默丢图；
+        //llmImages 为 LLM 输入份图片（按上框标记解析），只要涉及图片就 100% 记入溯源
+        val (imageDataUrls, llmImages) = try {
+            AiCreationHelper.resolvePromptImageDataUrls(prompt, imageRefs) to
+                AiCreationHelper.resolveLlmInputImageDataUrls(llmInput, imageRefs)
         } catch (throwable: Throwable) {
             if (throwable is CancellationException) throw throwable
             for (index in 0 until count) {
@@ -492,7 +498,7 @@ object AiCreationImageTaskHolder {
         }
         // 第一级：单次批量请求 n 张（智谱等忽略 n 的服务只会返回 1 张，按实际返回数记账）
         val batch = runCatching {
-            requestImages(target, prompt, count, extraValues, llmInput = llmInput, imageDataUrls = imageDataUrls)
+            requestImages(target, prompt, count, extraValues, llmInput = llmInput, imageDataUrls = imageDataUrls, llmImages = llmImages)
         }
         var completed = 0
         batch.onSuccess { fileNames ->
@@ -512,21 +518,22 @@ object AiCreationImageTaskHolder {
         val remaining = (completed until count).toList()
         for (chunk in remaining.chunked(IMAGE_CONCURRENCY)) {
             val results = coroutineScope {
-                chunk.map { index ->
-                    async {
-                        index to runCatching {
-                            requestImages(
-                                target,
-                                prompt,
-                                1,
-                                extraValues,
-                                retryEnabled = false,
-                                llmInput = llmInput,
-                                imageDataUrls = imageDataUrls
-                            )
+                    chunk.map { index ->
+                        async {
+                            index to runCatching {
+                                requestImages(
+                                    target,
+                                    prompt,
+                                    1,
+                                    extraValues,
+                                    retryEnabled = false,
+                                    llmInput = llmInput,
+                                    imageDataUrls = imageDataUrls,
+                                    llmImages = llmImages
+                                )
+                            }
                         }
-                    }
-                }.awaitAll()
+                    }.awaitAll()
             }
             for ((index, single) in results) {
                 single.onSuccess { fileNames ->
@@ -547,7 +554,7 @@ object AiCreationImageTaskHolder {
         // 第三级：仍失败的槽位串行逐张重试（带完整重试与退避）
         for (index in failedIndexes) {
             val single = runCatching {
-                requestImages(target, prompt, 1, extraValues, llmInput = llmInput, imageDataUrls = imageDataUrls)
+                requestImages(target, prompt, 1, extraValues, llmInput = llmInput, imageDataUrls = imageDataUrls, llmImages = llmImages)
             }
             single.onSuccess { fileNames ->
                 if (fileNames.isEmpty()) {
@@ -569,7 +576,8 @@ object AiCreationImageTaskHolder {
         extraValues: Map<String, String>,
         retryEnabled: Boolean = true,
         llmInput: String = "",
-        imageDataUrls: List<String> = emptyList()
+        imageDataUrls: List<String> = emptyList(),
+        llmImages: List<String> = emptyList()
     ): List<String> {
         val retry = AiCreationConfig.imageRetryCount
         val body = renderImageRequestBody(target, prompt, n, extraValues, imageDataUrls)
@@ -580,7 +588,8 @@ object AiCreationImageTaskHolder {
             variables = extraValues,
             llmInput = llmInput,
             requestBody = body,
-            imageDataUrls = imageDataUrls
+            imageDataUrls = imageDataUrls,
+            llmImages = llmImages
         )
         var lastError: Throwable? = null
         val attempts = if (retryEnabled) retry + 1 else 1
@@ -596,7 +605,7 @@ object AiCreationImageTaskHolder {
         throw lastError ?: IllegalStateException("生成失败")
     }
 
-    /** 工作流溯源快照：变量与请求体都是填好实际值的成品，不含 API Key；images 为随请求发出的图片 data URL */
+    /** 工作流溯源快照：变量与请求体都是填好实际值的成品，不含 API Key；images 为随请求发出的图片 data URL，llmImages 为 LLM 输入份图片 */
     private fun buildWorkflow(
         type: String,
         target: AiCreationProviderTarget,
@@ -604,7 +613,8 @@ object AiCreationImageTaskHolder {
         variables: Map<String, String>,
         llmInput: String,
         requestBody: String,
-        imageDataUrls: List<String> = emptyList()
+        imageDataUrls: List<String> = emptyList(),
+        llmImages: List<String> = emptyList()
     ): AiCreationWorkflow {
         return AiCreationWorkflow(
             type = type,
@@ -615,7 +625,8 @@ object AiCreationImageTaskHolder {
             llmInput = llmInput,
             prompt = prompt,
             request = requestBody,
-            images = imageDataUrls
+            images = imageDataUrls,
+            llmImages = llmImages
         )
     }
 

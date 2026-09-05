@@ -25,7 +25,7 @@ import io.legado.app.help.ai.AiCreationSessionHolder
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.primaryTextColor
-import io.legado.app.ui.code.CodeEditActivity
+import io.legado.app.ui.code.CreationCardEditActivity
 import io.legado.app.ui.widget.text.AccentTextView
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.setLayout
@@ -192,7 +192,7 @@ class AiCreationLibraryDialog : BaseDialogFragment(R.layout.dialog_ai_creation_l
     }
 
     private fun openCardEditor(cardId: Long) {
-        val intent = Intent(requireContext(), CodeEditActivity::class.java).apply {
+        val intent = Intent(requireContext(), CreationCardEditActivity::class.java).apply {
             putExtra("creationCardId", cardId)
         }
         cardEditLauncher.launch(intent)

@@ -27,6 +27,7 @@ import io.legado.app.help.ai.AiCreationImageTaskHolder
 import io.legado.app.help.ai.AiCreationProviderConfig
 import io.legado.app.help.ai.AiCreationProviderModel
 import io.legado.app.help.ai.AiCreationProviderStore
+import io.legado.app.help.ai.AiCreationCardImages
 import io.legado.app.help.ai.AiCreationVariables
 import io.legado.app.help.ai.AiCreationVideoHelper
 import io.legado.app.help.LogExporter
@@ -105,6 +106,12 @@ class AiConfigFragment : PreferenceFragment(),
             "aiTestCurrentConnection" -> testCurrentAiConnection()
             "aiManageModels" -> showManageModelsDialog()
             "aiEditRequest" -> showEditRequestDialog()
+            PreferKey.aiSendImageMaxPixels -> showChapterPurifyIntDialog(
+                R.string.ai_send_image_max_resolution,
+                AiCreationCardImages.sendImageMaxWanPixels,
+                AiCreationCardImages.MIN_SEND_IMAGE_WAN_PIXELS,
+                AiCreationCardImages.MAX_SEND_IMAGE_WAN_PIXELS
+            ) { AiCreationCardImages.sendImageMaxWanPixels = it }
             "aiSseIdleTimeoutSeconds" -> showChapterPurifyIntDialog(
                 R.string.ai_sse_idle_timeout,
                 AiRequestTimeoutConfig.sseIdleTimeoutSeconds,

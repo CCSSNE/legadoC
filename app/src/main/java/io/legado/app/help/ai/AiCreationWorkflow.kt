@@ -8,8 +8,10 @@ import org.json.JSONObject
  * 术语约定（与 llmInputTemplate 模板严格区分）：
  * - llmInput：渲染后发给 LLM 的完整输入（LLM 输入；路由选中的提示词模板文本 + 素材组合），
  *   提示词页直接生成时为当时上框内容，测试连接不经过 LLM 时为空串
+ * - llmImages：LLM 输入份图片——按上框（llmInput）标记解析的图片 base64 data URL，
+ *   只要涉及图片就 100% 记录，不管这次有没有实际请求 LLM；与 images 相互独立
  * - prompt：生成提示词，LLM 产出或手填、经 {{prompt}} 填入请求模板发给生图/生视频 API 的最终文本
- * - images：按提示词标记顺序解析的图片 base64 data URL（无图为空表，测试连接不经过提示词时为空表）
+ * - images：随生图/生视频请求实际发出的图片 data URL（按提示词标记顺序解析；无图为空表）
  * - request：渲染后的完整请求体（全部占位符已替换为实际值；引用图占位的模板此处即含图片 data URL）
  * 只做溯源：不写 API Key 与自定义请求头，避免元数据随文件外泄密钥。
  */
@@ -22,7 +24,8 @@ data class AiCreationWorkflow(
     val llmInput: String,
     val prompt: String,
     val request: String,
-    val images: List<String> = emptyList()
+    val images: List<String> = emptyList(),
+    val llmImages: List<String> = emptyList()
 ) {
 
     fun toJsonString(): String {
@@ -37,6 +40,7 @@ data class AiCreationWorkflow(
         root.put("model", model)
         root.put("variables", JSONObject(variables))
         root.put("llmInput", llmInput)
+        root.put("llmImages", JSONArray(llmImages))
         root.put("prompt", prompt)
         root.put("images", JSONArray(images))
         root.put("request", runCatching { JSONObject(request) }.getOrNull() ?: request)
@@ -61,8 +65,15 @@ data class AiCreationWorkflow(
             if (root.optString("app") != APP_TAG) return null
             val provider = root.optJSONObject("provider")
             val variables = root.optJSONObject("variables")
-            //images 字段是后加的溯源项：旧文件没有该数组时按空表读，不视为损坏
+            //images/llmImages 是后加的溯源项：旧文件没有该数组时按空表读，不视为损坏
             val images = root.optJSONArray("images")?.let { array ->
+                buildList {
+                    for (index in 0 until array.length()) {
+                        add(array.optString(index))
+                    }
+                }
+            }.orEmpty()
+            val llmImages = root.optJSONArray("llmImages")?.let { array ->
                 buildList {
                     for (index in 0 until array.length()) {
                         add(array.optString(index))
@@ -82,7 +93,8 @@ data class AiCreationWorkflow(
                 llmInput = root.optString("llmInput"),
                 prompt = root.optString("prompt"),
                 request = root.opt("request")?.toString().orEmpty(),
-                images = images
+                images = images,
+                llmImages = llmImages
             )
         }
     }

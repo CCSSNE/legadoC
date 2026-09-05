@@ -1020,6 +1020,8 @@
     <string name="ai_edit_model">Edit model</string>
     <string name="ai_edit_request">Edit request body</string>
     <string name="ai_edit_request_summary">Edit the JSON body used by chapter purification and its connection test.</string>
+    <string name="ai_send_image_max_resolution">Max image resolution for sending</string>
+    <string name="ai_send_image_max_resolution_summary">Total pixels in ten-thousands (10–5000). Images sent to AI keep aspect ratio and are scaled down to this budget; default 100.</string>
     <string name="ai_edit_request_hint">Structured request JSON</string>
     <string name="ai_edit_request_invalid">Request template is invalid: %s</string>
     <string name="ai_model_saved">Model saved</string>
