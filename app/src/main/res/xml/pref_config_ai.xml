@@ -399,12 +399,6 @@
         app:layout="@layout/view_preference_category">
 
         <io.legado.app.lib.prefs.Preference
-            android:key="aiAddMcpServer"
-            android:summary="@string/ai_add_mcp_server_summary"
-            android:title="@string/ai_add_mcp_server"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.Preference
             android:key="aiManageMcpServers"
             android:summary="@string/ai_no_mcp_servers"
             android:title="@string/ai_manage_mcp_servers"

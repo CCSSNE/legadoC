@@ -138,7 +138,6 @@ class AiConfigFragment : PreferenceFragment(),
             ) { AiRequestTimeoutConfig.thinkingInterruptMaxCount = it }
             "aiLogs" -> showDialogFragment<AiLogDialog>()
             "aiExportLogs" -> exportAiLogs()
-            "aiAddMcpServer" -> showEditMcpServerDialog()
             "aiManageMcpServers" -> showManageMcpServersDialog()
             "aiManageNativeTools" -> showManageNativeToolsDialog()
             PreferKey.aiTavilyApiKey -> showTavilyApiKeyDialog()
@@ -844,47 +843,33 @@ class AiConfigFragment : PreferenceFragment(),
             toastOnUi(R.string.ai_creation_provider_required)
             return
         }
+        val ctx = context ?: return
         val models = creationModels(isVideo).filter { it.providerId == provider.id }
         val addLabel = getString(
             if (isVideo) R.string.ai_creation_video_add_model
             else R.string.ai_creation_image_add_model
         )
-        context?.selector(
+        //短按=设为当前，长按=编辑；删除收进编辑页左下（neutral），不再二级弹窗
+        val dialog = ctx.alert(
             getString(
                 if (isVideo) R.string.ai_creation_video_manage_models
                 else R.string.ai_creation_image_manage_models
-            ),
-            models.map { it.modelId } + addLabel
-        ) { _, _, index ->
-            if (index == models.size) {
-                showCreationAddModelDialog(isVideo)
-                return@selector
-            }
-            val model = models[index]
-            context?.selector(
-                model.modelId,
-                listOf(
-                    getString(R.string.ai_set_current),
-                    getString(R.string.ai_edit_model),
-                    getString(R.string.ai_remove_model)
-                )
-            ) { _, action ->
-                when (action) {
-                    0 -> {
-                        setCreationCurrentModelRowId(isVideo, model.id)
-                        refreshUi()
-                    }
-
-                    1 -> showCreationEditModelDialog(model, isVideo)
-                    else -> {
-                        saveCreationModels(
-                            isVideo,
-                            creationModels(isVideo).filterNot { it.id == model.id }
-                        )
-                        refreshUi()
-                    }
+            )
+        ) {
+            items(models.map { it.modelId } + addLabel) { _, index ->
+                if (index == models.size) {
+                    showCreationAddModelDialog(isVideo)
+                    return@items
                 }
+                setCreationCurrentModelRowId(isVideo, models[index].id)
+                refreshUi()
             }
+        }
+        dialog.listView?.setOnItemLongClickListener { _, _, position, _ ->
+            if (position == models.size) return@setOnItemLongClickListener false
+            dialog.dismiss()
+            showCreationEditModelDialog(models[position], isVideo)
+            true
         }
     }
 
@@ -897,6 +882,14 @@ class AiConfigFragment : PreferenceFragment(),
         }
         alert(title = getString(R.string.ai_edit_model)) {
             customView { binding.root }
+            //删除放最左（neutral）：取消/确定左侧；沿用原来图片/视频模型无二次确认直接删除
+            neutralButton(R.string.ai_remove_model) {
+                saveCreationModels(
+                    isVideo,
+                    creationModels(isVideo).filterNot { it.id == model.id }
+                )
+                refreshUi()
+            }
             okButton {
                 val modelId = binding.editView.text?.toString()?.trim().orEmpty()
                 if (modelId.isEmpty()) {
@@ -1361,6 +1354,12 @@ class AiConfigFragment : PreferenceFragment(),
             )
         ) {
             customView { binding.root }
+            //删除放最左（neutral）：取消/确定左侧，编辑态才有
+            if (model != null) {
+                neutralButton(R.string.ai_remove_model) {
+                    confirmRemoveModel(model)
+                }
+            }
             okButton {
                 val modelId = binding.editView.text?.toString()?.trim().orEmpty()
                 if (modelId.isEmpty()) {
@@ -1422,34 +1421,24 @@ class AiConfigFragment : PreferenceFragment(),
             toastOnUi(R.string.ai_no_providers)
             return
         }
+        val ctx = context ?: return
         val models = currentProviderModels()
-        context?.selector(
-            getString(R.string.ai_manage_models),
-            models.map { it.modelId } + getString(R.string.ai_add_model)
-        ) { _, _, index ->
-            if (index == models.size) {
-                showAddModelOptionsDialog()
-                return@selector
-            }
-            val model = models[index]
-            context?.selector(
-                model.modelId,
-                arrayListOf(
-                    getString(R.string.ai_set_current),
-                    getString(R.string.ai_edit_model),
-                    getString(R.string.ai_remove_model)
-                )
-            ) { _, action ->
-                when (action) {
-                    0 -> {
-                        AppConfig.aiCurrentModelId = model.id
-                        refreshUi()
-                    }
-
-                    1 -> showEditModelDialog(model)
-                    2 -> confirmRemoveModel(model)
+        //短按=设为当前，长按=编辑；删除收进编辑页左下（neutral），不再二级弹窗
+        val dialog = ctx.alert(getString(R.string.ai_manage_models)) {
+            items(models.map { it.modelId } + getString(R.string.ai_add_model)) { _, index ->
+                if (index == models.size) {
+                    showAddModelOptionsDialog()
+                    return@items
                 }
+                AppConfig.aiCurrentModelId = models[index].id
+                refreshUi()
             }
+        }
+        dialog.listView?.setOnItemLongClickListener { _, _, position, _ ->
+            if (position == models.size) return@setOnItemLongClickListener false
+            dialog.dismiss()
+            showEditModelDialog(models[position])
+            true
         }
     }
 
@@ -1609,6 +1598,12 @@ class AiConfigFragment : PreferenceFragment(),
             )
         ) {
             customView { binding.root }
+            //删除放最左（neutral）：取消/确定左侧，编辑态才有
+            if (server != null) {
+                neutralButton(R.string.ai_remove_mcp_server) {
+                    confirmRemoveMcpServer(server)
+                }
+            }
             okButton {
                 val name = binding.editMcpServerName.text?.toString()?.trim().orEmpty()
                 val endpoint = binding.editMcpServerEndpoint.text?.toString()?.trim().orEmpty()
@@ -1652,46 +1647,33 @@ class AiConfigFragment : PreferenceFragment(),
 
     private fun showManageMcpServersDialog() {
         val servers = AppConfig.aiMcpServerList
-        if (servers.isEmpty()) {
-            toastOnUi(R.string.ai_no_mcp_servers)
-            return
-        }
-        context?.selector(
-            getString(R.string.ai_manage_mcp_servers),
-            servers.map { server ->
-                buildString {
-                    append(server.name)
-                    if (!server.enabled) append(" (off)")
-                }
-            }
-        ) { _, _, index ->
-            val server = servers[index]
-            context?.selector(
-                server.name,
-                arrayListOf(
-                    getString(
-                        if (server.enabled) {
-                            R.string.ai_disable_mcp_server
-                        } else {
-                            R.string.ai_enable_mcp_server
-                        }
-                    ),
-                    getString(R.string.ai_edit_mcp_server),
-                    getString(R.string.ai_remove_mcp_server)
-                )
-            ) { _, action ->
-                when (action) {
-                    0 -> {
-                        AppConfig.aiMcpServerList = AppConfig.aiMcpServerList.map {
-                            if (it.id == server.id) it.copy(enabled = !it.enabled) else it
-                        }
-                        refreshUi()
+        val ctx = context ?: return
+        //短按=启用/禁用，长按=编辑；删除收进编辑页左下（neutral），不再二级弹窗；末尾一行添加
+        val dialog = ctx.alert(getString(R.string.ai_manage_mcp_servers)) {
+            items(
+                servers.map { server ->
+                    buildString {
+                        append(server.name)
+                        if (!server.enabled) append(" (off)")
                     }
-
-                    1 -> showEditMcpServerDialog(server)
-                    2 -> confirmRemoveMcpServer(server)
+                } + getString(R.string.ai_add_mcp_server)
+            ) { _, index ->
+                if (index == servers.size) {
+                    showEditMcpServerDialog()
+                    return@items
                 }
+                val server = servers[index]
+                AppConfig.aiMcpServerList = AppConfig.aiMcpServerList.map {
+                    if (it.id == server.id) it.copy(enabled = !it.enabled) else it
+                }
+                refreshUi()
             }
+        }
+        dialog.listView?.setOnItemLongClickListener { _, _, position, _ ->
+            if (position == servers.size) return@setOnItemLongClickListener false
+            dialog.dismiss()
+            showEditMcpServerDialog(servers[position])
+            true
         }
     }
 
