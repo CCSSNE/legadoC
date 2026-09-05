@@ -1,5 +1,6 @@
 package io.legado.app.help.ai
 
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
@@ -8,7 +9,8 @@ import org.json.JSONObject
  * - llmInput：渲染后发给 LLM 的完整输入（LLM 输入；路由选中的提示词模板文本 + 素材组合），
  *   提示词页直接生成时为当时上框内容，测试连接不经过 LLM 时为空串
  * - prompt：生成提示词，LLM 产出或手填、经 {{prompt}} 填入请求模板发给生图/生视频 API 的最终文本
- * - request：渲染后的完整请求体（全部占位符已替换为实际值）
+ * - images：按提示词标记顺序解析的图片 base64 data URL（无图为空表，测试连接不经过提示词时为空表）
+ * - request：渲染后的完整请求体（全部占位符已替换为实际值；引用图占位的模板此处即含图片 data URL）
  * 只做溯源：不写 API Key 与自定义请求头，避免元数据随文件外泄密钥。
  */
 data class AiCreationWorkflow(
@@ -19,7 +21,8 @@ data class AiCreationWorkflow(
     val variables: Map<String, String>,
     val llmInput: String,
     val prompt: String,
-    val request: String
+    val request: String,
+    val images: List<String> = emptyList()
 ) {
 
     fun toJsonString(): String {
@@ -35,6 +38,7 @@ data class AiCreationWorkflow(
         root.put("variables", JSONObject(variables))
         root.put("llmInput", llmInput)
         root.put("prompt", prompt)
+        root.put("images", JSONArray(images))
         root.put("request", runCatching { JSONObject(request) }.getOrNull() ?: request)
         return root.toString()
     }
@@ -57,6 +61,14 @@ data class AiCreationWorkflow(
             if (root.optString("app") != APP_TAG) return null
             val provider = root.optJSONObject("provider")
             val variables = root.optJSONObject("variables")
+            //images 字段是后加的溯源项：旧文件没有该数组时按空表读，不视为损坏
+            val images = root.optJSONArray("images")?.let { array ->
+                buildList {
+                    for (index in 0 until array.length()) {
+                        add(array.optString(index))
+                    }
+                }
+            }.orEmpty()
             return AiCreationWorkflow(
                 type = root.optString("type"),
                 providerName = provider?.optString("name").orEmpty(),
@@ -69,7 +81,8 @@ data class AiCreationWorkflow(
                 }.orEmpty(),
                 llmInput = root.optString("llmInput"),
                 prompt = root.optString("prompt"),
-                request = root.opt("request")?.toString().orEmpty()
+                request = root.opt("request")?.toString().orEmpty(),
+                images = images
             )
         }
     }

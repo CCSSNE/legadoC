@@ -351,10 +351,21 @@ object AiCreationProviderStore {
     }
 
     /** 占位符替换为 JSON 字面量：布尔保持 true/false，整数与小数不加引号，其余按 JSON 字符串转义 */
-    private fun jsonLiteralOf(value: String): String = when {
-        value == "true" || value == "false" -> value
-        value.matches(Regex("-?\\d+(\\.\\d+)?")) -> value
-        else -> JSONObject.quote(value)
+    private fun jsonLiteralOf(value: String): String {
+        val trimmed = value.trim()
+        //裸占位符允许传入合法 JSON 数组/对象原文（如多图 image_url 的首尾帧数组）；
+        //带引号模板里的普通文本走字符串替换分支，到不了这里，提示词等内容不受影响
+        if ((trimmed.startsWith("[") && trimmed.endsWith("]")) ||
+            (trimmed.startsWith("{") && trimmed.endsWith("}"))
+        ) {
+            if (runCatching { JSONObject(trimmed) }.getOrNull() != null) return trimmed
+            if (runCatching { org.json.JSONArray(trimmed) }.getOrNull() != null) return trimmed
+        }
+        return when {
+            value == "true" || value == "false" -> value
+            value.matches(Regex("-?\\d+(\\.\\d+)?")) -> value
+            else -> JSONObject.quote(value)
+        }
     }
 
     private fun replaceTokens(json: JSONObject, tokens: Map<String, String>) {

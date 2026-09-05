@@ -1007,7 +1007,8 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
                     prompt,
                     count,
                     values,
-                    session.paramValue(AI_CREATION_LLM_INPUT_KEY).orEmpty()
+                    session.paramValue(AI_CREATION_LLM_INPUT_KEY).orEmpty(),
+                    session.materialImageRefs.toList()
                 )
             }
             result.onSuccess {
@@ -1031,7 +1032,8 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
                     prompt,
                     count,
                     values,
-                    session.paramValue(AI_CREATION_LLM_INPUT_KEY).orEmpty()
+                    session.paramValue(AI_CREATION_LLM_INPUT_KEY).orEmpty(),
+                    session.materialImageRefs.toList()
                 )
             }
             result.onSuccess {

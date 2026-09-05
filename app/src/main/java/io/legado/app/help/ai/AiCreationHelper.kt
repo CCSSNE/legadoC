@@ -68,6 +68,20 @@ object AiCreationHelper {
             .map { it.groupValues[1].toIntOrNull() ?: Int.MAX_VALUE }
             .toList()
 
+    /**
+     * 生图/生视频链路的图片解析：按下框提示词里的标记取对应图片转 base64 data URL，
+     * 顺序与 LLM 链路一致（1..N 数字序）；无标记返回空表（纯文生）；
+     * 标记与集合不一致或文件缺失直接报错，不静默丢图。
+     */
+    fun resolvePromptImageDataUrls(prompt: String, refs: List<String>): List<String> {
+        val markers = parseMarkers(prompt)
+        if (markers.isEmpty()) return emptyList()
+        validateMarkers(prompt, refs)
+        return markers.distinct().sorted().map { number ->
+            AiCreationCardImages.dataUrlOf(refs[number - 1])
+        }
+    }
+
     /** 组装 LLM userContent：无图保持字符串不动；有图时文本+条件拼接句在前，图片按标记顺序跟后 */
     private fun buildLlmUserContent(
         llmInput: String,

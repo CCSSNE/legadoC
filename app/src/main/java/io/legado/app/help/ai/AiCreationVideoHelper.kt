@@ -27,13 +27,15 @@ object AiCreationVideoHelper {
     /**
      * 生成一个视频：渲染请求模板（运行值完整传入；测试才取定义默认值）→ 提交 → 轮询 →
      * 下载 mp4 落盘（写入工作流元数据），返回文件名。真实生成与测试连接共用本入口。
+     * imageDataUrls 为按下框提示词标记顺序解析的图片 data URL（无图为空表，走纯文生）。
      */
     suspend fun generateVideo(
         provider: AiCreationProviderConfig,
         modelId: String,
         prompt: String,
         extraValues: Map<String, String> = emptyMap(),
-        llmInput: String = ""
+        llmInput: String = "",
+        imageDataUrls: List<String> = emptyList()
     ): String = withContext(Dispatchers.IO) {
         check(provider.requestTemplate.isNotBlank()) {
             "当前视频供应商「${provider.name}」的视频请求模板为空"
@@ -43,21 +45,25 @@ object AiCreationVideoHelper {
             put("model", modelId)
             put("prompt", prompt)
             put("n", "1")
+            //图生视频占位：模板不引用则忽略（纯文生不受影响）；
+            //引用 {{image_url}} 的模板自动带图：单图为字符串，多图为 JSON 数组（模板须用裸占位）
+            put("image_url", imageUrlToken(imageDataUrls))
             variables.forEach { variable ->
                 put(variable.key, extraValues[variable.key] ?: variable.effectiveValue(null))
             }
         }
         val body = AiCreationProviderStore.renderRequestTemplate(provider.requestTemplate, tokens)
-        //工作流溯源快照：变量与请求体都是填好实际值的成品，不含 API Key
+        //工作流溯源快照：变量与请求体都是填好实际值的成品，不含 API Key；images 为随请求发出的图片 data URL
         val workflow = AiCreationWorkflow(
             type = AiCreationWorkflow.TYPE_VIDEO,
             providerName = provider.name,
             baseUrl = provider.baseUrl,
             model = modelId,
-            variables = tokens.filterKeys { it !in setOf("model", "prompt", "n") },
+            variables = tokens.filterKeys { it !in setOf("model", "prompt", "n", "image_url") },
             llmInput = llmInput,
             prompt = prompt,
-            request = body
+            request = body,
+            images = imageDataUrls
         )
 
         val submitText = postForText(provider, provider.baseUrl, body)
@@ -154,6 +160,13 @@ object AiCreationVideoHelper {
             if (url.isNotBlank()) return url
         }
         return null
+    }
+
+    /** image_url 占位取值：无图为空串，单图为 data URL 字符串，多图为 JSON 数组原文（须配裸占位） */
+    private fun imageUrlToken(imageDataUrls: List<String>): String = when {
+        imageDataUrls.isEmpty() -> ""
+        imageDataUrls.size == 1 -> imageDataUrls.first()
+        else -> org.json.JSONArray(imageDataUrls).toString()
     }
 
     /** 取 Base URL 中最后一个 /v数字/ 段（含）之前的前缀，用于拼接轮询地址 */
