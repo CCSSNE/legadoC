@@ -181,7 +181,7 @@ class IllustrationEditDialog() : BaseDialogFragment(R.layout.dialog_illustration
         stashed.forEach { name ->
             val file = AiCreationImageFile.fileOf(name)?.takeIf { it.isFile } ?: return@forEach
             val bytes = runCatching { file.readBytes() }.getOrNull()
-            if (bytes.isNullOrEmpty()) return@forEach
+            if (bytes == null || bytes.isEmpty()) return@forEach
             val ext = name.substringAfterLast('.', "").lowercase()
             if (ext !in IllustrationHelp.VIDEO_EXTS &&
                 ext !in IllustrationHelp.AUDIO_EXTS &&
