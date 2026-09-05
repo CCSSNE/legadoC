@@ -180,7 +180,7 @@ object AiCreationConfig {
         //旧的纯数字记号废弃，删掉，不跟新记号打架
         appCtx.removePref("aiNukeVersionCode")
         val current = runCatching { appVersionTag() }.getOrNull() ?: return
-        val last = appCtx.getPrefString(PreferKey.aiNukeAppVersion, "")
+        val last = appCtx.getPrefString(PreferKey.aiNukeAppVersion, "").orEmpty()
         if (last.isBlank()) {
             appCtx.putPrefString(PreferKey.aiNukeAppVersion, current)
             return
