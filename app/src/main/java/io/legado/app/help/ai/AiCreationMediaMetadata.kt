@@ -40,7 +40,9 @@ object AiCreationMediaMetadata {
 
             else -> null
         } ?: return null
-        return text.takeIf { it.isNotBlank() }
+        if (text.isBlank()) return null
+        //出口脱敏：data URL 原字节只住在文件里，看/复制/导出的一律换成图片标记
+        return AiCreationWorkflow.redactDataUrls(text)
     }
 
     /** PNG 在 IHDR 后插入 iTXt chunk；非 PNG 或结构异常时返回原字节 */

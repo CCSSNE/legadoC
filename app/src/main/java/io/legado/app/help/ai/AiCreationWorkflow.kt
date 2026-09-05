@@ -59,6 +59,44 @@ data class AiCreationWorkflow(
         const val TYPE_IMAGE = "image"
         const val TYPE_VIDEO = "video"
 
+        /** 文本出口的图片占位：data URL 原字节只住在文件里，拿出来的一律换成这个 */
+        const val IMAGE_PLACEHOLDER = "图片"
+
+        /**
+         * 文本出口脱敏：递归走一遍，把所有 data URL 原字节换成图片标记；
+         * 数组计数组，个数对得上；不是 JSON 原样返回。存库文件本身不动。
+         */
+        fun redactDataUrls(text: String): String {
+            val root = runCatching { JSONObject(text) }.getOrNull() ?: return text
+            redactObject(root)
+            return root.toString()
+        }
+
+        private fun redactObject(json: JSONObject) {
+            val keys = json.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                when (val value = json.opt(key)) {
+                    is JSONObject -> redactObject(value)
+                    is JSONArray -> redactArray(value)
+                    is String -> if (isDataUrl(value)) json.put(key, IMAGE_PLACEHOLDER)
+                }
+            }
+        }
+
+        private fun redactArray(array: JSONArray) {
+            for (index in 0 until array.length()) {
+                when (val value = array.opt(index)) {
+                    is JSONObject -> redactObject(value)
+                    is JSONArray -> redactArray(value)
+                    is String -> if (isDataUrl(value)) array.put(index, IMAGE_PLACEHOLDER)
+                }
+            }
+        }
+
+        private fun isDataUrl(value: String): Boolean =
+            value.startsWith("data:") && value.contains(";base64,")
+
         /** 解析我们写入的工作流 JSON；非本应用格式（如 ComfyUI 原生图）返回 null */
         fun fromJsonString(text: String): AiCreationWorkflow? {
             val root = runCatching { JSONObject(text) }.getOrNull() ?: return null

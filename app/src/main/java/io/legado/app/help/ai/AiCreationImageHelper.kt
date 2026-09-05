@@ -74,7 +74,7 @@ object AiCreationImageFile {
         return fileName
     }
 
-    /** 读取文件内的工作流 JSON 原文（无元数据返回 null）；复制与导出用原文，不经过重序列化 */
+    /** 读取文件内的工作流 JSON 原文（无元数据返回 null）；看/复制/导出拿到的已脱敏，原字节只住文件里 */
     fun readWorkflowJson(fileName: String): String? =
         runCatching {
             AiCreationMediaMetadata.readWorkflowJson(fileOf(fileName).readBytes())
