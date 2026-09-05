@@ -16,6 +16,7 @@ import io.legado.app.utils.putPrefInt
 import io.legado.app.utils.putPrefString
 import io.legado.app.utils.removePref
 import io.legado.app.utils.toastOnUi
+import org.json.JSONArray
 import org.json.JSONObject
 import splitties.init.appCtx
 
@@ -165,63 +166,40 @@ object AiCreationConfig {
     }
 
     /**
-     * 开机硬自检：AI 下面所有对外暴露的 JSON 配置逐项校验，
-     * 坏的当场回出厂（只动坏的那一项，钥匙名字地址与可用配置不动），
-     * 合法的用户定制一律不碰；最后弹一个汇总吐司让过程看得见，明细进 AI 日志。
-     * 只在装新版本时跑一次，平时启动不跑。
+     * 装新版本时跑一次的硬自检：AI 下面所有对外暴露的 JSON 配置只查不动手，
+     * 全部通过就弹成功；任何一项不行，直接掀桌——自加的供应商 whole 删除，
+     * 内置的全部回到出厂，再弹结果，明细进 AI 日志。平时启动不跑。
      */
     fun verifyAiJsonConfigs() {
-        val passed = mutableListOf<String>()
-        val healed = mutableListOf<String>()
-        val broken = mutableListOf<String>()
+        val failures = mutableListOf<String>()
         val detail = StringBuilder()
 
-        fun check(name: String, verify: () -> String?) {
-            val problem = runCatching { verify() }.getOrElse { it.message ?: it.javaClass.simpleName }
-            if (problem == null) {
-                passed.add(name)
+        fun check(name: String, problem: () -> String?) {
+            val found = runCatching { problem() }.getOrElse { it.message ?: it.javaClass.simpleName }
+            if (found == null) {
                 detail.append("PASS $name\n")
             } else {
-                detail.append("FAIL $name：$problem\n")
+                failures.add("$name（$found）")
+                detail.append("FAIL $name：$found\n")
             }
         }
 
         check("图片供应商") {
             val rawJson = appCtx.getPrefString(PreferKey.aiCreationImageProviderList)
-            //整份坏掉（连数组都不是）：删了，下次读自动重种内置；钥匙本来就救不回来，不留着炸
             if (!rawJson.isNullOrBlank() &&
                 runCatching {
                     GSON.fromJsonArray<AiCreationProviderConfig>(rawJson).getOrThrow()
                 }.isFailure
             ) {
-                appCtx.removePref(PreferKey.aiCreationImageProviderList)
-                healed.add("图片供应商名单损坏已清空重种")
-                return@check null
+                return@check "名单损坏"
             }
-            val raw = AiCreationProviderStore.imageProviderList
-            var factoryFixed = 0
-            var deleted = 0
-            val repaired = raw.mapNotNull { provider ->
-                val ok = runCatching {
+            val bad = AiCreationProviderStore.imageProviderList.filterNot { provider ->
+                runCatching {
                     AiCreationVariables.parse(provider.variablesJson)
                     AiCreationProviderStore.parseImageRequestTemplateJson(provider.requestTemplate)
                 }.isSuccess
-                if (ok) return@mapNotNull provider
-                val factoryVariables = AiCreationProviderStore.defaultVariablesJsonOf(provider)
-                val factoryTemplate = AiCreationProviderStore.defaultRequestTemplateOf(provider)
-                if (factoryVariables != null && factoryTemplate != null) {
-                    factoryFixed++
-                    provider.copy(variablesJson = factoryVariables, requestTemplate = factoryTemplate)
-                } else {
-                    //用户自加的：整家删掉，它下面的模型由存写入口连带清掉
-                    deleted++
-                    null
-                }
             }
-            if (repaired != raw) AiCreationProviderStore.imageProviderList = repaired
-            if (factoryFixed > 0) healed.add("图片供应商（恢复出厂${factoryFixed}家）")
-            if (deleted > 0) healed.add("图片供应商（删除坏掉的自加${deleted}家）")
-            null
+            if (bad.isNotEmpty()) "坏掉${bad.size}家" else null
         }
 
         check("视频供应商") {
@@ -231,103 +209,62 @@ object AiCreationConfig {
                     GSON.fromJsonArray<AiCreationProviderConfig>(rawJson).getOrThrow()
                 }.isFailure
             ) {
-                appCtx.removePref(PreferKey.aiCreationVideoProviderList)
-                healed.add("视频供应商名单损坏已清空重种")
-                return@check null
+                return@check "名单损坏"
             }
-            val raw = AiCreationProviderStore.videoProviderList
-            var factoryFixed = 0
-            var deleted = 0
-            val repaired = raw.mapNotNull { provider ->
-                val ok = runCatching {
+            val bad = AiCreationProviderStore.videoProviderList.filterNot { provider ->
+                runCatching {
                     AiCreationVariables.parse(provider.variablesJson)
                     AiCreationProviderStore.parseVideoRequestTemplateJson(provider.requestTemplate)
                 }.isSuccess
-                if (ok) return@mapNotNull provider
-                val factoryVariables = AiCreationProviderStore.defaultVariablesJsonOf(provider)
-                val factoryTemplate = AiCreationProviderStore.defaultRequestTemplateOf(provider)
-                if (factoryVariables != null && factoryTemplate != null) {
-                    factoryFixed++
-                    provider.copy(variablesJson = factoryVariables, requestTemplate = factoryTemplate)
-                } else {
-                    deleted++
-                    null
-                }
             }
-            if (repaired != raw) AiCreationProviderStore.videoProviderList = repaired
-            if (factoryFixed > 0) healed.add("视频供应商（恢复出厂${factoryFixed}家）")
-            if (deleted > 0) healed.add("视频供应商（删除坏掉的自加${deleted}家）")
-            null
+            if (bad.isNotEmpty()) "坏掉${bad.size}家" else null
         }
 
         check("图片模型") {
-            val rawCount = rawJsonArraySize<AiCreationProviderModel>(PreferKey.aiCreationImageModelList)
-            AiCreationProviderStore.imageModelList = AiCreationProviderStore.imageModelList
-            val dropped = rawCount - AiCreationProviderStore.imageModelList.size
-            if (dropped > 0) healed.add("图片模型（清理${dropped}条）")
-            null
+            modelListProblem(
+                PreferKey.aiCreationImageModelList,
+                AiCreationProviderStore.imageModelList.size
+            )
         }
 
         check("视频模型") {
-            val rawCount = rawJsonArraySize<AiCreationProviderModel>(PreferKey.aiCreationVideoModelList)
-            AiCreationProviderStore.videoModelList = AiCreationProviderStore.videoModelList
-            val dropped = rawCount - AiCreationProviderStore.videoModelList.size
-            if (dropped > 0) healed.add("视频模型（清理${dropped}条）")
-            null
+            modelListProblem(
+                PreferKey.aiCreationVideoModelList,
+                AiCreationProviderStore.videoModelList.size
+            )
         }
 
         check("LLM变量") {
-            val ok = runCatching { AiCreationVariables.parseLlm(llmVariablesJson) }.isSuccess
-            if (!ok) {
-                llmVariablesJson = defaultLlmVariablesJson
-                healed.add("LLM变量（已重置）")
-            }
-            null
+            if (runCatching { AiCreationVariables.parseLlm(llmVariablesJson) }.isFailure) "内容非法" else null
         }
 
         check("提示词模板") {
-            val ok = runCatching { parsePromptTemplates(promptTemplateJson) }.isSuccess
-            if (!ok) {
-                promptTemplateJson = defaultPromptTemplateJson
-                healed.add("提示词模板（已重置）")
-            }
-            null
+            if (runCatching { parsePromptTemplates(promptTemplateJson) }.isFailure) "内容非法" else null
         }
 
         check("全局请求模板") {
             val raw = appCtx.getPrefString(PreferKey.aiRequestTemplate)
-            val ok = raw.isNullOrBlank() ||
-                runCatching { AiStructuredRequestTemplate.validate(raw) }.isSuccess
-            if (!ok) {
-                AiStructuredRequestTemplate.global = AiStructuredRequestTemplate.default
-                healed.add("全局请求模板（已重置）")
-            }
-            null
+            if (!raw.isNullOrBlank() &&
+                runCatching { AiStructuredRequestTemplate.validate(raw) }.isFailure
+            ) {
+                "内容非法"
+            } else null
         }
 
         check("净化请求模板") {
             val raw = appCtx.getPrefString(PreferKey.aiChapterPurifyRequestTemplate)
-            val ok = raw.isNullOrBlank() ||
-                runCatching { AiStructuredRequestTemplate.validate(raw) }.isSuccess
-            if (!ok) {
-                appCtx.removePref(PreferKey.aiChapterPurifyRequestTemplate)
-                healed.add("净化请求模板（已重置）")
-            }
-            null
+            if (!raw.isNullOrBlank() &&
+                runCatching { AiStructuredRequestTemplate.validate(raw) }.isFailure
+            ) {
+                "内容非法"
+            } else null
         }
 
         check("创作参数") {
             val raw = appCtx.getPrefString(PreferKey.aiCreationParams)
-            val ok = raw.isNullOrBlank() ||
-                runCatching { JSONObject(raw) }.isSuccess
-            if (!ok) {
-                saveCreationParams(emptyMap())
-                healed.add("创作参数（已重置）")
-            }
-            null
+            if (!raw.isNullOrBlank() && runCatching { JSONObject(raw) }.isFailure) "内容非法" else null
         }
 
-        //AI 供应商与模型名单：坏行直接删（钥匙在坏行里救不回来也认了）；整份坏掉就清空，下次读重种默认
         check("AI供应商") {
             val raw = appCtx.getPrefString(PreferKey.aiProviderList)
             if (!raw.isNullOrBlank() &&
@@ -335,50 +272,52 @@ object AiCreationConfig {
                     GSON.fromJsonArray<AiProviderConfig>(raw).getOrThrow()
                 }.isFailure
             ) {
-                appCtx.removePref(PreferKey.aiProviderList)
-                appCtx.removePref(PreferKey.aiModelConfigList)
-                healed.add("AI供应商名单损坏已清空重种")
-                return@check null
+                return@check "名单损坏"
             }
-            val rawCount = rawJsonArraySize<AiProviderConfig>(PreferKey.aiProviderList)
-            AppConfig.aiProviderList = AppConfig.aiProviderList
-            val dropped = rawCount - AppConfig.aiProviderList.size
-            if (dropped > 0) healed.add("AI供应商（删除坏行${dropped}条，连带模型）")
-            null
+            val bad = AppConfig.aiProviderList.filter { it.name.isBlank() || it.id.isBlank() }
+            if (bad.isNotEmpty()) "坏行${bad.size}条" else null
         }
 
         check("AI模型") {
-            val raw = appCtx.getPrefString(PreferKey.aiModelConfigList)
-            if (!raw.isNullOrBlank() &&
-                runCatching {
-                    GSON.fromJsonArray<AiModelConfig>(raw).getOrThrow()
-                }.isFailure
-            ) {
-                appCtx.removePref(PreferKey.aiModelConfigList)
-                healed.add("AI模型名单损坏已清空")
-                return@check null
-            }
-            val rawCount = rawJsonArraySize<AiModelConfig>(PreferKey.aiModelConfigList)
-            AppConfig.aiModelConfigList = AppConfig.aiModelConfigList
-            val dropped = rawCount - AppConfig.aiModelConfigList.size
-            if (dropped > 0) healed.add("AI模型（删除坏行${dropped}条）")
-            null
+            modelListProblem(
+                PreferKey.aiModelConfigList,
+                AppConfig.aiModelConfigList.size
+            )
         }
 
-        val summary = buildString {
-            append("AI配置自检：${passed.size}项通过")
-            if (healed.isNotEmpty()) append("，${healed.size}项已修复（${healed.joinToString("、")}）")
-            if (broken.isNotEmpty()) append("，${broken.size}项需手动处理（${broken.joinToString("、")}）")
+        if (failures.isEmpty()) {
+            val summary = "AI配置自检：11项全部通过"
+            AppLog.putAi("AI_CONFIG VERIFY\n$detail$summary")
+            appCtx.toastOnUi(summary)
+            return
         }
-        AppLog.putAi("AI_CONFIG VERIFY\n$detail$summary")
+        //掀桌：内置全部回出厂，自加的供应商整家删除（模型由存写入口连带清掉），名单删了下次读重种
+        forceRestoreFactoryDefaults()
+        saveCreationParams(emptyMap())
+        appCtx.removePref(PreferKey.aiCreationImageProviderList)
+        appCtx.removePref(PreferKey.aiCreationImageModelList)
+        appCtx.removePref(PreferKey.aiCreationVideoProviderList)
+        appCtx.removePref(PreferKey.aiCreationVideoModelList)
+        appCtx.removePref(PreferKey.aiProviderList)
+        appCtx.removePref(PreferKey.aiModelConfigList)
+        appCtx.putPrefBoolean(PreferKey.aiDefaultConfigSeeded, false)
+        val summary = "AI配置自检失败（${failures.joinToString("、")}），" +
+            "已全部强制恢复出厂，自加供应商已删除"
+        AppLog.putAi("AI_CONFIG VERIFY NUKED\n$detail$summary")
         appCtx.toastOnUi(summary)
     }
 
-    /** 存量 JSON 数组的行数；损坏或为空按 0 算（损坏另有上报，不在这里崩） */
-    private inline fun <reified T> rawJsonArraySize(key: String): Int =
-        runCatching {
-            GSON.fromJsonArray<T>(appCtx.getPrefString(key)).getOrDefault(emptyList()).size
-        }.getOrDefault(0)
+    /** 模型名单核验：名单损坏、空行、悬空（供应商没了，读时已被忽略）都算不行 */
+    private fun modelListProblem(key: String, normalizedSize: Int): String? {
+        val rawJson = appCtx.getPrefString(key)
+        if (rawJson.isNullOrBlank()) {
+            return if (normalizedSize == 0) null else "行数对不上"
+        }
+        val rawCount = runCatching { JSONArray(rawJson).length() }.getOrNull()
+            ?: return "名单损坏"
+        if (rawCount != normalizedSize) return "坏行${rawCount - normalizedSize}条"
+        return null
+    }
 
     /**
      * 安装/升级后一次性消毒：存量 LLM 变量设置与提示词模板非法时用出厂值覆盖，
