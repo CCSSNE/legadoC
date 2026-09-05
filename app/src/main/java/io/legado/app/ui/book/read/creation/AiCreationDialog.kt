@@ -145,10 +145,9 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         session.bookName = bookName
         if (savedInstanceState == null) {
-            //下框最终提示词与 LLM 输入输出只限当前这次生产：新进入创作界面即清空，不残留上次结果
+            //下框最终提示词与 LLM 返回只限当前这次生产：新进入创作界面即清空，不残留上次结果
             session.prompt = ""
             session.llmOutput = ""
-            session.llmSentInput = ""
         }
         //变量区 = LLM 变量（style，控制发给 LLM 的内容）+ 供应商生图/生视频参数
         val imageVariables = AiCreationConfig.imageLlmDefinition.variables +
@@ -1019,7 +1018,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
 
     private fun onGenerateImageClicked() {
         //提示词页只用下框内容；下框为空时先自动生成提示词、拿到后直接续发；
-        //上框记录规则见 validateAndStartGeneration：调过 LLM 记最后一次实际发送，没调过才记按下瞬间
+        //上框即本次 LLM 输入，直接生成不经过 LLM 时也如实记入溯源，不用残留旧值
         val prompt = binding.etManualPrompt.text?.toString()?.trim().orEmpty()
         if (prompt.isEmpty()) {
             pendingGenerateAfterPrompt = true
@@ -1040,12 +1039,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         session.prompt = prompt
         val llmInput = binding.etLlmInput.text?.toString()?.trim().orEmpty()
         session.manualLlmInput = llmInput
-        //上框证据配对：调过 LLM 就记最后一次实际发送的输入（与 llmOutput 同一对证据，
-        //按下后改上框不影响它）；没调过才按现状记按下瞬间的上框
-        session.setParam(
-            AI_CREATION_LLM_INPUT_KEY,
-            session.llmSentInput.ifBlank { llmInput }
-        )
+        session.setParam(AI_CREATION_LLM_INPUT_KEY, llmInput)
         startGeneration(prompt)
     }
 
