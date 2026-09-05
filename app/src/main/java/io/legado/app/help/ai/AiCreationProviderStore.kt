@@ -262,12 +262,14 @@ object AiCreationProviderStore {
      * 解析供应商变量定义：旧格式残留（带 routes/finalPrompt/style 指纹）自动回出厂并重读；
      * 其他解析错误一律是用户自己的问题，原样报错、不碰存储。
      * 自灭式：回出厂后指纹消失，此路以后永远走不到；自定义供应商没有出厂可写，继续报错让用户重填。
+     * 读完再补缺：内置供应商出厂新增了参数（如种子、编号）时，老机器存量里没有的自动补上，
+     * 存量已有的一律不动；自定义供应商没有出厂可对照，原样返回。
      */
     fun parsedVariables(
         provider: AiCreationProviderConfig,
         isVideo: Boolean
     ): List<AiCreationVariable> {
-        return try {
+        val parsed = try {
             AiCreationVariables.parse(provider.variablesJson)
         } catch (error: RuntimeException) {
             if (!AiCreationVariables.isLegacyVariablesJson(provider.variablesJson)) throw error
@@ -276,6 +278,29 @@ object AiCreationProviderStore {
             dropStaleStyleKey(provider.id, isVideo)
             AiCreationVariables.parse(factory)
         }
+        return mergeMissingFactoryVariables(provider, isVideo, parsed)
+    }
+
+    /** 出厂补缺：存量缺的出厂参数追加进存储，已有的不动；模板与参数值都不碰 */
+    private fun mergeMissingFactoryVariables(
+        provider: AiCreationProviderConfig,
+        isVideo: Boolean,
+        parsed: List<AiCreationVariable>
+    ): List<AiCreationVariable> {
+        val factoryJson = defaultVariablesJsonOf(provider) ?: return parsed
+        if (factoryJson == provider.variablesJson) return parsed
+        val factory = runCatching { AiCreationVariables.parse(factoryJson) }.getOrNull()
+            ?: return parsed
+        val keys = parsed.mapTo(mutableSetOf()) { it.key }
+        val missing = factory.filter { it.key !in keys }
+        if (missing.isEmpty()) return parsed
+        val merged = parsed + missing
+        updateProviderVariablesJson(
+            provider.id,
+            isVideo,
+            AiCreationVariables.buildImageJson(merged)
+        )
+        return merged
     }
 
     /** 回出厂写回：只重写内置供应商的变量定义；其他配置不动 */
