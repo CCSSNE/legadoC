@@ -1039,6 +1039,9 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         session.prompt = prompt
         val llmInput = binding.etLlmInput.text?.toString()?.trim().orEmpty()
         session.manualLlmInput = llmInput
+        //上框只记按下瞬间的快照，禁止改成“最后一次实际发送优先”：调 LLM 后改上框可能是故意
+        //（拿去外部用再贴回），应用断不清用户意图；快照保证屏幕上有啥文件里有啥，
+        //静默丢弃可见状态比它与 llmOutput 错配更坏，错配是用户自己写进文件的，对得上看得出来。
         session.setParam(AI_CREATION_LLM_INPUT_KEY, llmInput)
         startGeneration(prompt)
     }
