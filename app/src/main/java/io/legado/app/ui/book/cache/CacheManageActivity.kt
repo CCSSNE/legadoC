@@ -1,5 +1,6 @@
 package io.legado.app.ui.book.cache
 
+import android.content.Intent
 import android.os.Bundle
 import android.graphics.Color
 import android.view.Gravity
@@ -22,6 +23,7 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.CreationResult
 import io.legado.app.databinding.ActivityCacheManageBinding
 import io.legado.app.help.AppWebDav
+import io.legado.app.help.CacheManager
 import io.legado.app.help.ai.AiCreationImageFile
 import io.legado.app.help.ai.AiCreationInsertStash
 import io.legado.app.help.cache.CacheCoordinator
@@ -36,6 +38,7 @@ import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.book.read.creation.AiCreationPhotoDialog
+import io.legado.app.ui.code.CodeEditActivity
 import io.legado.app.utils.applyNavigationBarMargin
 import io.legado.app.utils.applyNavigationBarPadding
 import io.legado.app.utils.gone
@@ -761,6 +764,7 @@ class CacheManageActivity :
                 getString(R.string.illustration_save_to_album),
                 getString(R.string.ai_creation_save_workflow),
                 getString(R.string.ai_creation_copy_workflow),
+                getString(R.string.ai_creation_view_workflow),
                 getString(R.string.ai_creation_insert),
                 getString(R.string.delete)
             )
@@ -770,12 +774,35 @@ class CacheManageActivity :
                 1 -> saveCreationSelection()
                 2 -> saveWorkflowSelection()
                 3 -> copyWorkflowSelection()
-                4 -> AiCreationInsertStash.stashWithToast(
+                4 -> viewCreationWorkflow(item.fileName)
+                5 -> AiCreationInsertStash.stashWithToast(
                     this,
                     creationItems.filter { it.resultId in creationSelection }.map { it.fileName }
                 )
                 else -> deleteCreationSelection()
             }
+        }
+    }
+
+    /** 查看工作流：只读全屏文本（脱敏 JSON，无 base64），跟查看备注同一个样子 */
+    private fun viewCreationWorkflow(fileName: String) {
+        lifecycleScope.launch {
+            val json = withContext(Dispatchers.IO) {
+                AiCreationImageFile.readWorkflowJson(fileName)
+            }
+            if (json.isNullOrBlank()) {
+                toastOnUi(R.string.ai_creation_workflow_missing)
+                return@launch
+            }
+            val cacheKey = "creation_workflow_${System.currentTimeMillis()}"
+            CacheManager.putMemory(cacheKey, json)
+            startActivity(
+                Intent(this@CacheManageActivity, CodeEditActivity::class.java).apply {
+                    putExtra("cacheKey", cacheKey)
+                    putExtra("title", getString(R.string.ai_creation_view_workflow))
+                    putExtra("languageName", "source.json")
+                }
+            )
         }
     }
 

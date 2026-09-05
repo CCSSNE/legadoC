@@ -502,6 +502,7 @@
     <string name="illustration_note_empty">无备注，点击输入</string>
     <string name="ai_creation_save_workflow">保存工作流</string>
     <string name="ai_creation_copy_workflow">复制工作流</string>
+    <string name="ai_creation_view_workflow">查看工作流</string>
     <string name="ai_creation_workflow_missing">未找到工作流元数据</string>
     <string name="ai_creation_workflow_saved">工作流已保存到 Download/Legado</string>
     <string name="ai_creation_workflow_save_failed">工作流保存失败</string>

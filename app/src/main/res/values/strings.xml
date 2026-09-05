@@ -503,6 +503,7 @@
     <string name="illustration_note_empty">No note – tap to input</string>
     <string name="ai_creation_save_workflow">Save workflow</string>
     <string name="ai_creation_copy_workflow">Copy workflow</string>
+    <string name="ai_creation_view_workflow">View workflow</string>
     <string name="ai_creation_workflow_missing">Workflow metadata not found</string>
     <string name="ai_creation_workflow_saved">Workflow saved to Download/Legado</string>
     <string name="ai_creation_workflow_save_failed">Failed to save workflow</string>

@@ -1,6 +1,7 @@
 package io.legado.app.ui.book.read.creation
 
 import android.content.pm.ActivityInfo
+import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
@@ -15,10 +16,12 @@ import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.databinding.ItemPhotoPagerBinding
 import io.legado.app.databinding.ItemPhotoPagerVideoBinding
+import io.legado.app.help.CacheManager
 import io.legado.app.help.ai.AiCreationImageFile
 import io.legado.app.help.ai.AiCreationInsertStash
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.lib.dialogs.SelectItem
+import io.legado.app.ui.code.CodeEditActivity
 import io.legado.app.ui.widget.dialog.showActionBottomSheet
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.sendToClip
@@ -183,6 +186,7 @@ class AiCreationPhotoDialog : BaseDialogFragment(R.layout.dialog_photo_view) {
                 SelectItem(getString(R.string.illustration_save_to_album), "save"),
                 SelectItem(getString(R.string.ai_creation_save_workflow), "workflow"),
                 SelectItem(getString(R.string.ai_creation_copy_workflow), "copy"),
+                SelectItem(getString(R.string.ai_creation_view_workflow), "view"),
                 SelectItem(getString(R.string.ai_creation_insert), "insert")
             )
         ) { action ->
@@ -196,20 +200,45 @@ class AiCreationPhotoDialog : BaseDialogFragment(R.layout.dialog_photo_view) {
                 }
 
                 "workflow" -> exportWorkflow(fileName)
+                "view" -> viewWorkflow(fileName)
                 "insert" -> AiCreationInsertStash.stashWithToast(requireContext(), listOf(fileName))
                 else -> copyWorkflow(fileName)
             }
         }
     }
 
-    private fun exportWorkflow(fileName: String) {
-        val json = AiCreationImageFile.readWorkflowJson(fileName)
-        if (json == null) {
-            toastOnUi(R.string.ai_creation_workflow_missing)
-            return
+    /** 查看工作流：只读全屏文本（脱敏 JSON，无 base64），跟查看备注同一个样子 */
+    private fun viewWorkflow(fileName: String) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val json = withContext(Dispatchers.IO) {
+                AiCreationImageFile.readWorkflowJson(fileName)
+            }
+            if (json.isNullOrBlank()) {
+                toastOnUi(R.string.ai_creation_workflow_missing)
+                return@launch
+            }
+            val cacheKey = "creation_workflow_${System.currentTimeMillis()}"
+            CacheManager.putMemory(cacheKey, json)
+            startActivity(
+                Intent(requireContext(), CodeEditActivity::class.java).apply {
+                    putExtra("cacheKey", cacheKey)
+                    putExtra("title", getString(R.string.ai_creation_view_workflow))
+                    putExtra("languageName", "source.json")
+                }
+            )
         }
+    }
+
+    private fun exportWorkflow(fileName: String) {
         val context = requireContext()
         viewLifecycleOwner.lifecycleScope.launch {
+            val json = withContext(Dispatchers.IO) {
+                AiCreationImageFile.readWorkflowJson(fileName)
+            }
+            if (json == null) {
+                toastOnUi(R.string.ai_creation_workflow_missing)
+                return@launch
+            }
             val ok = withContext(Dispatchers.IO) {
                 AiCreationImageFile.saveWorkflowToDownloads(context, fileName, json)
             }
@@ -221,12 +250,16 @@ class AiCreationPhotoDialog : BaseDialogFragment(R.layout.dialog_photo_view) {
     }
 
     private fun copyWorkflow(fileName: String) {
-        val json = AiCreationImageFile.readWorkflowJson(fileName)
-        if (json == null) {
-            toastOnUi(R.string.ai_creation_workflow_missing)
-            return
+        viewLifecycleOwner.lifecycleScope.launch {
+            val json = withContext(Dispatchers.IO) {
+                AiCreationImageFile.readWorkflowJson(fileName)
+            }
+            if (json == null) {
+                toastOnUi(R.string.ai_creation_workflow_missing)
+                return@launch
+            }
+            requireContext().sendToClip(json)
+            toastOnUi(R.string.ai_creation_workflow_copied)
         }
-        requireContext().sendToClip(json)
-        toastOnUi(R.string.ai_creation_workflow_copied)
     }
 }
