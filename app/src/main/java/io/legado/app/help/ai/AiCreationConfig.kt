@@ -166,7 +166,9 @@ object AiCreationConfig {
     }
 
     /**
-     * 装新版本时跑一次的硬自检：AI 下面所有对外暴露的 JSON 配置只查不动手，
+     * 装新版本时跑一次的硬自检：只查不动手，逐字比对。
+     * 内置的东西（供应商变量定义与请求体、LLM变量、提示词模板、全局请求体）
+     * 必须跟出厂逐字一致，差一个字就算不行；自加的供应商按有效性查。
      * 全部通过就弹成功；任何一项不行，直接掀桌——自加的供应商 whole 删除，
      * 内置的全部回到出厂，再弹结果，明细进 AI 日志。平时启动不跑。
      */
@@ -193,13 +195,21 @@ object AiCreationConfig {
             ) {
                 return@check "名单损坏"
             }
+            //内置逐字比对出厂，自加的按有效性查
             val bad = AiCreationProviderStore.imageProviderList.filterNot { provider ->
-                runCatching {
-                    AiCreationVariables.parse(provider.variablesJson)
-                    AiCreationProviderStore.parseImageRequestTemplateJson(provider.requestTemplate)
-                }.isSuccess
+                val factoryVariables = AiCreationProviderStore.defaultVariablesJsonOf(provider)
+                val factoryTemplate = AiCreationProviderStore.defaultRequestTemplateOf(provider)
+                if (factoryVariables != null && factoryTemplate != null) {
+                    provider.variablesJson.trim() == factoryVariables.trim() &&
+                        provider.requestTemplate.trim() == factoryTemplate.trim()
+                } else {
+                    runCatching {
+                        AiCreationVariables.parse(provider.variablesJson)
+                        AiCreationProviderStore.parseImageRequestTemplateJson(provider.requestTemplate)
+                    }.isSuccess
+                }
             }
-            if (bad.isNotEmpty()) "坏掉${bad.size}家" else null
+            if (bad.isNotEmpty()) "走样${bad.size}家" else null
         }
 
         check("视频供应商") {
@@ -212,12 +222,19 @@ object AiCreationConfig {
                 return@check "名单损坏"
             }
             val bad = AiCreationProviderStore.videoProviderList.filterNot { provider ->
-                runCatching {
-                    AiCreationVariables.parse(provider.variablesJson)
-                    AiCreationProviderStore.parseVideoRequestTemplateJson(provider.requestTemplate)
-                }.isSuccess
+                val factoryVariables = AiCreationProviderStore.defaultVariablesJsonOf(provider)
+                val factoryTemplate = AiCreationProviderStore.defaultRequestTemplateOf(provider)
+                if (factoryVariables != null && factoryTemplate != null) {
+                    provider.variablesJson.trim() == factoryVariables.trim() &&
+                        provider.requestTemplate.trim() == factoryTemplate.trim()
+                } else {
+                    runCatching {
+                        AiCreationVariables.parse(provider.variablesJson)
+                        AiCreationProviderStore.parseVideoRequestTemplateJson(provider.requestTemplate)
+                    }.isSuccess
+                }
             }
-            if (bad.isNotEmpty()) "坏掉${bad.size}家" else null
+            if (bad.isNotEmpty()) "走样${bad.size}家" else null
         }
 
         check("图片模型") {
@@ -235,19 +252,19 @@ object AiCreationConfig {
         }
 
         check("LLM变量") {
-            if (runCatching { AiCreationVariables.parseLlm(llmVariablesJson) }.isFailure) "内容非法" else null
+            if (llmVariablesJson.trim() != defaultLlmVariablesJson.trim()) "与出厂不一致" else null
         }
 
         check("提示词模板") {
-            if (runCatching { parsePromptTemplates(promptTemplateJson) }.isFailure) "内容非法" else null
+            if (promptTemplateJson.trim() != defaultPromptTemplateJson.trim()) "与出厂不一致" else null
         }
 
         check("全局请求模板") {
             val raw = appCtx.getPrefString(PreferKey.aiRequestTemplate)
             if (!raw.isNullOrBlank() &&
-                runCatching { AiStructuredRequestTemplate.validate(raw) }.isFailure
+                raw.trim() != AiStructuredRequestTemplate.default.trim()
             ) {
-                "内容非法"
+                "与出厂不一致"
             } else null
         }
 

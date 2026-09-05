@@ -64,13 +64,13 @@ object DefaultData {
                 importDefaultMaxHighlightRules()
             }
             migrateDefaultData("AI创作配置", AI_CREATION_CONFIG_VERSION_KEY, AI_CREATION_CONFIG_VERSION) {
-                //先强回出厂（只留身份与连线），再消毒存量参数值，最后做模板归属迁移
+                //先验后盖：先对装机原样逐字核验（有走样直接掀桌弹汇总），
+                //再强回出厂、消毒参数、迁移模板归属，保证出去时是干净出厂态
+                AiCreationConfig.verifyAiJsonConfigs()
                 AiCreationConfig.forceRestoreFactoryDefaults()
                 AiCreationConfig.sanitizeStoredJsons()
                 //v2：请求模板归属迁移——全局归聊天+创作（未定制切新干净默认），净化固化继承快照
                 AiStructuredRequestTemplate.migrateTemplateOwnership()
-                //硬自检只在装新版本时跑一次：逐项验，坏的回出厂并弹汇总，对的也弹；平时启动不跑
-                AiCreationConfig.verifyAiJsonConfigs()
             }
         }.onError {
             AppLog.put("启动默认数据升级任务失败\n${it.localizedMessage}", it)
