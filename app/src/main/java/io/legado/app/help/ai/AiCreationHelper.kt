@@ -126,7 +126,7 @@ object AiCreationHelper {
                 array.put(
                     JSONObject().put("type", "text").put(
                         "text",
-                        "${AiCreationImageMarkers.markerOf(index)}已省略：当前供应商不支持图片输入"
+                        "${AiCreationImageMarkers.markerOf(index)}：当前供应商不支持图片输入，模型无法查看该图；返回的提示词里仍须保留该标记"
                     )
                 )
             }
