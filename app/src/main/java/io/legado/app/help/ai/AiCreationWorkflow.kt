@@ -10,7 +10,9 @@ import org.json.JSONObject
  *   提示词页直接生成时为当时上框内容，测试连接不经过 LLM 时为空串
  * - llmImages：LLM 输入份图片——按上框（llmInput）标记解析的图片 base64 data URL，
  *   只要涉及图片就 100% 记录，不管这次有没有实际请求 LLM；与 images 相互独立
- * - prompt：生成提示词，LLM 产出或手填、经 {{prompt}} 填入请求模板发给生图/生视频 API 的最终文本
+ * - llmOutput：最近一次 LLM 返回（中间大段；只由 LLM 调用写入，下框二次编辑或手填不覆盖它，
+ *   本次生产没调过 LLM 时为空串）
+ * - prompt：下框终稿，LLM 产出填入后经二次编辑或手填、经 {{prompt}} 填入请求模板发给生图/生视频 API 的最终文本
  * - images：随生图/生视频请求实际发出的图片 data URL（按提示词标记顺序解析；无图为空表）
  * - request：渲染后的完整请求体（全部占位符已替换为实际值；引用图占位的模板此处即含图片 data URL）
  * 只做溯源：不写 API Key 与自定义请求头，避免元数据随文件外泄密钥。
@@ -22,6 +24,7 @@ data class AiCreationWorkflow(
     val model: String,
     val variables: Map<String, String>,
     val llmInput: String,
+    val llmOutput: String = "",
     val prompt: String,
     val request: String,
     val images: List<String> = emptyList(),
@@ -41,6 +44,7 @@ data class AiCreationWorkflow(
         root.put("variables", JSONObject(variables))
         root.put("llmInput", llmInput)
         root.put("llmImages", JSONArray(llmImages))
+        root.put("llmOutput", llmOutput)
         root.put("prompt", prompt)
         root.put("images", JSONArray(images))
         root.put("request", runCatching { JSONObject(request) }.getOrNull() ?: request)
@@ -129,6 +133,7 @@ data class AiCreationWorkflow(
                     }
                 }.orEmpty(),
                 llmInput = root.optString("llmInput"),
+                llmOutput = root.optString("llmOutput"),
                 prompt = root.optString("prompt"),
                 request = root.opt("request")?.toString().orEmpty(),
                 images = images,

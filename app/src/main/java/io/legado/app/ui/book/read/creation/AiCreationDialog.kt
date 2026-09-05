@@ -145,8 +145,9 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         session.bookName = bookName
         if (savedInstanceState == null) {
-            //下框最终提示词只限当前这次生产：新进入创作界面即清空，不残留上次结果
+            //下框最终提示词与 LLM 返回只限当前这次生产：新进入创作界面即清空，不残留上次结果
             session.prompt = ""
+            session.llmOutput = ""
         }
         //变量区 = LLM 变量（style，控制发给 LLM 的内容）+ 供应商生图/生视频参数
         val imageVariables = AiCreationConfig.imageLlmDefinition.variables +
@@ -796,7 +797,7 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
         cardEditLauncher.launch(intent)
     }
 
-    /** 提示词页：用上框LLM输入文本生成提示词，结果自动填入下框；若是下框为空触发的连带生成，拿到后直接续发生成 */
+    /** 提示词页：用上框LLM输入文本生成提示词，结果自动填入下框并记入会话 llmOutput（工作流中间大段，下框二次编辑不覆盖它）；若是下框为空触发的连带生成，拿到后直接续发生成 */
     private fun generatePromptFromLlmInput() {
         if (generating) return
         val llmInput = binding.etLlmInput.text?.toString()?.trim().orEmpty()
@@ -1063,7 +1064,8 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
                     count,
                     values,
                     session.paramValue(AI_CREATION_LLM_INPUT_KEY).orEmpty(),
-                    session.materialImageRefs.toList()
+                    session.materialImageRefs.toList(),
+                    session.llmOutput
                 )
             }
             result.onSuccess {
@@ -1088,7 +1090,8 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
                     count,
                     values,
                     session.paramValue(AI_CREATION_LLM_INPUT_KEY).orEmpty(),
-                    session.materialImageRefs.toList()
+                    session.materialImageRefs.toList(),
+                    session.llmOutput
                 )
             }
             result.onSuccess {

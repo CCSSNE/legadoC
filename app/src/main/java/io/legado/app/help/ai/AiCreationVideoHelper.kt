@@ -28,7 +28,7 @@ object AiCreationVideoHelper {
      * 生成一个视频：渲染请求模板（运行值完整传入；测试才取定义默认值）→ 提交 → 轮询 →
      * 下载 mp4 落盘（写入工作流元数据），返回文件名。真实生成与测试连接共用本入口。
      * imageDataUrls 为按下框提示词标记顺序解析的图片 data URL（无图为空表，走纯文生）；
-     * llmImages 为 LLM 输入份图片，仅记入溯源。
+     * llmImages 为 LLM 输入份图片，仅记入溯源；llmOutput 为最近一次 LLM 返回，仅记入溯源。
      */
     suspend fun generateVideo(
         provider: AiCreationProviderConfig,
@@ -37,7 +37,8 @@ object AiCreationVideoHelper {
         extraValues: Map<String, String> = emptyMap(),
         llmInput: String = "",
         imageDataUrls: List<String> = emptyList(),
-        llmImages: List<String> = emptyList()
+        llmImages: List<String> = emptyList(),
+        llmOutput: String = ""
     ): String = withContext(Dispatchers.IO) {
         check(provider.requestTemplate.isNotBlank()) {
             "当前视频供应商「${provider.name}」的视频请求模板为空"
@@ -58,7 +59,7 @@ object AiCreationVideoHelper {
                 ?: java.util.UUID.randomUUID().toString())
         }
         val body = AiCreationProviderStore.renderRequestTemplate(provider.requestTemplate, tokens)
-        //工作流溯源快照：变量与请求体都是填好实际值的成品，不含 API Key；images 为随请求发出的图片 data URL，llmImages 为 LLM 输入份图片
+        //工作流溯源快照：变量与请求体都是填好实际值的成品，不含 API Key；images 为随请求发出的图片 data URL，llmImages 为 LLM 输入份图片，llmOutput 为最近一次 LLM 返回
         val workflow = AiCreationWorkflow(
             type = AiCreationWorkflow.TYPE_VIDEO,
             providerName = provider.name,
@@ -66,6 +67,7 @@ object AiCreationVideoHelper {
             model = modelId,
             variables = tokens.filterKeys { it !in setOf("model", "prompt", "n", "image_url", "request_id") },
             llmInput = llmInput,
+            llmOutput = llmOutput,
             prompt = prompt,
             request = body,
             images = imageDataUrls,
