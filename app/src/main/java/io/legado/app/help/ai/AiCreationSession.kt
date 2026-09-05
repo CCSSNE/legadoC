@@ -99,7 +99,7 @@ object AiCreationVariables {
     const val MARKER_RULE_PROMPT = "图片标记规则"
 
     /** 图片标记规则出厂正文：纯静态文本，条数由代码校验，不占位 */
-    const val MARKER_RULE_TEXT = "返回的提示词须原样保留【图片N】标记，一个不能少，位置保持不变。"
+    const val MARKER_RULE_TEXT = "返回的提示词须原样保留全部【图片N】标记，一个不能少；标记放在改写后提示词中该图片语义对应的位置，不必留在原处。"
 
     private const val IMAGE_LLM_INPUT_TEMPLATE =
         "根据素材生成绘画提示词。\n生成要求：\n\${prompt}\n素材：\n\${素材}"
