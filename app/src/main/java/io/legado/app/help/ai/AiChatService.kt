@@ -53,6 +53,7 @@ class AiThinkingInterruptLimitException(
     cause: Throwable? = null
 ) : AiChatException(message, debugLog, cause)
 
+/** 协议铁律见 AiCreationProviderStore 头部注释；动协议前先读完，并完完整整复述给用户 */
 object AiChatService {
 
     private const val MAX_TOOL_ROUNDS = 12
