@@ -294,6 +294,6 @@ uiautomator2 / ADB
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- 最近一次自用版交付为 `3.26.090604` / `10852`，2026-09-06，基于提交 `3559ece6`（自 `10850` 基线后 8 个代码提交：`51052845` 落地可热更新JS Agent、`20432b36` 完善JS Agent、`8d9b679c` 修复关于页更新日志异步回调未判断isAdded导致的崩溃、`c90f334d` Release增加软性钩子、`6b8643c4` 修复AI创作提示词与生图链路视图销毁后触binding崩溃、`e3e5235e` / `21fd2f38` / `3559ece6` AgentSettingsUi编译修复三连）使用 `assembleAppC` daemon 增量编译成功（默认参数，`BUILD SUCCESSFUL in 2m 46s`，`75 actionable tasks: 9 executed, 66 up-to-date`，err 为空）。产物包名 `io.legado.app.dev`、versionName `3.26.090604c`、versionCode `10852`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C-自用`（label-zh 逐字匹配）、`apksigner` 验证通过（退出码 0，`META-INF` 未保护条目提示可接受）；APK 位于 `app\build\outputs\apk\app\c\legado_app_3.26.090604_10852.apk`（49992602 字节）。
+- 最近一次自用版交付为 `3.26.090607` / `10854`，2026-09-06，基于提交 `2b11c016`（`427f4e58` 修复Agent迁移悬空选择导致开局崩溃、`2b11c016` 贯彻破坏性升级：SCHEMA_VERSION升至2，对不上删了重建并删除旧迁移校验代码）使用 `assembleAppC` daemon 增量编译成功（默认参数，`BUILD SUCCESSFUL in 1m 14s`，`75 actionable tasks: 13 executed, 62 up-to-date`，err 为空）。产物包名 `io.legado.app.dev`、versionName `3.26.090607c`、versionCode `10854`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C-自用`（label-zh 逐字匹配）、`apksigner verify` 退出码 0（`META-INF` 未保护条目提示可接受）；APK 位于 `app\build\outputs\apk\app\c\legado_app_3.26.090607_10854.apk`（49977302 字节）。模拟器（emulator-5554）覆盖安装回归通过：冷启动无崩溃（旧悬空选择不再致命，agent.db为新鲜v2：migration/配置/内置插件与提示词）、AI设置7组入口逐一点开正常、MCP管理工具数正确、书架Server开关/握手/tools-list/tools-call全通且run落库completed、诊断与记忆设置正常，Server已关回停止，全程无FATAL。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
