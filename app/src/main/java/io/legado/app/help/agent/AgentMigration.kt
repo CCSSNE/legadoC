@@ -43,6 +43,7 @@ object AgentMigration {
             dao.clearEvents()
             dao.clearMessages()
             dao.clearAllVectors()
+            AgentPayloadStore.clear()
             val defaults = AgentConfig.defaults()
             AgentStore.put("config", "agent", JSONObject().put("enabled", defaults.getBoolean("enabled"))
                 .put("mode", defaults.getString("mode")).put("schemaVersion", AgentConfig.SCHEMA_VERSION))
