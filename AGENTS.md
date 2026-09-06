@@ -301,6 +301,6 @@ AI 铁律（死路，见到先复述给用户再定夺）：模型永远只当�
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- 最近一次自用版交付为 `3.26.090610` / `10860`，2026-09-06，基于提交 `76091681`（`76091681` 聊天提示词注入与工具调用折叠卡、管理弹窗原位更新、诊断复制清除导出、工具设置精简、去上下按钮；版本门升4、`b6c8e352` 更新交付基线10859；回归harness修setup方向断言与假LLM工具名匹配）使用 `assembleAppC` daemon 增量编译成功（默认参数，`BUILD SUCCESSFUL in 1m 49s`，`75 actionable tasks: 22 executed, 53 up-to-date`，err 为空）。产物包名 `io.legado.app.dev`、versionName `3.26.090610c`、versionCode `10860`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C-自用`（label-zh 逐字匹配）、`apksigner verify` 退出码 0（`META-INF` 未保护条目提示可接受）；APK 位于 `app\build\outputs\apk\app\c\legado_app_3.26.090610_10860.apk`（49994240 字节）。
+- 最近一次自用版交付为 `3.26.090613` / `10862`，2026-09-06，基于提交 `f37878b7`（AI用量统计折叠卡、上下文注入卡真实项全文呈现版本门升5、悬浮窗对齐大界面会话统一、空会话崩溃修复、`isVisible`缺导入修复、AGENTS工程细则整理）使用 `assembleAppC` daemon 增量编译成功（默认参数，`BUILD SUCCESSFUL in 1m 1s`，`75 actionable tasks: 13 executed, 62 up-to-date`）。产物包名 `io.legado.app.dev`、versionName `3.26.090613c`、versionCode `10862`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C-自用`（label-zh 逐字匹配）、`apksigner verify` 退出码 0（`META-INF` 未保护条目提示可接受）；APK 位于 `app\build\outputs\apk\app\c\legado_app_3.26.090613_10862.apk`（49986731 字节）。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
