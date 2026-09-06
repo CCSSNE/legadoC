@@ -234,9 +234,17 @@ $apk = 'D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_<version>
 - 背景图这类文件型默认值不能写成某台设备的绝对路径。必须把素材随 APK 提供，并由统一主题初始化在 `applyDayNightInit()` 前复制到应用私有目录，再为尚未配置的日间/夜间 key 写入该稳定路径。`backgroundImage` / `backgroundImageNight` 缺失表示从未配置；空字符串表示用户明确移除背景，后续启动不得覆盖。
 - `uiLayoutAlpha` 的值表示“全局界面透明度”：`0` 为不透明、`100` 为全透明。数值到物理表面 alpha 的换算只能在 `UiCorner.uiLayoutSurfaceAlpha()` 中发生；普通 UI、底栏玻璃外壳和液态玻璃内容均复用该入口，业务页面不得再自行反向计算。
 
-### AI 配置破坏性升级（开关已打开）
+### 整个 AI 设计都要遵循破坏性升级习惯（强调！！！）
 
 版本一升级，AI 配置就重置，不管以前是什么。版本只看 `AgentConfig.SCHEMA_VERSION`，对不上就过期，过期就删了重建。
+
+再次强调，版本一升级，AI 配置就重置，不管以前是什么。版本只看 `AgentConfig.SCHEMA_VERSION`，对不上就过期，过期就删了重建。
+
+第3次强调，版本一升级，AI 配置就重置，不管以前是什么。版本只看 `AgentConfig.SCHEMA_VERSION`，对不上就过期，过期就删了重建。
+
+不需要校验旧数据、旧配置，直接重置。
+
+这是自用应用，不要在乎不存在的用户的历史数据，每次升级直接重置。
 
 ### 诊断与动态验证 
 
