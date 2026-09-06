@@ -52,9 +52,11 @@ object AgentStore {
         override fun runs() = io { rawDao.runs() }
         override fun state(id: String, state: String, error: String?, now: Long) = io { rawDao.state(id, state, error, now) }
         override fun unfinished() = io { rawDao.unfinished() }
+        override fun deleteRun(id: String) = io { rawDao.deleteRun(id) }
         override fun append(event: AgentEvent) = io { rawDao.append(event) }
         override fun events(runId: String, after: Long) = io { rawDao.events(runId, after) }
         override fun allEvents() = io { rawDao.allEvents() }
+        override fun deleteEvents(runId: String) = io { rawDao.deleteEvents(runId) }
         override fun append(message: AgentMessage) = io { rawDao.append(message) }
         override fun messages(sessionId: String) = io { rawDao.messages(sessionId) }
         override fun allMessages() = io { rawDao.allMessages() }

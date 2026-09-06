@@ -47,6 +47,7 @@ class AiChatAdapter(
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     private val items = mutableListOf<AiChatMessage>()
+    private val expandedIds = mutableSetOf<String>()
     private val markwon: Markwon by lazy {
         Markwon.builder(context)
             .usePlugin(TablePlugin.create(context))
@@ -60,9 +61,14 @@ class AiChatAdapter(
     fun submitList(list: List<AiChatMessage>) {
         items.clear()
         items.addAll(list.filter { message ->
-            (message.kind ?: AiChatMessage.Kind.TEXT) != AiChatMessage.Kind.STATUS ||
-                io.legado.app.help.config.AppConfig.aiShowToolSummary || !message.statusSuccess ||
-                message.statusStage in setOf("paused", "waiting_input")
+            when (message.kind ?: AiChatMessage.Kind.TEXT) {
+                AiChatMessage.Kind.TEXT,
+                AiChatMessage.Kind.TOOLS,
+                AiChatMessage.Kind.CONTEXT -> true
+                AiChatMessage.Kind.STATUS ->
+                    io.legado.app.help.config.AppConfig.aiShowToolSummary || !message.statusSuccess ||
+                        message.statusStage in setOf("paused", "waiting_input")
+            }
         })
         notifyDataSetChanged()
     }
@@ -201,6 +207,87 @@ class AiChatAdapter(
         cards.forEach { card ->
             container.addView(createSearchCardView(card))
         }
+    }
+
+    private fun bindInfoCard(binding: ItemAiMessageAssistantBinding, message: AiChatMessage) {
+        binding.tvMessage.isVisible = false
+        binding.searchCardScroller.isVisible = false
+        val container = binding.toolEventContainer
+        container.removeAllViews()
+        container.isVisible = true
+        val lines = message.content.lines()
+        val title = lines.getOrNull(0).orEmpty()
+        val subtitle = lines.getOrNull(1).orEmpty()
+        val detail = lines.drop(2).joinToString("\n").trim()
+        val expanded = message.id in expandedIds
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply {
+                val fill = ColorUtils.blendColors(context.backgroundColor, context.accentColor, 0.05f)
+                cornerRadius = UiCorner.scaledDp(16f)
+                setColor(UiCorner.surfaceColor(fill))
+                setStroke(1.dpToPx(), UiCorner.effectStrokeColor(fill))
+            }
+            setPadding(14.dpToPx(), 10.dpToPx(), 14.dpToPx(), 10.dpToPx())
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = 6.dpToPx()
+            }
+        }
+        val header = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        header.addView(ImageView(context).apply {
+            layoutParams = LinearLayout.LayoutParams(16.dpToPx(), 16.dpToPx()).apply {
+                marginEnd = 8.dpToPx()
+            }
+            setImageResource(R.drawable.ic_settings)
+            setColorFilter(context.accentColor)
+        })
+        header.addView(TextView(context).apply {
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            text = title
+            setTextColor(context.primaryTextColor)
+            textSize = 13f
+            setTypeface(typeface, Typeface.BOLD)
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+        })
+        val arrow = ImageView(context).apply {
+            layoutParams = LinearLayout.LayoutParams(14.dpToPx(), 14.dpToPx())
+            setImageResource(R.drawable.ic_arrow_drop_down)
+            setColorFilter(context.secondaryTextColor)
+            rotation = if (expanded) 180f else 0f
+        }
+        header.addView(arrow)
+        row.addView(header)
+        if (subtitle.isNotBlank()) row.addView(TextView(context).apply {
+            text = subtitle
+            setTextColor(context.secondaryTextColor)
+            textSize = 12f
+            maxLines = 2
+            ellipsize = TextUtils.TruncateAt.END
+            setPadding(0, 4.dpToPx(), 18.dpToPx(), 0)
+        })
+        if (detail.isNotBlank()) row.addView(TextView(context).apply {
+            text = detail
+            setTextColor(context.secondaryTextColor)
+            textSize = 12f
+            maxLines = Int.MAX_VALUE
+            isVisible = expanded
+            setPadding(0, 8.dpToPx(), 0, 0)
+            setTextIsSelectable(true)
+        })
+        row.setOnClickListener {
+            if (message.id in expandedIds) expandedIds.remove(message.id)
+            else expandedIds.add(message.id)
+            val position = items.indexOfFirst { it.id == message.id }
+            if (position >= 0) notifyItemChanged(position)
+        }
+        container.addView(row)
     }
 
     private fun bindToolEvents(binding: ItemAiMessageAssistantBinding, events: List<ToolEventCard>) {
@@ -455,6 +542,10 @@ class AiChatAdapter(
     ) : RecyclerView.ViewHolder(binding.root) {
 
         fun bind(message: AiChatMessage) {
+            if (message.kind == AiChatMessage.Kind.TOOLS || message.kind == AiChatMessage.Kind.CONTEXT) {
+                bindInfoCard(binding, message)
+                return
+            }
             val parsed = parseMessageContent(message.content)
             binding.messageContainer.minimumWidth = if (message.pending) 220.dpToPx() else 0
             binding.tvMessage.background = createBubble(

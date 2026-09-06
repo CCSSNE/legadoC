@@ -62,6 +62,8 @@ interface AgentDao {
     fun runs(): List<AgentRun>
     @Query("UPDATE runs SET state = :state, error = :error, updatedAt = :now WHERE id = :id")
     fun state(id: String, state: String, error: String?, now: Long = System.currentTimeMillis())
+    @Query("DELETE FROM runs WHERE id = :id")
+    fun deleteRun(id: String)
     @Query("SELECT * FROM runs WHERE state IN ('running', 'paused', 'waiting_input')")
     fun unfinished(): List<AgentRun>
     @Insert
@@ -70,6 +72,8 @@ interface AgentDao {
     fun events(runId: String, after: Long = 0): List<AgentEvent>
     @Query("SELECT * FROM events ORDER BY sequence")
     fun allEvents(): List<AgentEvent>
+    @Query("DELETE FROM events WHERE runId = :runId")
+    fun deleteEvents(runId: String)
     @Insert
     fun append(message: AgentMessage): Long
     @Query("SELECT * FROM messages WHERE sessionId = :sessionId ORDER BY sequence")

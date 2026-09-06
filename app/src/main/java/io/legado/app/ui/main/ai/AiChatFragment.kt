@@ -60,8 +60,6 @@ class AiChatFragment() : BaseFragment(R.layout.fragment_ai_chat), MainFragmentIn
         binding.composerContainer.doOnLayout {
             updateMessagesBottomPadding()
         }
-        binding.btnScrollPrev.setOnClickListener { scrollToPreviousAssistantStart() }
-        binding.btnScrollNext.setOnClickListener { scrollToNextMessageBottom() }
         binding.btnAiSettings.setOnClickListener {
             startActivity<ConfigActivity> {
                 putExtra("configTag", ConfigTag.AI_CONFIG)
@@ -175,32 +173,6 @@ class AiChatFragment() : BaseFragment(R.layout.fragment_ai_chat), MainFragmentIn
     private fun hideThinkingPanel() {
         binding.thinkingPanel.isVisible = false
         binding.thinkingScroll.isVisible = false
-    }
-
-    private fun scrollToPreviousAssistantStart() {
-        val items = viewModel.messagesLiveData.value.orEmpty()
-        val layoutManager = binding.rvAiMessages.layoutManager as? LinearLayoutManager ?: return
-        val anchor = layoutManager.findFirstVisibleItemPosition().coerceAtLeast(0)
-        val target = (anchor - 1 downTo 0).firstOrNull {
-            items.getOrNull(it)?.role == AiChatMessage.Role.ASSISTANT
-        } ?: return
-        layoutManager.scrollToPositionWithOffset(target, 0)
-    }
-
-    private fun scrollToNextMessageBottom() {
-        val items = viewModel.messagesLiveData.value.orEmpty()
-        val layoutManager = binding.rvAiMessages.layoutManager as? LinearLayoutManager ?: return
-        val anchor = layoutManager.findLastVisibleItemPosition().coerceAtLeast(0)
-        val target = (anchor + 1 until items.size).firstOrNull() ?: return
-        binding.rvAiMessages.scrollToPosition(target)
-        binding.rvAiMessages.post {
-            val holder = binding.rvAiMessages.findViewHolderForAdapterPosition(target)
-            val bottom = holder?.itemView?.bottom ?: return@post
-            val delta = bottom - binding.rvAiMessages.height
-            if (delta > 0) {
-                binding.rvAiMessages.scrollBy(0, delta)
-            }
-        }
     }
 
     private fun tintSendButton() {

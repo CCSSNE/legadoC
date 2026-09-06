@@ -8,8 +8,8 @@ import java.net.URI
 /** Configuration has one schema regardless of UI, script, migration or backup writer. */
 object AgentConfig {
     // 破坏性升级版本号：只看它，对不上就删了重建，不迁移旧数据。
-    // 内置插件、默认配置、记忆策略改了就升它（v2->v3：被动记忆跳过语义+内置包更新）。
-    const val SCHEMA_VERSION = 3
+    // 内置插件、默认配置、记忆策略改了就升它（v3->v4：上下文注入与记忆召回事件+提示词卡片）。
+    const val SCHEMA_VERSION = 4
     private val bundledDefaults: JSONObject by lazy {
         JSONObject(appCtx.assets.open("agent/defaults.json").bufferedReader().use { it.readText() })
     }

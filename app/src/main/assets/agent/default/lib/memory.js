@@ -36,9 +36,15 @@ function passiveScope(input, config, phase) {
 }
 
 exports.recall = function(input, config, catalog) {
-    if (!config.modules.memory) return [];
+    if (!config.modules.memory) {
+        host.call("emit", {type: "memory.recalled", value: {matches: [], skipped: "记忆模块未启用"}});
+        return [];
+    }
     var resolved = passiveScope(input, config, "recall");
-    if (resolved === null) return [];
+    if (resolved === null) {
+        host.call("emit", {type: "memory.recalled", value: {matches: [], skipped: "book作用域但无阅读页"}});
+        return [];
+    }
     var result = call(catalog, "memory_search", {query: input.user, mode: "vector", scope: resolved});
     if (!(config.memory.recallCount >= 0)) throw new Error("recallCount 必须为非负整数");
     result.matches.sort(function(left, right) { return right.score - left.score; });
@@ -49,7 +55,7 @@ exports.recall = function(input, config, catalog) {
     result.matches.forEach(function(item) {
         if (item.score >= config.memory.minimumScore && recalled.length < config.memory.recallCount && JSON.stringify(recalled.concat([item])).length <= budget) recalled.push(item);
     });
-    host.call("log", {type: "memory.recall", candidates: result.matches, selected: recalled, contextCharacters: budget});
+    host.call("emit", {type: "memory.recalled", value: {matches: recalled, candidates: result.matches.length, contextCharacters: budget}});
     return recalled;
 };
 

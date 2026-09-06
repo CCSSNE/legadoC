@@ -35,8 +35,28 @@ class AiChatViewModel : ViewModel() {
         private var activePendingContent: String = ""
         private var activeThinkingMessageId: String? = null
         private var activePendingAssistantMessageId: String? = null
-        private val activeToolMessageIds = linkedMapOf<String, String>()
     }
+
+    private data class ToolCallRecord(
+        var title: String,
+        var args: String = "",
+        var stage: String = "running",
+        var summary: String = "",
+        var success: Boolean = true,
+        var elapsedMs: Long = -1L
+    )
+
+    private data class TurnTrace(
+        val calls: LinkedHashMap<String, ToolCallRecord> = LinkedHashMap(),
+        var rounds: Int = 0,
+        var modelMs: Long = 0L,
+        var promptBase: org.json.JSONObject? = null,
+        var recalled: org.json.JSONArray? = null,
+        var recallSkipped: String? = null
+    )
+
+    private val turnTraces = mutableMapOf<String, TurnTrace>()
+    private var activeTurnKey: String? = null
 
     init {
         restoreCurrentSession()
@@ -61,7 +81,6 @@ class AiChatViewModel : ViewModel() {
         activeViewModel = this
         activeThinkingMessageId = null
         activePendingAssistantMessageId = null
-        activeToolMessageIds.clear()
         append(AiChatMessage(role = AiChatMessage.Role.USER, content = userContent))
         val pendingMessage = AiChatMessage(
             role = AiChatMessage.Role.ASSISTANT,
@@ -69,6 +88,8 @@ class AiChatViewModel : ViewModel() {
             pending = true
         )
         activePendingAssistantMessageId = pendingMessage.id
+        activeTurnKey = pendingMessage.id
+        turnTraces[pendingMessage.id] = TurnTrace()
         append(pendingMessage)
         activePendingContent = ""
         val requestMessages = snapshotForRequest()
@@ -95,12 +116,12 @@ class AiChatViewModel : ViewModel() {
             activeSessionId = null
             result.onSuccess { content ->
                 activePendingContent = ""
-                activeToolMessageIds.clear()
+                targetFor(requestSessionId).endTurn(pendingMessage.id, stopped = false)
                 targetFor(requestSessionId).replacePendingAssistant(content.ifBlank { pendingThinkingLabel })
             }.onFailure { throwable ->
                 activePendingContent = ""
-                activeToolMessageIds.clear()
                 if (throwable is CancellationException) {
+                    targetFor(requestSessionId).endTurn(pendingMessage.id, stopped = true)
                     targetFor(requestSessionId).replacePendingAssistant(cancelledText)
                     return@onFailure
                 }
@@ -110,6 +131,7 @@ class AiChatViewModel : ViewModel() {
                     cause = throwable
                 )
                 AppLog.put("AI 请求失败\n${chatError.debugLog}", chatError)
+                targetFor(requestSessionId).endTurn(pendingMessage.id, stopped = true)
                 targetFor(requestSessionId).failPendingAssistant(failureMessage(chatError.message))
             }
         }
@@ -124,7 +146,8 @@ class AiChatViewModel : ViewModel() {
         activePendingContent = ""
         activeThinkingMessageId = null
         activePendingAssistantMessageId = null
-        activeToolMessageIds.clear()
+        finishTurnCard(activeTurnKey, stopped = true)
+        activeTurnKey = null
         setRequesting(false)
         if (cancelledText.isNotBlank()) {
             replacePendingAssistant(cancelledText)
@@ -167,27 +190,187 @@ class AiChatViewModel : ViewModel() {
     }
 
     fun upsertStatus(status: org.json.JSONObject) {
-        val type = status.optString("type")
-        if (type !in setOf("tool.start", "tool.result", "tool.unknown", "paused", "waiting_input")) return
-        val key = status.optString("invocationId", status.optString("runId"))
-        val title = if (status.has("toolId")) "${status.optString("moduleId")}/${status.getString("toolId")}" else type
-        val content = when (type) {
-            "paused" -> "运行已暂停；请在 Agent 模式的运行诊断中继续或停止"
-            "waiting_input" -> "等待输入：${status.optString("prompt", status.toString())}"
-            "tool.start" -> "$title · 执行中"
-            "tool.unknown" -> "$title · 结果未知，未自动重放"
-            else -> "$title · ${status.getJSONObject("result")}"
+        when (status.optString("type")) {
+            "paused", "waiting_input" -> {
+                val content = if (status.optString("type") == "paused") {
+                    "运行已暂停；请在 Agent 模式的运行诊断中继续或停止"
+                } else {
+                    "等待输入：${status.optString("prompt", status.toString())}"
+                }
+                val last = messages.lastOrNull()
+                if (last?.kind == AiChatMessage.Kind.STATUS && last.content == content) return
+                append(AiChatMessage(role = AiChatMessage.Role.ASSISTANT, content = content,
+                    kind = AiChatMessage.Kind.STATUS, statusName = status.optString("type"),
+                    statusStage = status.optString("type")))
+                return
+            }
+            "tool.start", "tool.result", "tool.unknown", "model.response", "prompt.context", "memory.recalled" -> Unit
+            else -> return
         }
-        val existing = activeToolMessageIds[key]
-        val index = messages.indexOfFirst { it.id == existing }
-        val message = AiChatMessage(id = existing ?: UUID.randomUUID().toString(),
-            role = AiChatMessage.Role.ASSISTANT, content = content, kind = AiChatMessage.Kind.STATUS,
-            statusName = title, statusStage = type, statusSuccess = type != "tool.unknown" &&
-                status.optJSONObject("result")?.optBoolean("isError", false) != true)
-        if (index >= 0) messages[index] = message else messages.add(message)
-        activeToolMessageIds[key] = message.id
-        publish()
+        val turnKey = activeTurnKey ?: return
+        val trace = turnTraces.getOrPut(turnKey) { TurnTrace() }
+        when (status.optString("type")) {
+            "tool.start" -> {
+                val key = status.optString("invocationId", status.optString("runId"))
+                trace.calls[key] = ToolCallRecord(
+                    title = if (status.has("toolId")) "${status.optString("moduleId")}/${status.getString("toolId")}" else "工具",
+                    args = compactJson(status.optJSONObject("arguments")?.toString().orEmpty())
+                )
+            }
+            "tool.result" -> {
+                val key = status.optString("invocationId", status.optString("runId"))
+                val result = status.optJSONObject("result") ?: org.json.JSONObject()
+                val record = trace.calls.getOrPut(key) {
+                    ToolCallRecord(
+                        title = if (status.has("toolId")) "${status.optString("moduleId")}/${status.getString("toolId")}" else "工具")
+                }
+                record.stage = "done"
+                record.success = !result.optBoolean("isError", false)
+                record.elapsedMs = result.optJSONObject("_meta")?.optJSONObject("legado")?.optLong("elapsedMs", -1L) ?: -1L
+                record.summary = summarizeResult(result)
+            }
+            "tool.unknown" -> {
+                val key = status.optString("invocationId", status.optString("runId"))
+                val record = trace.calls.getOrPut(key) { ToolCallRecord(title = "工具") }
+                record.stage = "unknown"
+                record.success = false
+                record.summary = "结果未知，未自动重放"
+            }
+            "model.response" -> {
+                trace.rounds += 1
+                trace.modelMs += status.optLong("elapsedMs", 0L)
+            }
+            "prompt.context" -> {
+                trace.promptBase = status.optJSONObject("value") ?: org.json.JSONObject()
+                trace.recalled = null
+                trace.recallSkipped = null
+            }
+            "memory.recalled" -> {
+                val value = status.optJSONObject("value") ?: org.json.JSONObject()
+                trace.recalled = value.optJSONArray("matches")
+                trace.recallSkipped = value.optString("skipped").ifBlank { null }
+            }
+        }
+        refreshTurnCards(turnKey, trace)
     }
+
+    private fun refreshTurnCards(turnKey: String, trace: TurnTrace) {
+        trace.promptBase?.let { base ->
+            upsertCard(id = "ctx:$turnKey", kind = AiChatMessage.Kind.CONTEXT,
+                content = renderPromptContext(base, trace))
+        }
+        if (trace.calls.isNotEmpty()) {
+            upsertCard(id = "tools:$turnKey", kind = AiChatMessage.Kind.TOOLS, content = renderToolsCard(trace))
+        }
+    }
+
+    private fun endTurn(turnKey: String, stopped: Boolean) {
+        if (activeTurnKey == turnKey) activeTurnKey = null
+        finishTurnCard(turnKey, stopped)
+    }
+
+    private fun finishTurnCard(turnKey: String?, stopped: Boolean) {
+        if (turnKey == null) return
+        val trace = turnTraces[turnKey] ?: return
+        if (!stopped) return
+        var changed = false
+        trace.calls.values.forEach { record ->
+            if (record.stage == "running") {
+                record.stage = "stopped"
+                record.success = false
+                record.summary = "任务已停止"
+                changed = true
+            }
+        }
+        if (changed) refreshTurnCards(turnKey, trace)
+    }
+
+    private fun upsertCard(id: String, kind: AiChatMessage.Kind, content: String) {
+        val index = messages.indexOfFirst { it.id == id }
+        val message = AiChatMessage(id = id, role = AiChatMessage.Role.ASSISTANT,
+            content = content, kind = kind)
+        if (index >= 0) {
+            messages[index] = message
+        } else {
+            // 卡片属于本轮追问，插到正在流式输出的气泡之前，不抢最终回答的位置。
+            val pending = activePendingAssistantMessageId?.let { pid ->
+                messages.indexOfFirst { it.id == pid }
+            } ?: -1
+            if (pending >= 0) messages.add(pending, message) else messages.add(message)
+        }
+        publish(saveHistory = false)
+    }
+
+    private fun renderToolsCard(trace: TurnTrace): String {
+        val done = trace.calls.values.count { it.stage == "done" }
+        val toolMs = trace.calls.values.filter { it.elapsedMs >= 0 }.sumOf { it.elapsedMs }
+        val header = "${trace.calls.size} 次工具调用"
+        val debug = "第${trace.rounds.coerceAtLeast(1)}轮 · ${done}步完成 · 模型${formatSeconds(trace.modelMs)} · 工具${formatSeconds(toolMs)}"
+        val detail = trace.calls.values.joinToString("\n") { record ->
+            val mark = when (record.stage) {
+                "done" -> if (record.success) "✓" else "✗"
+                "unknown" -> "?"
+                "stopped" -> "■"
+                else -> "…"
+            }
+            val args = record.args.ifBlank { "" }.let { if (it.isNotBlank()) " $it" else "" }
+            val elapsed = if (record.elapsedMs >= 0) " · ${formatSeconds(record.elapsedMs)}" else ""
+            val tail = record.summary.ifBlank { "" }.let { if (it.isNotBlank()) "\n  $it" else "" }
+            "$mark ${record.title}$args$elapsed$tail"
+        }
+        return "$header\n$debug\n$detail"
+    }
+
+    private fun renderPromptContext(base: org.json.JSONObject, trace: TurnTrace): String {
+        val skills = base.optJSONArray("skills")?.let { array ->
+            (0 until array.length()).mapNotNull { array.optString(it).takeIf { s -> s.isNotBlank() } }
+        }.orEmpty()
+        val memories = trace.recalled?.let { array ->
+            (0 until array.length()).mapNotNull { array.optJSONObject(it) }
+        }.orEmpty()
+        val reading = base.optJSONObject("reading")
+        val header = "上下文注入"
+        val memorySummary = trace.recallSkipped?.let { "记忆跳过（$it）" } ?: "记忆 ${memories.size} 条"
+        val summary = buildList {
+            add("系统提示词 ${base.optString("systemKey").ifBlank { "默认" }}（${base.optInt("systemChars", 0)}字）")
+            add("Skill ${skills.size} 个")
+            add(memorySummary)
+        }.joinToString(" · ")
+        val detail = buildList {
+            if (skills.isNotEmpty()) add("Skill：" + skills.joinToString("、"))
+            memories.forEach { add("记忆 ${it.optString("id")}（${it.optDouble("score", 0.0)}）") }
+            if (reading != null && reading.optBoolean("open", false)) {
+                add("阅读：${reading.optString("bookName")} · ${reading.optString("chapterTitle")}")
+            } else {
+                add("阅读：未打开阅读页")
+            }
+        }.joinToString("\n")
+        return "$header\n$summary\n$detail"
+    }
+
+    private fun summarizeResult(result: org.json.JSONObject): String {
+        if (result.optBoolean("isError", false)) {
+            val structured = result.optJSONObject("structuredContent")
+            val error = structured?.optString("error").orEmpty()
+                .ifBlank { result.optString("error").ifBlank { "调用失败" } }
+            return "失败：${singleLine(error).take(120)}"
+        }
+        val structured = result.optJSONObject("structuredContent")
+        if (structured != null) {
+            val keys = structured.keys().asSequence().toList()
+            return if (keys.isEmpty()) "成功" else "成功：${singleLine(keys.joinToString("、")).take(120)}"
+        }
+        return singleLine(result.optString("content").ifBlank { "成功" }).take(120)
+    }
+
+    private fun compactJson(raw: String): String =
+        singleLine(raw).take(80).trim().removePrefix("{").removeSuffix("}").trim()
+
+    private fun singleLine(text: String): String =
+        text.replace(Regex("\\s+"), " ").trim()
+
+    private fun formatSeconds(ms: Long): String =
+        if (ms < 0) "--" else "${ms / 1000}.${(ms % 1000) / 100}s"
 
     fun finishPendingAssistant() {
         val messageId = activePendingAssistantMessageId

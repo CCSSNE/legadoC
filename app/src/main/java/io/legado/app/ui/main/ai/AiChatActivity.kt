@@ -144,8 +144,6 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
         }
         binding.rvAiMessages.adapter = adapter
         binding.rvAiMessages.setEdgeEffectColor(primaryColor)
-        binding.btnScrollPrev.setOnClickListener { scrollToPreviousAssistantStart() }
-        binding.btnScrollNext.setOnClickListener { scrollToNextMessageBottom() }
         binding.root.setOnApplyWindowInsetsListenerCompat { _, windowInsets ->
             val imeInset = windowInsets.imeHeight
             val bottomInset = if (imeInset > 0) imeInset else windowInsets.navigationBarHeight
@@ -376,32 +374,6 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
     private fun hideThinkingPanel() {
         binding.thinkingPanel.isVisible = false
         binding.thinkingScroll.isVisible = false
-    }
-
-    private fun scrollToPreviousAssistantStart() {
-        val items = viewModel.messagesLiveData.value.orEmpty()
-        val layoutManager = binding.rvAiMessages.layoutManager as? LinearLayoutManager ?: return
-        val anchor = layoutManager.findFirstVisibleItemPosition().coerceAtLeast(0)
-        val target = (anchor - 1 downTo 0).firstOrNull {
-            items.getOrNull(it)?.role == AiChatMessage.Role.ASSISTANT
-        } ?: return
-        layoutManager.scrollToPositionWithOffset(target, 0)
-    }
-
-    private fun scrollToNextMessageBottom() {
-        val items = viewModel.messagesLiveData.value.orEmpty()
-        val layoutManager = binding.rvAiMessages.layoutManager as? LinearLayoutManager ?: return
-        val anchor = layoutManager.findLastVisibleItemPosition().coerceAtLeast(0)
-        val target = (anchor + 1 until items.size).firstOrNull() ?: return
-        binding.rvAiMessages.scrollToPosition(target)
-        binding.rvAiMessages.post {
-            val holder = binding.rvAiMessages.findViewHolderForAdapterPosition(target)
-            val bottom = holder?.itemView?.bottom ?: return@post
-            val delta = bottom - binding.rvAiMessages.height
-            if (delta > 0) {
-                binding.rvAiMessages.scrollBy(0, delta)
-            }
-        }
     }
 
     private fun tintSendButton() {

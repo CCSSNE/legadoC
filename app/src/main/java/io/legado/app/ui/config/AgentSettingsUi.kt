@@ -164,10 +164,13 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
         if (fragment.isAdded) showText(title, error.stackTraceToString())
     }
 
-    private fun menu(title: String, rows: List<String>, selected: suspend (Int) -> Any?, longPress: (suspend (Int) -> Any?)? = null) {
+    private fun menu(title: String, rows: List<String>, selected: suspend (Int) -> Any?, longPress: (suspend (Int) -> Any?)? = null,
+                     neutral: Pair<String, suspend () -> Any?>? = null, neutral2: Pair<String, suspend () -> Any?>? = null) {
         val dialog = context.alert(title) {
             if (rows.isEmpty()) setMessage("当前没有记录")
             else items(rows) { _, index -> work { selected(index) } }
+            if (neutral != null) neutralButton(neutral.first) { work { neutral.second() } }
+            if (neutral2 != null) neutralButton(neutral2.first) { work { neutral2.second() } }
             negativeButton("关闭")
         }
         if (longPress != null) dialog.listView?.setOnItemLongClickListener { _, _, index, _ ->
@@ -262,64 +265,109 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
         AgentStore.put(old.namespace, old.key, value, old.revision)
     }
 
-    private fun modules(): Job = work {
-        val state = io {
-            val internal = AgentCapabilities.moduleNames().keys.toList()
-            val external = AgentStore.dao.documents("mcp.clients")
-            val rows = internal.map { id ->
-                val settings = AgentConfig.moduleSettings(id)
-                val missing = when (id) {
-                    "web" -> if (settings.getString("apiKey").isBlank()) " · 缺少访问密钥" else ""
-                    "memory" -> if (settings.getString("providerId").isBlank() || settings.getString("model").isBlank()) " · 缺少嵌入供应商或模型" else ""
-                    else -> ""
-                }
-                "${mark(AgentConfig.moduleEnabled(id))} ${AgentCapabilities.moduleNames().getValue(id)} · 内置 · ${AgentCapabilities.localTools(id).size} 个工具$missing"
-            } + external.map { record ->
-                val value = JSONObject(record.json)
-                "${mark(value.getBoolean("enabled"))} ${value.getString("name")} · 外部 · ${AgentStore.get("mcp.status", record.key) ?: "未发现工具"}"
-            } + listOf("添加外部 MCP", "刷新状态")
-            Triple(internal, external, rows)
+    /**
+     * 常驻列表弹窗：开关/刷新只原位更新行，不重建弹窗、不闪动。
+     * 点选后自动按最新数据刷新；打开子弹窗的操作也会触发一次无害刷新。
+     */
+    private fun liveMenu(
+        title: String,
+        load: suspend () -> List<String>,
+        onTap: suspend (Int) -> Unit,
+        onLongPress: (suspend (Int) -> Unit)? = null
+    ): Job = work {
+        val rows = mutableListOf<String>()
+        val adapter = android.widget.ArrayAdapter(context, android.R.layout.simple_list_item_1, rows)
+        suspend fun refresh() {
+            val fresh = io { load() }
+            if (!fragment.isAdded) return
+            rows.clear()
+            rows.addAll(fresh)
+            adapter.notifyDataSetChanged()
         }
-        val (internal, external, rows) = state
-        menu("MCP 管理：短按开关，长按编辑", rows, { index ->
-            if (index == internal.size + external.size) {
-                editClient(null)
-            } else {
-                when {
-                    index < internal.size -> io {
-                        val id = internal[index]
-                        AgentConfig.setModuleEnabled(id, !AgentConfig.moduleEnabled(id))
-                    }
-                    index < internal.size + external.size -> io {
-                        val old = external[index - internal.size]
-                        val value = JSONObject(old.json)
-                        putDocument(old, value.put("enabled", !value.getBoolean("enabled")))
+        context.alert(title) {
+            customView {
+                android.widget.ListView(context).apply {
+                    this.adapter = adapter
+                    // 短按是纯数据写，放 IO；changed() 回主线程。
+                    // 长按打开子弹窗，直接走主线程。
+                    setOnItemClickListener { _, _, index, _ -> work { io { onTap(index) }; refresh() } }
+                    if (onLongPress != null) setOnItemLongClickListener { _, _, index, _ ->
+                        work { onLongPress(index); refresh() }
+                        true
                     }
                 }
-                changed()
-                modules()
             }
-        }, { index ->
-            when {
-                index < internal.size -> moduleActions(internal[index])
-                index < internal.size + external.size -> editClient(external[index - internal.size].key)
-                index == internal.size + external.size -> editClient(null)
-                else -> modules()
-            }
-        })
+            negativeButton("关闭")
+        }
+        refresh()
     }
 
-    private fun moduleActions(id: String): Unit = menu(AgentCapabilities.moduleNames().getValue(id),
-        listOf("模块配置", "内部工具开关", "实际工具定义"), { index ->
-            when (index) {
-                0 -> editModule(id)
-                1 -> {
+    private fun modules(): Job {
+        var internal = emptyList<String>()
+        var external = emptyList<AgentDocument>()
+        return liveMenu("MCP 管理：短按开关，长按编辑",
+            load = {
+                internal = AgentCapabilities.moduleNames().keys.toList()
+                external = AgentStore.dao.documents("mcp.clients")
+                internal.map { id ->
+                    val settings = AgentConfig.moduleSettings(id)
+                    val missing = when (id) {
+                        "web" -> if (settings.getString("apiKey").isBlank()) " · 缺少访问密钥" else ""
+                        "memory" -> if (settings.getString("providerId").isBlank() || settings.getString("model").isBlank()) " · 缺少嵌入供应商或模型" else ""
+                        else -> ""
+                    }
+                    "${mark(AgentConfig.moduleEnabled(id))} ${AgentCapabilities.moduleNames().getValue(id)} · 内置 · ${AgentCapabilities.localTools(id).size} 个工具$missing"
+                } + external.map { record ->
+                    val value = JSONObject(record.json)
+                    "${mark(value.getBoolean("enabled"))} ${value.getString("name")} · 外部 · ${AgentStore.get("mcp.status", record.key) ?: "未发现工具"}"
+                } + listOf("添加外部 MCP", "刷新状态")
+            },
+            onTap = { index ->
+                if (index == internal.size + external.size) {
+                    withContext(Dispatchers.Main) { editClient(null) }
+                } else {
+                    when {
+                        index < internal.size -> {
+                            val id = internal[index]
+                            AgentConfig.setModuleEnabled(id, !AgentConfig.moduleEnabled(id))
+                        }
+                        index < internal.size + external.size -> {
+                            val old = external[index - internal.size]
+                            val value = JSONObject(old.json)
+                            putDocument(old, value.put("enabled", !value.getBoolean("enabled")))
+                        }
+                    }
+                    withContext(Dispatchers.Main) { changed() }
+                }
+            },
+            onLongPress = { index ->
+                when {
+                    index < internal.size -> moduleActions(internal[index])
+                    index < internal.size + external.size -> editClient(external[index - internal.size].key)
+                    index == internal.size + external.size -> editClient(null)
+                }
+            })
+    }
+
+    private fun moduleActions(id: String): Unit {
+        // 有自带配置的模块才提供“模块配置”入口，其余只有开关与工具定义。
+        val rows = if (id == "memory" || id == "web") {
+            listOf("模块配置", "内部工具开关", "实际工具定义")
+        } else {
+            listOf("内部工具开关", "实际工具定义")
+        }
+        menu(AgentCapabilities.moduleNames().getValue(id), rows, { index ->
+            val action = rows[index]
+            when (action) {
+                "模块配置" -> editModule(id)
+                "内部工具开关" -> {
                     val tools = io { AgentCapabilities.localTools(id).map { it.toolId } }
                     toolSelection(id, tools)
                 }
-                2 -> showText("$id 工具定义", io { JSONArray(AgentCapabilities.localTools(id).map { it.mcpDefinition() }).toString(2) })
+                else -> showText("$id 工具定义", io { JSONArray(AgentCapabilities.localTools(id).map { it.mcpDefinition() }).toString(2) })
             }
         })
+    }
 
     private fun toolSelection(moduleId: String, toolIds: List<String>): Job = work {
         val state = io {
@@ -389,31 +437,33 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
         .put("allowedHosts", JSONArray(listOf("127.0.0.1", "localhost")))
         .put("allowedOrigins", JSONArray()).put("pageSize", 64)
 
-    private fun servers(): Job = work {
-        val state = io {
-            val ids = AgentCapabilities.moduleNames().keys.toList()
-            ids to ids.map { id ->
-                "${mark(serverConfig(id).getBoolean("enabled"))} ${AgentCapabilities.moduleNames().getValue(id)} · ${AgentStore.get("mcp.server.status", id) ?: "未启动"}"
-            }
-        }
-        menu("本机 MCP Server：短按开关，长按配置", state.second + "刷新运行状态", { index ->
-            if (index < state.first.size) {
-                io {
-                    val id = state.first[index]
+    private fun servers(): Job {
+        var ids = emptyList<String>()
+        return liveMenu("本机 MCP Server：短按开关，长按配置",
+            load = {
+                ids = AgentCapabilities.moduleNames().keys.toList()
+                ids.map { id ->
+                    "${mark(serverConfig(id).getBoolean("enabled"))} ${AgentCapabilities.moduleNames().getValue(id)} · ${AgentStore.get("mcp.server.status", id) ?: "未启动"}"
+                } + "刷新运行状态"
+            },
+            onTap = { index ->
+                if (index < ids.size) {
+                    val id = ids[index]
                     val old = AgentStore.dao.document("mcp.servers", id)
                     val value = serverConfig(id)
                     value.put("enabled", !value.getBoolean("enabled"))
                     AgentMcpServer.validateConfig(id, value)
                     AgentStore.put("mcp.servers", id, value, old?.revision ?: 0)
+                    AgentMcpService.refresh()
+                    withContext(Dispatchers.Main) { changed() }
+                } else {
+                    // 重启监听服务，按 DB 开关重建监听；进程被杀后开关仍开但监听已死时用它恢复。
+                    AgentMcpService.refresh()
                 }
-                AgentMcpService.refresh()
-                changed()
-            } else {
-                // 重启监听服务，按 DB 开关重建监听；进程被杀后开关仍开但监听已死时用它恢复。
-                AgentMcpService.refresh()
-            }
-            servers()
-        }, { index -> if (index < state.first.size) serverActions(state.first[index]) else servers() })
+            },
+            onLongPress = { index ->
+                if (index < ids.size) serverActions(ids[index])
+            })
     }
 
     private fun serverActions(id: String): Unit = menu("$id 对外服务", listOf("监听与认证配置", "复制客户端 JSON", "运行地址与错误", "应用配置 / 重试启动"), { index ->
@@ -445,8 +495,9 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
         }
     })
 
-    private fun toolSettings() {
-        val ids = AgentCapabilities.moduleNames().keys.toList()
+    private fun toolSettings(): Unit {
+        // 只有自带配置的模块才有设置项：联网、记忆；复用领域能力的模块没有可配项，不列。
+        val ids = listOf("web", "memory")
         menu("工具设置", ids.map { AgentCapabilities.moduleNames().getValue(it) } + "聊天交互", { index ->
             if (index < ids.size) editModule(ids[index])
             else {
@@ -471,7 +522,7 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
                 }
             })
         } else if (id == "web") moduleEditor(id)
-        else showText("${AgentCapabilities.moduleNames().getValue(id)} 配置", "复用应用中的领域配置。内部工具选择在 MCP 管理中维护。")
+        else error("该模块没有可配置项：$id")
     }
 
     private fun moduleEditor(id: String): Job = work {
@@ -522,14 +573,15 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
         menu("Agent 模式：短按选择，长按管理", records.map {
             val value = JSONObject(it.json)
             "${mark(it.key == state.second)} ${value.getString("name")} · ${if (value.getBoolean("enabled")) "启用" else "关闭"} · ${it.key}"
-        } + listOf("导入完整插件 ZIP", "运行诊断", "随包默认配置"), { index ->
+        } + listOf("导入完整插件 ZIP", "运行诊断", "导出运行诊断", "随包默认配置"), { index ->
             when (index) {
                 records.size -> importFile(arrayOf("application/zip", "application/octet-stream")) { bytes ->
                     val id = io { AgentPlugins.install(AgentPlugins.readZip(bytes.inputStream())) }
                     pluginActions(id)
                 }
                 records.size + 1 -> diagnostics()
-                records.size + 2 -> showText("随包默认配置", io { AgentConfig.defaults().toString(2) })
+                records.size + 2 -> exportFile("agent-runs.json", io { exportAllRuns() })
+                records.size + 3 -> showText("随包默认配置", io { AgentConfig.defaults().toString(2) })
                 else -> { io { AgentConfig.mode = records[index].key }; changed(); modes() }
             }
         }, { index -> if (index < records.size) pluginActions(records[index].key) })
@@ -793,6 +845,24 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
                 6 -> { io { activeControl(id).cancel() }; runActions(id) }
                 7 -> runActions(id)
             }
+        },
+        neutral = "复制" to suspend {
+            val text = io { runEvents(id).toString(2) }
+            context.sendToClip(text)
+            showText("已复制运行 $id", text)
+        },
+        neutral2 = "清除" to suspend {
+            confirm("删除这条运行记录（含事件与本轮消息）？") {
+                io {
+                    AgentStore.database.runInTransaction {
+                        val target = AgentStore.dao.run(id) ?: error("运行记录不存在：$id")
+                        AgentStore.dao.deleteEvents(id)
+                        AgentStore.dao.deleteRunMessages(target.sessionId, id)
+                        AgentStore.dao.deleteRun(id)
+                    }
+                }
+                diagnostics()
+            }
         })
     }
 
@@ -801,6 +871,16 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
     private fun runEvents(id: String): JSONArray = JSONArray(AgentStore.dao.events(id).map {
         JSONObject().put("sequence", it.sequence).put("createdAt", it.createdAt).put("type", it.type).put("value", JSONObject(it.json))
     })
+
+    private fun exportAllRuns(): ByteArray = JSONArray(AgentStore.dao.runs().map { run ->
+        JSONObject().put("id", run.id).put("sessionId", run.sessionId).put("turnId", run.turnId)
+            .put("pluginId", run.pluginId).put("revision", run.revision).put("state", run.state)
+            .put("startedAt", run.startedAt).put("updatedAt", run.updatedAt).put("error", run.error ?: JSONObject.NULL)
+            .put("input", JSONObject(run.input))
+            .put("events", JSONArray(AgentStore.dao.events(run.id).map {
+                JSONObject().put("sequence", it.sequence).put("createdAt", it.createdAt).put("type", it.type).put("value", JSONObject(it.json))
+            }))
+    }).toString(2).toByteArray(Charsets.UTF_8)
 
     private fun mark(enabled: Boolean): String = if (enabled) "●" else "○"
 }

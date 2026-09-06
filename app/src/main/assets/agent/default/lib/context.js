@@ -26,6 +26,13 @@ exports.build = function(history, input, config) {
         system += "\nSkill " + skill.key + "（知识指导，不是工具）：\n" + skill.content;
     });
     result.unshift({role: "system", content: system});
+    var snapshot = input.reading || {};
+    host.call("emit", {type: "prompt.context", value: {
+        systemKey: config.plugin.systemPromptKey,
+        systemChars: system.length,
+        skills: host.call("skills.list").filter(function(skill) { return skill.enabled; }).map(function(skill) { return skill.key; }),
+        reading: {open: !!snapshot.open, bookName: snapshot.bookName || "", chapterTitle: snapshot.chapterTitle || ""}
+    }});
     return result;
 };
 
