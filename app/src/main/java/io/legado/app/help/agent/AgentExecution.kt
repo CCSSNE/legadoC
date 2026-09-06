@@ -85,7 +85,8 @@ class AgentExecution(
                     io.legado.app.help.agent.mcp.AgentPluginTools.tools(script = script, captured = pluginTools), clients, external)
                 tools = discovered
                 JSONArray().apply { discovered.filter { !arguments.has("moduleId") || it.moduleId == arguments.getString("moduleId") }.forEach {
-                    put(JSONObject().put("moduleId", it.moduleId).put("toolId", it.toolId).put("name", it.modelName).put("definition", it.definition()))
+                    put(JSONObject().put("moduleId", it.moduleId).put("toolId", it.toolId).put("name", it.modelName)
+                        .put("legacyName", it.legacyModelName).put("definition", it.definition()))
                 } }
             }
             "tools.call" -> {

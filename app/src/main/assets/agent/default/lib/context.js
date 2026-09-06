@@ -2,7 +2,7 @@
 
 var model = require("lib/model.js");
 
-exports.build = function(history, input, config) {
+exports.build = function(history, input, config, toolNames) {
     var result = [];
     var pending = Object.create(null);
     function closeUnknown() {
@@ -17,6 +17,14 @@ exports.build = function(history, input, config) {
         if (message.role !== "tool") closeUnknown();
         if (message.role === "tool") delete pending[message.tool_call_id];
         (message.tool_calls || []).forEach(function(call) { pending[call.id] = true; });
+        // 工具模型名升级后，历史里记录的旧哈希名改写为当前名，避免模型模仿历史旧名调用未加载工具。
+        if (toolNames && (message.tool_calls || []).length) {
+            message = JSON.parse(JSON.stringify(message));
+            message.tool_calls.forEach(function(call) {
+                var current = toolNames[call.function && call.function.name];
+                if (current) call.function.name = current;
+            });
+        }
         result.push(message);
     });
     closeUnknown();
@@ -37,6 +45,40 @@ exports.build = function(history, input, config) {
         reading: {open: !!snapshot.open, bookName: snapshot.bookName || "", chapterTitle: snapshot.chapterTitle || ""}
     }});
     return result;
+};
+
+// 历史硬保留预算：请求表面只保留最近 budgetTokens 的历史，按用户消息边界整轮裁剪，
+// 当前轮永不裁剪；裁剪只影响本次请求组装，messages 原始历史保持完整（可回放）。
+exports.retain = function(conversation, budgetTokens) {
+    if (!(budgetTokens > 0) || conversation.length < 2) return conversation;
+    var costs = [];
+    var total = 0;
+    for (var index = 1; index < conversation.length; index++) {
+        var cost = model.estimateTokens(JSON.stringify(conversation[index]));
+        costs.push(cost);
+        total += cost;
+    }
+    if (total <= budgetTokens) return conversation;
+    var suffix = 0;
+    var cut = -1;
+    for (var index = conversation.length - 1; index >= 1; index--) {
+        suffix += costs[index - 1];
+        if (conversation[index].role === "user" && suffix <= budgetTokens) { cut = index; break; }
+    }
+    if (cut < 0) {
+        // 连当前轮都超预算：只保留当前轮原样发出，由真实上下文上限直接暴露问题。
+        for (var index = conversation.length - 1; index >= 1; index--) {
+            if (conversation[index].role === "user") { cut = index; break; }
+        }
+    }
+    if (cut <= 1) return conversation;
+    var dropped = 0;
+    for (var index = 1; index < cut; index++) dropped += costs[index - 1];
+    host.call("log", {type: "context.retain", value: {
+        budgetTokens: budgetTokens, estimatedTokensBefore: total, estimatedTokensAfter: total - dropped,
+        messagesBefore: conversation.length - 1, messagesAfter: conversation.length - cut, droppedMessages: cut - 1
+    }});
+    return [conversation[0]].concat(conversation.slice(cut));
 };
 
 exports.compress = function(conversation, config, reference) {

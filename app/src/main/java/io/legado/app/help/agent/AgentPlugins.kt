@@ -252,7 +252,11 @@ object AgentPlugins {
         val prompts = promptKeys.associateWith(::promptSnapshot)
         val skills = skillKeys.associateWith(::skillSnapshot)
         val skillResources = skillKeys.associateWith(::skillResourcesSnapshot)
-        val settings = AgentStore.get("plugin.settings", id) ?: error("插件配置缺失：$id")
+        // 存量配置可能缺少新增键：manifest defaults 兜底，用户已保存的键优先，合并后再按 schema 校验。
+        val stored = AgentStore.get("plugin.settings", id) ?: error("插件配置缺失：$id")
+        val settings = manifest.optJSONObject("settings")?.optJSONObject("defaults")
+            ?.let { defaults -> JSONObject(defaults.toString()).apply { stored.keys().forEach { key -> put(key, stored.get(key)) } } }
+            ?: JSONObject(stored.json)
         manifest.optJSONObject("settings")?.getJSONObject("schema")?.let { io.legado.app.help.agent.mcp.AgentSchema.validate(settings, it, "$id.settings") }
         return AgentPluginSnapshot(id, selected, manifest, files, dependencies, prompts, skills, settings, skillResources)
     }

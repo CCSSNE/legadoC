@@ -7,8 +7,18 @@ exports.text = function(content) {
     throw new Error("模型 content 类型不受支持");
 };
 
+// 中日韩文字按 ~1 token/字、其余按 ~4 字符/token 估算；用于用量兜底与历史保留预算。
+exports.estimateTokens = function(text) {
+    var value = (text || "").toString();
+    var cjk = 0;
+    for (var i = 0; i < value.length; i++) {
+        if (value.charCodeAt(i) >= 0x2E80) cjk++;
+    }
+    return Math.ceil(cjk + (value.length - cjk) / 4);
+};
+
 function estimateTokens(text) {
-    return Math.ceil((text || "").length / 4);
+    return exports.estimateTokens(text);
 }
 
 // 用量事件只做观测：emit 失败不得影响本次模型调用本身。

@@ -16,7 +16,8 @@
         "memoryPromptKey": {"type": "string"},
         "compressionPromptKey": {"type": "string"},
         "contextCharacters": {"type": "integer", "minimum": 1},
-        "compressionEnabled": {"type": "boolean"}
+        "compressionEnabled": {"type": "boolean"},
+        "historyRetentionTokens": {"type": "integer", "minimum": 1}
       },
       "required": ["systemPromptKey", "memoryPromptKey", "compressionPromptKey", "contextCharacters", "compressionEnabled"],
       "additionalProperties": false
@@ -26,7 +27,8 @@
       "memoryPromptKey": "reader.memory",
       "compressionPromptKey": "reader.compress",
       "contextCharacters": 120000,
-      "compressionEnabled": true
+      "compressionEnabled": true,
+      "historyRetentionTokens": 20000
     }
   }
 }

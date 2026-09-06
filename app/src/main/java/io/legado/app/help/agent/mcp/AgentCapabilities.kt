@@ -24,12 +24,16 @@ data class AgentTool(
     val descriptor: JSONObject? = null,
     val execute: suspend (JSONObject, AgentControl) -> JSONObject
 ) {
-    val modelName: String get() = "t_" + MessageDigest.getInstance("SHA-256")
-        .digest("$moduleId\u0000$toolId".toByteArray()).joinToString("") { "%02x".format(it) }.take(60)
+    private val digest: String = MessageDigest.getInstance("SHA-256")
+        .digest("$moduleId\u0000$toolId".toByteArray()).joinToString("") { "%02x".format(it) }
+
+    // 历史会话里的 tool_calls 记录的是旧哈希名；主循环用 legacyModelName 把旧名改写成当前名。
+    val legacyModelName: String get() = "t_" + digest.take(60)
+    val modelName: String get() = if (AgentCapabilities.names.containsKey(moduleId)) toolId else "t_" + digest.take(16)
     fun mcpDefinition() = (descriptor?.let { JSONObject(it.toString()) } ?: JSONObject())
         .put("name", toolId).put("description", description).put("inputSchema", JSONObject(schema.toString()))
     fun definition() = JSONObject().put("type", "function").put("function", JSONObject()
-        .put("name", modelName).put("description", "[$moduleId/$toolId] $description").put("parameters", schema))
+        .put("name", modelName).put("description", description).put("parameters", schema))
 }
 
 object AgentCapabilities {
