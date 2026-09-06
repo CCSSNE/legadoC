@@ -58,7 +58,9 @@ import io.legado.app.utils.setLayout
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
@@ -817,6 +819,10 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
                 }
             }
             generating = false
+            //视图已销毁时直接退出：不吞取消异常冒泡，也不触 binding（getView 为空会崩）
+            result.exceptionOrNull()?.let { if (it is CancellationException) throw it }
+            if (!isAdded || view == null) return@launch
+            ensureActive()
             binding.rotateLoading.inVisible()
             binding.tvAction.setText(R.string.ai_creation_generate_prompt)
             result.onSuccess { prompt ->
@@ -850,6 +856,9 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
                     AiCreationHelper.buildLlmInput(session, material)
                 }
             }
+            result.exceptionOrNull()?.let { if (it is CancellationException) throw it }
+            if (!isAdded || view == null) return@launch
+            ensureActive()
             result.onSuccess { text ->
                 if (currentPage == 4 && session.manualLlmInput.isBlank()) {
                     suppressTextWatcher = true
@@ -1071,6 +1080,9 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
                     session.llmOutput
                 )
             }
+            result.exceptionOrNull()?.let { if (it is CancellationException) throw it }
+            if (!isAdded || view == null) return@launch
+            ensureActive()
             result.onSuccess {
                 showPage(3)
             }.onFailure { throwable ->
@@ -1097,6 +1109,9 @@ class AiCreationDialog : BaseDialogFragment(R.layout.dialog_ai_creation),
                     session.llmOutput
                 )
             }
+            result.exceptionOrNull()?.let { if (it is CancellationException) throw it }
+            if (!isAdded || view == null) return@launch
+            ensureActive()
             result.onSuccess {
                 showPage(3)
             }.onFailure { throwable ->
