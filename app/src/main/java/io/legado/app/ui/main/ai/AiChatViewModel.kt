@@ -72,7 +72,8 @@ class AiChatViewModel : ViewModel() {
         userContent: String,
         thinkingText: String,
         cancelledText: String,
-        failureMessage: (String) -> String
+        failureMessage: (String) -> String,
+        readingContext: org.json.JSONObject? = null
     ) {
         if (isRequesting || activeJob?.isActive == true) return
         setRequesting(true)
@@ -98,6 +99,8 @@ class AiChatViewModel : ViewModel() {
                 io.legado.app.help.agent.AgentRuntime.chat(
                     sessionId = "chat:$requestSessionId",
                     assistantMessageId = pendingMessage.id,
+                    readingContext = readingContext
+                        ?: io.legado.app.help.agent.mcp.AgentReading.current(),
                     messages = requestMessages,
                     onPartial = { partial ->
                         activePendingContent = partial
@@ -413,6 +416,31 @@ class AiChatViewModel : ViewModel() {
 
     fun historySessions(): List<AiChatSession> {
         return AppConfig.aiChatSessionList.sortedByDescending { it.updatedAt }
+    }
+
+    /** 供阅读页悬浮窗等外部同会话视图在前台恢复时与磁盘对齐。请求进行中不碰内存，避免打断流式。 */
+    fun syncFromStore() {
+        if (activeJob?.isActive == true) return
+        val stored = AppConfig.aiCurrentChatSessionId
+        if (stored != null && stored != currentSessionId) {
+            loadSession(stored)
+            return
+        }
+        val session = AppConfig.aiChatSessionList.firstOrNull { it.id == currentSessionId }
+        if (session != null) {
+            messages.clear()
+            messages.addAll(session.messages.map { it.copy(pending = false) })
+            setRequesting(false)
+            publish(saveHistory = false)
+        } else if (stored == null && messages.isNotEmpty()
+            && AppConfig.aiChatSessionList.none { it.id == currentSessionId }) {
+            // 当前内存会话在别处被删：回到空新会话，保持指针合法悬空。
+            currentSessionId = java.util.UUID.randomUUID().toString()
+            AppConfig.aiCurrentChatSessionId = currentSessionId
+            messages.clear()
+            setRequesting(false)
+            publish(saveHistory = false)
+        }
     }
 
     fun loadSession(sessionId: String) {

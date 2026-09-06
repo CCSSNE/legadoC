@@ -35,7 +35,6 @@ import io.legado.app.utils.toastOnUi
 import io.legado.app.ui.main.ai.AiChatSession
 import io.legado.app.ui.main.ai.AiModelConfig
 import io.legado.app.ui.main.ai.AiProviderConfig
-import io.legado.app.ui.book.read.ReadAiBookHistory
 import splitties.init.appCtx
 import java.math.BigDecimal
 import java.net.InetAddress
@@ -560,10 +559,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var aiChatSessionList: List<AiChatSession>
         get() = io.legado.app.help.agent.AgentHistory.chat
         set(value) { io.legado.app.help.agent.AgentHistory.chat = value }
-
-    var aiReadHistoryList: List<ReadAiBookHistory>
-        get() = io.legado.app.help.agent.AgentHistory.reading
-        set(value) { io.legado.app.help.agent.AgentHistory.reading = value }
 
     var aiCurrentChatSessionId: String?
         get() = io.legado.app.help.agent.AgentHistory.currentChat

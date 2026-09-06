@@ -1,6 +1,5 @@
 package io.legado.app.help.agent
 
-import io.legado.app.ui.book.read.ReadAiBookHistory
 import io.legado.app.ui.main.ai.AiChatSession
 import io.legado.app.utils.GSON
 import org.json.JSONArray
@@ -10,9 +9,6 @@ object AgentHistory {
     var chat: List<AiChatSession>
         get() { AgentMigration.ensure(); return AgentStore.dao.documents("history.chat").map { GSON.fromJson(it.json, AiChatSession::class.java) }.sortedByDescending { it.updatedAt } }
         set(value) = replace("history.chat", value.associate { it.id to JSONObject(GSON.toJson(it)) }, value.size)
-    var reading: List<ReadAiBookHistory>
-        get() { AgentMigration.ensure(); return AgentStore.dao.documents("history.read").map { GSON.fromJson(it.json, ReadAiBookHistory::class.java) }.sortedByDescending { it.updatedAt } }
-        set(value) = replace("history.read", value.associate { it.bookUrl to JSONObject(GSON.toJson(it)) }, value.size)
     var currentChat: String?
         get() { AgentMigration.ensure(); return AgentStore.get("config", "chat.current")?.getString("id") }
         set(value) {
@@ -64,15 +60,8 @@ object AgentHistory {
                 }
                 put(id, messages)
             }
-            if (namespace == "history.chat") addSession("chat:$key", value.getJSONArray("messages"))
-            else {
-                val sessions = value.getJSONArray("sessions")
-                for (index in 0 until sessions.length()) {
-                    val session = sessions.getJSONObject(index)
-                    require(session.getString("id").isNotBlank()) { "阅读会话 ID 为空" }
-                    addSession("read:$key:${session.getString("id")}", session.getJSONArray("messages"))
-                }
-            }
+            require(namespace == "history.chat") { "未知历史命名空间：$namespace" }
+            addSession("chat:$key", value.getJSONArray("messages"))
         }
     }
 

@@ -1,64 +1,50 @@
 package io.legado.app.ui.book.read
 
 import android.content.Context
+import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
-import android.os.Build
 import android.util.AttributeSet
-import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.MotionEvent
-import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
-import android.widget.FrameLayout
 import android.widget.LinearLayout
-import android.widget.TextView
-import androidx.appcompat.app.AlertDialog
-import androidx.core.content.ContextCompat
 import androidx.core.view.doOnLayout
-import androidx.core.view.isGone
-import androidx.core.view.isVisible
+import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStoreOwner
 import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
-import io.legado.app.databinding.ItemReadAiMessageBinding
 import io.legado.app.databinding.ViewReadAiFloatingPanelBinding
-import io.legado.app.help.ai.AiChatService
 import io.legado.app.help.config.AppConfig
+import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.accentColor
-import io.legado.app.lib.theme.applyUiLabelStyle
-import io.legado.app.lib.theme.applyUiSectionTitleStyle
-import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.lib.theme.uiTypeface
-import io.legado.app.ui.main.ai.AiChatMessage
-import io.legado.app.ui.widget.menu.SurfacePopupMenu
+import io.legado.app.ui.main.ai.AiChatActivity
+import io.legado.app.ui.main.ai.AiChatAdapter
+import io.legado.app.ui.main.ai.AiChatSession
+import io.legado.app.ui.main.ai.AiChatViewModel
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.dpToPx
-import io.legado.app.utils.sendToClip
-import io.legado.app.utils.setMarkdown
 import io.legado.app.utils.toastOnUi
-import io.noties.markwon.Markwon
-import io.noties.markwon.ext.tables.TablePlugin
-import io.noties.markwon.html.HtmlPlugin
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers.IO
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.max
 import kotlin.math.min
 
+/**
+ * 阅读页问 AI 悬浮窗：与应用外大界面（[AiChatActivity]）完全同一套会话。
+ * 只是在书里选一段正文点问 AI 时，把该段正文作为提示词注入进当前会话；
+ * 不做任何按书隔离，历史、新对话、模型、工具卡等全部与大界面一致。
+ * 本体只是悬浮外壳（拖动、关闭、全屏放大），消息渲染与请求都走 [AiChatViewModel]。
+ */
 class ReadAiFloatingPanel @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null
@@ -82,21 +68,11 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
     )
 
     private val binding = ViewReadAiFloatingPanelBinding.inflate(LayoutInflater.from(context), this, true)
-    private val markwon: Markwon by lazy {
-        Markwon.builder(context)
-            .usePlugin(HtmlPlugin.create())
-            .usePlugin(TablePlugin.create(context))
-            .build()
-    }
+    private val messageAdapter = AiChatAdapter(context)
     private val timeFormat = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
-    private val messageAdapter = MessageAdapter()
     private var lifecycleOwner: LifecycleOwner? = null
+    private var viewModel: AiChatViewModel? = null
     private var readContext: ReadContext? = null
-    private var currentSessionId: String = ""
-    private var answerJob: Job? = null
-    private var showingHistory = false
-    private var streamingAssistantContent: String? = null
-    private var streamingAssistantMessageId: String? = null
     private var downRawX = 0f
     private var downRawY = 0f
     private var startX = 0f
@@ -111,10 +87,12 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         binding.answerContainer.adapter = messageAdapter
         binding.btnClose.setOnClickListener { close() }
         binding.btnNewChat.setOnClickListener { startNewChat() }
-        binding.btnHistory.setOnClickListener { toggleHistory() }
+        binding.btnHistory.setOnClickListener { openHistory() }
+        binding.btnFullscreen.setOnClickListener { openFullscreen() }
         binding.btnSend.setOnClickListener {
-            if (answerJob?.isActive == true) {
-                stopAnswer()
+            val vm = viewModel ?: return@setOnClickListener
+            if (vm.isRequesting) {
+                vm.stopRequest(context.getString(R.string.ai_chat_cancelled))
             } else {
                 askFromInput()
             }
@@ -133,13 +111,54 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
 
     fun attach(lifecycleOwner: LifecycleOwner) {
         this.lifecycleOwner = lifecycleOwner
+        val storeOwner = (lifecycleOwner as? ViewModelStoreOwner)
+            ?: (context as? ViewModelStoreOwner)
+            ?: return
+        val vm = ViewModelProvider(storeOwner)[AiChatViewModel::class.java]
+        viewModel = vm
+        vm.messagesLiveData.observe(lifecycleOwner) { messages ->
+            if (messages.isEmpty()) {
+                messageAdapter.submitList(
+                    listOf(
+                        io.legado.app.ui.main.ai.AiChatMessage(
+                            role = io.legado.app.ui.main.ai.AiChatMessage.Role.ASSISTANT,
+                            content = resources.getString(R.string.ai_chat_empty)
+                        )
+                    )
+                )
+            } else {
+                messageAdapter.submitList(messages)
+            }
+            if (messages.isNotEmpty()) {
+                binding.answerContainer.post {
+                    binding.answerContainer.scrollToPosition(messages.lastIndex)
+                }
+            }
+        }
+        vm.requestingLiveData.observe(lifecycleOwner) {
+            updateSendButtonState()
+        }
+        // 从全屏大界面返回时刷新同一套会话，避免悬浮窗停留在旧快照。
+        lifecycleOwner.lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onResume(owner: LifecycleOwner) {
+                if (isVisible) viewModel?.syncFromStore()
+            }
+        })
+        updateSendButtonState()
+    }
+
+    override fun onDetachedFromWindow() {
+        // View 脱离窗口时移除生命周期监听由 LifecycleOwner 自动管理，此处仅断开引用。
+        lifecycleOwner = null
+        super.onDetachedFromWindow()
     }
 
     fun open(readContext: ReadContext, anchor: Anchor? = null) {
         this.readContext = readContext
-        currentSessionId = ensureSession(readContext, createNew = false).id
-        showingHistory = false
-        showMessages()
+        if (viewModel == null) {
+            lifecycleOwner?.let { attach(it) }
+        }
+        viewModel?.syncFromStore()
         binding.tvContext.text = buildContextLabel(readContext)
         binding.etQuestion.setText("")
         animate().cancel()
@@ -163,6 +182,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
                     .start()
             }
         }
+        // 选中正文只作为本次提示词注入，不建隔离会话。
         if (readContext.selectedText.isNotBlank()) {
             ask(readContext.selectedText)
         }
@@ -173,398 +193,133 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         visibility = GONE
     }
 
-    private fun stopAnswer() {
-        val context = readContext
-        answerJob?.cancel()
-        streamingAssistantContent = null
-        streamingAssistantMessageId = null
-        if (context != null) {
-            val pending = currentBookHistory(context).sessions
-                .firstOrNull { it.id == currentSessionId }
-                ?.messages
-                ?.lastOrNull()
-            if (pending?.role == ReadAiMessage.Role.ASSISTANT &&
-                pending.content == resources.getString(R.string.ai_chat_thinking)
-            ) {
-                replaceMessage(context, pending.id, resources.getString(R.string.ai_chat_cancelled))
-            }
+    private fun startNewChat() {
+        val vm = viewModel ?: return
+        if (vm.isRequesting) {
+            context.toastOnUi(R.string.ai_chat_wait_current)
+            return
         }
-        updateSendButtonState()
-        if (!showingHistory) renderCurrentSession()
+        vm.startNewSession()
     }
 
-    private fun startNewChat() {
-        val context = readContext ?: return
-        answerJob?.cancel()
-        streamingAssistantContent = null
-        streamingAssistantMessageId = null
-        currentSessionId = ensureSession(context, createNew = true).id
-        showingHistory = false
-        showMessages()
-        binding.tvContext.text = buildContextLabel(context)
+    private fun openFullscreen() {
+        context.startActivity(Intent(context, AiChatActivity::class.java))
     }
 
     private fun askFromInput() {
         val question = binding.etQuestion.text?.toString().orEmpty().trim()
         if (question.isBlank()) return
         binding.etQuestion.setText("")
-        showingHistory = false
-        showMessages()
         ask(question)
     }
 
     private fun ask(question: String) {
-        val context = readContext ?: return
-        answerJob?.cancel()
-        val requestSessionId = currentSessionId
-        val userMessageId = appendMessage(context, ReadAiMessage.Role.USER, question)
-        val pendingAssistantId = appendMessage(
-            context,
-            ReadAiMessage.Role.ASSISTANT,
-            resources.getString(R.string.ai_chat_thinking)
-        )
-        val requestMessages = listOf(AiChatMessage(id = userMessageId, role = AiChatMessage.Role.USER, content = question))
-        val readingSnapshot = org.json.JSONObject(context.snapshot.toString()).put("bookUrl", context.bookUrl)
-            .put("bookName", context.bookName).put("chapterIndex", context.chapterIndex)
-            .put("chapterTitle", context.chapterTitle).put("selectedText", context.selectedText)
-        streamingAssistantMessageId = pendingAssistantId
-        answerJob = requestScope.launch {
-            post { updateSendButtonState() }
-            val result = runCatching {
-                withContext(IO) {
-                    io.legado.app.help.agent.AgentRuntime.chat(
-                        sessionId = "read:${context.bookUrl}:$requestSessionId",
-                        assistantMessageId = pendingAssistantId,
-                        readingContext = readingSnapshot,
-                        messages = requestMessages,
-                        onPartial = { partial ->
-                            if (partial.isNotBlank()) {
-                                post {
-                                    streamingAssistantContent = partial
-                                    if (!showingHistory) renderCurrentSession()
-                                }
-                            }
-                        },
-                        onStatus = { event ->
-                            val type = event.optString("type")
-                            if (type in setOf("paused", "waiting_input", "tool.start", "tool.unknown")) post {
-                                binding.tvContext.text = when (type) {
-                                    "paused" -> "Agent 已暂停：在模式诊断中继续"
-                                    "waiting_input" -> "Agent 等待输入：${event.optString("prompt")}"
-                                    "tool.unknown" -> "工具结果未知，未自动重发"
-                                    else -> "${event.optString("moduleId")}/${event.optString("toolId")} 执行中"
-                                }
-                            }
-                        },
-                        includeStructuredBlocks = false
-                    )
-                }
-            }
-            post {
-                streamingAssistantContent = null
-                streamingAssistantMessageId = null
-                val content = result.fold(
-                    onSuccess = { it.ifBlank { resources.getString(R.string.ai_chat_cancelled) } },
-                    onFailure = { throwable ->
-                        if (throwable is CancellationException) {
-                            resources.getString(R.string.ai_chat_cancelled)
-                        } else {
-                            resources.getString(
-                                R.string.ai_request_failed,
-                                throwable.localizedMessage
-                                    ?: throwable.message
-                                    ?: resources.getString(R.string.ai_request_cancelled)
-                            )
-                        }
-                    }
-                )
-                replaceMessage(context, pendingAssistantId, content, requestSessionId)
-                answerJob = null
-                updateSendButtonState()
-                if (!showingHistory) renderCurrentSession()
-            }
+        val vm = viewModel ?: return
+        if (vm.isRequesting) return
+        if (AppConfig.aiCurrentProvider?.baseUrl.isNullOrBlank() || AppConfig.aiCurrentModelConfig == null) {
+            context.toastOnUi(R.string.ai_missing_config)
+            return
         }
+        if (!AppConfig.aiAssistantEnabled) {
+            context.toastOnUi(R.string.ai_not_enabled)
+            return
+        }
+        vm.startRequest(
+            userContent = question,
+            thinkingText = resources.getString(R.string.ai_chat_thinking),
+            cancelledText = resources.getString(R.string.ai_chat_cancelled),
+            failureMessage = { resources.getString(R.string.ai_request_failed, it) },
+            readingContext = buildReadingSnapshot(readContext, question)
+        )
         updateSendButtonState()
     }
 
-    private fun showMessages() {
-        binding.historyContainer.isGone = true
-        binding.answerContainer.isVisible = true
-        renderCurrentSession()
-    }
-
-    private fun renderCurrentSession() {
-        val context = readContext ?: return
-        val session = currentBookHistory(context).sessions.firstOrNull { it.id == currentSessionId }
-        val messages = session?.messages.orEmpty()
-        val displayMessages = streamingAssistantContent?.let { partial ->
-            messages.dropLast(1) + (messages.lastOrNull()?.copy(content = partial)
-                ?: ReadAiMessage(role = ReadAiMessage.Role.ASSISTANT, content = partial))
-        } ?: messages
-        if (displayMessages.isEmpty()) {
-            renderMessages(
-                listOf(
-                    ReadAiMessage(
-                        role = ReadAiMessage.Role.ASSISTANT,
-                        content = resources.getString(R.string.ai_chat_empty)
-                    )
-                ),
-                allowDelete = false
-            )
-        } else {
-            renderMessages(displayMessages, allowDelete = true)
+    /** 把当前书籍章节与选中文本显式快照进阅读上下文，选区消失后仍可追溯。 */
+    private fun buildReadingSnapshot(context: ReadContext?, question: String): org.json.JSONObject {
+        val base = try {
+            org.json.JSONObject(context?.snapshot?.toString() ?: "{}")
+        } catch (_: Exception) {
+            org.json.JSONObject()
         }
+        if (context == null) return base
+        base.put("open", true)
+        base.put("bookUrl", context.bookUrl)
+        base.put("bookName", context.bookName)
+        base.put("chapterIndex", context.chapterIndex)
+        base.put("chapterTitle", context.chapterTitle)
+        val selected = context.selectedText.ifBlank { question }
+        if (selected.isNotBlank()) base.put("selectedText", selected)
+        return base
     }
 
-    private fun renderMessages(messages: List<ReadAiMessage>, allowDelete: Boolean) {
-        messageAdapter.allowDelete = allowDelete
-        messageAdapter.streamingMessageId = streamingAssistantMessageId
-        messageAdapter.submit(messages)
-        binding.answerContainer.post {
-            if (messageAdapter.itemCount > 0) {
-                binding.answerContainer.scrollToPosition(messageAdapter.itemCount - 1)
-            }
-        }
-    }
-
-    private fun toggleHistory() {
-        showingHistory = !showingHistory
-        binding.historyContainer.isVisible = showingHistory
-        binding.answerContainer.isGone = showingHistory
-        if (showingHistory) {
-            renderHistory()
-        } else {
-            renderCurrentSession()
-        }
-    }
-
-    private fun renderHistory() {
-        val context = readContext ?: return
-        val sessions = currentBookHistory(context).sessions
-        binding.historyList.removeAllViews()
-        if (sessions.isEmpty()) {
-            binding.historyList.addView(makeHistoryEmptyView())
+    private fun openHistory() {
+        val vm = viewModel ?: return
+        if (vm.isRequesting) {
+            context.toastOnUi(R.string.ai_chat_wait_current)
             return
         }
-        sessions.forEach { session ->
-            binding.historyList.addView(makeHistoryItem(session))
-        }
-        binding.historyList.addView(makeClearAllView())
+        showHistoryDialog(vm)
     }
 
-    private fun makeHistoryEmptyView(): View {
-        return TextView(context).apply {
-            text = resources.getString(R.string.ai_read_history_empty)
-            applyUiLabelStyle(context)
-            setTextColor(context.secondaryTextColor)
-            setPadding(12.dpToPx(), 18.dpToPx(), 12.dpToPx(), 18.dpToPx())
-        }
-    }
-
-    private fun makeHistoryItem(session: ReadAiSession): View {
-        val row = LinearLayout(context).apply {
-            orientation = HORIZONTAL
-            background = resources.getDrawable(R.drawable.bg_read_ai_history_item, context.theme)
-            setPadding(12.dpToPx(), 10.dpToPx(), 8.dpToPx(), 10.dpToPx())
-            val lp = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
-            lp.setMargins(0, 0, 0, 8.dpToPx())
-            layoutParams = lp
-        }
-        val titleView = TextView(context).apply {
-            text = buildString {
-                append(session.title.ifBlank { resources.getString(R.string.ai_new_chat) })
-                if (session.chapterTitle.isNotBlank()) append("\n").append(session.chapterTitle)
-                append(" · ").append(timeFormat.format(Date(session.updatedAt)))
-            }
-            applyUiLabelStyle(context)
-            maxLines = 3
-            ellipsize = android.text.TextUtils.TruncateAt.END
-        }
-        row.addView(titleView, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
-        val deleteView = TextView(context).apply {
-            text = resources.getString(R.string.delete)
-            applyUiLabelStyle(context)
-            setTextColor(context.accentColor)
-            gravity = android.view.Gravity.CENTER
-            setPadding(10.dpToPx(), 0, 4.dpToPx(), 0)
-            setOnClickListener { deleteSession(session.id) }
-        }
-        row.addView(deleteView, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT))
-        row.setOnClickListener {
-            currentSessionId = session.id
-            setCurrentSession(readContext ?: return@setOnClickListener, session.id)
-            showingHistory = false
-            showMessages()
-        }
-        row.setOnLongClickListener {
-            deleteSession(session.id)
-            true
-        }
-        return row
-    }
-
-    private fun makeClearAllView(): View {
-        return TextView(context).apply {
-            text = resources.getString(R.string.ai_read_clear_history)
-            applyUiSectionTitleStyle(context)
-            setTextColor(context.accentColor)
-            gravity = android.view.Gravity.CENTER
-            setPadding(12.dpToPx(), 12.dpToPx(), 12.dpToPx(), 12.dpToPx())
-            setOnClickListener { confirmClearHistory() }
-        }
-    }
-
-    private fun ensureSession(context: ReadContext, createNew: Boolean): ReadAiSession {
-        val history = currentBookHistory(context)
-        if (!createNew) {
-            val current = history.sessions.firstOrNull { it.id == history.currentSessionId }
-                ?: history.sessions.firstOrNull()
-            if (current != null) return current
-        }
-        val session = ReadAiSession(
-            title = context.selectedText.lineSequence().firstOrNull()?.take(24).orEmpty()
-                .ifBlank { resources.getString(R.string.ai_new_chat) },
-            chapterTitle = context.chapterTitle,
-            chapterIndex = context.chapterIndex
-        )
-        saveBookHistory(
-            context,
-            history.copy(
-                updatedAt = System.currentTimeMillis(),
-                currentSessionId = session.id,
-                sessions = listOf(session) + history.sessions
-            )
-        )
-        return session
-    }
-
-    private fun appendMessage(context: ReadContext, role: ReadAiMessage.Role, content: String): String {
-        val message = ReadAiMessage(role = role, content = content)
-        updateCurrentSession(context) { session ->
-            val title = if (session.title.isBlank() && role == ReadAiMessage.Role.USER) {
-                content.lineSequence().firstOrNull().orEmpty().take(24)
-            } else {
-                session.title
-            }
-            session.copy(
-                title = title,
-                updatedAt = System.currentTimeMillis(),
-                messages = session.messages + message
-            )
-        }
-        if (!showingHistory) renderCurrentSession()
-        return message.id
-    }
-
-    private fun replaceMessage(
-        context: ReadContext,
-        messageId: String,
-        content: String,
-        sessionId: String = currentSessionId
-    ) {
-        updateSession(context, sessionId) { session ->
-            session.copy(
-                updatedAt = System.currentTimeMillis(),
-                messages = session.messages.map {
-                    if (it.id == messageId) it.copy(content = content) else it
-                }
-            )
-        }
-    }
-
-    private fun deleteMessage(context: ReadContext, messageId: String) {
-        updateSession(context, currentSessionId) { session ->
-            session.copy(
-                updatedAt = System.currentTimeMillis(),
-                messages = session.messages.filterNot { it.id == messageId }
-            )
-        }
-        renderCurrentSession()
-    }
-
-    private fun deleteSession(sessionId: String) {
-        val context = readContext ?: return
-        val history = currentBookHistory(context)
-        val sessions = history.sessions.filterNot { it.id == sessionId }
+    private fun showHistoryDialog(vm: AiChatViewModel) {
+        val sessions = vm.historySessions()
         if (sessions.isEmpty()) {
-            AppConfig.aiReadHistoryList = AppConfig.aiReadHistoryList.filterNot { it.bookUrl == context.bookUrl }
-            currentSessionId = ""
-        } else {
-            val nextId = if (currentSessionId == sessionId) sessions.first().id else currentSessionId
-            currentSessionId = nextId
-            saveBookHistory(
-                context,
-                history.copy(
-                    updatedAt = System.currentTimeMillis(),
-                    currentSessionId = nextId,
-                    sessions = sessions
-                )
-            )
+            context.toastOnUi(R.string.ai_history_empty)
+            return
         }
-        if (showingHistory) renderHistory() else renderCurrentSession()
-    }
-
-    private fun confirmClearHistory() {
-        val context = readContext ?: return
-        AlertDialog.Builder(this.context)
-            .setMessage(R.string.ai_read_clear_history_confirm)
-            .setNegativeButton(R.string.dialog_cancel, null)
-            .setPositiveButton(R.string.dialog_confirm) { _, _ ->
-                AppConfig.aiReadHistoryList =
-                    AppConfig.aiReadHistoryList.filterNot { it.bookUrl == context.bookUrl }
-                currentSessionId = ""
-                if (showingHistory) renderHistory() else renderCurrentSession()
+        val items = mutableListOf(context.getString(R.string.ai_history_clear_all))
+        items += sessions.map { session ->
+            "${session.title}\n${timeFormat.format(Date(session.updatedAt))}"
+        }
+        context.selector(
+            context.getString(R.string.ai_chat_history),
+            items
+        ) { _, _, index ->
+            if (index == 0) {
+                confirmClearAllHistory(vm)
+            } else {
+                showHistorySessionActions(vm, sessions[index - 1])
             }
-            .show()
-    }
-
-    private fun updateCurrentSession(context: ReadContext, mapper: (ReadAiSession) -> ReadAiSession) {
-        updateSession(context, currentSessionId, mapper)
-    }
-
-    private fun updateSession(
-        context: ReadContext,
-        sessionId: String,
-        mapper: (ReadAiSession) -> ReadAiSession
-    ) {
-        val history = currentBookHistory(context)
-        val session = history.sessions.firstOrNull { it.id == sessionId }
-            ?: ensureSession(context, createNew = false)
-        val mapped = mapper(session)
-        saveBookHistory(
-            context,
-            history.copy(
-                updatedAt = System.currentTimeMillis(),
-                currentSessionId = mapped.id,
-                sessions = listOf(mapped) + history.sessions.filterNot { it.id == mapped.id }
-            )
-        )
-    }
-
-    private fun setCurrentSession(context: ReadContext, sessionId: String) {
-        saveBookHistory(context, currentBookHistory(context).copy(currentSessionId = sessionId))
-    }
-
-    private fun currentBookHistory(context: ReadContext): ReadAiBookHistory {
-        return AppConfig.aiReadHistoryList.firstOrNull { it.bookUrl == context.bookUrl }
-            ?: ReadAiBookHistory(bookUrl = context.bookUrl, bookName = context.bookName)
-    }
-
-    private fun saveBookHistory(context: ReadContext, history: ReadAiBookHistory) {
-        val list = AppConfig.aiReadHistoryList.toMutableList()
-        val index = list.indexOfFirst { it.bookUrl == context.bookUrl }
-        val normalized = history.copy(
-            bookUrl = context.bookUrl,
-            bookName = context.bookName,
-            updatedAt = System.currentTimeMillis()
-        )
-        if (index >= 0) {
-            list[index] = normalized
-        } else {
-            list.add(0, normalized)
         }
-        AppConfig.aiReadHistoryList = list
-        currentSessionId = normalized.currentSessionId
+    }
+
+    private fun showHistorySessionActions(vm: AiChatViewModel, session: AiChatSession) {
+        context.selector(
+            session.title,
+            listOf(
+                context.getString(R.string.ai_history_open),
+                context.getString(R.string.ai_history_delete)
+            )
+        ) { _, _, index ->
+            when (index) {
+                0 -> vm.loadSession(session.id)
+                1 -> confirmDeleteHistorySession(vm, session)
+            }
+        }
+    }
+
+    private fun confirmDeleteHistorySession(vm: AiChatViewModel, session: AiChatSession) {
+        context.alert(
+            title = context.getString(R.string.ai_history_delete),
+            message = context.getString(R.string.ai_history_delete_confirm, session.title)
+        ) {
+            okButton {
+                vm.deleteSession(session.id)
+            }
+            cancelButton()
+        }
+    }
+
+    private fun confirmClearAllHistory(vm: AiChatViewModel) {
+        context.alert(
+            title = context.getString(R.string.ai_history_clear_all),
+            message = context.getString(R.string.ai_history_clear_all_confirm)
+        ) {
+            okButton {
+                vm.clearAllSessions()
+            }
+            cancelButton()
+        }
     }
 
     private fun handleDrag(event: MotionEvent): Boolean {
@@ -625,13 +380,14 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         binding.btnClose.imageTintList = ColorStateList.valueOf(context.secondaryTextColor)
         binding.btnHistory.imageTintList = ColorStateList.valueOf(context.secondaryTextColor)
         binding.btnNewChat.imageTintList = ColorStateList.valueOf(context.secondaryTextColor)
+        binding.btnFullscreen.imageTintList = ColorStateList.valueOf(context.secondaryTextColor)
         binding.inputContainer.backgroundTintList =
             ColorStateList.valueOf(ColorUtils.adjustAlpha(context.primaryTextColor, 0.06f))
         updateSendButtonState()
     }
 
     private fun updateSendButtonState() {
-        val requesting = answerJob?.isActive == true
+        val requesting = viewModel?.isRequesting == true
         binding.btnSend.contentDescription = resources.getString(
             if (requesting) R.string.ai_chat_stop else R.string.ai_chat_send
         )
@@ -645,136 +401,5 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
             append(context.bookName.ifBlank { resources.getString(R.string.book_name) })
             if (context.chapterTitle.isNotBlank()) append(" · ").append(context.chapterTitle)
         }
-    }
-
-    private fun createBubble(fillColor: Int, strokeColor: Int, isUser: Boolean): GradientDrawable {
-        val large = 18f.dpToPx()
-        val small = 7f.dpToPx()
-        return GradientDrawable().apply {
-            cornerRadii = if (isUser) {
-                floatArrayOf(
-                    large, large,
-                    large, large,
-                    small, small,
-                    large, large
-                )
-            } else {
-                floatArrayOf(
-                    large, large,
-                    large, large,
-                    large, large,
-                    small, small
-                )
-            }
-            setColor(fillColor)
-            setStroke(1.dpToPx(), strokeColor)
-        }
-    }
-
-    private fun showMessageActions(anchor: View, message: ReadAiMessage) {
-        SurfacePopupMenu(context, anchor).apply {
-            menu.add(0, actionCopyMessage, 0, R.string.copy_text)
-            if (message.id.isNotBlank()) {
-                menu.add(0, actionDeleteMessage, 1, R.string.delete)
-            }
-            setOnMenuItemClickListener { item ->
-                when (item.itemId) {
-                    actionCopyMessage -> {
-                        context.sendToClip(message.content)
-                        context.toastOnUi(R.string.copy_complete)
-                        true
-                    }
-                    actionDeleteMessage -> {
-                        deleteMessage(readContext ?: return@setOnMenuItemClickListener true, message.id)
-                        true
-                    }
-                    else -> false
-                }
-            }
-        }.show()
-    }
-
-    private inner class MessageAdapter : RecyclerView.Adapter<MessageAdapter.Holder>() {
-        private val messages = arrayListOf<ReadAiMessage>()
-        var allowDelete: Boolean = true
-        var streamingMessageId: String? = null
-
-        fun submit(items: List<ReadAiMessage>) {
-            messages.clear()
-            messages.addAll(items)
-            notifyDataSetChanged()
-        }
-
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
-            return Holder(
-                ItemReadAiMessageBinding.inflate(
-                    LayoutInflater.from(parent.context),
-                    parent,
-                    false
-                )
-            )
-        }
-
-        override fun onBindViewHolder(holder: Holder, position: Int) {
-            holder.bind(messages[position])
-        }
-
-        override fun getItemCount(): Int = messages.size
-
-        inner class Holder(private val itemBinding: ItemReadAiMessageBinding) :
-            RecyclerView.ViewHolder(itemBinding.root) {
-
-            fun bind(message: ReadAiMessage) = itemBinding.run {
-                val isUser = message.role == ReadAiMessage.Role.USER
-                val params = tvMessage.layoutParams as FrameLayout.LayoutParams
-                params.gravity = if (isUser) Gravity.END else Gravity.START
-                tvMessage.layoutParams = params
-                val backgroundColor = context.backgroundColor
-                val bubbleColor = if (isUser) {
-                    ColorUtils.blendColors(backgroundColor, context.accentColor, 0.18f)
-                } else if (ColorUtils.isColorLight(backgroundColor)) {
-                    ColorUtils.blendColors(
-                        backgroundColor,
-                        ContextCompat.getColor(context, R.color.background_card),
-                        0.68f
-                    )
-                } else {
-                    ColorUtils.blendColors(
-                        backgroundColor,
-                        ContextCompat.getColor(context, R.color.white),
-                        0.12f
-                    )
-                }
-                val strokeColor = if (isUser) {
-                    ColorUtils.adjustAlpha(context.accentColor, 0.18f)
-                } else {
-                    ColorUtils.adjustAlpha(context.secondaryTextColor, 0.08f)
-                }
-                tvMessage.background = createBubble(bubbleColor, strokeColor, isUser)
-                tvMessage.ellipsize = null
-                tvMessage.maxLines = Int.MAX_VALUE
-                tvMessage.setTextColor(context.primaryTextColor)
-                tvMessage.typeface = context.uiTypeface()
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    tvMessage.setTextClassifier(android.view.textclassifier.TextClassifier.NO_OP)
-                }
-                if (message.id == streamingMessageId) {
-                    tvMessage.text = message.content
-                } else {
-                    tvMessage.setMarkdown(markwon, markwon.toMarkdown(message.content), imgOnLongClickListener = {})
-                }
-                tvMessage.setOnLongClickListener {
-                    if (!allowDelete) return@setOnLongClickListener false
-                    showMessageActions(tvMessage, message)
-                    true
-                }
-            }
-        }
-    }
-
-    companion object {
-        private val requestScope = CoroutineScope(SupervisorJob() + IO)
-        private const val actionCopyMessage = 1
-        private const val actionDeleteMessage = 2
     }
 }

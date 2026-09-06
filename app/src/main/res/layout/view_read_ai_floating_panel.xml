@@ -51,6 +51,16 @@
             android:tint="@color/secondaryText" />
 
         <androidx.appcompat.widget.AppCompatImageButton
+            android:id="@+id/btn_fullscreen"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/full_screen"
+            android:padding="10dp"
+            android:src="@drawable/ic_fullscreen"
+            android:tint="@color/secondaryText" />
+
+        <androidx.appcompat.widget.AppCompatImageButton
             android:id="@+id/btn_close"
             android:layout_width="40dp"
             android:layout_height="40dp"
@@ -70,22 +80,6 @@
         android:maxLines="2"
         android:textColor="@color/secondaryText"
         android:textSize="12sp" />
-
-    <ScrollView
-        android:id="@+id/history_container"
-        android:layout_width="match_parent"
-        android:layout_height="220dp"
-        android:layout_marginTop="8dp"
-        android:fillViewport="false"
-        android:visibility="gone">
-
-        <LinearLayout
-            android:id="@+id/history_list"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical" />
-
-    </ScrollView>
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/answer_container"
