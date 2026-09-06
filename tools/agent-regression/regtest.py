@@ -168,11 +168,45 @@ def set_all_servers(want_on):
                 break
         if not changed:
             break
-    # 安装/杀进程后监听可能已死，统一刷新一次让 Service 按 DB 开关重建
-    tap_text("刷新运行状态", timeout=15)
-    time.sleep(4)
+    # 开关全部打开后，确认监听真起来；进程被杀后开关仍开但监听已死，
+    # 此时点一次"刷新运行状态"（会调 AgentMcpService.refresh 重建监听）。
+    for attempt in ("初检", "刷新后"):
+        if listeners_up():
+            break
+        tap_text("刷新运行状态", timeout=15)
+        time.sleep(6)
+    assert listeners_up(), "监听起不来，查 logcat AgentMcpService"
     adb("shell", "input", "keyevent", "4")
     time.sleep(1)
+
+
+def listeners_up():
+    """7 个端口全部能握手才算真起来。"""
+    try:
+        cfgs = server_configs()
+    except Exception:
+        return False
+    for mid in MODULES:
+        cfg = cfgs.get(mid)
+        if not cfg or not cfg.get("enabled"):
+            return False
+        port, key = cfg["port"], cfg["apiKey"]
+        forward(port)
+        try:
+            status, _, _ = mcp_post(port, {
+                "jsonrpc": "2.0", "id": "pre",
+                "method": "initialize",
+                "params": {"protocolVersion": "2025-11-25", "capabilities": {},
+                           "clientInfo": {"name": "regtest", "version": "1"}}},
+                {"Authorization": f"Bearer {key}",
+                 "MCP-Protocol-Version": "2025-11-25"})
+            if status != 200:
+                return False
+        except Exception:
+            return False
+        finally:
+            unforward(port)
+    return True
 
 
 def db(sql):

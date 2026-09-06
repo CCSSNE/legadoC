@@ -408,6 +408,9 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
                 }
                 AgentMcpService.refresh()
                 changed()
+            } else {
+                // 重启监听服务，按 DB 开关重建监听；进程被杀后开关仍开但监听已死时用它恢复。
+                AgentMcpService.refresh()
             }
             servers()
         }, { index -> if (index < state.first.size) serverActions(state.first[index]) else servers() })
