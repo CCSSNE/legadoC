@@ -36,6 +36,7 @@ import io.legado.app.utils.imeHeight
 import io.legado.app.utils.navigationBarHeight
 import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
 import io.legado.app.utils.setEdgeEffectColor
+import io.legado.app.utils.share
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showPopupMenu
 import io.legado.app.utils.toastOnUi
@@ -103,6 +104,9 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
                         PopupMenuAction(getString(R.string.ai_chat_history)) {
                             openHistoryFromMenu()
                         },
+                        PopupMenuAction(getString(R.string.ai_chat_export)) {
+                            exportChatFromMenu()
+                        },
                         PopupMenuAction(getString(R.string.ai_setting)) {
                             openAiSettings()
                         }
@@ -120,6 +124,17 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
             return
         }
         showHistoryDialog()
+    }
+
+    private fun exportChatFromMenu() {
+        if (viewModel.isRequesting) {
+            toastOnUi(R.string.ai_chat_wait_current)
+            return
+        }
+        viewModel.exportCurrentChat(
+            onResult = { file -> share(file, "application/json") },
+            onError = { toastOnUi(it) }
+        )
     }
 
     private fun startNewChatFromMenu() {

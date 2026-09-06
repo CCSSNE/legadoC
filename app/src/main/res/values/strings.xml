@@ -1109,6 +1109,7 @@
     <string name="ai_disable_mcp_server">停用服务器</string>
     <string name="ai_chat_empty">Start a new chat.</string>
     <string name="ai_chat_history">Chat history</string>
+    <string name="ai_chat_export">Export chat</string>
     <string name="ai_history_empty">No chat history yet</string>
     <string name="ai_new_chat">New chat</string>
     <string name="ai_history_open">Open chat</string>

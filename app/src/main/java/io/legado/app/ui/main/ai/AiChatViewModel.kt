@@ -2,8 +2,10 @@ package io.legado.app.ui.main.ai
 
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
+import io.legado.app.BuildConfig
 import io.legado.app.R
 import io.legado.app.constant.AppLog
+import io.legado.app.help.agent.AgentStore
 import io.legado.app.help.ai.AiChatService
 import io.legado.app.help.config.AppConfig
 import kotlinx.coroutines.CancellationException
@@ -13,6 +15,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import splitties.init.appCtx
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
 
 class AiChatViewModel : ViewModel() {
@@ -566,6 +572,71 @@ class AiChatViewModel : ViewModel() {
 
     fun historySessions(): List<AiChatSession> {
         return AppConfig.aiChatSessionList.sortedByDescending { it.updatedAt }
+    }
+
+    /**
+     * 导出当前会话完整原始数据：info + 协议消息全量 + 每次运行的完整事件。
+     * 流式分片（model.chunk/output/thinking）是重复噪音，不进导出；其余事件原样保留。
+     */
+    fun exportCurrentChat(onResult: (File) -> Unit, onError: (String) -> Unit) {
+        requestScope.launch {
+            runCatching {
+                val sessionId = "chat:$currentSessionId"
+                val excludedEvents = setOf("model.chunk", "output", "thinking")
+                val messages = AgentStore.dao.messages(sessionId).map { org.json.JSONObject(it.json) }
+                val runs = AgentStore.dao.runs().filter { it.sessionId == sessionId }
+                if (messages.isEmpty() && runs.isEmpty()) {
+                    error("当前对话还没有可导出的数据")
+                }
+                var promptTokens = 0L
+                var completionTokens = 0L
+                var cachedTokens = 0L
+                var billedRequests = 0
+                val runsJson = runs.map { run ->
+                    val events = org.json.JSONArray()
+                    AgentStore.dao.events(run.id).forEach { event ->
+                        if (event.type == "model.usage") {
+                            val value = org.json.JSONObject(event.json)
+                            if (value.optBoolean("display", false)) {
+                                billedRequests += 1
+                                promptTokens += value.optLong("promptTokens", 0L)
+                                completionTokens += value.optLong("completionTokens", 0L)
+                                cachedTokens += value.optLong("cachedTokens", 0L)
+                            }
+                        }
+                        if (event.type !in excludedEvents) {
+                            events.put(org.json.JSONObject().put("sequence", event.sequence)
+                                .put("type", event.type).put("value", org.json.JSONObject(event.json)))
+                        }
+                    }
+                    org.json.JSONObject().put("id", run.id).put("plugin", run.pluginId)
+                        .put("state", run.state).put("input", org.json.JSONObject(run.input))
+                        .put("events", events)
+                }
+                val session = AppConfig.aiChatSessionList.firstOrNull { it.id == currentSessionId }
+                val info = org.json.JSONObject()
+                    .put("id", sessionId)
+                    .put("title", session?.title ?: "")
+                    .put("model", AppConfig.aiCurrentModelConfig?.modelId ?: "")
+                    .put("provider", AppConfig.aiCurrentModelConfig?.providerId ?: "")
+                    .put("appVersion", BuildConfig.VERSION_NAME)
+                    .put("time", org.json.JSONObject().put("created", session?.updatedAt ?: 0L)
+                        .put("updated", session?.updatedAt ?: 0L))
+                    .put("usage", org.json.JSONObject().put("promptTokens", promptTokens)
+                        .put("completionTokens", completionTokens).put("cachedTokens", cachedTokens)
+                        .put("billedRequests", billedRequests).put("runs", runs.size))
+                val root = org.json.JSONObject().put("info", info)
+                    .put("messages", org.json.JSONArray(messages))
+                    .put("runs", org.json.JSONArray(runsJson))
+                val dir = File(appCtx.cacheDir, "export").apply { mkdirs() }
+                val safeTitle = (session?.title ?: "chat").replace(Regex("[\\\\/:*?\"<>|]"), "_")
+                    .take(24).trim().ifBlank { "chat" }
+                val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
+                val file = File(dir, "ai-chat-$safeTitle-$stamp.json")
+                file.writeText(root.toString(2))
+                file
+            }.onSuccess(onResult).onFailure { onError(it.localizedMessage ?: it.toString()) }
+        }
     }
 
     /** 供阅读页悬浮窗等外部同会话视图在前台恢复时与磁盘对齐。请求进行中不碰内存，避免打断流式。 */
