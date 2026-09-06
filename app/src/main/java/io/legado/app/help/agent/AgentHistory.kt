@@ -20,7 +20,9 @@ object AgentHistory {
             AgentStore.database.runInTransaction {
                 if (value == null) AgentStore.dao.deleteDocument("config", "chat.current")
                 else {
-                    require(AgentStore.get("history.chat", value) != null) { "当前聊天会话不存在：$value" }
+                    // 新会话 id 在首条消息落盘前尚无 history.chat 条目，属合法悬空；
+                    // 直接拒绝会导致点新对话崩溃。允许悬空，replace() 在历史被覆盖时会自动清理。
+                    require(value.isNotBlank()) { "聊天会话 ID 为空" }
                     AgentStore.put("config", "chat.current", JSONObject().put("id", value))
                 }
             }

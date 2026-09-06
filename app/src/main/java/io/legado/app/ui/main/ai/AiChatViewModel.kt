@@ -457,9 +457,8 @@ class AiChatViewModel : ViewModel() {
             AppConfig.aiCurrentChatSessionId = session.id
             messages.addAll(session.messages.map { it.copy(pending = false) })
         } else {
-            // 无历史会话时不写 current 指针：history.chat 为空，任何 id 都是悬空，
-            // 写进去会被 currentChat 的存在性校验拒绝导致开局崩溃。
-            // 新会话 id 只留内存，首条消息落盘时 saveCurrentSession 再建指针。
+            // 空历史时新会话 id 尚无落盘条目，属合法悬空（AgentHistory 允许），直接持久化以保持内存与磁盘一致。
+            AppConfig.aiCurrentChatSessionId = currentSessionId
         }
         val requesting = activeJob?.isActive == true && activeSessionId == currentSessionId
         if (requesting && messages.none { it.role == AiChatMessage.Role.ASSISTANT && it.pending }) {
