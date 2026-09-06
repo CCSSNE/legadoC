@@ -3,6 +3,7 @@ package io.legado.app.help.agent.mcp
 import fi.iki.elonen.NanoHTTPD
 import io.legado.app.BuildConfig
 import io.legado.app.data.agent.AgentRun
+import io.legado.app.help.agent.AgentConfig
 import io.legado.app.help.agent.AgentControl
 import io.legado.app.help.agent.AgentStore
 import kotlinx.coroutines.*
@@ -154,8 +155,10 @@ class AgentMcpServer(val moduleId: String, private val config: JSONObject) :
         val run = AgentRun(UUID.randomUUID().toString(), "mcp:$moduleId", UUID.randomUUID().toString(), "mcp.$moduleId", "host-api-1", arguments.toString())
         val job = Job(scope.coroutineContext.job)
         val control = AgentControl(job) { type, value ->
-            AgentStore.event(run.id, type, value)
-            if (type in setOf("running", "paused", "waiting_input")) AgentStore.dao.state(run.id, type, null)
+            AgentStore.database.runInTransaction {
+                AgentStore.event(run.id, type, value)
+                if (type in setOf("running", "paused", "waiting_input")) AgentStore.dao.state(run.id, type, null)
+            }
         }
         require(calls.putIfAbsent(key, control) == null) { "请求 ID 正在执行：$id" }
         try {
@@ -180,13 +183,17 @@ class AgentMcpServer(val moduleId: String, private val config: JSONObject) :
             try {
                 AgentStore.event(run.id, "tool.start", JSONObject().put("requestId", id).put("moduleId", moduleId).put("toolId", tool.toolId).put("arguments", arguments))
                 val value = AgentCapabilities.call(tool, arguments, control, external = true)
-                AgentStore.event(run.id, "tool.result", value)
-                AgentStore.dao.state(run.id, "completed", null)
+                AgentStore.database.runInTransaction {
+                    AgentStore.event(run.id, "tool.result", value)
+                    AgentStore.dao.state(run.id, "completed", null)
+                }
                 send("event: message\ndata: ${result(id, value)}\n\n")
             } catch (error: Throwable) {
-                AgentStore.event(run.id, "tool.unknown", JSONObject().put("outcome", "unknown").put("error", error.stackTraceToString()).put("replayed", false))
-                AgentStore.dao.state(run.id, if (error is CancellationException || control.cancelled) "cancelled" else "failed",
-                    io.legado.app.help.agent.AgentDiagnostics.protect(JSONObject().put("error", error.stackTraceToString())).toString())
+                AgentStore.database.runInTransaction {
+                    AgentStore.event(run.id, "tool.unknown", JSONObject().put("outcome", "unknown").put("error", error.stackTraceToString()).put("replayed", false))
+                    AgentStore.dao.state(run.id, if (error is CancellationException || control.cancelled) "cancelled" else "failed",
+                        io.legado.app.help.agent.AgentDiagnostics.protect(JSONObject().put("error", error.stackTraceToString())).toString())
+                }
                 if (job.isActive) send("event: message\ndata: ${error(id, -32603, error.message.orEmpty())}\n\n")
             } finally {
                 heartbeat.cancel()
@@ -199,8 +206,10 @@ class AgentMcpServer(val moduleId: String, private val config: JSONObject) :
                 val state = AgentStore.dao.run(run.id)?.state
                 if (state in setOf("running", "paused", "waiting_input")) {
                     val details = JSONObject().put("error", failure?.toString() ?: "请求任务未完成").put("outcome", "unknown").put("replayed", false)
-                    val event = AgentStore.event(run.id, "cancelled", details)
-                    AgentStore.dao.state(run.id, "cancelled", event.json)
+                    AgentStore.database.runInTransaction {
+                        val event = AgentStore.event(run.id, "cancelled", details)
+                        AgentStore.dao.state(run.id, "cancelled", event.json)
+                    }
                 }
                 output.close()
             } finally {
@@ -216,4 +225,13 @@ class AgentMcpServer(val moduleId: String, private val config: JSONObject) :
     private fun error(id: Any?, code: Int, message: String, data: JSONObject? = null) = JSONObject().put("jsonrpc", "2.0").put("id", id ?: JSONObject.NULL)
         .put("error", JSONObject().put("code", code).put("message", message).apply { data?.let { put("data", it) } })
     private fun json(status: Response.Status, body: JSONObject) = newFixedLengthResponse(status, "application/json", body.toString())
+
+    companion object {
+        fun validateConfig(moduleId: String, config: JSONObject) {
+            AgentConfig.validateDocument("mcp.servers", moduleId, config)
+            val address = config.getString("address")
+            require(address.isNotBlank() && !address.contains(' ') && !address.contains("://")) { "MCP 监听地址无效：$address" }
+            require(config.getString("apiKey").isNotBlank()) { "MCP 访问密钥不能为空" }
+        }
+    }
 }

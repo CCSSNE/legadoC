@@ -27,12 +27,15 @@ class AgentExecution(
     private val pluginTools = io.legado.app.help.agent.mcp.AgentPluginTools.snapshots(plugin,
         io.legado.app.help.agent.mcp.AgentPluginTools.names().keys.filter { AgentCapabilities.enabled(it, external) }.toSet())
     private val moduleSnapshots = AgentStore.dao.documents("module.settings").associate { it.key to JSONObject(it.json) }
+    // 任务启动时的模块开关快照。权限检查仍走最新开关（AgentCapabilities.checkPermission），
+    // 返回给插件的配置视图冻结，避免一次任务前半段旧配置、后半段新配置。
+    private val modulesSnapshot = AgentConfig.value("modules")
 
     fun invoke(operation: String, arguments: JSONObject, owner: AgentPluginSnapshot = plugin, callback: (String, String) -> Boolean): Any? {
         control.check()
         return when (operation) {
             "config" -> JSONObject().put("plugin", owner.settings).put("revision", owner.revision)
-                .put("modules", AgentConfig.value("modules")).put("memory", moduleSnapshots["memory"] ?: JSONObject())
+                .put("modules", JSONObject(modulesSnapshot.toString())).put("memory", moduleSnapshots["memory"] ?: JSONObject())
             "context.snapshot" -> JSONObject(run.input).getJSONObject("reading")
             "context.refresh" -> AgentReading.current()
             "model.reference" -> {

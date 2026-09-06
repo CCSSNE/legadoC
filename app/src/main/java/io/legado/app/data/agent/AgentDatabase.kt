@@ -109,7 +109,7 @@ abstract class AgentDatabase : RoomDatabase() {
     companion object {
         val instance: AgentDatabase by lazy {
             Room.databaseBuilder(appCtx, AgentDatabase::class.java, "agent.db")
-                .allowMainThreadQueries().build()
+                .build()
         }
     }
 }

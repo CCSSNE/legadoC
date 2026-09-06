@@ -2790,4 +2790,6 @@ Selected text or question:
     <string name="agent_modes">Agent 模式</string>
     <string name="agent_prompts">提示词库</string>
     <string name="agent_tools">工具设置</string>
+    <string name="agent_loading">正在加载 Agent 配置…</string>
+    <string name="agent_internal_switch_summary">内部 Agent 总开关；关闭后停止当前任务，对外 MCP 服务不受影响</string>
 </resources>

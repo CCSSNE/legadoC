@@ -21,11 +21,13 @@ data class AgentTool(
     val toolId: String,
     val description: String,
     val schema: JSONObject,
+    val descriptor: JSONObject? = null,
     val execute: suspend (JSONObject, AgentControl) -> JSONObject
 ) {
     val modelName: String get() = "t_" + MessageDigest.getInstance("SHA-256")
         .digest("$moduleId\u0000$toolId".toByteArray()).joinToString("") { "%02x".format(it) }.take(60)
-    fun mcpDefinition() = JSONObject().put("name", toolId).put("description", description).put("inputSchema", schema)
+    fun mcpDefinition() = (descriptor?.let { JSONObject(it.toString()) } ?: JSONObject())
+        .put("name", toolId).put("description", description).put("inputSchema", JSONObject(schema.toString()))
     fun definition() = JSONObject().put("type", "function").put("function", JSONObject()
         .put("name", modelName).put("description", "[$moduleId/$toolId] $description").put("parameters", schema))
 }
@@ -47,12 +49,13 @@ object AgentCapabilities {
 
     fun normalize(value: Any): JSONObject {
         val result = when (value) {
-            is JSONObject -> value
+            is JSONObject -> JSONObject(value.toString())
             is String -> JSONObject(value)
             else -> error("工具必须返回 JSON 对象")
         }
         if (result.has("content") && result.opt("content") is JSONArray) {
-            if (!result.has("isError")) result.put("isError", false)
+            if (!result.has("isError")) result.put("isError", result.has("ok") && !result.getBoolean("ok"))
+            require(result.opt("isError") is Boolean) { "工具 isError 必须为布尔值" }
             return result
         }
         return JSONObject().put("isError", result.has("ok") && !result.getBoolean("ok"))
@@ -62,7 +65,7 @@ object AgentCapabilities {
 
     private fun native(tool: AiResolvedTool): AgentTool {
         val definition = tool.definition.getJSONObject("function")
-        val schema = definition.getJSONObject("parameters")
+        val schema = JSONObject(definition.getJSONObject("parameters").toString())
         val properties = schema.getJSONObject("properties")
         if (properties.has("limit")) properties.put("cursor", property("integer", "列表游标；返回 pages/nextCursor 可遍历全部结果"))
         if (properties.has("maxChars")) properties.put("offset", property("integer", "原始正文偏移，不折叠空白"))
@@ -70,7 +73,14 @@ object AgentCapabilities {
         return AgentTool(moduleFor(tool.name) ?: error("原生工具未声明能力模块：${tool.name}"), tool.name, definition.getString("description"), schema) { args, control ->
             control.check()
             val value = JSONObject(tool.execute(args))
-            normalize(if (properties.has("limit") && tool.name != "list_book_chapters") AgentPages.apply(value, args) else value)
+            val fields = when (tool.name) {
+                "query_bookshelf" -> listOf("matchedBooks", "recentReading", "recentUpdated", "unreadRanking", "groups")
+                "query_read_records" -> listOf("bookRecords", "dailyRecords")
+                "search_book_source" -> listOf("results")
+                "list_book_sources", "get_book_source" -> listOf("sources")
+                else -> emptyList()
+            }
+            normalize(if (fields.isNotEmpty()) AgentPages.apply(value, args, fields) else value)
         }
     }
 
@@ -118,11 +128,11 @@ object AgentCapabilities {
     }
 
     suspend fun call(tool: AgentTool, arguments: JSONObject, control: AgentControl, external: Boolean = false): JSONObject {
-        control.check()
-        checkPermission(tool, external)
-        AgentSchema.validate(arguments, tool.schema)
         val started = System.currentTimeMillis()
         return try {
+            control.check()
+            checkPermission(tool, external)
+            AgentSchema.validate(arguments, tool.schema)
             val result = withContext(io.legado.app.help.agent.AgentIoContext(control)) { tool.execute(arguments, control) }
             normalize(result).apply {
                 val metadata = optJSONObject("_meta") ?: JSONObject()
@@ -139,7 +149,7 @@ object AgentCapabilities {
 
     fun tool(module: String, id: String, description: String, properties: JSONObject, required: List<String> = emptyList(),
              execute: suspend (JSONObject, AgentControl) -> JSONObject) = AgentTool(module, id, description,
-        JSONObject().put("type", "object").put("properties", properties).put("required", JSONArray(required)).put("additionalProperties", false), execute)
+        JSONObject().put("type", "object").put("properties", properties).put("required", JSONArray(required)).put("additionalProperties", false), execute = execute)
 
     fun property(type: String, description: String = "") = JSONObject().put("type", type).put("description", description)
 }

@@ -57,9 +57,13 @@ object AgentRuntime {
     fun isRunning(sessionId: String) = sessionId in sessions
 
     private fun event(run: AgentRun, type: String, value: JSONObject, observer: (String, JSONObject) -> Unit) {
-        val event = AgentStore.event(run.id, type, value)
-        if (type in setOf("running", "paused", "waiting_input", "completed", "failed", "cancelled", "interrupted")) {
-            AgentStore.dao.state(run.id, type, if (type == "failed") event.json else null)
+        // 运行事件与运行状态同一事务写入，避免崩溃后留下“有事件无状态”或“有状态无事件”。
+        lateinit var event: io.legado.app.data.agent.AgentEvent
+        AgentStore.database.runInTransaction {
+            event = AgentStore.event(run.id, type, value)
+            if (type in setOf("running", "paused", "waiting_input", "completed", "failed", "cancelled", "interrupted")) {
+                AgentStore.dao.state(run.id, type, if (type == "failed") event.json else null)
+            }
         }
         changes.tryEmit(event)
         observer(type, JSONObject(event.json).put("runId", run.id).put("sequence", event.sequence).put("type", type))

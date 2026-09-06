@@ -41,8 +41,10 @@ object AgentPluginTools {
                     else withContext(Dispatchers.IO) {
                         val run = AgentRun(UUID.randomUUID().toString(), "mcp:$module", UUID.randomUUID().toString(), id, snapshot.revision, arguments.toString())
                         val execution = AgentExecution(run, snapshot, control, external = true) { type, value ->
-                            AgentStore.event(run.id, type, value)
-                            if (type in setOf("running", "paused", "waiting_input")) AgentStore.dao.state(run.id, type, null)
+                            AgentStore.database.runInTransaction {
+                                AgentStore.event(run.id, type, value)
+                                if (type in setOf("running", "paused", "waiting_input")) AgentStore.dao.state(run.id, type, null)
+                            }
                         }
                         AgentRuntime.registerExternal(run.id, control)
                         try {
@@ -52,13 +54,17 @@ object AgentPluginTools {
                                 engine.execute(snapshot, entry, export, arguments) ?: error("脚本工具未返回结果")
                             }
                             val normalized = AgentCapabilities.normalize(result)
-                            AgentStore.event(run.id, "completed", normalized)
-                            AgentStore.dao.state(run.id, "completed", null)
+                            AgentStore.database.runInTransaction {
+                                AgentStore.event(run.id, "completed", normalized)
+                                AgentStore.dao.state(run.id, "completed", null)
+                            }
                             normalized
                         } catch (error: Throwable) {
                             val state = if (error is CancellationException || control.cancelled) "cancelled" else "failed"
-                            AgentStore.event(run.id, state, JSONObject().put("error", error.stackTraceToString()).put("javascript", execution.lastStack))
-                            AgentStore.dao.state(run.id, state, AgentDiagnostics.protect(JSONObject().put("error", error.stackTraceToString())).toString())
+                            AgentStore.database.runInTransaction {
+                                AgentStore.event(run.id, state, JSONObject().put("error", error.stackTraceToString()).put("javascript", execution.lastStack))
+                                AgentStore.dao.state(run.id, state, AgentDiagnostics.protect(JSONObject().put("error", error.stackTraceToString())).toString())
+                            }
                             throw error
                         } finally { execution.finished = true; AgentRuntime.unregisterExternal(run.id) }
                     }

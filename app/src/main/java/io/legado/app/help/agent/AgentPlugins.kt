@@ -189,22 +189,72 @@ object AgentPlugins {
         require(digest.digest().joinToString("") { "%02x".format(it) } == selected) { "插件修订文件完整性损坏：$id@$selected" }
         val references = manifest.optJSONObject("dependencies")?.optJSONObject("plugins") ?: JSONObject()
         val dependencies = references.keys().asSequence().associateWith { snapshot(it, references.getString(it), parents + id, allowDisabled) }
-        fun resources(category: String) = AgentStore.dao.documents(category).associate { it.key to JSONObject(it.json) }
-        val skills = resources("skills")
-        val skillResources = skills.keys.associateWith { key ->
-            AgentStore.dao.documents("skill.resources.$key").associate { it.key to JSONObject(it.json) }
+        // 不可变修订快照：全局 prompts/skills 在任务启动时冻结；本修订声明的 key 正文与 Skill 资源
+        // 以本修订文件为准，不读取全局最新 DB，避免旧修订任务读到新版资源。
+        val ownedPrompts = manifest.optJSONObject("prompts") ?: JSONObject()
+        val ownedSkills = manifest.optJSONObject("skills") ?: JSONObject()
+        fun promptSnapshot(key: String): JSONObject {
+            if (ownedPrompts.has(key)) {
+                val resourcePath = path(ownedPrompts.getString(key))
+                val content = text(files[resourcePath] ?: error("$id@$selected 缺少提示词文件：$resourcePath"))
+                val current = AgentStore.get("prompts", key)
+                return JSONObject().put("name", key).put("owner", id).put("path", resourcePath)
+                    .put("enabled", current?.optBoolean("enabled", true) ?: true).put("content", content)
+            }
+            return AgentStore.get("prompts", key) ?: error("$id@$selected 缺少 prompts 依赖：$key")
         }
+        fun skillSnapshot(key: String): JSONObject {
+            if (ownedSkills.has(key)) {
+                val resourcePath = path(ownedSkills.getString(key))
+                require(resourcePath.endsWith("/SKILL.md") || resourcePath == "SKILL.md") { "Skill 入口必须为 SKILL.md：$resourcePath" }
+                val content = text(files[resourcePath] ?: error("$id@$selected 缺少 Skill 文件：$resourcePath"))
+                val current = AgentStore.get("skills", key)
+                return JSONObject().put("name", key).put("owner", id).put("path", resourcePath)
+                    .put("enabled", current?.optBoolean("enabled", true) ?: true).put("content", content)
+            }
+            return AgentStore.get("skills", key) ?: error("$id@$selected 缺少 skills 依赖：$key")
+        }
+        fun skillResourcesSnapshot(key: String): Map<String, JSONObject> {
+            if (ownedSkills.has(key)) {
+                val resourcePath = path(ownedSkills.getString(key))
+                val prefix = resourcePath.removeSuffix("SKILL.md")
+                return files.filterKeys { it.startsWith(prefix) && it != resourcePath }.mapValues { (_, bytes) ->
+                    JSONObject().put("base64", android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP))
+                }
+            }
+            return AgentStore.dao.documents("skill.resources.$key").associate { it.key to JSONObject(it.json) }
+        }
+        val promptKeys = linkedSetOf<String>().apply {
+            AgentStore.dao.documents("prompts").forEach { add(it.key) }
+            ownedPrompts.keys().forEach(::add)
+            manifest.optJSONObject("dependencies")?.optJSONArray("prompts")?.let { array ->
+                for (index in 0 until array.length()) add(array.getString(index))
+            }
+        }
+        val skillKeys = linkedSetOf<String>().apply {
+            AgentStore.dao.documents("skills").forEach { add(it.key) }
+            ownedSkills.keys().forEach(::add)
+            manifest.optJSONObject("dependencies")?.optJSONArray("skills")?.let { array ->
+                for (index in 0 until array.length()) add(array.getString(index))
+            }
+        }
+        // 依赖声明的完整性仍需校验，未声明的 key 不得隐式使用。
         manifest.optJSONObject("dependencies")?.let { declared ->
             listOf("prompts", "skills").forEach { category ->
-                val references = declared.optJSONArray(category) ?: JSONArray()
-                for (index in 0 until references.length()) require(AgentStore.get(category, references.getString(index)) != null) {
-                    "$id@$selected 缺少 $category 依赖：${references.getString(index)}"
+                val refs = declared.optJSONArray(category) ?: JSONArray()
+                for (index in 0 until refs.length()) {
+                    val key = refs.getString(index)
+                    require(key in if (category == "prompts") promptKeys else skillKeys) { "$id@$selected 快照缺失 $category：$key" }
+                    if (category == "prompts") promptSnapshot(key) else skillSnapshot(key)
                 }
             }
         }
+        val prompts = promptKeys.associateWith(::promptSnapshot)
+        val skills = skillKeys.associateWith(::skillSnapshot)
+        val skillResources = skillKeys.associateWith(::skillResourcesSnapshot)
         val settings = AgentStore.get("plugin.settings", id) ?: error("插件配置缺失：$id")
         manifest.optJSONObject("settings")?.getJSONObject("schema")?.let { io.legado.app.help.agent.mcp.AgentSchema.validate(settings, it, "$id.settings") }
-        return AgentPluginSnapshot(id, selected, manifest, files, dependencies, resources("prompts"), skills, settings, skillResources)
+        return AgentPluginSnapshot(id, selected, manifest, files, dependencies, prompts, skills, settings, skillResources)
     }
 
     fun export(id: String, output: OutputStream) {

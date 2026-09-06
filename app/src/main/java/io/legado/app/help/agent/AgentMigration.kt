@@ -15,8 +15,20 @@ object AgentMigration {
     @Synchronized
     fun ensure() {
         if (initialized) return
-        if (AgentStore.get("migration", "v1") == null) migrate()
+        val marker = AgentStore.get("migration", "v1")
+        if (marker == null) migrate()
+        else AgentConfig.validateDocument("migration", "v1", marker)
         AgentStore.database.runInTransaction {
+            // 兼容旧默认记忆配置缺 autoRecall：补齐后才做全量校验，避免老用户初始化失败。
+            AgentStore.dao.document("module.settings", "memory")?.let { document ->
+                val value = JSONObject(document.json)
+                if (!value.has("autoRecall")) {
+                    AgentStore.put("module.settings", "memory", value.put("autoRecall", true), document.revision)
+                }
+            }
+            AgentStore.dao.allDocuments().forEach { document ->
+                AgentConfig.validateDocument(document.namespace, document.key, JSONObject(document.json))
+            }
             AgentStore.dao.unfinished().forEach { run ->
                 val reason = "应用进程在任务完成前终止；未完成写操作结果未知，未自动重放"
                 AgentStore.dao.state(run.id, "interrupted", reason)
@@ -51,10 +63,9 @@ object AgentMigration {
         if (AgentStore.get("migration", originalKey) == null) AgentStore.put("migration", originalKey, original)
         try {
             validateReferences(preferences)
-            AgentPlugins.installBuiltin()
             AgentStore.database.runInTransaction {
                 if (replace) {
-                    listOf("mcp.clients", "tool.selection", "history.chat", "history.read", "history.origin").forEach { namespace ->
+                    listOf("mcp.clients", "tool.selection", "tool.selection.legacy", "history.chat", "history.read", "history.origin").forEach { namespace ->
                         AgentStore.dao.documents(namespace).forEach { document ->
                             if (namespace == "history.origin") AgentStore.dao.deleteMessages(document.key)
                             AgentStore.dao.deleteDocument(namespace, document.key)
@@ -66,7 +77,7 @@ object AgentMigration {
                 val defaults = AgentConfig.defaults()
                 AgentStore.put("config", "agent", JSONObject().put("enabled",
                     if (preferences.contains("aiAssistantEnabled")) preferences.getBoolean("aiAssistantEnabled", false) else defaults.getBoolean("enabled"))
-                    .put("mode", defaults.getString("mode")))
+                    .put("mode", defaults.getString("mode")).put("schemaVersion", AgentConfig.SCHEMA_VERSION))
                 val modules = defaults.getJSONObject("modules")
                 if (preferences.contains("aiTavilyEnabled")) modules.put("web", preferences.getBoolean("aiTavilyEnabled", false))
                 AgentStore.put("config", "modules", modules)
@@ -157,7 +168,8 @@ object AgentMigration {
                     if (!history.has("currentSessionId")) history.put("currentSessionId", if (sessions.length() > 0) sessions.getJSONObject(0).getString("id") else "")
                     AgentStore.put("history.read", bookUrl, history)
                 }
-                AgentStore.put("migration", "v1", JSONObject().put("complete", true).put("completedAt", System.currentTimeMillis()))
+                AgentStore.put("migration", "v1", JSONObject().put("schemaVersion", AgentConfig.SCHEMA_VERSION)
+                    .put("complete", true).put("completedAt", System.currentTimeMillis()))
             }
         } catch (error: Exception) {
             AgentStore.put("migration", "error", JSONObject().put("error", error.stackTraceToString()).put("original", "migration/$originalKey"))

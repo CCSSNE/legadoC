@@ -108,7 +108,7 @@ object AgentMemory {
         return JSONObject().put("ok", true).put("id", id).put("revision", revision).put("document", document)
     }
 
-    private fun rebuild(control: AgentControl): JSONObject {
+    fun rebuild(control: AgentControl): JSONObject {
         val documents = AgentStore.dao.documents(NAMESPACE)
         val vectors = documents.map { document ->
             control.check()
