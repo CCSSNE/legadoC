@@ -71,7 +71,8 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         val sourceName: String,
         val chapterTitle: String,
         val chapterIndex: Int,
-        val selectedText: String
+        val selectedText: String,
+        val snapshot: org.json.JSONObject = io.legado.app.help.agent.mcp.AgentReading.current()
     )
 
     data class Anchor(
@@ -216,25 +217,42 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         val context = readContext ?: return
         answerJob?.cancel()
         val requestSessionId = currentSessionId
-        appendMessage(context, ReadAiMessage.Role.USER, question)
+        val userMessageId = appendMessage(context, ReadAiMessage.Role.USER, question)
         val pendingAssistantId = appendMessage(
             context,
             ReadAiMessage.Role.ASSISTANT,
             resources.getString(R.string.ai_chat_thinking)
         )
-        val requestMessages = buildRequestMessages(context, question)
+        val requestMessages = listOf(AiChatMessage(id = userMessageId, role = AiChatMessage.Role.USER, content = question))
+        val readingSnapshot = org.json.JSONObject(context.snapshot.toString()).put("bookUrl", context.bookUrl)
+            .put("bookName", context.bookName).put("chapterIndex", context.chapterIndex)
+            .put("chapterTitle", context.chapterTitle).put("selectedText", context.selectedText)
         streamingAssistantMessageId = pendingAssistantId
         answerJob = requestScope.launch {
             post { updateSendButtonState() }
             val result = runCatching {
                 withContext(IO) {
-                    AiChatService.chatStream(
+                    io.legado.app.help.agent.AgentRuntime.chat(
+                        sessionId = "read:${context.bookUrl}:$requestSessionId",
+                        assistantMessageId = pendingAssistantId,
+                        readingContext = readingSnapshot,
                         messages = requestMessages,
                         onPartial = { partial ->
                             if (partial.isNotBlank()) {
                                 post {
                                     streamingAssistantContent = partial
                                     if (!showingHistory) renderCurrentSession()
+                                }
+                            }
+                        },
+                        onStatus = { event ->
+                            val type = event.optString("type")
+                            if (type in setOf("paused", "waiting_input", "tool.start", "tool.unknown")) post {
+                                binding.tvContext.text = when (type) {
+                                    "paused" -> "Agent 已暂停：在模式诊断中继续"
+                                    "waiting_input" -> "Agent 等待输入：${event.optString("prompt")}"
+                                    "tool.unknown" -> "工具结果未知，未自动重发"
+                                    else -> "${event.optString("moduleId")}/${event.optString("toolId")} 执行中"
                                 }
                             }
                         },
@@ -627,42 +645,6 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
             append(context.bookName.ifBlank { resources.getString(R.string.book_name) })
             if (context.chapterTitle.isNotBlank()) append(" · ").append(context.chapterTitle)
         }
-    }
-
-    private fun buildPrompt(context: ReadContext, question: String): String {
-        return resources.getString(
-            R.string.ai_read_prompt_template,
-            context.bookName,
-            context.author.ifBlank { resources.getString(R.string.unknown) },
-            context.sourceName.ifBlank { resources.getString(R.string.unknown) },
-            context.chapterTitle.ifBlank { resources.getString(R.string.unknown) },
-            context.chapterIndex + 1,
-            question
-        )
-    }
-
-    private fun buildRequestMessages(context: ReadContext, question: String): List<AiChatMessage> {
-        val historyMessages = currentBookHistory(context).sessions
-            .firstOrNull { it.id == currentSessionId }
-            ?.messages
-            .orEmpty()
-            .dropLast(2)
-            .takeLast(12)
-            .mapNotNull { message ->
-                val content = message.content.trim()
-                if (content.isBlank()) return@mapNotNull null
-                AiChatMessage(
-                    role = when (message.role) {
-                        ReadAiMessage.Role.USER -> AiChatMessage.Role.USER
-                        ReadAiMessage.Role.ASSISTANT -> AiChatMessage.Role.ASSISTANT
-                    },
-                    content = content
-                )
-            }
-        return historyMessages + AiChatMessage(
-            role = AiChatMessage.Role.USER,
-            content = buildPrompt(context, question)
-        )
     }
 
     private fun createBubble(fillColor: Int, strokeColor: Int, isUser: Boolean): GradientDrawable {

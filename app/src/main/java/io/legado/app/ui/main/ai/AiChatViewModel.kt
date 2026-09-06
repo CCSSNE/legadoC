@@ -74,7 +74,9 @@ class AiChatViewModel : ViewModel() {
         val requestMessages = snapshotForRequest()
         activeJob = requestScope.launch {
             val result = runCatching {
-                AiChatService.chatStream(
+                io.legado.app.help.agent.AgentRuntime.chat(
+                    sessionId = "chat:$requestSessionId",
+                    assistantMessageId = pendingMessage.id,
                     messages = requestMessages,
                     onPartial = { partial ->
                         activePendingContent = partial
@@ -115,6 +117,7 @@ class AiChatViewModel : ViewModel() {
 
     fun stopRequest(cancelledText: String) {
         val job = activeJob ?: return
+        activeSessionId?.let { io.legado.app.help.agent.AgentRuntime.stop("chat:$it") }
         job.cancel(CancellationException("User stopped generation"))
         activeJob = null
         activeSessionId = null
@@ -164,7 +167,26 @@ class AiChatViewModel : ViewModel() {
     }
 
     fun upsertStatus(status: org.json.JSONObject) {
-        return
+        val type = status.optString("type")
+        if (type !in setOf("tool.start", "tool.result", "tool.unknown", "paused", "waiting_input")) return
+        val key = status.optString("invocationId", status.optString("runId"))
+        val title = if (status.has("toolId")) "${status.optString("moduleId")}/${status.getString("toolId")}" else type
+        val content = when (type) {
+            "paused" -> "运行已暂停；请在 Agent 模式的运行诊断中继续或停止"
+            "waiting_input" -> "等待输入：${status.optString("prompt", status.toString())}"
+            "tool.start" -> "$title · 执行中"
+            "tool.unknown" -> "$title · 结果未知，未自动重放"
+            else -> "$title · ${status.getJSONObject("result")}"
+        }
+        val existing = activeToolMessageIds[key]
+        val index = messages.indexOfFirst { it.id == existing }
+        val message = AiChatMessage(id = existing ?: UUID.randomUUID().toString(),
+            role = AiChatMessage.Role.ASSISTANT, content = content, kind = AiChatMessage.Kind.STATUS,
+            statusName = title, statusStage = type, statusSuccess = type != "tool.unknown" &&
+                status.optJSONObject("result")?.optBoolean("isError", false) != true)
+        if (index >= 0) messages[index] = message else messages.add(message)
+        activeToolMessageIds[key] = message.id
+        publish()
     }
 
     fun finishPendingAssistant() {

@@ -1,0 +1,32 @@
+{
+  "id": "legado.reader",
+  "name": "通用助手与陪读",
+  "version": "1.0.0",
+  "hostApiVersion": 1,
+  "entry": "main.js",
+  "dependencies": {"prompts": [], "skills": [], "plugins": {}},
+  "prompts": {"reader.system": "prompts/system.md", "reader.memory": "prompts/memory.md", "reader.compress": "prompts/compress.md"},
+  "skills": {},
+  "tools": [],
+  "settings": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "systemPromptKey": {"type": "string"},
+        "memoryPromptKey": {"type": "string"},
+        "compressionPromptKey": {"type": "string"},
+        "contextCharacters": {"type": "integer", "minimum": 1},
+        "compressionEnabled": {"type": "boolean"}
+      },
+      "required": ["systemPromptKey", "memoryPromptKey", "compressionPromptKey", "contextCharacters", "compressionEnabled"],
+      "additionalProperties": false
+    },
+    "defaults": {
+      "systemPromptKey": "reader.system",
+      "memoryPromptKey": "reader.memory",
+      "compressionPromptKey": "reader.compress",
+      "contextCharacters": 120000,
+      "compressionEnabled": true
+    }
+  }
+}

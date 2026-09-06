@@ -1,0 +1,12 @@
+{
+  "enabled": true,
+  "mode": "legado.reader",
+  "modules": {
+    "bookshelf": true, "reading": true, "library": true, "sources": true,
+    "settings": true, "web": true, "memory": false
+  },
+  "memory": {
+    "providerId": "", "model": "", "autoSave": false, "scope": "book",
+    "recallCount": 8, "minimumScore": 0.3, "contextFraction": 0.2
+  }
+}

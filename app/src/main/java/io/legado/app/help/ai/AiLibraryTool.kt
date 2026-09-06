@@ -18,8 +18,6 @@ object AiLibraryTool {
     private const val TOOL_QUERY_READ_RECORDS = "query_read_records"
     private const val TOOL_LIST_BOOK_SOURCES = "list_book_sources"
     private const val TOOL_SEARCH_BOOK_SOURCE = "search_book_source"
-    private const val DEFAULT_LIMIT = 8
-    private const val MAX_LIMIT = 20
     private val timeFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
 
     fun resolvedTools(): List<AiResolvedTool> {
@@ -71,7 +69,7 @@ object AiLibraryTool {
                         put("limit", JSONObject().apply {
                             put("type", "integer")
                             put("minimum", 1)
-                            put("maximum", MAX_LIMIT)
+
                         })
                     })
                     put("additionalProperties", false)
@@ -128,7 +126,7 @@ object AiLibraryTool {
                         put("limit", JSONObject().apply {
                             put("type", "integer")
                             put("minimum", 1)
-                            put("maximum", MAX_LIMIT)
+
                         })
                     })
                     put("required", JSONArray(listOf("keyword")))
@@ -171,7 +169,7 @@ object AiLibraryTool {
                         put("limit", JSONObject().apply {
                             put("type", "integer")
                             put("minimum", 1)
-                            put("maximum", 100)
+
                         })
                     })
                     put("additionalProperties", false)
@@ -191,19 +189,17 @@ object AiLibraryTool {
         }
         val startDate = arguments?.optString("startDate")?.trim().orEmpty()
         val endDate = arguments?.optString("endDate")?.trim().orEmpty()
-        val limit = (arguments?.optInt("limit", DEFAULT_LIMIT) ?: DEFAULT_LIMIT)
-            .coerceIn(1, MAX_LIMIT)
         val bookRecords = if (bookNames.isEmpty()) {
             appDb.readRecordDao.allShow
         } else {
             appDb.readRecordDao.allShow.filter { record ->
                 bookNames.any { name -> record.bookName.contains(name, ignoreCase = true) }
             }
-        }.sortedByDescending { it.readTime }.take(limit)
+        }.sortedByDescending { it.readTime }
         val dailyRecords = appDb.readRecordDailyDao.allDesc.filter { record ->
             (startDate.isBlank() || record.date >= startDate) &&
                     (endDate.isBlank() || record.date <= endDate)
-        }.take(limit)
+        }
         JSONObject().apply {
             put("ok", true)
             put("queryBookNames", JSONArray(bookNames.toList()))
@@ -237,9 +233,7 @@ object AiLibraryTool {
         if (keyword.isBlank()) {
             return@withContext errorJson("keyword 不能为空")
         }
-        val limit = (arguments?.optInt("limit", DEFAULT_LIMIT) ?: DEFAULT_LIMIT)
-            .coerceIn(1, MAX_LIMIT)
-        val sources = resolveSources(arguments).filter { !it.searchUrl.isNullOrBlank() }
+        val sources = resolveSources(arguments)
         if (sources.isEmpty()) {
             return@withContext errorJson("未找到可搜索书源")
         }
@@ -248,17 +242,17 @@ object AiLibraryTool {
         val groupedResults = JSONArray()
         val errors = JSONArray()
         for (source in sources) {
-            if (results.size >= limit) break
             runCatching {
+                require(!source.searchUrl.isNullOrBlank()) { "书源没有配置搜索入口：${source.bookSourceUrl}" }
                 WebBook.searchBookAwait(
                     bookSource = source,
                     key = keyword,
-                    page = 1,
-                    shouldBreak = { size -> results.size + size >= limit }
+                    page = (arguments?.optInt("page", 1) ?: 1).also { require(it >= 1) { "搜索页码必须为正数" } },
+                    shouldBreak = { false }
                 )
             }.onSuccess { books ->
                 appDb.searchBookDao.insert(*books.toTypedArray())
-                val limitedBooks = books.take(limit - results.size)
+                val limitedBooks = books
                 results += limitedBooks
                 if (batchMode) {
                     groupedResults.put(JSONObject().apply {
@@ -270,6 +264,7 @@ object AiLibraryTool {
                     })
                 }
             }.onFailure { throwable ->
+                if (throwable is kotlinx.coroutines.CancellationException) throw throwable
                 errors.put(JSONObject().apply {
                     put("source", source.bookSourceName)
                     put("error", throwable.localizedMessage ?: throwable.javaClass.simpleName)
@@ -277,12 +272,16 @@ object AiLibraryTool {
             }
         }
         JSONObject().apply {
-            put("ok", true)
+            put("ok", errors.length() == 0)
+            put("complete", errors.length() == 0)
+            put("page", arguments?.optInt("page", 1) ?: 1)
+            put("nextPage", if (results.isEmpty()) JSONObject.NULL else (arguments?.optInt("page", 1) ?: 1) + 1)
+            put("coverage", "请求的书源搜索页，不代表整个书源目录")
             put("keyword", keyword)
             put("searchedSourceCount", sources.size)
             put("mode", if (batchMode) "batch" else "single")
             put("results", JSONArray().apply {
-                results.distinctBy { it.bookUrl }.take(limit).forEach { put(searchBookToJson(it)) }
+                results.distinctBy { it.bookUrl }.forEach { put(searchBookToJson(it)) }
             })
             if (batchMode) {
                 put("groupedResults", groupedResults)
@@ -303,7 +302,6 @@ object AiLibraryTool {
         }
         val enabledOnly = arguments?.optBoolean("enabledOnly", true) ?: true
         val sourceType = arguments?.takeIf { it.has("sourceType") }?.optInt("sourceType")
-        val limit = (arguments?.optInt("limit", 50) ?: 50).coerceIn(1, 100)
         val sources = (if (enabledOnly) appDb.bookSourceDao.allEnabled else appDb.bookSourceDao.all)
             .asSequence()
             .filter { sourceType == null || it.bookSourceType == sourceType }
@@ -317,7 +315,7 @@ object AiLibraryTool {
                         it.bookSourceUrl.contains(keyword, ignoreCase = true) ||
                         it.bookSourceGroup.orEmpty().contains(keyword, ignoreCase = true)
             }
-            .take(limit)
+
             .toList()
         JSONObject().apply {
             put("ok", true)
@@ -350,7 +348,7 @@ object AiLibraryTool {
             }
         }
         if (sourceUrls.isNotEmpty()) {
-            return sourceUrls.mapNotNull { appDb.bookSourceDao.getBookSource(it) }
+            return sourceUrls.map { appDb.bookSourceDao.getBookSource(it) ?: throw IllegalArgumentException("书源不存在：$it") }
         }
         val sourceNames = linkedSetOf<String>().apply {
             arguments?.optString("sourceName")?.trim()?.takeIf { it.isNotBlank() }?.let(::add)

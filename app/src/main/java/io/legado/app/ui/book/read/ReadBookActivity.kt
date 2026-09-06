@@ -482,6 +482,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     @SuppressLint("UnspecifiedRegisterReceiverFlag")
     override fun onResume() {
         super.onResume()
+        io.legado.app.help.agent.mcp.AgentReading.attach(this) { binding.readView.agentSelection() }
         ReadBook.readStartTime = System.currentTimeMillis()
         if (bookChanged) {
             bookChanged = false
@@ -517,6 +518,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     override fun onPause() {
+        io.legado.app.help.agent.mcp.AgentReading.detach(this)
         super.onPause()
         autoPageStop()
         backupJob?.cancel()

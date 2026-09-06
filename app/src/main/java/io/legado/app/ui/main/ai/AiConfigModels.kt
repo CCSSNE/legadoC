@@ -26,22 +26,3 @@ data class AiModelConfig(
     val providerId: String,
     val modelId: String
 )
-
-@Keep
-data class AiMcpServerConfig(
-    val id: String = UUID.randomUUID().toString(),
-    val name: String,
-    val endpoint: String,
-    val apiKey: String = "",
-    val enabled: Boolean = true
-)
-
-@Keep
-data class AiSkillConfig(
-    val id: String = UUID.randomUUID().toString(),
-    val name: String,
-    val description: String = "",
-    val content: String,
-    val sourceUrl: String = "",
-    val enabled: Boolean = true
-)

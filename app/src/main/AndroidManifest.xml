@@ -561,6 +561,14 @@
             android:name=".service.WebService"
             android:foregroundServiceType="dataSync" />
         <service
+            android:name=".service.AgentMcpService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+        <service
+            android:name=".service.AgentRunService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+        <service
             android:name=".service.WebTileService"
             android:exported="true"
             android:foregroundServiceType="dataSync"

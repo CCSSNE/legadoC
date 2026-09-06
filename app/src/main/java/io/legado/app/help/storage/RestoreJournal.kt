@@ -40,7 +40,8 @@ object RestoreJournal {
     data class State(
         var status: String,
         val startedAt: Long = System.currentTimeMillis(),
-        val entries: MutableList<Entry> = arrayListOf()
+        val entries: MutableList<Entry> = arrayListOf(),
+        var agentSnapshotPath: String? = null
     )
 
     fun buildSnapshotTargets(backupPath: String): List<File> {
@@ -79,6 +80,10 @@ object RestoreJournal {
         rootDir.mkdirs()
         snapshotDir.mkdirs()
         val state = State(status = STATUS_APPLYING)
+        val agentSnapshot = snapshotDir.getFile("agent.zip")
+        io.legado.app.help.agent.AgentBackup.requireIdle()
+        io.legado.app.help.agent.AgentBackup.write(agentSnapshot, initialize = false)
+        state.agentSnapshotPath = agentSnapshot.absolutePath
         targets.forEachIndexed { index, target ->
             val snapshot = snapshotDir.getFile(index.toString())
             if (target.exists()) {
@@ -157,8 +162,10 @@ object RestoreJournal {
                     FileUtils.delete(target, deleteRootDir = true)
                 }
             }
+            state.agentSnapshotPath?.let { io.legado.app.help.agent.AgentBackup.restore(File(it), initialize = false) }
         }.onFailure {
             AppLog.put("恢复备份回滚失败\n${it.localizedMessage}", it)
+            throw IllegalStateException("恢复回滚失败，快照保留在 ${rootDir.absolutePath}", it)
         }
         clear()
         AppLog.put("恢复备份已回滚: $reason")

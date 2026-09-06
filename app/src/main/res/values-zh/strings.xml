@@ -2513,7 +2513,7 @@
     <string name="ai_provider_and_model">供应商与模型</string>
     <string name="ai_logs_category">日志</string>
     <string name="ai_timeout">超时</string>
-    <string name="ai_edit_request_summary_global">AI 聊天（对话/划词/浮动面板）与 AI 创作共用的全局 JSON 请求体。</string>
+    <string name="ai_edit_request_summary_global">独立 AI 请求使用的全局 JSON 请求体；Agent 对话、划词和浮窗的请求由当前模式的 JS 定义。</string>
     <string name="ai_chapter_purify_request_template">编辑请求</string>
     <string name="ai_chapter_purify_request_template_summary">章节净化专用 JSON 请求体，默认带 response_format=json_object。</string>
     <string name="ai_storyboard_request_template">编辑分镜请求体</string>

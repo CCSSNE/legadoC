@@ -59,7 +59,11 @@ class AiChatAdapter(
 
     fun submitList(list: List<AiChatMessage>) {
         items.clear()
-        items.addAll(list.filterNot { (it.kind ?: AiChatMessage.Kind.TEXT) == AiChatMessage.Kind.STATUS })
+        items.addAll(list.filter { message ->
+            (message.kind ?: AiChatMessage.Kind.TEXT) != AiChatMessage.Kind.STATUS ||
+                io.legado.app.help.config.AppConfig.aiShowToolSummary || !message.statusSuccess ||
+                message.statusStage in setOf("paused", "waiting_input")
+        })
         notifyDataSetChanged()
     }
 

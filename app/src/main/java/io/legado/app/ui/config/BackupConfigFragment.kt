@@ -576,7 +576,8 @@ class BackupConfigFragment : PreferenceFragment(),
             ),
             RestoreItem("导航栏图标", listOf("navigationBarPackages")),
             RestoreItem("封面规则", listOf(BookCover.configFileName)),
-            RestoreItem("应用设置", listOf("config.xml", "videoConfig.xml"))
+            RestoreItem("应用设置", listOf("config.xml", "videoConfig.xml")),
+            RestoreItem("Agent（模式、配置、完整会话、记忆）", listOf(io.legado.app.help.agent.AgentBackup.FILE_NAME))
         )
     }
 

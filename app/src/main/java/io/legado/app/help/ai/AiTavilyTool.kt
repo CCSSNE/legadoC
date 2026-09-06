@@ -15,9 +15,6 @@ object AiTavilyTool {
     private const val TOOL_TAVILY_SEARCH = "search_web_tavily"
 
     fun resolvedTools(): List<AiResolvedTool> {
-        if (!AppConfig.aiTavilyEnabled || AppConfig.aiTavilyApiKey.isBlank()) {
-            return emptyList()
-        }
         return listOf(
             AiResolvedTool(
                 name = TOOL_TAVILY_SEARCH,
@@ -53,7 +50,7 @@ object AiTavilyTool {
                         put("maxResults", JSONObject().apply {
                             put("type", "integer")
                             put("minimum", 1)
-                            put("maximum", 10)
+                            put("maximum", 20)
                             put("description", "最多返回几条结果，默认使用设置中的值。")
                         })
                         put("includeDomains", JSONObject().apply {
@@ -81,6 +78,9 @@ object AiTavilyTool {
         if (query.isBlank()) {
             return@withContext errorJson("query 不能为空")
         }
+        require(AppConfig.aiTavilyApiKey.isNotBlank()) { "联网模块缺少 Tavily 访问密钥" }
+        val maxResults = arguments?.optInt("maxResults", AppConfig.aiTavilyMaxResults) ?: AppConfig.aiTavilyMaxResults
+        require(maxResults in 1..20) { "Tavily 外部接口 max_results 范围为 1..20" }
         val requestBody = JSONObject().apply {
             put("query", query)
             put("topic", arguments?.optString("topic")?.takeIf { it.isNotBlank() } ?: AppConfig.aiTavilyTopic)
@@ -88,8 +88,7 @@ object AiTavilyTool {
                 "search_depth",
                 arguments?.optString("searchDepth")?.takeIf { it.isNotBlank() } ?: AppConfig.aiTavilySearchDepth
             )
-            put("max_results", (arguments?.optInt("maxResults", AppConfig.aiTavilyMaxResults)
-                ?: AppConfig.aiTavilyMaxResults).coerceIn(1, 10))
+            put("max_results", maxResults)
             put("include_answer", arguments?.optBoolean("includeAnswer", true) ?: true)
             put("include_raw_content", false)
             appendStringArray(this, "include_domains", arguments?.optJSONArray("includeDomains"))
@@ -167,7 +166,7 @@ object AiTavilyTool {
         return JSONObject().apply {
             put("ok", false)
             put("error", message)
-            if (!raw.isNullOrBlank()) put("raw", raw.take(1000))
+            if (!raw.isNullOrBlank()) put("raw", raw)
         }.toString()
     }
 }

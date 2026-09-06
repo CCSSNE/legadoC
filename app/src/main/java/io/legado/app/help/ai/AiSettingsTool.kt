@@ -41,7 +41,7 @@ object AiSettingsTool {
         SettingDef(PreferKey.aiTavilyEnabled, "boolean"),
         SettingDef(PreferKey.aiTavilyTopic, "string", values = setOf("general", "news", "finance")),
         SettingDef(PreferKey.aiTavilySearchDepth, "string", values = setOf("basic", "advanced", "ultra-fast")),
-        SettingDef(PreferKey.aiTavilyMaxResults, "int", min = 1, max = 10)
+        SettingDef(PreferKey.aiTavilyMaxResults, "int", min = 1, max = 20)
     )
     private val settingDefMap = settingDefs.associateBy { it.key }
 
@@ -201,11 +201,10 @@ object AiSettingsTool {
                 "boolean" -> {
                     val value = when (rawValue) {
                         is Boolean -> rawValue
-                        is String -> rawValue.equals("true", true)
-                        is Number -> rawValue.toInt() != 0
+                        is String -> rawValue.toBooleanStrictOrNull() ?: throw IllegalArgumentException("invalid boolean")
                         else -> throw IllegalArgumentException("invalid boolean")
                     }
-                    appCtx.putPrefBoolean(key, value)
+                    writeSettingValue(key, value)
                 }
 
                 "int" -> {
@@ -215,8 +214,8 @@ object AiSettingsTool {
                             ?: throw IllegalArgumentException("invalid int")
                         else -> throw IllegalArgumentException("invalid int")
                     }
-                    val limited = value.coerceIn(def.min ?: Int.MIN_VALUE, def.max ?: Int.MAX_VALUE)
-                    appCtx.putPrefInt(key, limited)
+                    require(value in (def.min ?: Int.MIN_VALUE)..(def.max ?: Int.MAX_VALUE)) { "setting out of range" }
+                    writeSettingValue(key, value)
                 }
 
                 else -> {
@@ -224,7 +223,7 @@ object AiSettingsTool {
                     if (def.values.isNotEmpty() && value !in def.values) {
                         throw IllegalArgumentException("invalid enum")
                     }
-                    appCtx.putPrefString(key, value)
+                    writeSettingValue(key, value)
                 }
             }
             JSONObject().apply {
@@ -242,10 +241,37 @@ object AiSettingsTool {
     }
 
     private fun readSettingValue(key: String, type: String): Any? {
+        when (key) {
+            PreferKey.aiAssistantEnabled -> return io.legado.app.help.agent.AgentConfig.enabled
+            PreferKey.aiShowToolSummary -> return io.legado.app.help.config.AppConfig.aiShowToolSummary
+            PreferKey.aiEnterToSend -> return io.legado.app.help.config.AppConfig.aiEnterToSend
+            PreferKey.aiTavilyEnabled -> return io.legado.app.help.agent.AgentConfig.moduleEnabled("web")
+            PreferKey.aiTavilyTopic -> return io.legado.app.help.config.AppConfig.aiTavilyTopic
+            PreferKey.aiTavilySearchDepth -> return io.legado.app.help.config.AppConfig.aiTavilySearchDepth
+            PreferKey.aiTavilyMaxResults -> return io.legado.app.help.config.AppConfig.aiTavilyMaxResults
+        }
         return when (type) {
             "boolean" -> appCtx.getPrefBoolean(key, false)
             "int" -> appCtx.getPrefInt(key, 0)
             else -> appCtx.getPrefString(key).orEmpty()
+        }
+    }
+
+    private fun writeSettingValue(key: String, value: Any) {
+        when (key) {
+            PreferKey.aiAssistantEnabled -> io.legado.app.help.agent.AgentConfig.enabled = value as Boolean
+            PreferKey.aiShowToolSummary -> io.legado.app.help.config.AppConfig.aiShowToolSummary = value as Boolean
+            PreferKey.aiEnterToSend -> io.legado.app.help.config.AppConfig.aiEnterToSend = value as Boolean
+            PreferKey.aiTavilyEnabled -> io.legado.app.help.agent.AgentConfig.setModuleEnabled("web", value as Boolean)
+            PreferKey.aiTavilyTopic -> io.legado.app.help.config.AppConfig.aiTavilyTopic = value as String
+            PreferKey.aiTavilySearchDepth -> io.legado.app.help.config.AppConfig.aiTavilySearchDepth = value as String
+            PreferKey.aiTavilyMaxResults -> io.legado.app.help.config.AppConfig.aiTavilyMaxResults = value as Int
+            else -> when (value) {
+                is Boolean -> appCtx.putPrefBoolean(key, value)
+                is Int -> appCtx.putPrefInt(key, value)
+                is String -> appCtx.putPrefString(key, value)
+                else -> error("unsupported setting type")
+            }
         }
     }
 

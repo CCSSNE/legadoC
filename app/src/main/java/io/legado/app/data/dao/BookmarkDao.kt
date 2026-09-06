@@ -51,6 +51,9 @@ interface BookmarkDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insert(vararg bookmark: Bookmark)
 
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    fun insertNew(bookmark: Bookmark)
+
     @Update
     fun update(bookmark: Bookmark)
 

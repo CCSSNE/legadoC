@@ -1131,6 +1131,33 @@ class ReadView(context: Context, attrs: AttributeSet) :
         return crossPageTextBuffer.toString() + current
     }
 
+    fun agentSelection(): org.json.JSONObject {
+        val result = org.json.JSONObject().put("active", isTextSelected)
+        if (!isTextSelected) return result
+        val text = getSelectText()
+        val start = curPage.selectStartPos
+        val page = curPage.relativePage(start.relativePagePos)
+        val chapter = page.getTextChapter()
+        val content = chapter.getContent()
+        val hint = if (start.lineIndex in page.lines.indices && start.columnIndex >= 0 &&
+            start.columnIndex <= page.lines[start.lineIndex].columns.size && crossPageTextBuffer.isEmpty()) {
+            page.chapterPosition + page.getPosByLineColumn(start.lineIndex, start.columnIndex)
+        } else -1
+        val occurrence = content.indexOf(text)
+        val position = when {
+            text.isEmpty() -> -1
+            hint >= 0 && content.startsWith(text, hint) -> hint
+            occurrence >= 0 && content.indexOf(text, occurrence + 1) < 0 -> occurrence
+            else -> -1
+        }
+        result.put("text", text).put("chapterIndex", chapter.chapter.index).put("coordinate", "display")
+            .put("revision", io.legado.app.help.agent.mcp.AgentReading.revision(content))
+        if (position >= 0) result.put("start", position).put("end", position + text.length)
+        else result.put("start", org.json.JSONObject.NULL).put("end", org.json.JSONObject.NULL)
+            .put("positionError", "跨章节或原生排版选区无法唯一映射；保留选中文本，不猜测坐标")
+        return result
+    }
+
     fun getCurVisiblePage(): TextPage {
         return curPage.getCurVisiblePage()
     }

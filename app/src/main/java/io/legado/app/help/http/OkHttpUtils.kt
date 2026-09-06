@@ -32,6 +32,12 @@ suspend fun OkHttpClient.newCallResponse(
 ): Response {
     val requestBuilder = Request.Builder()
     requestBuilder.apply(builder)
+    val agentIo = kotlin.coroutines.coroutineContext[io.legado.app.help.agent.AgentIoContext]
+    if (agentIo != null) {
+        require(retry == 0) { "Agent 领域请求禁止自动重放" }
+        agentIo.control.check()
+        return newBuilder().retryOnConnectionFailure(false).build().newCall(requestBuilder.build()).await()
+    }
     var response: Response? = null
     for (i in 0..retry) {
         response = newCall(requestBuilder.build()).await()
@@ -59,18 +65,41 @@ suspend fun OkHttpClient.newCallStrResponse(
 }
 
 suspend fun Call.await(): Response = suspendCancellableCoroutine { block ->
-
+    val control = block.context[io.legado.app.help.agent.AgentIoContext]?.control
+    control?.onCancel(this) { cancel() }
     block.invokeOnCancellation {
         cancel()
     }
 
     enqueue(object : Callback {
         override fun onFailure(call: Call, e: IOException) {
+            control?.removeCancel(call)
             block.resumeWithException(e)
         }
 
         override fun onResponse(call: Call, response: Response) {
-            block.resume(response)
+            if (!block.isActive) {
+                response.close()
+                control?.removeCancel(call)
+                return
+            }
+            val body = response.body
+            if (control == null || body == null) {
+                control?.removeCancel(call)
+                block.resume(response)
+            } else {
+                val source = object : okio.ForwardingSource(body.source()) {
+                    override fun close() {
+                        try { super.close() } finally { control.removeCancel(call) }
+                    }
+                }.buffer()
+                val wrapped = object : ResponseBody() {
+                    override fun contentType() = body.contentType()
+                    override fun contentLength() = body.contentLength()
+                    override fun source() = source
+                }
+                block.resume(response.newBuilder().body(wrapped).build())
+            }
         }
     })
 

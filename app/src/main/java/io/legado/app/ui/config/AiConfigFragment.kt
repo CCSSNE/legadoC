@@ -16,7 +16,6 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.DialogAiCreationProviderEditBinding
-import io.legado.app.databinding.DialogAiMcpServerEditBinding
 import io.legado.app.databinding.DialogAiProviderEditBinding
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.ai.AiChapterPurifyConfig
@@ -34,7 +33,6 @@ import io.legado.app.help.LogExporter
 import io.legado.app.help.ai.AiLogConfig
 import io.legado.app.help.ai.AiRequestTimeoutConfig
 import io.legado.app.help.ai.AiStructuredRequestTemplate
-import io.legado.app.help.ai.AiToolRegistry
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.newCallResponse
 import io.legado.app.help.http.okHttpClient
@@ -45,9 +43,7 @@ import io.legado.app.lib.prefs.SwitchPreference
 import io.legado.app.lib.prefs.fragment.PreferenceFragment
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.main.ai.AiModelConfig
-import io.legado.app.ui.main.ai.AiMcpServerConfig
 import io.legado.app.ui.main.ai.AiProviderConfig
-import io.legado.app.ui.main.ai.AiSkillConfig
 import io.legado.app.ui.about.AiLogDialog
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.observeEvent
@@ -72,15 +68,12 @@ class AiConfigFragment : PreferenceFragment(),
         uri?.let { writeAiLogs(it, logs) }
     }
 
-    private val defaultSkillUrls = listOf(
-        "https://raw.githubusercontent.com/DandanLLab/legadoSkill/main/.trae/skills/legado-book-source-tamer/SKILL.md",
-        "https://raw.githubusercontent.com/DandanLLab/legadoSkill/main/skills/SKILLV0.7.md",
-        "https://raw.githubusercontent.com/DandanLLab/legadoSkill/main/SKILL.md"
-    )
+    private val agentSettings = AgentSettingsUi(this) { refreshUi(notifyMain = true) }
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         addPreferencesFromResource(R.xml.pref_config_ai)
         configureApiRedactionPreference()
+        agentSettings.initialize()
         refreshUi()
     }
 
@@ -101,6 +94,7 @@ class AiConfigFragment : PreferenceFragment(),
     }
 
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
+        if (agentSettings.handle(preference.key)) return true
         when (preference.key) {
             "aiManageProviders" -> showManageProvidersDialog()
             "aiTestCurrentConnection" -> testCurrentAiConnection()
@@ -138,16 +132,6 @@ class AiConfigFragment : PreferenceFragment(),
             ) { AiRequestTimeoutConfig.thinkingInterruptMaxCount = it }
             "aiLogs" -> showDialogFragment<AiLogDialog>()
             "aiExportLogs" -> exportAiLogs()
-            "aiManageMcpServers" -> showManageMcpServersDialog()
-            "aiManageNativeTools" -> showManageNativeToolsDialog()
-            PreferKey.aiTavilyApiKey -> showTavilyApiKeyDialog()
-            PreferKey.aiTavilyBaseUrl -> showTavilyBaseUrlDialog()
-            PreferKey.aiTavilyTopic -> showTavilyTopicDialog()
-            PreferKey.aiTavilySearchDepth -> showTavilySearchDepthDialog()
-            PreferKey.aiTavilyMaxResults -> showTavilyMaxResultsDialog()
-            PreferKey.aiSystemPrompt -> showSystemPromptDialog()
-            "aiImportDefaultSkill" -> importDefaultSkill()
-            PreferKey.aiSkillPrompt -> showManageSkillsDialog()
             PreferKey.aiChapterPurifyProvider -> showSelectChapterPurifyProviderDialog()
             PreferKey.aiChapterPurifyModel -> showSelectChapterPurifyModelDialog()
             "aiChapterPurifyTestConnection" -> testChapterPurifyConnection()
@@ -1584,475 +1568,10 @@ class AiConfigFragment : PreferenceFragment(),
         return AppConfig.aiModelConfigList.filter { it.providerId == providerId }
     }
 
-    private fun showEditMcpServerDialog(server: AiMcpServerConfig? = null) {
-        val binding = DialogAiMcpServerEditBinding.inflate(layoutInflater).apply {
-            editMcpServerName.setText(server?.name.orEmpty())
-            editMcpServerEndpoint.setText(server?.endpoint.orEmpty())
-            editMcpServerApiKey.setText(server?.apiKey.orEmpty())
-            checkMcpServerEnabled.isChecked = server?.enabled ?: true
-        }
-        applyApiKeyInputPolicy(binding.editMcpServerApiKey)
-        alert(
-            title = getString(
-                if (server == null) R.string.ai_add_mcp_server else R.string.ai_edit_mcp_server
-            )
-        ) {
-            customView { binding.root }
-            //删除放最左（neutral）：取消/确定左侧，编辑态才有
-            if (server != null) {
-                neutralButton(R.string.ai_remove_mcp_server) {
-                    confirmRemoveMcpServer(server)
-                }
-            }
-            okButton {
-                val name = binding.editMcpServerName.text?.toString()?.trim().orEmpty()
-                val endpoint = binding.editMcpServerEndpoint.text?.toString()?.trim().orEmpty()
-                val apiKey = binding.editMcpServerApiKey.text?.toString()?.trim().orEmpty()
-                when {
-                    name.isEmpty() -> {
-                        toastOnUi(R.string.ai_mcp_server_name_required)
-                        return@okButton
-                    }
-
-                    endpoint.isEmpty() -> {
-                        toastOnUi(R.string.ai_mcp_server_endpoint_required)
-                        return@okButton
-                    }
-                }
-                val servers = AppConfig.aiMcpServerList.toMutableList()
-                val updated = server?.copy(
-                    name = name,
-                    endpoint = endpoint,
-                    apiKey = apiKey,
-                    enabled = binding.checkMcpServerEnabled.isChecked
-                ) ?: AiMcpServerConfig(
-                    name = name,
-                    endpoint = endpoint,
-                    apiKey = apiKey,
-                    enabled = binding.checkMcpServerEnabled.isChecked
-                )
-                val targetIndex = servers.indexOfFirst { it.id == updated.id }
-                if (targetIndex >= 0) {
-                    servers[targetIndex] = updated
-                } else {
-                    servers.add(updated)
-                }
-                AppConfig.aiMcpServerList = servers
-                refreshUi()
-                toastOnUi(R.string.ai_mcp_server_saved)
-            }
-            cancelButton()
-        }
-    }
-
-    private fun showManageMcpServersDialog() {
-        val servers = AppConfig.aiMcpServerList
-        val ctx = context ?: return
-        //短按=启用/禁用，长按=编辑；删除收进编辑页左下（neutral），不再二级弹窗；末尾一行添加
-        val dialog = ctx.alert(getString(R.string.ai_manage_mcp_servers)) {
-            items(
-                servers.map { server ->
-                    buildString {
-                        append(server.name)
-                        if (!server.enabled) append(" (off)")
-                    }
-                } + getString(R.string.ai_add_mcp_server)
-            ) { _, index ->
-                if (index == servers.size) {
-                    showEditMcpServerDialog()
-                    return@items
-                }
-                val server = servers[index]
-                AppConfig.aiMcpServerList = AppConfig.aiMcpServerList.map {
-                    if (it.id == server.id) it.copy(enabled = !it.enabled) else it
-                }
-                refreshUi()
-            }
-        }
-        dialog.listView?.setOnItemLongClickListener { _, _, position, _ ->
-            if (position == servers.size) return@setOnItemLongClickListener false
-            dialog.dismiss()
-            showEditMcpServerDialog(servers[position])
-            true
-        }
-    }
-
-    private fun confirmRemoveMcpServer(server: AiMcpServerConfig) {
-        alert(
-            title = server.name,
-            message = getString(R.string.ai_remove_mcp_server_confirm)
-        ) {
-            okButton {
-                AppConfig.aiMcpServerList = AppConfig.aiMcpServerList.filterNot { it.id == server.id }
-                refreshUi()
-                toastOnUi(R.string.ai_mcp_server_removed)
-            }
-            cancelButton()
-        }
-    }
-
-    private fun showSystemPromptDialog() {
-        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
-            editView.hint = getString(R.string.ai_system_prompt_hint)
-            editView.inputType = InputType.TYPE_CLASS_TEXT or
-                InputType.TYPE_TEXT_FLAG_MULTI_LINE or
-                InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-            editView.minLines = 8
-            editView.setText(AppConfig.aiSystemPrompt)
-            editView.setSelection(editView.text?.length ?: 0)
-        }
-        alert(titleResource = R.string.ai_system_prompt) {
-            customView { binding.root }
-            okButton {
-                AppConfig.aiSystemPrompt = binding.editView.text?.toString().orEmpty()
-                refreshUi()
-            }
-            neutralButton(R.string.restore_default) {
-                AppConfig.aiSystemPrompt = AppConfig.DEFAULT_AI_SYSTEM_PROMPT
-                refreshUi()
-            }
-            cancelButton()
-        }
-    }
-
-    private fun showManageNativeToolsDialog() {
-        lifecycleScope.launch {
-            val tools = runCatching { AiToolRegistry.resolveAllToolNamesForManage() }
-                .getOrDefault(emptyList())
-            if (tools.isEmpty()) {
-                toastOnUi(R.string.not_available)
-                return@launch
-            }
-            val enabled = AppConfig.aiEnabledToolNames.toMutableSet()
-            val checked = BooleanArray(tools.size) {
-                val name = tools[it]
-                if (enabled.isEmpty()) name in AiToolRegistry.defaultEnabledTools else name in enabled
-            }
-            val labels = tools.map(::toolDisplayName).toTypedArray()
-            alert(getString(R.string.ai_manage_native_tools)) {
-                multiChoiceItems(labels, checked) { _, which, isChecked ->
-                    if (isChecked) enabled.add(tools[which]) else enabled.remove(tools[which])
-                }
-                okButton {
-                    AppConfig.aiEnabledToolNames = enabled
-                    refreshUi()
-                }
-                negativeButton(R.string.select_all) {
-                    AppConfig.aiEnabledToolNames = tools.toSet()
-                    refreshUi()
-                }
-                neutralButton(R.string.restore_default) {
-                    AppConfig.aiEnabledToolNames = emptySet()
-                    refreshUi()
-                }
-                cancelButton()
-            }
-        }
-    }
-
-    private fun toolDisplayName(name: String): String {
-        val group = AiToolRegistry.groupLabelOfTool(name)
-        return "[${toolGroupZh(group)}] ${toolNameZh(name)}"
-    }
-
-    private fun toolGroupZh(group: String): String {
-        return when (group) {
-            "MCP" -> "MCP"
-            "书架" -> "书架"
-            "书源" -> "书源"
-            "阅读" -> "阅读"
-            "联网搜索" -> "联网搜索"
-            "设置" -> "设置"
-            else -> "其他"
-        }
-    }
-
-    private fun toolNameZh(name: String): String {
-        return when (name) {
-            "query_bookshelf" -> "查询书架书籍"
-            "get_bookshelf_book_info" -> "获取书籍详情"
-            "manage_bookshelf_group" -> "管理书架分组"
-            "manage_bookshelf_tag" -> "管理书架标签"
-            "set_bookshelf_book_group" -> "设置书籍分组"
-            "set_bookshelf_book_tags" -> "设置书籍标签"
-            "query_read_records" -> "查询阅读记录"
-            "list_book_chapters" -> "获取章节列表"
-            "read_book_chapter_content" -> "读取章节正文"
-            "list_book_sources" -> "列出书源"
-            "search_book_source" -> "搜索书源内容"
-            "create_book_source" -> "新增书源"
-            "get_book_source" -> "获取书源详情"
-            "update_book_source" -> "更新书源"
-            "fetch_source_html" -> "抓取网页源码"
-            "debug_book_source" -> "调试书源规则"
-            "search_web_tavily" -> "Tavily 联网搜索"
-            "get_app_settings" -> "读取设置项"
-            "set_app_setting" -> "修改单个设置"
-            "set_app_settings_batch" -> "批量修改设置"
-            else -> name
-        }
-    }
-
-    private fun showTavilyApiKeyDialog() {
-        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
-            editView.hint = getString(R.string.ai_tavily_api_key_hint)
-            editView.setText(AppConfig.aiTavilyApiKey)
-        }
-        applyApiKeyInputPolicy(binding.editView)
-        alert(titleResource = R.string.ai_tavily_api_key) {
-            customView { binding.root }
-            okButton {
-                AppConfig.aiTavilyApiKey = binding.editView.text?.toString().orEmpty()
-                refreshUi()
-            }
-            cancelButton()
-        }
-    }
-
-    private fun showTavilyBaseUrlDialog() {
-        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
-            editView.hint = "https://api.tavily.com/search"
-            editView.inputType = InputType.TYPE_CLASS_TEXT
-            editView.setText(AppConfig.aiTavilyBaseUrl)
-            editView.setSelection(editView.text?.length ?: 0)
-        }
-        alert(titleResource = R.string.ai_tavily_base_url) {
-            customView { binding.root }
-            okButton {
-                AppConfig.aiTavilyBaseUrl = binding.editView.text?.toString().orEmpty()
-                refreshUi()
-            }
-            neutralButton(R.string.restore_default) {
-                AppConfig.aiTavilyBaseUrl = "https://api.tavily.com/search"
-                refreshUi()
-            }
-            cancelButton()
-        }
-    }
-
-    private fun showTavilyTopicDialog() {
-        val values = listOf("general", "news", "finance")
-        val labels = listOf(
-            getString(R.string.ai_tavily_topic_general),
-            getString(R.string.ai_tavily_topic_news),
-            getString(R.string.ai_tavily_topic_finance)
-        )
-        context?.selector(getString(R.string.ai_tavily_topic), labels) { _, _, index ->
-            AppConfig.aiTavilyTopic = values[index]
-            refreshUi()
-        }
-    }
-
-    private fun showTavilySearchDepthDialog() {
-        val values = listOf("basic", "advanced", "ultra-fast")
-        val labels = listOf(
-            getString(R.string.ai_tavily_search_depth_basic),
-            getString(R.string.ai_tavily_search_depth_advanced),
-            getString(R.string.ai_tavily_search_depth_ultra_fast)
-        )
-        context?.selector(getString(R.string.ai_tavily_search_depth), labels) { _, _, index ->
-            AppConfig.aiTavilySearchDepth = values[index]
-            refreshUi()
-        }
-    }
-
-    private fun showTavilyMaxResultsDialog() {
-        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
-            editView.hint = "1-10"
-            editView.inputType = InputType.TYPE_CLASS_NUMBER
-            editView.setText(AppConfig.aiTavilyMaxResults.toString())
-            editView.setSelection(editView.text?.length ?: 0)
-        }
-        alert(titleResource = R.string.ai_tavily_max_results) {
-            customView { binding.root }
-            okButton {
-                val value = binding.editView.text?.toString()?.trim()?.toIntOrNull()
-                if (value == null) {
-                    toastOnUi(R.string.ai_tavily_max_results_invalid)
-                    return@okButton
-                }
-                AppConfig.aiTavilyMaxResults = value
-                refreshUi()
-            }
-            cancelButton()
-        }
-    }
-
-    private fun importDefaultSkill() {
-        toastOnUi(R.string.ai_skill_importing)
-        lifecycleScope.launch {
-            val result = withContext(IO) {
-                runCatching {
-                    var lastError = ""
-                    defaultSkillUrls.forEach { skillUrl ->
-                        okHttpClient.newCallResponse {
-                            url(skillUrl)
-                        }.use { response ->
-                            if (response.isSuccessful) {
-                                return@runCatching skillUrl to response.body?.string().orEmpty()
-                            }
-                            lastError = "${response.code} ${response.message}"
-                        }
-                    }
-                    error(lastError.ifBlank { "No available SKILL.md" })
-                }
-            }
-            result.onSuccess { (skillUrl, skill) ->
-                if (skill.isBlank()) {
-                    toastOnUi(R.string.ai_skill_import_empty)
-                    return@onSuccess
-                }
-                val skillConfig = parseSkillConfig(skill, skillUrl)
-                AppConfig.aiSkillList = AppConfig.aiSkillList
-                    .filterNot { it.sourceUrl == skillConfig.sourceUrl || it.name == skillConfig.name }
-                    .plus(skillConfig)
-                refreshUi()
-                toastOnUi(R.string.ai_skill_imported)
-            }.onFailure {
-                toastOnUi(getString(R.string.ai_skill_import_failed, it.localizedMessage ?: "Error"))
-            }
-        }
-    }
-
-    private fun showManageSkillsDialog() {
-        val skills = AppConfig.aiSkillList
-        val actions = mutableListOf(getString(R.string.ai_add_skill_manual))
-        actions += skills.map { skill ->
-            buildString {
-                append(skill.name)
-                append(" · ")
-                append(
-                    getString(
-                        if (skill.enabled) R.string.enabled else R.string.disabled
-                    )
-                )
-            }
-        }
-        context?.selector(getString(R.string.ai_manage_skills), actions) { _, _, index ->
-            if (index == 0) {
-                showSkillEditDialog()
-            } else {
-                showSkillActionDialog(skills[index - 1])
-            }
-        }
-    }
-
-    private fun showSkillActionDialog(skill: AiSkillConfig) {
-        context?.selector(
-            skill.name,
-            arrayListOf(
-                getString(if (skill.enabled) R.string.disable else R.string.enable),
-                getString(R.string.edit),
-                getString(R.string.delete)
-            )
-        ) { _, action ->
-            when (action) {
-                0 -> {
-                    AppConfig.aiSkillList = AppConfig.aiSkillList.map {
-                        if (it.id == skill.id) it.copy(enabled = !it.enabled) else it
-                    }
-                    refreshUi()
-                }
-
-                1 -> showSkillEditDialog(skill)
-                2 -> confirmRemoveSkill(skill)
-            }
-        }
-    }
-
-    private fun showSkillEditDialog(skill: AiSkillConfig? = null) {
-        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
-            editView.hint = getString(R.string.ai_skill_prompt_hint)
-            editView.inputType = InputType.TYPE_CLASS_TEXT or
-                InputType.TYPE_TEXT_FLAG_MULTI_LINE or
-                InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-            editView.minLines = 8
-            editView.setText(skill?.content.orEmpty())
-            editView.setSelection(editView.text?.length ?: 0)
-        }
-        alert(titleResource = R.string.ai_skill_prompt) {
-            customView { binding.root }
-            okButton {
-                val content = binding.editView.text?.toString().orEmpty()
-                if (content.isBlank()) {
-                    toastOnUi(R.string.ai_skill_import_empty)
-                    return@okButton
-                }
-                val updated = parseSkillConfig(content, skill?.sourceUrl.orEmpty(), skill)
-                val skills = AppConfig.aiSkillList.toMutableList()
-                val index = skills.indexOfFirst { it.id == updated.id }
-                if (index >= 0) {
-                    skills[index] = updated
-                } else {
-                    skills.add(updated)
-                }
-                AppConfig.aiSkillList = skills
-                refreshUi()
-            }
-            cancelButton()
-        }
-    }
-
-    private fun confirmRemoveSkill(skill: AiSkillConfig) {
-        alert(
-            title = skill.name,
-            message = getString(R.string.ai_remove_skill_confirm)
-        ) {
-            okButton {
-                AppConfig.aiSkillList = AppConfig.aiSkillList.filterNot { it.id == skill.id }
-                refreshUi()
-            }
-            cancelButton()
-        }
-    }
-
-    private fun parseSkillConfig(
-        content: String,
-        sourceUrl: String = "",
-        oldSkill: AiSkillConfig? = null
-    ): AiSkillConfig {
-        val name = Regex("""(?m)^\s*name:\s*["']?([^"'\n]+)["']?\s*$""")
-            .find(content)
-            ?.groupValues
-            ?.getOrNull(1)
-            ?.trim()
-            .orEmpty()
-        val description = Regex("""(?m)^\s*description:\s*["']?([^"'\n]+)["']?\s*$""")
-            .find(content)
-            ?.groupValues
-            ?.getOrNull(1)
-            ?.trim()
-            .orEmpty()
-        return (oldSkill ?: AiSkillConfig(
-            name = name.ifBlank { getString(R.string.ai_skill_default_name) },
-            content = content
-        )).copy(
-            name = name.ifBlank { oldSkill?.name ?: getString(R.string.ai_skill_default_name) },
-            description = description.ifBlank { oldSkill?.description.orEmpty() },
-            content = content.trim(),
-            sourceUrl = sourceUrl.ifBlank { oldSkill?.sourceUrl.orEmpty() },
-            enabled = oldSkill?.enabled ?: true
-        )
-    }
-
     private fun refreshUi(notifyMain: Boolean = false) {
         val currentProvider = AppConfig.aiCurrentProvider
         val providerModels = currentProviderModels()
-        val mcpServers = AppConfig.aiMcpServerList
-        val enabledMcpCount = mcpServers.count { it.enabled }
-        val canEnable = AppConfig.aiCurrentModelConfig != null
-        val storedEnabled = preferenceManager.sharedPreferences
-            ?.getBoolean(PreferKey.aiAssistantEnabled, false) == true
-        if (!canEnable && storedEnabled) {
-            AppConfig.aiAssistantEnabled = false
-        }
-        findPreference<SwitchPreference>(PreferKey.aiAssistantEnabled)?.apply {
-            isEnabled = canEnable
-            isChecked = AppConfig.aiAssistantEnabled
-            summary = getString(
-                if (canEnable) R.string.ai_enable_summary else R.string.ai_enable_summary_disabled
-            )
-        }
+        agentSettings.refresh()
         findPreference<Preference>("aiManageProviders")?.summary =
             if (AppConfig.aiProviderList.isEmpty()) {
                 getString(R.string.ai_no_providers)
@@ -2113,49 +1632,6 @@ class AiConfigFragment : PreferenceFragment(),
                 currentModelId
             )
         }
-        findPreference<Preference>("aiManageMcpServers")?.summary =
-            if (mcpServers.isEmpty()) {
-                getString(R.string.ai_no_mcp_servers)
-            } else {
-                getString(
-                    R.string.ai_manage_mcp_servers_summary,
-                    enabledMcpCount,
-                    mcpServers.size
-                )
-            }
-        findPreference<SwitchPreference>(PreferKey.aiTavilyEnabled)?.summary =
-            getString(
-                if (AppConfig.aiTavilyApiKey.isBlank()) {
-                    R.string.ai_tavily_enable_summary_missing
-                } else {
-                    R.string.ai_tavily_enable_summary
-                }
-            )
-        findPreference<Preference>(PreferKey.aiTavilyApiKey)?.summary =
-            if (AppConfig.aiTavilyApiKey.isBlank()) {
-                getString(R.string.ai_tavily_api_key_summary)
-            } else {
-                getString(R.string.ai_tavily_api_key_summary_ready)
-            }
-        findPreference<Preference>(PreferKey.aiTavilyBaseUrl)?.summary = AppConfig.aiTavilyBaseUrl
-        findPreference<Preference>(PreferKey.aiTavilyTopic)?.summary = getString(
-            when (AppConfig.aiTavilyTopic) {
-                "news" -> R.string.ai_tavily_topic_news
-                "finance" -> R.string.ai_tavily_topic_finance
-                else -> R.string.ai_tavily_topic_general
-            }
-        )
-        findPreference<Preference>(PreferKey.aiTavilySearchDepth)?.summary = getString(
-            when (AppConfig.aiTavilySearchDepth) {
-                "advanced" -> R.string.ai_tavily_search_depth_advanced
-                "ultra-fast" -> R.string.ai_tavily_search_depth_ultra_fast
-                else -> R.string.ai_tavily_search_depth_basic
-            }
-        )
-        findPreference<Preference>(PreferKey.aiTavilyMaxResults)?.summary =
-            AppConfig.aiTavilyMaxResults.toString()
-        findPreference<Preference>(PreferKey.aiSystemPrompt)?.summary =
-            getString(R.string.ai_system_prompt_summary)
         val advancedSettingsEnabled = preferenceManager.sharedPreferences
             ?.getBoolean(PreferKey.aiAdvancedSettingsEnabled, false) == true
         findPreference<SwitchPreference>(PreferKey.aiAdvancedSettingsEnabled)?.isChecked =
@@ -2163,9 +1639,6 @@ class AiConfigFragment : PreferenceFragment(),
         findPreference<Preference>("aiEditRequest")?.isVisible = advancedSettingsEnabled
         findPreference<Preference>(PreferKey.aiApiRedactionEnabled)?.isVisible =
             advancedSettingsEnabled
-        findPreference<PreferenceGroup>("aiAssistantCategory")?.isVisible = advancedSettingsEnabled
-        findPreference<PreferenceGroup>("aiMcpCategory")?.isVisible = advancedSettingsEnabled
-        findPreference<PreferenceGroup>("aiWebToolsCategory")?.isVisible = advancedSettingsEnabled
         findPreference<PreferenceGroup>("aiTimeoutCategory")?.isVisible = advancedSettingsEnabled
         findPreference<PreferenceGroup>("aiCreationCategory")?.isVisible = advancedSettingsEnabled
         listOf(
@@ -2318,23 +1791,7 @@ class AiConfigFragment : PreferenceFragment(),
                 R.string.ai_creation_prompt_regenerate_limit_summary,
                 AiCreationConfig.promptRegenerateLimit
             )
-        val skills = AppConfig.aiSkillList
-        val enabledSkillCount = skills.count { it.enabled }
-        findPreference<Preference>(PreferKey.aiSkillPrompt)?.summary =
-            if (skills.isEmpty()) {
-                getString(R.string.ai_skill_prompt_summary_empty)
-            } else {
-                getString(R.string.ai_skill_prompt_summary, enabledSkillCount, skills.size)
-            }
-        findPreference<Preference>("aiManageNativeTools")?.summary = run {
-            val enabledTools = AppConfig.aiEnabledToolNames
-            if (enabledTools.isEmpty()) {
-                getString(R.string.ai_manage_native_tools_summary)
-            } else {
-                "${getString(R.string.ai_manage_native_tools_summary)} · ${enabledTools.size}"
-            }
-        }
-        if (notifyMain || (!canEnable && storedEnabled)) {
+        if (notifyMain) {
             postEvent(EventBus.NOTIFY_MAIN, false)
         }
     }

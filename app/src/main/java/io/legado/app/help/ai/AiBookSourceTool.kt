@@ -111,9 +111,9 @@ object AiBookSourceTool {
                         })
                         put("limit", JSONObject().apply {
                             put("type", "integer")
-                            put("description", "搜索返回数量，默认 10，最大 30。")
+                            put("description", "可选每块结果数，默认全部；使用 cursor 继续遍历。")
                             put("minimum", 1)
-                            put("maximum", 30)
+
                         })
                     })
                     put("additionalProperties", true)
@@ -176,15 +176,13 @@ object AiBookSourceTool {
                         put("sourceRegex", stringProp("可选，WebView 抓取源码的匹配规则。"))
                         put("timeoutMs", JSONObject().apply {
                             put("type", "integer")
-                            put("description", "请求超时毫秒，默认 45000，最大 90000。")
-                            put("minimum", 10000)
-                            put("maximum", 90000)
+                            put("description", "请求超时毫秒，默认 45000；可显式调整。")
+                            put("minimum", 1)
                         })
                         put("maxChars", JSONObject().apply {
                             put("type", "integer")
-                            put("description", "返回 HTML 最大字符数，默认 20000，最大 80000。")
-                            put("minimum", 1000)
-                            put("maximum", 80000)
+                            put("description", "可选 HTML 块大小，默认完整内容；使用 offset 继续读取。")
+                            put("minimum", 1)
                         })
                     })
                     put("required", JSONArray().put("url"))
@@ -201,7 +199,7 @@ object AiBookSourceTool {
                 put("name", TOOL_DEBUG_SOURCE)
                 put(
                     "description",
-                    "使用 Legado 原生 Debug 流程调试书源，支持搜索、详情 URL、发现、目录和正文。返回调试日志。若 success=false，必须根据 logs 修改 sourceJson，然后再次调用 create_book_source(save=false) 和 debug_book_source，最多重试 3 轮。"
+                    "使用 Legado 原生 Debug 流程调试书源，支持搜索、详情 URL、发现、目录和正文。返回完整日志、成功状态和失败原因；如何修复或再次调用由模式策略决定。"
                 )
                 put("parameters", JSONObject().apply {
                     put("type", "object")
@@ -216,9 +214,8 @@ object AiBookSourceTool {
                         )
                         put("timeoutMs", JSONObject().apply {
                             put("type", "integer")
-                            put("description", "调试超时毫秒，默认 45000，最大 90000。")
-                            put("minimum", 10000)
-                            put("maximum", 90000)
+                            put("description", "调试超时毫秒，默认 45000；可显式调整。")
+                            put("minimum", 1)
                         })
                     })
                     put("additionalProperties", false)
@@ -249,7 +246,7 @@ object AiBookSourceTool {
             }
         }
         if (sourceUrls.isNotEmpty()) {
-            val sources = sourceUrls.mapNotNull { appDb.bookSourceDao.getBookSource(it) }
+            val sources = sourceUrls.map { appDb.bookSourceDao.getBookSource(it) ?: throw IllegalArgumentException("书源不存在：$it") }
             if (sources.isEmpty()) return error("未找到指定书源")
             return ok().apply {
                 if (sources.size == 1) {
@@ -271,7 +268,6 @@ object AiBookSourceTool {
         if (searchKeys.isEmpty()) {
             return error("缺少 bookSourceUrl 或 searchKey")
         }
-        val limit = (args?.optInt("limit", 10) ?: 10).coerceIn(1, 30)
         val sources = appDb.bookSourceDao.all.filter { source ->
             searchKeys.any { key ->
                 source.bookSourceName.contains(key, ignoreCase = true) ||
@@ -279,7 +275,7 @@ object AiBookSourceTool {
                     source.bookSourceGroup.orEmpty().contains(key, ignoreCase = true) ||
                     source.bookSourceComment.orEmpty().contains(key, ignoreCase = true)
             }
-        }.take(limit)
+        }
         return ok().apply {
             put("count", sources.size)
             put("sources", JSONArray().apply {
@@ -329,8 +325,8 @@ object AiBookSourceTool {
         if (url.isBlank()) {
             return@coroutineScope error("缺少 url")
         }
-        val timeoutMs = (args.optLong("timeoutMs", 45_000L)).coerceIn(10_000L, 90_000L)
-        val maxChars = (args.optInt("maxChars", 20_000)).coerceIn(1_000, 80_000)
+        val timeoutMs = args.optLong("timeoutMs", 45_000L)
+        require(timeoutMs > 0) { "timeoutMs 必须大于零" }
         val source = resolveSource(args, allowDbLookup = true) ?: temporarySourceFor(url)
         runCatching {
             val response = AnalyzeUrl(
@@ -352,10 +348,13 @@ object AiBookSourceTool {
                 put("message", response.message())
                 put("callTime", response.callTime)
                 put("htmlLength", body.length)
-                put("truncated", body.length > maxChars)
-                put("html", body.take(maxChars))
+                val range = io.legado.app.help.agent.mcp.AgentPages.text(body, args)
+                put("html", range.getString("text"))
+                put("range", range)
+                put("complete", range.getBoolean("complete"))
             }.toString()
         }.getOrElse { throwable ->
+            if (throwable is kotlinx.coroutines.CancellationException) throw throwable
             error(throwable.localizedMessage ?: throwable.javaClass.simpleName)
         }
     }
@@ -365,11 +364,11 @@ object AiBookSourceTool {
         val key = args?.optString("key").orEmpty()
             .ifBlank { source.ruleSearch?.checkKeyWord.orEmpty() }
             .ifBlank { "我的" }
-        val timeoutMs = (args?.optLong("timeoutMs", 45_000L) ?: 45_000L)
-            .coerceIn(10_000L, 90_000L)
+        val timeoutMs = args?.optLong("timeoutMs", 45_000L) ?: 45_000L
+        require(timeoutMs > 0) { "timeoutMs 必须大于零" }
         val logs = arrayListOf<String>()
         val finished = CompletableDeferred<Int>()
-        Debug.callback = object : Debug.Callback {
+        val callback = object : Debug.Callback {
             override fun printLog(state: Int, msg: String) {
                 logs += msg
                 if ((state == -1 || state == 1000) && !finished.isCompleted) {
@@ -377,26 +376,35 @@ object AiBookSourceTool {
                 }
             }
         }
-        Debug.startDebug(this, source, key)
-        val state = withTimeoutOrNull(timeoutMs) { finished.await() }
-        Debug.cancelDebug(true)
+        synchronized(Debug) {
+            check(Debug.callback == null) { "书源调试器正在使用，请先结束已有调试；不会抢占其他任务" }
+            Debug.callback = callback
+        }
+        val state = try {
+            Debug.startDebug(this, source, key)
+            withTimeoutOrNull(timeoutMs) { finished.await() }
+        } finally {
+            synchronized(Debug) { if (Debug.callback === callback) Debug.cancelDebug(true) }
+        }
         ok().apply {
+            put("ok", state == 1000)
+            if (state != 1000) put("error", if (state == null) "书源调试超时，未完成" else "书源调试失败，详见完整日志")
             put("bookSourceUrl", source.bookSourceUrl)
             put("key", key)
             put("finished", state != null)
             put("success", state == 1000)
-            put("logs", JSONArray(logs.takeLast(80)))
+            put("logs", JSONArray(logs))
         }.toString()
     }
 
     private fun resolveSource(args: JSONObject?, allowDbLookup: Boolean): BookSource? {
         args ?: return null
-        args.optString("sourceJson").takeIf { it.isNotBlank() }?.let { json ->
-            GSON.fromJsonObject<BookSource>(json).getOrNull()?.let { return it }
+        if (args.has("sourceJson")) {
+            return GSON.fromJsonObject<BookSource>(args.getString("sourceJson")).getOrThrow()
         }
         val sourceUrl = args.optString("bookSourceUrl").trim()
         if (allowDbLookup && sourceUrl.isNotBlank()) {
-            appDb.bookSourceDao.getBookSource(sourceUrl)?.let { return it }
+            return appDb.bookSourceDao.getBookSource(sourceUrl) ?: throw IllegalArgumentException("书源不存在：$sourceUrl")
         }
         if (sourceUrl.isBlank()) return null
         return BookSource(
@@ -434,8 +442,9 @@ object AiBookSourceTool {
     private fun readPatch(args: JSONObject): JSONObject {
         val directPatch = when (val value = args.opt("patch")) {
             is JSONObject -> value
-            is String -> value.takeIf { it.isNotBlank() }?.let { runCatching { JSONObject(it) }.getOrNull() }
-            else -> null
+            is String -> JSONObject(value)
+            null -> null
+            else -> throw IllegalArgumentException("patch 必须为 JSON 对象或 JSON 字符串")
         } ?: JSONObject()
         val generatedPatch = JSONObject()
         val reservedKeys = setOf("sourceJson", "bookSourceUrl", "patch", "save")
@@ -469,7 +478,7 @@ object AiBookSourceTool {
     }
 
     private inline fun <reified T> JSONObject.toRule(): T? {
-        return GSON.fromJsonObject<T>(toString()).getOrNull()
+        return GSON.fromJsonObject<T>(toString()).getOrThrow()
     }
 
     private fun stringProp(description: String) = JSONObject().apply {

@@ -27,8 +27,6 @@ object AiBookshelfTool {
     private const val TOOL_SET_TAGS = "set_bookshelf_book_tags"
     private const val TOOL_LIST_CHAPTERS = "list_book_chapters"
     private const val TOOL_READ_CHAPTER = "read_book_chapter_content"
-    private const val DEFAULT_LIMIT = 6
-    private const val MAX_LIMIT = 20
     private val timeFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
 
     fun resolvedTools(): List<AiResolvedTool> {
@@ -108,9 +106,9 @@ object AiBookshelfTool {
                                         "limit",
                                         JSONObject().apply {
                                             put("type", "integer")
-                                            put("description", "每个列表最多返回多少项，范围 1 到 20。")
+                                            put("description", "可选分页大小；不传时返回全部，使用 cursor 继续读取。")
                                             put("minimum", 1)
-                                            put("maximum", MAX_LIMIT)
+
                                         }
                                     )
                                 }
@@ -405,7 +403,7 @@ object AiBookshelfTool {
                         put("limit", JSONObject().apply {
                             put("type", "integer")
                             put("minimum", 1)
-                            put("maximum", 200)
+
                         })
                     })
                     put("additionalProperties", false)
@@ -445,9 +443,9 @@ object AiBookshelfTool {
                         })
                         put("maxChars", JSONObject().apply {
                             put("type", "integer")
-                            put("minimum", 200)
-                            put("maximum", 20000)
-                            put("description", "正文最大返回字符数，默认 4000。")
+                            put("minimum", 1)
+
+                            put("description", "可选块大小；默认完整原文，使用 offset 继续读取。")
                         })
                     })
                     put("additionalProperties", false)
@@ -458,19 +456,17 @@ object AiBookshelfTool {
 
     private fun queryBookshelf(arguments: JSONObject?): String {
         val query = arguments?.optString("query")?.trim().orEmpty()
-        val limit = (arguments?.optInt("limit", DEFAULT_LIMIT) ?: DEFAULT_LIMIT)
-            .coerceIn(1, MAX_LIMIT)
         val books = appDb.bookDao.all
         val matchedBooks = if (query.isBlank()) {
             emptyList()
         } else {
-            findMatchedBooks(query, books).take(limit)
+            findMatchedBooks(query, books)
         }
-        val recentBooks = books.sortedByDescending { it.durChapterTime }.take(limit)
-        val updatedBooks = books.sortedByDescending { it.latestChapterTime }.take(limit)
+        val recentBooks = books.sortedByDescending { it.durChapterTime }
+        val updatedBooks = books.sortedByDescending { it.latestChapterTime }
         val unreadRanking = books.sortedByDescending { it.getUnreadChapterNum() }
             .filter { it.getUnreadChapterNum() > 0 }
-            .take(limit)
+
         val lastReadBook = books.maxByOrNull { it.durChapterTime }
 
         return JSONObject().apply {
@@ -496,7 +492,7 @@ object AiBookshelfTool {
                 unreadRanking.forEach { put(bookToJson(it)) }
             })
             put("groups", JSONArray().apply {
-                buildBookshelfGroups(books, limit).forEach { put(it) }
+                buildBookshelfGroups(books).forEach { put(it) }
             })
         }.toString()
     }
@@ -685,7 +681,7 @@ object AiBookshelfTool {
             else -> successJson().apply {
                 put("groups", JSONArray().apply {
                     val groups = if (group != null) listOf(group) else appDb.bookGroupDao.all.sortedBy { it.order }
-                    groups.forEach { put(groupTagsToJson(it, booksInGroup(it, books), MAX_LIMIT)) }
+                    groups.forEach { put(groupTagsToJson(it, booksInGroup(it, books))) }
                 })
             }.toString()
         }
@@ -739,56 +735,11 @@ object AiBookshelfTool {
     }
 
     private suspend fun listBookChapters(arguments: JSONObject?): String = withContext(IO) {
-        val book = resolveBook(arguments)
-            ?: return@withContext errorJson("未找到书籍")
-        val keyword = arguments?.optString("keyword")?.trim().orEmpty()
-        val limit = (arguments?.optInt("limit", 80) ?: 80).coerceIn(1, 200)
-        val chapters = if (keyword.isBlank()) {
-            appDb.bookChapterDao.getChapterList(book.bookUrl)
-        } else {
-            appDb.bookChapterDao.search(book.bookUrl, keyword)
-        }.take(limit)
-        successJson().apply {
-            put("book", bookToJson(book))
-            put("chapterCount", appDb.bookChapterDao.getChapterCount(book.bookUrl))
-            put("chapters", JSONArray().apply {
-                chapters.forEach { chapter ->
-                    put(JSONObject().apply {
-                        put("index", chapter.index)
-                        put("title", chapter.title)
-                        put("volume", chapter.tag ?: "")
-                        put("url", chapter.url ?: "")
-                        put("cached", BookHelp.hasContent(book, chapter))
-                    })
-                }
-            })
-        }.toString()
+        io.legado.app.help.agent.mcp.AgentReading.listChapters(arguments ?: JSONObject()).toString()
     }
 
     private suspend fun readBookChapterContent(arguments: JSONObject?): String = withContext(IO) {
-        val book = resolveBook(arguments)
-            ?: return@withContext errorJson("未找到书籍")
-        val chapter = resolveChapter(book, arguments)
-            ?: return@withContext errorJson("未找到章节")
-        val content = BookHelp.getContent(book, chapter)
-            ?: runCatching {
-                val source = appDb.bookSourceDao.getBookSource(book.origin)
-                    ?: throw IllegalStateException("未找到书源")
-                WebBook.getContentAwait(source, book, chapter)
-            }.getOrNull()
-            ?: return@withContext errorJson("正文未缓存且读取失败")
-        val maxChars = (arguments?.optInt("maxChars", 4000) ?: 4000).coerceIn(200, 20000)
-        val normalized = content.replace(Regex("\\s+"), " ").trim()
-        successJson().apply {
-            put("book", bookToJson(book))
-            put("chapter", JSONObject().apply {
-                put("index", chapter.index)
-                put("title", chapter.title)
-                put("volume", chapter.tag ?: "")
-            })
-            put("truncated", normalized.length > maxChars)
-            put("content", normalized.take(maxChars))
-        }.toString()
+        io.legado.app.help.agent.mcp.AgentReading.readChapter(arguments ?: JSONObject()).toString()
     }
 
     private fun resolveBook(arguments: JSONObject?): Book? {
@@ -904,10 +855,10 @@ object AiBookshelfTool {
         }.sortedByDescending { it.durChapterTime }
     }
 
-    private fun buildBookshelfGroups(books: List<Book>, limit: Int): List<JSONObject> {
+    private fun buildBookshelfGroups(books: List<Book>): List<JSONObject> {
         return appDb.bookGroupDao.all
             .sortedBy { it.order }
-            .map { group -> groupTagsToJson(group, booksInGroup(group, books), limit) }
+            .map { group -> groupTagsToJson(group, booksInGroup(group, books)) }
     }
 
     private fun groupToJson(group: BookGroup, books: List<Book>): JSONObject {
@@ -922,7 +873,7 @@ object AiBookshelfTool {
         }
     }
 
-    private fun groupTagsToJson(group: BookGroup, books: List<Book>, limit: Int): JSONObject {
+    private fun groupTagsToJson(group: BookGroup, books: List<Book>): JSONObject {
         return groupToJson(group, books).apply {
             put("tagBooks", JSONObject().apply {
                 val tagMap = linkedMapOf<String, MutableList<Book>>()
@@ -937,7 +888,7 @@ object AiBookshelfTool {
                 tagMap.toSortedMap(compareBy<String> { if (it == "全部") "" else it }).forEach { (tag, tagBooks) ->
                     put(tag, JSONArray().apply {
                         tagBooks.sortedByDescending { it.durChapterTime }
-                            .take(limit)
+
                             .forEach { put(bookToJson(it)) }
                     })
                 }

@@ -346,6 +346,14 @@ object Restore {
             autoReadSpeed = appCtx.getPrefInt(PreferKey.autoReadSpeed, 46)
             resetActiveConfig()
         }
+        val agentBackup = File(path, io.legado.app.help.agent.AgentBackup.FILE_NAME)
+        if (agentBackup.exists()) {
+            io.legado.app.help.agent.AgentBackup.restore(agentBackup)
+        } else {
+            appCtx.getSharedPreferences(path, "config")?.takeIf { preferences -> preferences.getInt("agentStorageVersion", 0) == 0 && preferences.all.keys.any { it.startsWith("ai") } }?.let {
+                io.legado.app.help.agent.AgentMigration.restoreLegacy(it)
+            }
+        }
         postEvent(EventBus.UP_CONFIG, arrayListOf(1, 2, 5))
         appCtx.toastOnUi(R.string.restore_success)
         withContext(Main) {
@@ -643,16 +651,7 @@ object Restore {
             PreferKey.aiCurrentProviderId,
             PreferKey.aiModelConfigList,
             PreferKey.aiCurrentModelId,
-            PreferKey.aiMcpServerList,
-            PreferKey.aiChatSessionList,
-            PreferKey.aiReadHistoryList,
             PreferKey.themePackageSyncTasks,
-            PreferKey.aiCurrentChatSessionId,
-            PreferKey.aiSystemPrompt,
-            PreferKey.aiSkillPrompt,
-            PreferKey.aiSkillList,
-            PreferKey.aiTavilyApiKey,
-            PreferKey.aiTavilyBaseUrl,
             PreferKey.aiTavilySearchDepth,
             PreferKey.aiTavilyTopic,
             PreferKey.aiBaseUrl,

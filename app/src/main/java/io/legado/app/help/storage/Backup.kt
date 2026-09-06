@@ -101,7 +101,8 @@ object Backup {
             ThemeConfig.configFileName,
             BookCover.configFileName,
             "config.xml",
-            "videoConfig.xml"
+            "videoConfig.xml",
+            io.legado.app.help.agent.AgentBackup.FILE_NAME
         )
     }
 
@@ -199,6 +200,9 @@ object Backup {
         val aes = BackupAES()
         FileUtils.delete(backupPath)
         writeListToJson(appDb.bookDao.all, "bookshelf.json", backupPath)
+        if (targets.shouldBackupTarget(io.legado.app.help.agent.AgentBackup.FILE_NAME)) {
+            io.legado.app.help.agent.AgentBackup.write(File(backupPath, io.legado.app.help.agent.AgentBackup.FILE_NAME))
+        }
         writeListToJson(appDb.bookmarkDao.all, "bookmark.json", backupPath)
         writeListToJson(appDb.bookIllustrationDao.all, "bookIllustration.json", backupPath)
         writeListToJson(appDb.bookGroupDao.all, "bookGroup.json", backupPath)
@@ -265,6 +269,7 @@ object Backup {
                     }
                 }
             }
+            edit.putInt("agentStorageVersion", 1)
             edit.commit()
         }
         currentCoroutineContext().ensureActive()
