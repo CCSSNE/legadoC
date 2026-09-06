@@ -50,7 +50,9 @@ class AgentExecution(
                 require(body.has("messages") && body.has("model")) { "模型请求必须提供完整 messages 和 model" }
                 val requestId = UUID.randomUUID().toString()
                 val startedAt = System.currentTimeMillis()
-                emit("model.request", JSONObject().put("requestId", requestId).put("providerId", providerId).put("body", body))
+                // display 标记区分主循环与附带调用（记忆提取/压缩）：展示层只认主循环。
+                emit("model.request", JSONObject().put("requestId", requestId).put("providerId", providerId)
+                    .put("display", arguments.optBoolean("display", false)).put("body", body))
                 val response = try {
                     AgentHttp.exchange(AgentHttp.providerRequest(provider, "chat/completions", body), control) { event, data ->
                         emit("model.chunk", JSONObject().put("requestId", requestId).put("event", event).put("data", data))

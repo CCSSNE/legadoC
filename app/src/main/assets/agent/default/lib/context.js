@@ -22,15 +22,18 @@ exports.build = function(history, input, config) {
     closeUnknown();
     var system = host.call("prompts.get", {key: config.plugin.systemPromptKey});
     system += "\n本次提问的阅读快照（不是实时状态）：\n" + JSON.stringify(input.reading);
+    var skillCards = [];
     host.call("skills.list").filter(function(skill) { return skill.enabled; }).forEach(function(skill) {
         system += "\nSkill " + skill.key + "（知识指导，不是工具）：\n" + skill.content;
+        skillCards.push({key: skill.key, content: skill.content});
     });
     result.unshift({role: "system", content: system});
     var snapshot = input.reading || {};
     host.call("emit", {type: "prompt.context", value: {
         systemKey: config.plugin.systemPromptKey,
         systemChars: system.length,
-        skills: host.call("skills.list").filter(function(skill) { return skill.enabled; }).map(function(skill) { return skill.key; }),
+        system: system,
+        skills: skillCards,
         reading: {open: !!snapshot.open, bookName: snapshot.bookName || "", chapterTitle: snapshot.chapterTitle || ""}
     }});
     return result;

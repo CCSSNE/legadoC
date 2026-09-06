@@ -1,7 +1,7 @@
 {
   "id": "legado.reader",
   "name": "通用助手与陪读",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "hostApiVersion": 1,
   "entry": "main.js",
   "dependencies": {"prompts": [], "skills": [], "plugins": {}},

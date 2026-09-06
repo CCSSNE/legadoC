@@ -52,7 +52,8 @@ class AiChatViewModel : ViewModel() {
         var modelMs: Long = 0L,
         var promptBase: org.json.JSONObject? = null,
         var recalled: org.json.JSONArray? = null,
-        var recallSkipped: String? = null
+        var lastRequest: org.json.JSONObject? = null,
+        val mainRequestIds: MutableSet<String> = mutableSetOf()
     )
 
     private val turnTraces = mutableMapOf<String, TurnTrace>()
@@ -207,7 +208,7 @@ class AiChatViewModel : ViewModel() {
                     statusStage = status.optString("type")))
                 return
             }
-            "tool.start", "tool.result", "tool.unknown", "model.response", "prompt.context", "memory.recalled" -> Unit
+            "tool.start", "tool.result", "tool.unknown", "model.request", "model.response", "prompt.context", "memory.recalled" -> Unit
             else -> return
         }
         val turnKey = activeTurnKey ?: return
@@ -240,27 +241,41 @@ class AiChatViewModel : ViewModel() {
                 record.summary = "结果未知，未自动重放"
             }
             "model.response" -> {
-                trace.rounds += 1
-                trace.modelMs += status.optLong("elapsedMs", 0L)
+                // 只认主循环（display=true）的累计耗时与轮数：记忆提取/压缩是附带调用。
+                if (trace.mainRequestIds.remove(status.optString("requestId"))) {
+                    trace.rounds += 1
+                    trace.modelMs += status.optLong("elapsedMs", 0L)
+                }
             }
+            // 注意：emit 事件的 value 就是事件本体（宿主入库前已解包），
+            // 展示层直接读本体字段，只剥掉 runId/sequence/type 信封。
             "prompt.context" -> {
-                trace.promptBase = status.optJSONObject("value") ?: org.json.JSONObject()
-                trace.recalled = null
-                trace.recallSkipped = null
+                trace.promptBase = org.json.JSONObject().apply {
+                    status.keys().forEach { key ->
+                        if (key !in setOf("runId", "sequence", "type")) put(key, status.get(key))
+                    }
+                }
             }
             "memory.recalled" -> {
-                val value = status.optJSONObject("value") ?: org.json.JSONObject()
-                trace.recalled = value.optJSONArray("matches")
-                trace.recallSkipped = value.optString("skipped").ifBlank { null }
+                trace.recalled = status.optJSONArray("matches")
+            }
+            "model.request" -> {
+                // display=true 的才是注入本轮问答的主循环请求（附带调用无此标记）；
+                // 若插件/旧运行没打标记，有工具表的是主循环（附带调用 tools 为空）。
+                val main = if (status.has("display")) status.optBoolean("display", false)
+                    else status.optJSONObject("body")?.optJSONArray("tools")?.length() != 0
+                if (main) {
+                    status.optString("requestId").takeIf { it.isNotBlank() }?.let { trace.mainRequestIds.add(it) }
+                    trace.lastRequest = status.optJSONObject("body")
+                }
             }
         }
         refreshTurnCards(turnKey, trace)
     }
 
     private fun refreshTurnCards(turnKey: String, trace: TurnTrace) {
-        trace.promptBase?.let { base ->
-            upsertCard(id = "ctx:$turnKey", kind = AiChatMessage.Kind.CONTEXT,
-                content = renderPromptContext(base, trace))
+        renderPromptContext(trace)?.let { text ->
+            upsertCard(id = "ctx:$turnKey", kind = AiChatMessage.Kind.CONTEXT, content = text)
         }
         if (trace.calls.isNotEmpty()) {
             upsertCard(id = "tools:$turnKey", kind = AiChatMessage.Kind.TOOLS, content = renderToolsCard(trace))
@@ -324,31 +339,94 @@ class AiChatViewModel : ViewModel() {
         return "$header\n$debug\n$detail"
     }
 
-    private fun renderPromptContext(base: org.json.JSONObject, trace: TurnTrace): String {
-        val skills = base.optJSONArray("skills")?.let { array ->
-            (0 until array.length()).mapNotNull { array.optString(it).takeIf { s -> s.isNotBlank() } }
+    /**
+     * 上下文注入卡：只显示实际存在的东西，不存在的不占位、不强调；
+     * 存在的东西一律全文展示（系统全文以实际发出的 request body 为准）。
+     */
+    private fun renderPromptContext(trace: TurnTrace): String? {
+        val base = trace.promptBase
+        val body = trace.lastRequest
+        // 系统全文只认实际发出去的那条 system 消息（body.messages[0] 即 context.build 结果）。
+        val sentSystem = body?.optJSONArray("messages")?.let { messages ->
+            (0 until messages.length()).mapNotNull { messages.optJSONObject(it) }
+                .firstOrNull { it.optString("role") == "system" }
+                ?.let { extractContentText(it.opt("content")) }
+        }
+        val key = base?.optString("systemKey").orEmpty()
+        // 字数只认实际发出的 system 全文；body 还没到时先按事件里的计数占位。
+        val chars = sentSystem?.length ?: base?.optInt("systemChars", 0) ?: 0
+        val hasSystem = sentSystem != null || key.isNotBlank() || chars > 0
+        val skills = base?.optJSONArray("skills")?.let { array ->
+            (0 until array.length()).mapNotNull { index ->
+                when (val item = array.opt(index)) {
+                    is String -> item.takeIf { it.isNotBlank() }?.let { it to "" }
+                    is org.json.JSONObject -> item.optString("key")
+                        .takeIf { it.isNotBlank() }
+                        ?.let { it to item.optString("content") }
+                    else -> null
+                }
+            }
         }.orEmpty()
         val memories = trace.recalled?.let { array ->
             (0 until array.length()).mapNotNull { array.optJSONObject(it) }
         }.orEmpty()
-        val reading = base.optJSONObject("reading")
-        val header = "上下文注入"
-        val memorySummary = trace.recallSkipped?.let { "记忆跳过（$it）" } ?: "记忆 ${memories.size} 条"
+        val tools = body?.optJSONArray("tools")?.let { array ->
+            (0 until array.length()).mapNotNull { array.optJSONObject(it)?.optJSONObject("function") }
+        }.orEmpty()
+        if (!hasSystem && skills.isEmpty() && memories.isEmpty() && tools.isEmpty()) return null
         val summary = buildList {
-            add("系统提示词 ${base.optString("systemKey").ifBlank { "默认" }}（${base.optInt("systemChars", 0)}字）")
-            add("Skill ${skills.size} 个")
-            add(memorySummary)
+            if (hasSystem) add("系统提示词 " + (if (key.isNotBlank()) "$key " else "") + "（${chars}字）")
+            if (skills.isNotEmpty()) add("Skill ${skills.size} 个")
+            if (memories.isNotEmpty()) add("记忆 ${memories.size} 条")
+            if (tools.isNotEmpty()) add("MCP 工具 ${tools.size} 个")
         }.joinToString(" · ")
         val detail = buildList {
-            if (skills.isNotEmpty()) add("Skill：" + skills.joinToString("、"))
-            memories.forEach { add("记忆 ${it.optString("id")}（${it.optDouble("score", 0.0)}）") }
-            if (reading != null && reading.optBoolean("open", false)) {
-                add("阅读：${reading.optString("bookName")} · ${reading.optString("chapterTitle")}")
-            } else {
-                add("阅读：未打开阅读页")
+            if (sentSystem != null) {
+                add("系统提示词" + (if (key.isNotBlank()) " $key" else "") + "（${sentSystem.length}字）\n$sentSystem")
+            } else if (hasSystem) {
+                add("系统提示词" + (if (key.isNotBlank()) " $key" else "") + "（${chars}字）")
             }
-        }.joinToString("\n")
-        return "$header\n$summary\n$detail"
+            skills.forEach { (name, content) ->
+                add(if (content.isNotBlank()) "Skill $name（${content.length}字）\n$content" else "Skill $name")
+            }
+            memories.forEach {
+                val content = it.optString("content")
+                add(if (content.isNotBlank()) {
+                    "记忆 ${it.optString("id")}（${it.optDouble("score", 0.0)}，${content.length}字）\n$content"
+                } else {
+                    "记忆 ${it.optString("id")}（${it.optDouble("score", 0.0)}）"
+                })
+            }
+            val reading = base?.optJSONObject("reading")
+            val readingLine = reading?.let {
+                if (it.optBoolean("open", false)) {
+                    "阅读快照：${it.optString("bookName")} · ${it.optString("chapterTitle")}"
+                } else null
+            }
+            if (readingLine != null) add(readingLine)
+            if (tools.isNotEmpty()) {
+                add("MCP 工具 ${tools.size} 个")
+                tools.forEach { fn ->
+                    val title = fn.optString("description")
+                    val schema = fn.optJSONObject("parameters")?.toString(2).orEmpty()
+                    add("$title\n参数：$schema")
+                }
+            }
+        }.joinToString("\n\n")
+        return "上下文注入\n$summary\n$detail"
+    }
+
+    private fun extractContentText(content: Any?): String = when (content) {
+        is String -> content
+        is org.json.JSONArray -> buildString {
+            for (index in 0 until content.length()) {
+                val part = content.opt(index)
+                if (part is org.json.JSONObject) append(part.optString("text"))
+                else if (part is String) append(part)
+            }
+        }
+        is org.json.JSONObject -> content.optString("text")
+        else -> ""
     }
 
     private fun summarizeResult(result: org.json.JSONObject): String {
