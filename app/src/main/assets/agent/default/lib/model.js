@@ -24,11 +24,13 @@ function readModelUsage(raw, body, content, reasoning, startedAt, firstTokenAt, 
     var value = {promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0,
         elapsedMs: elapsed, ttftMs: ttft < 0 ? 0 : ttft, display: !!display, estimated: false};
     if (raw && typeof raw === "object") {
+        var promptDetails = raw.prompt_tokens_details || {};
+        var completionDetails = raw.completion_tokens_details || {};
         value.promptTokens = raw.prompt_tokens !== undefined ? raw.prompt_tokens : (raw.input_tokens !== undefined ? raw.input_tokens : 0);
         value.completionTokens = raw.completion_tokens !== undefined ? raw.completion_tokens : (raw.output_tokens !== undefined ? raw.output_tokens : 0);
-        var promptDetails = raw.prompt_tokens_details || {};
-        value.cachedTokens = promptDetails.cached_tokens !== undefined ? promptDetails.cached_tokens : (raw.cached_tokens !== undefined ? raw.cached_tokens : 0);
-        var completionDetails = raw.completion_tokens_details || {};
+        value.cachedTokens = promptDetails.cached_tokens !== undefined ? promptDetails.cached_tokens
+            : (raw.cached_tokens !== undefined ? raw.cached_tokens
+            : (raw.cache_read_input_tokens !== undefined ? raw.cache_read_input_tokens : 0));
         value.reasoningTokens = completionDetails.reasoning_tokens !== undefined ? completionDetails.reasoning_tokens : 0;
     } else {
         value.promptTokens = estimateTokens(JSON.stringify(body.messages || []));

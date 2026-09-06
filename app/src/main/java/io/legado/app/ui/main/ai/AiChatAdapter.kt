@@ -64,7 +64,9 @@ class AiChatAdapter(
             when (message.kind ?: AiChatMessage.Kind.TEXT) {
                 AiChatMessage.Kind.TEXT,
                 AiChatMessage.Kind.TOOLS,
-                AiChatMessage.Kind.CONTEXT -> true
+                AiChatMessage.Kind.CONTEXT,
+                AiChatMessage.Kind.STATS,
+                AiChatMessage.Kind.TOTAL -> true
                 AiChatMessage.Kind.STATUS ->
                     io.legado.app.help.config.AppConfig.aiShowToolSummary || !message.statusSuccess ||
                         message.statusStage in setOf("paused", "waiting_input")
@@ -276,6 +278,73 @@ class AiChatAdapter(
             text = detail
             setTextColor(context.secondaryTextColor)
             textSize = 12f
+            maxLines = Int.MAX_VALUE
+            isVisible = expanded
+            setPadding(0, 8.dpToPx(), 0, 0)
+            setTextIsSelectable(true)
+        })
+        row.setOnClickListener {
+            if (message.id in expandedIds) expandedIds.remove(message.id)
+            else expandedIds.add(message.id)
+            val position = items.indexOfFirst { it.id == message.id }
+            if (position >= 0) notifyItemChanged(position)
+        }
+        container.addView(row)
+    }
+
+    /** 用量统计卡（单轮 STATS / 会话 TOTAL）：收起只显示首行摘要，展开显示完整明细。 */
+    private fun bindUsageCard(binding: ItemAiMessageAssistantBinding, message: AiChatMessage) {
+        binding.tvMessage.isVisible = false
+        binding.searchCardScroller.isVisible = false
+        val container = binding.toolEventContainer
+        container.removeAllViews()
+        container.isVisible = true
+        val lines = message.content.lines()
+        val title = lines.getOrElse(0) { "" }
+        val detail = lines.drop(1).joinToString("\n")
+        val expanded = message.id in expandedIds
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply {
+                val fill = ColorUtils.blendColors(context.backgroundColor, context.accentColor, 0.05f)
+                cornerRadius = UiCorner.scaledDp(16f)
+                setColor(UiCorner.surfaceColor(fill))
+                setStroke(1.dpToPx(), UiCorner.effectStrokeColor(fill))
+            }
+            setPadding(14.dpToPx(), 10.dpToPx(), 14.dpToPx(), 10.dpToPx())
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = 6.dpToPx()
+            }
+        }
+        val header = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        header.addView(TextView(context).apply {
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            text = title
+            setTextColor(context.secondaryTextColor)
+            textSize = 12f
+            setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+        })
+        val arrow = ImageView(context).apply {
+            layoutParams = LinearLayout.LayoutParams(14.dpToPx(), 14.dpToPx())
+            setImageResource(R.drawable.ic_arrow_drop_down)
+            setColorFilter(context.secondaryTextColor)
+            rotation = if (expanded) 180f else 0f
+        }
+        header.addView(arrow)
+        row.addView(header)
+        row.addView(TextView(context).apply {
+            text = detail
+            setTextColor(context.secondaryTextColor)
+            textSize = 12f
+            setTypeface(Typeface.MONOSPACE)
             maxLines = Int.MAX_VALUE
             isVisible = expanded
             setPadding(0, 8.dpToPx(), 0, 0)
@@ -542,9 +611,16 @@ class AiChatAdapter(
     ) : RecyclerView.ViewHolder(binding.root) {
 
         fun bind(message: AiChatMessage) {
-            if (message.kind == AiChatMessage.Kind.TOOLS || message.kind == AiChatMessage.Kind.CONTEXT) {
-                bindInfoCard(binding, message)
-                return
+            when (message.kind) {
+                AiChatMessage.Kind.TOOLS, AiChatMessage.Kind.CONTEXT -> {
+                    bindInfoCard(binding, message)
+                    return
+                }
+                AiChatMessage.Kind.STATS, AiChatMessage.Kind.TOTAL -> {
+                    bindUsageCard(binding, message)
+                    return
+                }
+                else -> Unit
             }
             val parsed = parseMessageContent(message.content)
             binding.messageContainer.minimumWidth = if (message.pending) 220.dpToPx() else 0

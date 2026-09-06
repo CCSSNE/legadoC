@@ -66,8 +66,10 @@ object AgentHistory {
     }
 
     private fun reconcile(sessionId: String, old: JSONArray, next: JSONArray?) {
+        // 编辑对账只认真实对话消息（TEXT）；TOOLS/CONTEXT/STATS/TOTAL 等卡片是派生视图，
+        // 内容在请求进行中持续更新，不算用户编辑，不得触发“请先停止任务”检查。
         fun texts(messages: JSONArray): Map<String, JSONObject> = (0 until messages.length()).map { messages.getJSONObject(it) }
-            .filter { it.optString("kind") != "STATUS" }.associateBy { it.getString("id") }
+            .filter { it.optString("kind").let { kind -> kind.isEmpty() || kind == "TEXT" } }.associateBy { it.getString("id") }
         if (next == null) {
             check(!AgentRuntime.isRunning(sessionId)) { "删除会话前请先停止任务" }
             AgentStore.put("history.deleted", sessionId, JSONObject().put("deletedAt", System.currentTimeMillis())

@@ -35,6 +35,7 @@ class AiChatViewModel : ViewModel() {
         private var activePendingContent: String = ""
         private var activeThinkingMessageId: String? = null
         private var activePendingAssistantMessageId: String? = null
+        private const val TOTAL_CARD_ID = "usage-total"
     }
 
     private data class ToolCallRecord(
@@ -53,7 +54,8 @@ class AiChatViewModel : ViewModel() {
         var promptBase: org.json.JSONObject? = null,
         var recalled: org.json.JSONArray? = null,
         var lastRequest: org.json.JSONObject? = null,
-        val mainRequestIds: MutableSet<String> = mutableSetOf()
+        val mainRequestIds: MutableSet<String> = mutableSetOf(),
+        val usage: AiUsageTotals = AiUsageTotals()
     )
 
     private val turnTraces = mutableMapOf<String, TurnTrace>()
@@ -78,6 +80,8 @@ class AiChatViewModel : ViewModel() {
     ) {
         if (isRequesting || activeJob?.isActive == true) return
         setRequesting(true)
+        // 会话总计卡只属于“最后一轮之下”，新一轮开始即移除，本轮结束时按各轮统计卡重算。
+        messages.removeAll { it.id == TOTAL_CARD_ID }
         activeSessionId = currentSessionId
         val requestSessionId = currentSessionId
         activeViewModel = this
@@ -208,7 +212,7 @@ class AiChatViewModel : ViewModel() {
                     statusStage = status.optString("type")))
                 return
             }
-            "tool.start", "tool.result", "tool.unknown", "model.request", "model.response", "prompt.context", "memory.recalled" -> Unit
+            "tool.start", "tool.result", "tool.unknown", "model.request", "model.response", "model.usage", "prompt.context", "memory.recalled" -> Unit
             else -> return
         }
         val turnKey = activeTurnKey ?: return
@@ -247,6 +251,17 @@ class AiChatViewModel : ViewModel() {
                     trace.modelMs += status.optLong("elapsedMs", 0L)
                 }
             }
+            "model.usage" -> {
+                // 只累计主循环（display=true）的用量；记忆提取/压缩等附带调用不进统计。
+                if (status.optBoolean("display", false)) {
+                    trace.usage.inTokens += status.optLong("promptTokens", 0L)
+                    trace.usage.outTokens += status.optLong("completionTokens", 0L)
+                    trace.usage.cachedTokens += status.optLong("cachedTokens", 0L)
+                    trace.usage.ttftMs += status.optLong("ttftMs", 0L)
+                    trace.usage.llmMs += status.optLong("elapsedMs", 0L)
+                    if (status.optBoolean("estimated", false)) trace.usage.estimated = true
+                }
+            }
             // 注意：emit 事件的 value 就是事件本体（宿主入库前已解包），
             // 展示层直接读本体字段，只剥掉 runId/sequence/type 信封。
             "prompt.context" -> {
@@ -280,6 +295,13 @@ class AiChatViewModel : ViewModel() {
         if (trace.calls.isNotEmpty()) {
             upsertCard(id = "tools:$turnKey", kind = AiChatMessage.Kind.TOOLS, content = renderToolsCard(trace))
         }
+        if (trace.usage.inTokens > 0 || trace.usage.outTokens > 0) {
+            upsertCard(id = "stats:$turnKey", kind = AiChatMessage.Kind.STATS,
+                content = renderTurnStats(trace), atEnd = true)
+            // 会话总计 = 各轮统计卡之和；当前轮的统计卡刚写入，直接参与汇总。
+            upsertCard(id = TOTAL_CARD_ID, kind = AiChatMessage.Kind.TOTAL,
+                content = renderSessionTotal(), atEnd = true)
+        }
     }
 
     private fun endTurn(turnKey: String, stopped: Boolean) {
@@ -303,12 +325,20 @@ class AiChatViewModel : ViewModel() {
         if (changed) refreshTurnCards(turnKey, trace)
     }
 
-    private fun upsertCard(id: String, kind: AiChatMessage.Kind, content: String) {
+    private fun upsertCard(
+        id: String,
+        kind: AiChatMessage.Kind,
+        content: String,
+        atEnd: Boolean = false
+    ) {
         val index = messages.indexOfFirst { it.id == id }
         val message = AiChatMessage(id = id, role = AiChatMessage.Role.ASSISTANT,
             content = content, kind = kind)
         if (index >= 0) {
             messages[index] = message
+        } else if (atEnd) {
+            // 用量统计与总计卡贴在最新一轮回复之下，始终追加到列表末尾。
+            messages.add(message)
         } else {
             // 卡片属于本轮追问，插到正在流式输出的气泡之前，不抢最终回答的位置。
             val pending = activePendingAssistantMessageId?.let { pid ->
@@ -323,7 +353,7 @@ class AiChatViewModel : ViewModel() {
         val done = trace.calls.values.count { it.stage == "done" }
         val toolMs = trace.calls.values.filter { it.elapsedMs >= 0 }.sumOf { it.elapsedMs }
         val header = "${trace.calls.size} 次工具调用"
-        val debug = "第${trace.rounds.coerceAtLeast(1)}轮 · ${done}步完成 · 模型${formatSeconds(trace.modelMs)} · 工具${formatSeconds(toolMs)}"
+        val debug = "第${trace.rounds.coerceAtLeast(1)}轮 · ${done}步完成 · 模型${AiUsageFormat.duration(trace.modelMs)} · 工具${AiUsageFormat.duration(toolMs)}"
         val detail = trace.calls.values.joinToString("\n") { record ->
             val mark = when (record.stage) {
                 "done" -> if (record.success) "✓" else "✗"
@@ -332,11 +362,46 @@ class AiChatViewModel : ViewModel() {
                 else -> "…"
             }
             val args = record.args.ifBlank { "" }.let { if (it.isNotBlank()) " $it" else "" }
-            val elapsed = if (record.elapsedMs >= 0) " · ${formatSeconds(record.elapsedMs)}" else ""
+            val elapsed = if (record.elapsedMs >= 0) " · ${AiUsageFormat.duration(record.elapsedMs)}" else ""
             val tail = record.summary.ifBlank { "" }.let { if (it.isNotBlank()) "\n  $it" else "" }
             "$mark ${record.title}$args$elapsed$tail"
         }
         return "$header\n$debug\n$detail"
+    }
+
+    /** 单轮用量统计卡：首行收起摘要（总 token / 输出速度 / 首字），展开显示 in/out/total 与轮步耗时。 */
+    private fun renderTurnStats(trace: TurnTrace): String {
+        val totals = AiUsageTotals(
+            inTokens = trace.usage.inTokens,
+            cachedTokens = trace.usage.cachedTokens,
+            outTokens = trace.usage.outTokens,
+            ttftMs = trace.usage.ttftMs,
+            llmMs = trace.usage.llmMs,
+            rounds = trace.rounds,
+            steps = trace.calls.size,
+            toolMs = trace.calls.values.filter { it.elapsedMs >= 0 }.sumOf { it.elapsedMs },
+            estimated = trace.usage.estimated
+        )
+        return listOf(
+            AiUsageFormat.collapsed(totals),
+            AiUsageFormat.inRow(totals),
+            AiUsageFormat.outRow(totals),
+            AiUsageFormat.totalRow(totals),
+            AiUsageFormat.header(totals)
+        ).joinToString("\n")
+    }
+
+    /** 会话总计卡：由会话内全部单轮统计卡汇总，速度即为各轮加总后的平均值。 */
+    private fun renderSessionTotal(): String {
+        val totals = AiUsageTotals()
+        messages.filter { (it.kind ?: AiChatMessage.Kind.TEXT) == AiChatMessage.Kind.STATS }
+            .forEach { card -> AiUsageFormat.parseTurnCard(card.content)?.let { totals.add(it) } }
+        return listOf(
+            AiUsageFormat.header(totals) + if (totals.estimated) " <e>" else "",
+            AiUsageFormat.inRow(totals),
+            AiUsageFormat.outRow(totals),
+            AiUsageFormat.totalRow(totals)
+        ).joinToString("\n")
     }
 
     /**
@@ -449,9 +514,6 @@ class AiChatViewModel : ViewModel() {
 
     private fun singleLine(text: String): String =
         text.replace(Regex("\\s+"), " ").trim()
-
-    private fun formatSeconds(ms: Long): String =
-        if (ms < 0) "--" else "${ms / 1000}.${(ms % 1000) / 100}s"
 
     fun finishPendingAssistant() {
         val messageId = activePendingAssistantMessageId
