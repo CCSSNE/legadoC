@@ -113,17 +113,15 @@ object AiUsageFormat {
         if (tokens <= 0 || ms <= 0) "--"
         else String.format(Locale.US, "%.1f", ms.toDouble() / tokens) + "ms/t"
 
-    /** 纯生成耗时 = 模型墙钟时长 − 首字等待；异常时回退墙钟时长。 */
-    private fun generationMs(totals: AiUsageTotals): Long =
-        (totals.llmMs - totals.ttftMs).takeIf { it > 0 } ?: totals.llmMs
-
     /**
      * 收起摘要行：总 token / 输出速度 / 首字。
+     * 速度 = 输出 token ÷ 请求总时长（供应商可能静默思考后一次性吐字，
+     * "总时长−首字"的纯解码窗口会塌缩成荒谬的几千 t/s，不作分母）。
      * 首字口径与 DSH 轮尾一致 = 本轮第一步的首 token 延迟（firstTtftMs；缺省回退累计 ttftMs）。
      */
     fun collapsed(totals: AiUsageTotals, firstTtftMs: Long = totals.ttftMs): String =
         "total-${tokens(totals.inTokens + totals.outTokens)}" +
-            " ${speed(totals.outTokens, generationMs(totals))} ${duration(firstTtftMs)}" +
+            " ${speed(totals.outTokens, totals.llmMs)} ${duration(firstTtftMs)}" +
             if (totals.estimated) " <e>" else ""
 
     fun inRow(totals: AiUsageTotals): String =
@@ -132,8 +130,8 @@ object AiUsageFormat {
             " ${duration(totals.ttftMs)}"
 
     fun outRow(totals: AiUsageTotals): String =
-        "out-${tokens(totals.outTokens)} ${speed(totals.outTokens, generationMs(totals))}" +
-            " ${msPerToken(generationMs(totals), totals.outTokens)} ${duration(totals.llmMs)}"
+        "out-${tokens(totals.outTokens)} ${speed(totals.outTokens, totals.llmMs)}" +
+            " ${msPerToken(totals.llmMs, totals.outTokens)} ${duration(totals.llmMs)}"
 
     fun totalRow(totals: AiUsageTotals): String = "total-${tokens(totals.inTokens + totals.outTokens)}"
 
