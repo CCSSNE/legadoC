@@ -1,5 +1,6 @@
 package io.legado.app.help.agent
 
+import io.legado.app.data.agent.AgentPayloadStore
 import org.json.JSONObject
 
 /**

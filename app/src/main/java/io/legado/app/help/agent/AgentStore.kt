@@ -40,8 +40,8 @@ object AgentStore {
     private val rawDao get() = AgentDatabase.instance.agentDao()
     val dao: AgentDao = object : AgentDao {
         override fun document(namespace: String, key: String) = io { rawDao.document(namespace, key)?.decode() }
-        override fun documents(namespace: String) = io { rawDao.documents(namespace).map(AgentDocument::decode) }
-        override fun allDocuments() = io { rawDao.allDocuments().map(AgentDocument::decode) }
+        override fun documents(namespace: String) = io { rawDao.documents(namespace).map { it.decode() } }
+        override fun allDocuments() = io { rawDao.allDocuments().map { it.decode() } }
         override fun put(document: AgentDocument) = io {
             AgentConfig.validateDocument(document.namespace, document.key, JSONObject(document.json))
             require(document.namespace.isNotBlank() && document.key.isNotBlank() && document.revision > 0) { "文档标识或修订无效" }
@@ -50,24 +50,24 @@ object AgentStore {
         override fun deleteDocument(namespace: String, key: String) = io { rawDao.deleteDocument(namespace, key) }
         override fun put(run: AgentRun) = io { rawDao.put(run.encode()) }
         override fun run(id: String) = io { rawDao.run(id)?.decode() }
-        override fun runs() = io { rawDao.runs().map(AgentRun::decode) }
+        override fun runs() = io { rawDao.runs().map { it.decode() } }
         override fun state(id: String, state: String, error: String?, now: Long) = io {
             rawDao.state(id, state, error?.let(AgentPayloadStore::encode), now)
         }
-        override fun unfinished() = io { rawDao.unfinished().map(AgentRun::decode) }
+        override fun unfinished() = io { rawDao.unfinished().map { it.decode() } }
         override fun deleteRun(id: String) = io { rawDao.deleteRun(id) }
         override fun append(event: AgentEvent) = io { rawDao.append(event.encode()) }
-        override fun events(runId: String, after: Long) = io { rawDao.events(runId, after).map(AgentEvent::decode) }
-        override fun allEvents() = io { rawDao.allEvents().map(AgentEvent::decode) }
+        override fun events(runId: String, after: Long) = io { rawDao.events(runId, after).map { it.decode() } }
+        override fun allEvents() = io { rawDao.allEvents().map { it.decode() } }
         override fun deleteEvents(runId: String) = io { rawDao.deleteEvents(runId) }
         override fun append(message: AgentMessage) = io { rawDao.append(message.encode()) }
-        override fun messages(sessionId: String) = io { rawDao.messages(sessionId).map(AgentMessage::decode) }
-        override fun allMessages() = io { rawDao.allMessages().map(AgentMessage::decode) }
+        override fun messages(sessionId: String) = io { rawDao.messages(sessionId).map { it.decode() } }
+        override fun allMessages() = io { rawDao.allMessages().map { it.decode() } }
         override fun deleteMessages(sessionId: String) = io { rawDao.deleteMessages(sessionId) }
         override fun deleteRunMessages(sessionId: String, runId: String) = io { rawDao.deleteRunMessages(sessionId, runId) }
         override fun put(vector: AgentVector) = io { rawDao.put(vector.encode()) }
-        override fun vectors(namespace: String) = io { rawDao.vectors(namespace).map(AgentVector::decode) }
-        override fun allVectors() = io { rawDao.allVectors().map(AgentVector::decode) }
+        override fun vectors(namespace: String) = io { rawDao.vectors(namespace).map { it.decode() } }
+        override fun allVectors() = io { rawDao.allVectors().map { it.decode() } }
         override fun deleteVector(namespace: String, key: String) = io { rawDao.deleteVector(namespace, key) }
         override fun clearVectors(namespace: String) = io { rawDao.clearVectors(namespace) }
         override fun clearDocuments() = io { rawDao.clearDocuments() }
