@@ -341,6 +341,11 @@ object AiBookSourceTool {
                 isTest = true
             )
             val body = response.body.orEmpty()
+            // 测试模式的网络失败不抛异常，而是以负数 callTime（-1..-7）标记；
+            // 这里必须转为明确失败，不能把异常文本当成抓到的正文返回。
+            if (response.callTime < 0) {
+                return@coroutineScope error(fetchNetworkError(response.callTime, body.ifBlank { url }))
+            }
             ok().apply {
                 put("url", url)
                 put("finalUrl", response.url)
@@ -357,6 +362,19 @@ object AiBookSourceTool {
             if (throwable is kotlinx.coroutines.CancellationException) throw throwable
             error(throwable.localizedMessage ?: throwable.javaClass.simpleName)
         }
+    }
+
+    private fun fetchNetworkError(code: Int, detail: String): String {
+        val reason = when (code) {
+            -1 -> "抓取超时"
+            -2 -> "Socket 超时"
+            -3 -> "未知域名"
+            -4 -> "连接被拒绝"
+            -5 -> "Socket 错误"
+            -6 -> "SSL 错误"
+            else -> "网络错误"
+        }
+        return "$reason：$detail"
     }
 
     private suspend fun debugBookSource(args: JSONObject?): String = coroutineScope {
