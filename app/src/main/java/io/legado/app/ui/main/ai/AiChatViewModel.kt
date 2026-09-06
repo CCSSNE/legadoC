@@ -274,7 +274,9 @@ class AiChatViewModel : ViewModel() {
             AppConfig.aiCurrentChatSessionId = session.id
             messages.addAll(session.messages.map { it.copy(pending = false) })
         } else {
-            AppConfig.aiCurrentChatSessionId = currentSessionId
+            // 无历史会话时不写 current 指针：history.chat 为空，任何 id 都是悬空，
+            // 写进去会被 currentChat 的存在性校验拒绝导致开局崩溃。
+            // 新会话 id 只留内存，首条消息落盘时 saveCurrentSession 再建指针。
         }
         val requesting = activeJob?.isActive == true && activeSessionId == currentSessionId
         if (requesting && messages.none { it.role == AiChatMessage.Role.ASSISTANT && it.pending }) {
