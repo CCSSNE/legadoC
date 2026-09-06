@@ -47,7 +47,7 @@ import kotlin.math.min
 
 /**
  * 阅读页问 AI 悬浮窗：与应用外大界面（[AiChatActivity]）完全同一套会话。
- * 只是在书里选一段正文点问 AI 时，把该段正文作为提示词注入进当前会话；
+ * 只是在书里选一段正文点问 AI 时，把该段正文预填进输入框等待用户补充问题后手动发送；
  * 不做任何按书隔离，历史、新对话、模型、工具卡等全部与大界面一致。
  * 本体只是悬浮外壳（拖动、关闭、全屏放大），消息渲染与请求都走 [AiChatViewModel]。
  */
@@ -186,10 +186,12 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
                     .start()
             }
         }
-        // 选中正文只作为本次提示词注入，不建隔离会话。
+        // 选中正文只预填进输入框，等用户补充问题后手动发送，不直接发出去。
         if (readContext.selectedText.isNotBlank()) {
-            ask(readContext.selectedText)
+            binding.etQuestion.setText(readContext.selectedText)
+            binding.etQuestion.setSelection(binding.etQuestion.text?.length ?: 0)
         }
+        updateSendButtonState()
     }
 
     fun close() {
