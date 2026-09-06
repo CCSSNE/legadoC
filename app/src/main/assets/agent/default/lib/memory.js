@@ -2,9 +2,8 @@
 
 var model = require("lib/model.js");
 
-function call(catalog, id, args) {
-    var tool = catalog.filter(function(item) { return item.moduleId === "memory" && item.toolId === id; })[0];
-    if (!tool) throw new Error("记忆工具未启用：" + id);
+// 存在性与权限由宿主 tools.call 统一校验；分级目录下记忆工具默认不在请求目录里，但按需可调用。
+function call(id, args) {
     var result = host.call("tools.call", {moduleId: "memory", toolId: id, arguments: args});
     if (result.isError) throw new Error("记忆操作失败：" + JSON.stringify(result));
     return result.structuredContent;
@@ -35,7 +34,7 @@ function passiveScope(input, config, phase) {
     }
 }
 
-exports.recall = function(input, config, catalog) {
+exports.recall = function(input, config) {
     if (!config.modules.memory) {
         host.call("emit", {type: "memory.recalled", value: {matches: [], skipped: "记忆模块未启用"}});
         return [];
@@ -45,7 +44,7 @@ exports.recall = function(input, config, catalog) {
         host.call("emit", {type: "memory.recalled", value: {matches: [], skipped: "book作用域但无阅读页"}});
         return [];
     }
-    var result = call(catalog, "memory_search", {query: input.user, mode: "vector", scope: resolved});
+    var result = call("memory_search", {query: input.user, mode: "vector", scope: resolved});
     if (!(config.memory.recallCount >= 0)) throw new Error("recallCount 必须为非负整数");
     result.matches.sort(function(left, right) { return right.score - left.score; });
     var fraction = config.memory.contextFraction;
@@ -59,7 +58,7 @@ exports.recall = function(input, config, catalog) {
     return recalled;
 };
 
-exports.save = function(input, answer, config, catalog, reference) {
+exports.save = function(input, answer, config, reference) {
     if (!config.modules.memory || !config.memory.autoSave) return;
     var resolved = passiveScope(input, config, "save");
     if (resolved === null) return;
@@ -70,7 +69,7 @@ exports.save = function(input, answer, config, catalog, reference) {
     var extracted = JSON.parse(model.text(response.content));
     if (!Array.isArray(extracted.memories)) throw new Error("记忆提取结果缺少 memories 数组");
     extracted.memories.forEach(function(memory) {
-        call(catalog, "memory_add", {content: memory.content, type: memory.type, scope: resolved,
+        call("memory_add", {content: memory.content, type: memory.type, scope: resolved,
             source: "automatic", bookUrl: input.reading.bookUrl || "", chapterIndex: input.reading.chapterIndex, sourceMessageId: input.messageId});
     });
 };

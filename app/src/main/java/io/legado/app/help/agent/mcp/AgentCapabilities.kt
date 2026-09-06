@@ -39,6 +39,12 @@ data class AgentTool(
 object AgentCapabilities {
     val names = linkedMapOf("bookshelf" to "书架", "reading" to "阅读与陪读", "library" to "找书与统计",
         "sources" to "书源", "settings" to "APP 设置", "web" to "联网", "memory" to "记忆")
+
+    // 分级目录：默认随请求注入的核心工具；其余工具由模型调用 tool_catalog 按模块加载。
+    val coreToolIds = setOf(
+        "get_reading_state", "read_display_chapter", "search_book_content", "list_book_chapters", "read_book_chapter_content",
+        "query_bookshelf", "get_bookshelf_book_info", "search_book_source", "query_read_records", "search_web_tavily"
+    )
     fun moduleNames(): Map<String, String> = names + AgentPluginTools.names()
 
     fun moduleFor(tool: String): String? = when (tool) {

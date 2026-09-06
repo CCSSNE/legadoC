@@ -47,13 +47,42 @@ exports.build = function(history, input, config, toolNames) {
     return result;
 };
 
+// 工具结果剪枝：单条超过阈值时保留头尾、中间换成省略标记，模型需要更多时用分页参数重读。
+// 只替换请求表面的内容，messages 原始结果保持完整（可回放），与 dsh 的 tool-result-pruner 同一策略。
+var PRUNE_THRESHOLD_CHARS = 8192;
+var PRUNE_HEAD_CHARS = 4096;
+var PRUNE_TAIL_CHARS = 1024;
+
+exports.prune = function(conversation) {
+    var pruned = 0;
+    var charsRemoved = 0;
+    var result = conversation.map(function(message) {
+        if (message.role !== "tool" || typeof message.content !== "string") return message;
+        if (message.content.length <= PRUNE_THRESHOLD_CHARS) return message;
+        var removed = message.content.length - PRUNE_HEAD_CHARS - PRUNE_TAIL_CHARS;
+        var content = message.content.slice(0, PRUNE_HEAD_CHARS)
+            + "\n……[中间省略 " + removed + " 字；需要完整内容时用该工具的分页参数（cursor/offset/page）或缩小范围重新读取]……\n"
+            + message.content.slice(message.content.length - PRUNE_TAIL_CHARS);
+        pruned++;
+        charsRemoved += removed;
+        var copy = {};
+        for (var key in message) copy[key] = message[key];
+        copy.content = content;
+        return copy;
+    });
+    if (pruned) host.call("log", {type: "context.prune", value: {pruned: pruned, charsRemoved: charsRemoved}});
+    return pruned ? result : conversation;
+};
+
 // 历史硬保留预算：请求表面只保留最近 budgetTokens 的历史，按用户消息边界整轮裁剪，
 // 当前轮永不裁剪；裁剪只影响本次请求组装，messages 原始历史保持完整（可回放）。
 exports.retain = function(conversation, budgetTokens) {
     if (!(budgetTokens > 0) || conversation.length < 2) return conversation;
+    var systemCount = 0;
+    while (systemCount < conversation.length && conversation[systemCount].role === "system") systemCount++;
     var costs = [];
     var total = 0;
-    for (var index = 1; index < conversation.length; index++) {
+    for (var index = systemCount; index < conversation.length; index++) {
         var cost = model.estimateTokens(JSON.stringify(conversation[index]));
         costs.push(cost);
         total += cost;
@@ -61,24 +90,24 @@ exports.retain = function(conversation, budgetTokens) {
     if (total <= budgetTokens) return conversation;
     var suffix = 0;
     var cut = -1;
-    for (var index = conversation.length - 1; index >= 1; index--) {
-        suffix += costs[index - 1];
+    for (var index = conversation.length - 1; index > systemCount; index--) {
+        suffix += costs[index - systemCount];
         if (conversation[index].role === "user" && suffix <= budgetTokens) { cut = index; break; }
     }
     if (cut < 0) {
         // 连当前轮都超预算：只保留当前轮原样发出，由真实上下文上限直接暴露问题。
-        for (var index = conversation.length - 1; index >= 1; index--) {
+        for (var index = conversation.length - 1; index > systemCount; index--) {
             if (conversation[index].role === "user") { cut = index; break; }
         }
     }
-    if (cut <= 1) return conversation;
+    if (cut <= systemCount) return conversation;
     var dropped = 0;
-    for (var index = 1; index < cut; index++) dropped += costs[index - 1];
+    for (var index = systemCount; index < cut; index++) dropped += costs[index - systemCount];
     host.call("log", {type: "context.retain", value: {
         budgetTokens: budgetTokens, estimatedTokensBefore: total, estimatedTokensAfter: total - dropped,
-        messagesBefore: conversation.length - 1, messagesAfter: conversation.length - cut, droppedMessages: cut - 1
+        messagesBefore: conversation.length - systemCount, messagesAfter: conversation.length - cut, droppedMessages: cut - systemCount
     }});
-    return [conversation[0]].concat(conversation.slice(cut));
+    return conversation.slice(0, systemCount).concat(conversation.slice(cut));
 };
 
 exports.compress = function(conversation, config, reference) {

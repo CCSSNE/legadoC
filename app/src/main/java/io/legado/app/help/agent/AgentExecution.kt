@@ -81,10 +81,12 @@ class AgentExecution(
                 AgentStore.dao.documents("mcp.clients").forEach { put(JSONObject(it.json).apply { remove("apiKey"); put("id", "external.${it.key}") }) }
             }
             "tools.discover" -> {
+                val coreOnly = arguments.optBoolean("core", false)
                 val discovered = tools ?: AgentCapabilities.discover(control,
                     io.legado.app.help.agent.mcp.AgentPluginTools.tools(script = script, captured = pluginTools), clients, external)
                 tools = discovered
-                JSONArray().apply { discovered.filter { !arguments.has("moduleId") || it.moduleId == arguments.getString("moduleId") }.forEach {
+                val selected = if (coreOnly) discovered.filter { it.toolId in io.legado.app.help.agent.mcp.AgentCapabilities.coreToolIds } else discovered
+                JSONArray().apply { selected.filter { !arguments.has("moduleId") || it.moduleId == arguments.getString("moduleId") }.forEach {
                     put(JSONObject().put("moduleId", it.moduleId).put("toolId", it.toolId).put("name", it.modelName)
                         .put("legacyName", it.legacyModelName).put("definition", it.definition()))
                 } }
