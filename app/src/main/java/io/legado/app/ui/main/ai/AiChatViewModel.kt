@@ -56,7 +56,10 @@ class AiChatViewModel : ViewModel() {
         var lastRequest: org.json.JSONObject? = null,
         val mainRequestIds: MutableSet<String> = mutableSetOf(),
         val usage: AiUsageTotals = AiUsageTotals()
-    )
+    ) {
+        /** 本轮第一步的首 token 延迟（首字口径与 DSH 轮尾一致）；-1 表示尚未记录。 */
+        var firstTtftMs: Long = -1L
+    }
 
     private val turnTraces = mutableMapOf<String, TurnTrace>()
     private var activeTurnKey: String? = null
@@ -259,6 +262,7 @@ class AiChatViewModel : ViewModel() {
                     trace.usage.cachedTokens += status.optLong("cachedTokens", 0L)
                     trace.usage.ttftMs += status.optLong("ttftMs", 0L)
                     trace.usage.llmMs += status.optLong("elapsedMs", 0L)
+                    if (trace.firstTtftMs < 0) trace.firstTtftMs = status.optLong("ttftMs", 0L)
                     if (status.optBoolean("estimated", false)) trace.usage.estimated = true
                 }
             }
@@ -382,7 +386,7 @@ class AiChatViewModel : ViewModel() {
             estimated = trace.usage.estimated
         )
         return listOf(
-            AiUsageFormat.collapsed(totals),
+            AiUsageFormat.collapsed(totals, if (trace.firstTtftMs >= 0) trace.firstTtftMs else totals.ttftMs),
             AiUsageFormat.inRow(totals),
             AiUsageFormat.outRow(totals),
             AiUsageFormat.totalRow(totals),

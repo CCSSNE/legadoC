@@ -100,9 +100,14 @@ object AiUsageFormat {
         }
     }
 
-    fun speed(tokens: Long, ms: Long): String =
-        if (tokens <= 0 || ms <= 0) "--"
-        else String.format(Locale.US, "%,d", (tokens * 1000.0 / ms).toLong()) + "t/s"
+    fun speed(tokens: Long, ms: Long): String {
+        if (tokens <= 0 || ms <= 0) return "--"
+        val tps = tokens * 1000.0 / ms
+        // DSH 同款：≥10 取整，<10 保留一位小数。
+        val value = if (tps >= 10) String.format(Locale.US, "%,d", tps.toLong())
+        else String.format(Locale.US, "%.1f", tps)
+        return "${value}t/s"
+    }
 
     fun msPerToken(ms: Long, tokens: Long): String =
         if (tokens <= 0 || ms <= 0) "--"
@@ -112,9 +117,13 @@ object AiUsageFormat {
     private fun generationMs(totals: AiUsageTotals): Long =
         (totals.llmMs - totals.ttftMs).takeIf { it > 0 } ?: totals.llmMs
 
-    fun collapsed(totals: AiUsageTotals): String =
+    /**
+     * 收起摘要行：总 token / 输出速度 / 首字。
+     * 首字口径与 DSH 轮尾一致 = 本轮第一步的首 token 延迟（firstTtftMs；缺省回退累计 ttftMs）。
+     */
+    fun collapsed(totals: AiUsageTotals, firstTtftMs: Long = totals.ttftMs): String =
         "total-${tokens(totals.inTokens + totals.outTokens)}" +
-            " ${speed(totals.outTokens, generationMs(totals))} ${duration(totals.ttftMs)}" +
+            " ${speed(totals.outTokens, generationMs(totals))} ${duration(firstTtftMs)}" +
             if (totals.estimated) " <e>" else ""
 
     fun inRow(totals: AiUsageTotals): String =
