@@ -165,38 +165,16 @@ $versionName = '3.26.<MMddHH>' # <MMddHH> uses UTC; appC automatically appends c
 
 ### 长命令和构建失败
 
-- 任何可能超过 30 秒的命令必须实时监控。每 30 秒以内检查进程是否存活、CPU 是否增长、日志/产物是否更新；停滞时终止并报告，不能无限等待。
-- 编译启动必须“快、直接、零仪式”：**一条命令直接把环境变量与 `.bat` 里 Step 配置一起设好，然后立刻后台拉起并返回 PID 与日志路径**，不要写启动脚本文件、不要 `Start-Process` 套 `cmd` 再套 `.bat` 的笨重链路，更不要在启动后反复 `Start-Sleep + Get-Content` 干等。
-- 最快路径：用 `Start-Process` 启动 `gradlew.bat`（或一条 PowerShell 后台作业），`-ArgumentList` 一次性传入环境设置与 `assembleAppC` 全部参数，`-WindowStyle Hidden` 后台运行；把 stdout/stderr 重定向到日志文件后立即返回 PID。整个“配置+启动+返回 PID”应在一个命令内完成，禁止拆成“先写 .bat→再 Start-Process 拉起→再串行轮询”的多步仪式。
-- 后台启动的 `PowerShell`、`cmd`、Gradle 或包装脚本必须显式使用 `Start-Process -WindowStyle Hidden`；禁止弹出可见控制台窗口。构建 stdout、stderr、退出码和 APK 必须写入文件，禁止把二进制内容输出到文本终端。
-- 后台编译启动后必须立即返回 PID、日志路径和启动参数；后续**在机械的长时间隔里低开销地瞄一眼三样核心信号即可**——是否出现 `BUILD SUCCESSFUL` / 失败报错 / APK 是否已产出。不要追着早已退出的 cmd wrapper PID 反复 `Get-Process`，真正的信号在 java(Gradle/Kotlin) 进程 CPU 与日志尾部。确认后台进程在跑、CPU 在涨、日志在写之后，就撤手等结果，不要一轮轮 `Start-Sleep + Get-Content` 干等。
-- 后台编译须保存 stdout、stderr 和退出码。`cmd /c` 的内联重定向不可靠时，才降级改用 `.bat` 文件启动（入口 `gradlew.bat` 直接用 `Start-Process` 拉起即可，通常不需要 `.bat`），不得把空日志或启动器已退出误判为编译成功。
-- 用户中断或工具会话结束后，必须先检查并清理仍属于本次构建的 Gradle/Kotlin/Java PID，再报告构建结果；不得遗留后台编译进程。
-- 先阅读实际错误中的文件、行号和异常，再选择修复。不得把源码错误猜成内存问题后盲目重跑。
-- 只有证据明确指向缓存锁定、Gradle 守护进程或原生内存问题时，才停止 Gradle、清理本次构建残留进程，并使用 `assembleAppC` 加冷编译参数重新诊断；目录清理只允许针对受影响模块的 `build` 目录。
-- 构建无论成功或失败，执行 `.\gradlew.bat --stop` 并按 PID 清理残留构建进程，避免占用内存。
-- 2026-08-15：`HeaderlessDialogChrome` 首次正式编译在 `AccentTextView(context)` 失败，因为该控件构造器强制要求 `AttributeSet?`；读取 Kotlin 报错后改为 `AccentTextView(context, null)`，同版本重编译成功。失败包未产出、未交付。动态创建项目自定义 View 时必须先核对构造器签名，不能假定存在单参构造器。
-- 2026-08-15：首次启动 10608 构建时，把批处理和退出码写入拼在 `cmd /c` 参数中，Windows 报“文件名、目录名或卷标语法不正确”，没有 Gradle 进程、构建日志或 APK。改为由 `.bat` 自己记录退出码，再以 `Start-Process` 直接启动，构建正常。后台构建的重定向/引号错误必须以“未启动”处理，不能等待或误判为 Gradle 卡死。
-- 2026-08-16：新增被 XML 引用的字符串只写入 `values-zh` 会在 `appC` 资源链接时被移除，最终报“resource string not found”。所有新增字符串必须先定义在默认 `values/strings.xml`，再补充语言覆盖；首次链接失败包不产出，补齐默认资源后以同一版本重编译。
-- 2026-08-19：`assembleAppC` 增量 daemon 编译在 `compileAppCJavaWithJavac` 阶段报“Gradle build daemon disappeared unexpectedly”，`hs_err_pid*.log` 显示 JVM 原生内存不足（native OOM，malloc 失败）。根因是系统物理内存/交换空间不足，不是源码错误。清理残留 Gradle/Kotlin/Java 进程后，按冷编译参数 `--no-daemon --max-workers=1 -Dkotlin.incremental=false -Dksp.incremental=false -Dkotlin.compiler.execution.strategy=in-process` 全量重编译成功。本机内存压力下再次构建应直接采用该冷编译参数，不要盲目重跑 daemon 增量编译。
-- 2026-08-22：另一会话在同一工作区运行 Gradle 时并行启动 `assembleAppC`，`processAppCResources` 报 `Couldn't delete ...\R.jar` 失败（跨进程文件锁，非源码错误）。同一检出目录同时只允许一个构建；正式编译前必须确认无其他活跃 `GradleWrapperMain` / 临时编译脚本，发现冲突先协调等待，不得擅自杀死不属于本次构建的进程。另外：经 PowerShell 管道截断（如 `Select-Object -First N`）读取 `.bat` 包装工具输出会污染 `$LASTEXITCODE`，校验退出码必须完整执行后读取。
-- 2026-08-24：Kotlin 字符串模板 `$total章` 报 `Unresolved reference 'total章'`——Kotlin 标识符允许 Unicode 字母，模板变量后紧跟 CJK 字符会被并入标识符解析；非 ASCII 后缀前必须用 `${var}` 显式终止引用。
-- 2026-08-24：用 PowerShell 字符串拼接生成后台构建 `.bat` 时，含拼接表达式的行被拆成多行、重定向路径断裂，进程秒退且无任何日志文件。此类"启动器损坏"一律按未启动处理，不得等待或误判为编译卡死；生成脚本改用纯字面量 here-string（长路径经 `%VAR%` 间接引用），且必须先回读校验行数与内容再 `Start-Process` 启动。
-- 2026-08-24：后台构建 `.bat` 用 `echo %EXIT_CODE%> "file"` 记录退出码，`%EXIT_CODE%` 为纯数字（如 0）时该行被 cmd 解析为句柄 `0>` 重定向，退出码文件为 0 字节空文件（构建本身正常，成功以 out.log 的 BUILD SUCCESSFUL 与空 err.log 为准，此问题不触发重编译）。记录退出码必须把重定向写在行首：`> "file" echo %EXIT_CODE%`。
-- 2026-09-01：`compileAppCKotlin` 报 `Unresolved reference 'start'` / `end'`——Kotlin `MatchResult` 没有 `start(groupIdx)` / `end(groupIdx)` 方法；需用 `match.groups[groupIdx]!!.range.first` 和 `range.last + 1`。同文件 `outcome` 为可空类型，在 `when` 后的 `else` 分支不会被 smart cast（lambda 捕获），需显式 `!!`。
-- 2026-09-02：`assembleAppC` 冷编译三次才成功。第一次 Gradle daemon 原生 OOM（hs_err malloc 失败，同 2026-08-19）；第二次改用 `-Dkotlin.compiler.execution.strategy=in-process` 但 Kotlin 编译仍走守护进程（堆栈 `compileWithDaemon`），守护进程崩溃报 "Connection to the Kotlin daemon has been unexpectedly lost"——**`-D` 形式在当前 Kotlin 版本下不被读取**；第三次改用 `-Pkotlin.compiler.execution.strategy=in-process`（Gradle property 形式）才真正 in-process，编译成功。规则：冷编译参数中 Kotlin 编译策略一律用 `-P` 而非 `-D`；低内存环境下 Gradle daemon 原生 OOM 与 Kotlin daemon 崩溃可能交替出现，需区分处理。
-- 2026-09-03：新增带 `tools:` 预览属性的布局（如 `tools:text`）若根元素未声明 `xmlns:tools`，`mergeAppCResources` 直接报 `AttributePrefixUnbound` 并失败；本轮聚合主页两个布局（`item_homepage_ranking_tab`、`item_homepage_manage_source`）先后触发。规则：布局一旦使用 `tools:` 属性必须在根元素声明 `xmlns:tools="http://schemas.android.com/tools"`。另：本轮聚合主页代码曾整体未编译即提交（Kotlin 缺 import/裸类引用、`Row` 内嵌 sealed 子类未加 `Row.` 前缀、`Row.Module.copyMode` 误写成 `ui.copyMode`、根无 id 布局误用绑定字段 `tvAction` 应改用 `root`、抽象 ViewHolder 直接被实例化），先编译再提交，避免一次性排错堆积。
-- 2026-09-03：公开版按本文件基线（`10804`）递增编出 `10805`，发布前复查发现线上最新公开版已是 `3.26.090304` / `10816`，`10805` 构成 versionCode 倒退，未发布作废并以 `10819`（大于自用 `10818` 与公开 `10816`）重编。规则：新 `VERSION_CODE` 必须同时大于本文件基线与 GitHub 线上同 flavor 最新 Release 的 versionCode，基线滞后时以后者为准。
-- 2026-09-03：欢迎页 splash inset 数值（默认 `96dp` / `v31 54dp`）由 AOSP 平台管线公式推导：API 31+ 经 108dp 画布+×1.5 bleed+×16/9 上屏，与 compat 的 288dp 区域路径完全不同。`b00bd65e` 以“统一回落 compat”为由删除 `drawable-v31/` 并把默认改回 `72dp`，导致平台图案只剩约 32dp（10822 回归，已回退修复）。规则：`drawable/splash_icon*`、`drawable-v31/splash_icon*`、`styles.xml` 欢迎页主题三处视为一个整体，禁止单独改动数值、删除 v31 变体或改回 `@mipmap` 直接引用；各文件头注释即禁令。
-- 2026-09-04：后台 `Start-Process` 拉起 `gradlew.bat` 后，工具调用可能报 `ChildProcess.kill` 超时，但 Gradle 子进程实际仍在后台正常构建（以 out.log 是否增长与 java 进程 CPU 是否 climbing 为准，不得据此判定构建失败或重复拉起）。重复拉起会在同一检出目录形成多构建并发，必触发资源锁冲突与内存挤占；正确做法是用 `Get-CimInstance Win32_Process` 按命令行找回本次构建的 cmd/java PID，只保留唯一正确参数构建并 `Wait-Process` 等待，其余本次杂散构建按 PID 清理（不得碰非本次进程）。同日反例：两次拉起后 out.log 停在 `compileAppCKotlin` 不再增长、无 hs_err、Gradle JVM CPU 空转——此时是宿主把构建树真杀掉了（残留 JVM 为僵尸），必须杀掉残留改走计划任务（schtasks）脱离宿主进程树拉起，存活到结束；判定标准永远是日志增长+CPU，二者皆停即死，不得干等。
-- 2026-09-04：自用版 `assembleAppC` 冷编两次在 `compileAppCKotlin` 阶段 JVM 原生 OOM（先 `malloc Chunk::new` 失败、再 `mmap commit metaspace` 失败），系统提交空间仅剩约 2.9GB（`Memory Compression` 2.1GB），非源码错误；同一阶段连续原生 OOM 不得盲目重跑，先查提交空间与内存压力、停下上报，待用户释放内存（提交空闲恢复约 10.9GB）并清理残留进程与 `hs_err_pid*.log` 后，用同一版本第三次冷编成功。规则：`hs_err_pid*.log` 属崩溃现场文件，诊断后即删、不提交；内存未恢复前不得以相同参数反复拉起。
-- 2026-09-05：处理"重新编译/编译期间出现新提交"类请求时，必须先用 `git diff <前次构建对应提交> <当前HEAD>` 核对源码树差异再决定是否重编：Gradle up-to-date 判定基于内容哈希（不依赖 mtime），上一轮构建后文件 mtime 变化但内容相同（提交-回退抵消）时，增量构建报全部 up-to-date 是正确结果，不得凭 mtime 怀疑漏检。确需重编时直接跑 `assembleAppC` 增量（Gradle 自动只重编变更文件）；禁止无依据删除整个 `app/build` 制造全量重编——本次误删 app/build 触发 5 分钟全量重编，实际只需增量（个别文件，约 1 分钟内），浪费一次构建窗口。
-- 2026-09-06：`compileAppCKotlin` 对单个文件报数十个 `Type checking has run into a recursive problem`、报错位置随构建漂移且无实质错误时，根因是表达式体函数（本轮为 `AgentSettingsUi` 的 `= work {}` / `= menu()`）返回类型靠推断，而函数体内的自递归/互递归调用使 K2 检查重入；修复为给这些函数补显式返回类型（work 系 `: Job`、menu 系 `: Unit`），环即断开，不得逐个 lambda 加注或改业务结构。同文件另有两处非法非局部返回（`return@menu` / `return@work`，目标均非词法外层函数且均非 inline），一律改等价 `if-else`。
+* 任何可能长时间运行的命令都必须监控实际进度；以进程、CPU、日志和产物是否持续变化判断是否仍在运行，不得无限等待，也不得仅凭启动器退出或工具超时误判任务失败。
+* 构建失败时先读取实际错误、文件、行号和异常信息，再判断根因；不得在没有证据时把源码错误、文件锁、缓存问题或内存问题混为一谈并盲目重跑。
+* 只有证据明确指向缓存、Gradle/Kotlin 进程、文件锁或内存问题时，才执行对应的进程清理、冷编译或局部构建目录清理；不得无依据删除整个构建目录，也不得终止不属于本次任务的进程。
+* 同一检出目录同时只允许一个正式构建。构建结束、中断或失败后，必须清理属于本次构建的残留进程；构建结果以真实日志、退出状态和产物校验为准。
+
 ### 双构建路线（自有 / 开源）
 
 主代码只经 `app/src/main/java/io/legado/app/plugin` 的空接口与注册表（`ReadAloudEngines` / `TtsVoiceDirectories` / 各 flavor 的 `AppPlugins.init`）接触专有功能；插件缺失时主代码正常运行：引擎列表不渲染该行、路由到未内置引擎 id 明示回退系统 TTS、AI 选角在发音人目录缺失时自动降级。
 
-**版本与应用名（2026-09-02 明文）**：自用版（`assembleAppC` / `io.legado.app.dev`）应用名 `阅读C-自用`；公开版（`assembleOssRelease` / `io.legado.app.c`）应用名 `阅读C`。文档、Release 正文、日常交流一律使用上述应用名，不得再把自用版称为"阅读C"。
+**版本与应用名**：自用版（`assembleAppC` / `io.legado.app.dev`）应用名 `阅读C-自用`；公开版（`assembleOssRelease` / `io.legado.app.c`）应用名 `阅读C`。文档、Release 正文、日常交流一律使用上述应用名，不得再把自用版称为"阅读C"。
 
 - 自用版使用 `assembleAppC`，应用名固定为 `阅读C-自用`，包名固定为 `io.legado.app.dev`。`app` flavor 会包含 `app/src/app` 中的全部专有功能和依赖，并通过自有 `AppPlugins` 注册；自用版与公开版包名不同，可同时安装。
 - 公开版使用 `assembleOssRelease`，应用名固定为 `阅读C`，包名固定为 `io.legado.app.c`，版本名为 `3.26.MMddHH`，不带后缀。`oss` flavor 不包含 `app/src/app` 中的任何专有源码、so、组件声明或专有依赖。
@@ -288,7 +266,7 @@ uiautomator2 / ADB
 - APK 上传使用 `Content-Type: application/octet-stream` 和 `curl.exe --data-binary @<apk>`。
 - 发布后通过 API 和 GitHub 网页复查中文、排版、`draft=false`、`prerelease` 与用户要求一致（正式版为 `false`，用户点名 Pre 版时为 `true`）、tag、目标提交、资产大小和下载 200；发现乱码则用 UTF-8 无 BOM JSON PATCH 后重新复查。Pre 版创建时显式传 `"make_latest": "false"`，使 `Latest` 标记保持在正式版不动。
 - 公开仓库（`origin` / CCSSNE/legadoC）的 Release 只允许上传文件名含 `oss` 的公开版 APK（`assembleOssRelease` 产物，包名 `io.legado.app.c`、应用名 `阅读C`）；自用版 APK（`assembleAppC` 产物，包名 `io.legado.app.dev`、文件名 `legado_app_*`）绝对禁止作为资产出现在公开仓库的任何 Release（含 Pre 版）。判定以 `aapt` 包名为准，改名不算数。
-- 上一条是软性流程钩子：Git 钩子拦不到 Release 通道（网页 / `gh` / API 上传不经过本地 `commit` / `push`），只能靠上传前执行第 3 节产物验证并核对文件名含 `oss` 来自觉遵守；上传后按上一条复查资产，发现误传立即删除对应资产。
+- 上一条是软性流程钩子：Git 钩子拦不到 Release 通道（网页 / `gh` / API 上传不经过本地 `commit` / `push`），只能靠上传前执行第 3 节产物验证并核对文件名含 `oss` 来自觉遵守；上传后按上一条复查Release资产，发现历史误传立即删除对应资产。
 
 ### Git
 
@@ -296,7 +274,7 @@ uiautomator2 / ADB
 
 - 提交前检查 `git status`、`git diff`、`git log`。只暂存本次需要的文件，不提交 APK、构建日志、trace 或临时文件。
 - 提交信息简洁且准确，遵循现有仓库风格。
-- 项目不使用远程 CI：`.github/workflows` 下全部工作流已于 2026-08-22 移除（unit-test 因 `gradlew` 缺少可执行位从未通过；publish-release-to-telegram 为上游继承、secrets 未配置的死配置），远程 Actions 无存量运行负担。单元测试与编译检查一律在本地执行；不得重新引入或恢复远程 CI 工作流。
+- 项目不使用远程 CI：`.github/workflows` 下全部工作流已移除，远程 Actions 无存量运行负担。单元测试与编译检查一律在本地执行；不得重新引入或恢复远程 CI 工作流。
 - 每个独立修改完成并通过代码审查后必须立即自动创建一个只包含该修改的 Git 提交，不等待用户另行要求，也不能把多个无关修改堆积后一次提交。正式 APK 编译只能在这些提交完成后开始；正式编译、安装和回归通过后，再提交版本基线与验证记录。发生回归时只允许从这些明确提交边界回退，禁止猜测性撤销工作区文件。
 - 本地出现新提交后，立即运行 `publish-oss-source.ps1`：把清洗后的公开镜像同步到 `origin/own`，并把完整私有历史同步到 `private`。禁止直接 `git push origin own`。自动推送只包含 Git 提交，不包含 GitHub Release；Release 必须由用户明确要求后才能创建。
 
@@ -304,6 +282,6 @@ uiautomator2 / ADB
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- 最近一次自用版交付为 `3.26.090604` / `10852`，2026-09-06，基于提交 `3559ece6`（自 `10850` 基线后 8 个代码提交：`51052845` 落地可热更新JS Agent、`20432b36` 完善JS Agent、`8d9b679c` 修复关于页更新日志异步回调未判断isAdded导致的崩溃、`c90f334d` Release增加软性钩子、`6b8643c4` 修复AI创作提示词与生图链路视图销毁后触binding崩溃、`e3e5235e` / `21fd2f38` / `3559ece6` AgentSettingsUi编译修复三连）使用 `assembleAppC` daemon 增量编译成功（默认参数，`BUILD SUCCESSFUL in 2m 46s`，`75 actionable tasks: 9 executed, 66 up-to-date`，err 为空）。产物包名 `io.legado.app.dev`、versionName `3.26.090604c`、versionCode `10852`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C-自用`（label-zh 逐字匹配）、`apksigner` 验证通过（退出码 0，`META-INF` 未保护条目提示可接受）；APK 位于 `app\build\outputs\apk\app\c\legado_app_3.26.090604_10852.apk`（49992602 字节）。上一自用版为 `3.26.090521` / `10850`；最近公开版为 `3.26.090522` / `10851`，2026-09-05，基于提交 `5143ee68`（自 `10837` 基线后 67 个提交，区间内无 `app/src/app` 专有改动，主要变更：供应商管理改短按设当前长按编辑、模型与MCP管理改短按主操作长按编辑、AI创作 Vditor 即时渲染编辑器与插图版式/宫格排框、请求体模板独立、供应商多模态开关、破坏性版本自检回出厂、工作流脱敏与 MD 预览统一 WebView）使用 `assembleOssRelease` 冷编译成功（`--no-daemon --max-workers=1 -Dkotlin.incremental=false -Dksp.incremental=false -Pkotlin.compiler.execution.strategy=in-process`，`BUILD SUCCESSFUL in 10m 10s`，`121 actionable tasks: 101 executed, 20 from cache`，err 为空）。产物包名 `io.legado.app.c`、versionName `3.26.090522`（无后缀）、versionCode `10851`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C`（label-zh 逐字匹配）、`apksigner` 验证通过（退出码 0，`META-INF` 未保护条目提示可接受）；APK 位于 `app\build\outputs\apk\oss\release\legado_oss_3.26.090522_10851.apk`（35598307 字节），已发布 Release `v3.26.090522`（正式版 draft=false / prerelease=false，资产下载 200）。上一公开版为 `3.26.090420` / `10837`（曾发布 Release `v3.26.090420`；再上一公开版为 `3.26.090400` / `10827`，曾创建 Pre 版 Release `v3.26.090400`）。
+- 最近一次自用版交付为 `3.26.090604` / `10852`，2026-09-06，基于提交 `3559ece6`（自 `10850` 基线后 8 个代码提交：`51052845` 落地可热更新JS Agent、`20432b36` 完善JS Agent、`8d9b679c` 修复关于页更新日志异步回调未判断isAdded导致的崩溃、`c90f334d` Release增加软性钩子、`6b8643c4` 修复AI创作提示词与生图链路视图销毁后触binding崩溃、`e3e5235e` / `21fd2f38` / `3559ece6` AgentSettingsUi编译修复三连）使用 `assembleAppC` daemon 增量编译成功（默认参数，`BUILD SUCCESSFUL in 2m 46s`，`75 actionable tasks: 9 executed, 66 up-to-date`，err 为空）。产物包名 `io.legado.app.dev`、versionName `3.26.090604c`、versionCode `10852`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C-自用`（label-zh 逐字匹配）、`apksigner` 验证通过（退出码 0，`META-INF` 未保护条目提示可接受）；APK 位于 `app\build\outputs\apk\app\c\legado_app_3.26.090604_10852.apk`（49992602 字节）。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
