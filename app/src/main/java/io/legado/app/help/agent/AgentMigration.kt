@@ -62,6 +62,10 @@ object AgentMigration {
         val originalKey = if (replace) "restore.${UUID.randomUUID()}" else "original"
         if (AgentStore.get("migration", originalKey) == null) AgentStore.put("migration", originalKey, original)
         try {
+            // 悬空的当前选择（指向不存在供应商/模型的 aiCurrentProviderId/aiCurrentModelId）
+            // 按项目既定语义清除选择（见 AppConfig.syncAiState 及各 setter：未知 id 即清除），
+            // 只修选择指针不动名单，修前原值已在 migration/original 快照保留。
+            val repairedSelections = sanitizeDanglingSelections(preferences)
             validateReferences(preferences)
             AgentStore.database.runInTransaction {
                 if (replace) {
@@ -169,7 +173,8 @@ object AgentMigration {
                     AgentStore.put("history.read", bookUrl, history)
                 }
                 AgentStore.put("migration", "v1", JSONObject().put("schemaVersion", AgentConfig.SCHEMA_VERSION)
-                    .put("complete", true).put("completedAt", System.currentTimeMillis()))
+                    .put("complete", true).put("completedAt", System.currentTimeMillis())
+                    .put("repairedSelections", JSONArray(repairedSelections)))
             }
         } catch (error: Exception) {
             AgentStore.put("migration", "error", JSONObject().put("error", error.stackTraceToString()).put("original", "migration/$originalKey"))
@@ -191,6 +196,53 @@ object AgentMigration {
         }
         AgentStore.put("history.origin", sessionId, JSONObject().put("type", "legacy_text_only").put("source", origin)
             .put("notice", "旧记录仅含显示文本，无法还原工具往返；没有伪造工具调用"))
+    }
+
+    /**
+     * 清除指向不存在名单的选择指针（aiCurrentProviderId/aiCurrentModelId），返回修复记录。
+     * 名单本身损坏时不处理，交由 validateReferences 严格暴露；选择悬空则按既定语义清除
+     * （见 AppConfig.syncAiState：未知 id 即清除，后续访问自动选中首个可用项）。
+     */
+    private fun sanitizeDanglingSelections(preferences: SharedPreferences): List<String> {
+        val repaired = mutableListOf<String>()
+        fun ids(key: String): Set<String>? = try {
+            val raw = preferences.getString(key, null) ?: return emptySet()
+            val values = JSONArray(raw)
+            (0 until values.length()).map { values.getJSONObject(it).getString("id") }.toSet()
+        } catch (error: Exception) { null }
+        fun modelOwners(): Map<String, String>? = try {
+            val raw = preferences.getString("aiModelConfigList", null) ?: return emptyMap()
+            val values = JSONArray(raw)
+            (0 until values.length()).associate {
+                val record = values.getJSONObject(it)
+                record.getString("id") to record.getString("providerId")
+            }
+        } catch (error: Exception) { null }
+        val providerIds = ids("aiProviderList") ?: return repaired
+        val owners = modelOwners() ?: return repaired
+        val editor = preferences.edit()
+        val currentProvider = preferences.getString("aiCurrentProviderId", null)
+        val effectiveProvider = currentProvider?.takeIf { it in providerIds }
+        if (currentProvider != null && effectiveProvider == null) {
+            editor.remove("aiCurrentProviderId")
+            repaired += "aiCurrentProviderId 指向不存在的供应商已清除：$currentProvider"
+        }
+        val currentModel = preferences.getString("aiCurrentModelId", null)
+        if (currentModel != null) {
+            val owner = owners[currentModel]
+            if (owner == null) {
+                editor.remove("aiCurrentModelId")
+                repaired += "aiCurrentModelId 指向不存在的模型已清除：$currentModel"
+            } else if (owner != effectiveProvider) {
+                editor.remove("aiCurrentModelId")
+                repaired += "aiCurrentModelId 与当前供应商不一致已清除：$currentModel（归属 $owner）"
+            }
+        }
+        if (repaired.isNotEmpty()) {
+            editor.apply()
+            io.legado.app.constant.AppLog.put("Agent 迁移清除悬空选择\n" + repaired.joinToString("\n"))
+        }
+        return repaired
     }
 
     fun validateReferences(preferences: SharedPreferences = PreferenceManager.getDefaultSharedPreferences(appCtx)) {
