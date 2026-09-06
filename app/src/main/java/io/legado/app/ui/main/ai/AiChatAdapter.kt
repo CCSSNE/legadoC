@@ -301,7 +301,8 @@ class AiChatAdapter(
         container.isVisible = true
         val lines = message.content.lines()
         val title = lines.getOrElse(0) { "" }
-        val detail = lines.drop(1).joinToString("\n")
+        // 末尾的 steps=/tool= 元数据行只供总计卡汇总，界面不渲染。
+        val detail = lines.drop(1).filterNot { it.startsWith("steps=") }.joinToString("\n")
         val expanded = message.id in expandedIds
         val row = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL

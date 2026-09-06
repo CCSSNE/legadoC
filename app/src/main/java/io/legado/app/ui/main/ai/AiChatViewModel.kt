@@ -353,7 +353,7 @@ class AiChatViewModel : ViewModel() {
         val done = trace.calls.values.count { it.stage == "done" }
         val toolMs = trace.calls.values.filter { it.elapsedMs >= 0 }.sumOf { it.elapsedMs }
         val header = "${trace.calls.size} 次工具调用"
-        val debug = "第${trace.rounds.coerceAtLeast(1)}轮 · ${done}步完成 · 模型${AiUsageFormat.duration(trace.modelMs)} · 工具${AiUsageFormat.duration(toolMs)}"
+        val debug = "已完成 ${done}/${trace.calls.size} · 模型${AiUsageFormat.duration(trace.modelMs)} · 工具${AiUsageFormat.duration(toolMs)}"
         val detail = trace.calls.values.joinToString("\n") { record ->
             val mark = when (record.stage) {
                 "done" -> if (record.success) "✓" else "✗"
@@ -369,7 +369,7 @@ class AiChatViewModel : ViewModel() {
         return "$header\n$debug\n$detail"
     }
 
-    /** 单轮用量统计卡：首行收起摘要（总 token / 输出速度 / 首字），展开显示 in/out/total 与轮步耗时。 */
+    /** 单轮用量统计卡：首行收起摘要（总 token / 输出速度 / 首字），展开显示 in/out/total；轮步不进单轮卡。 */
     private fun renderTurnStats(trace: TurnTrace): String {
         val totals = AiUsageTotals(
             inTokens = trace.usage.inTokens,
@@ -377,8 +377,7 @@ class AiChatViewModel : ViewModel() {
             outTokens = trace.usage.outTokens,
             ttftMs = trace.usage.ttftMs,
             llmMs = trace.usage.llmMs,
-            rounds = trace.rounds,
-            steps = trace.calls.size,
+            steps = trace.rounds.coerceAtLeast(1),
             toolMs = trace.calls.values.filter { it.elapsedMs >= 0 }.sumOf { it.elapsedMs },
             estimated = trace.usage.estimated
         )
@@ -387,15 +386,22 @@ class AiChatViewModel : ViewModel() {
             AiUsageFormat.inRow(totals),
             AiUsageFormat.outRow(totals),
             AiUsageFormat.totalRow(totals),
-            AiUsageFormat.header(totals)
+            AiUsageFormat.meta(totals)
         ).joinToString("\n")
     }
 
-    /** 会话总计卡：由会话内全部单轮统计卡汇总，速度即为各轮加总后的平均值。 */
+    /** 会话总计卡：轮 = 统计卡张数（一轮问答一张），步 = 各轮流模型步数之和，速度为加总后的平均。 */
     private fun renderSessionTotal(): String {
         val totals = AiUsageTotals()
+        var turns = 0
         messages.filter { (it.kind ?: AiChatMessage.Kind.TEXT) == AiChatMessage.Kind.STATS }
-            .forEach { card -> AiUsageFormat.parseTurnCard(card.content)?.let { totals.add(it) } }
+            .forEach { card ->
+                AiUsageFormat.parseTurnCard(card.content)?.let {
+                    totals.add(it)
+                    turns += 1
+                }
+            }
+        totals.rounds = turns
         return listOf(
             AiUsageFormat.header(totals) + if (totals.estimated) " <e>" else "",
             AiUsageFormat.inRow(totals),

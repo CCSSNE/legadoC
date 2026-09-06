@@ -76,10 +76,11 @@ data class AiUsageTotals(
 
 /**
  * 用量统计卡的统一渲染与解析；正文格式即协议，渲染与解析必须同步修改。
- * 单轮卡正文固定 5 行：收起摘要 / in 行 / out 行 / total 行 / 轮步头。
+ * 单轮卡正文 5 行：收起摘要 / in 行 / out 行 / total 行 / 隐藏元数据行（steps/tool 供总计卡汇总，界面不显示）。
+ * 口径：轮 = 用户一句话+一次回答（会话轮数）；步 = 模型请求次数；速度与 ms/t 只按各自阶段耗时计算。
  */
 object AiUsageFormat {
-    private val headerRegex = Regex("(\\d+) 轮 · (\\d+) 步 \\| LLM (\\S+) · Tool (\\S+)")
+    private val metaRegex = Regex("steps=(\\d+) tool=(\\d+)")
 
     fun tokens(count: Long): String = String.format(Locale.US, "%,d", count) + "t"
 
@@ -107,9 +108,13 @@ object AiUsageFormat {
         if (tokens <= 0 || ms <= 0) "--"
         else String.format(Locale.US, "%.1f", ms.toDouble() / tokens) + "ms/t"
 
+    /** 纯生成耗时 = 模型墙钟时长 − 首字等待；异常时回退墙钟时长。 */
+    private fun generationMs(totals: AiUsageTotals): Long =
+        (totals.llmMs - totals.ttftMs).takeIf { it > 0 } ?: totals.llmMs
+
     fun collapsed(totals: AiUsageTotals): String =
         "total-${tokens(totals.inTokens + totals.outTokens)}" +
-            " ${speed(totals.outTokens, totals.llmMs)} ${duration(totals.ttftMs)}" +
+            " ${speed(totals.outTokens, generationMs(totals))} ${duration(totals.ttftMs)}" +
             if (totals.estimated) " <e>" else ""
 
     fun inRow(totals: AiUsageTotals): String =
@@ -118,13 +123,17 @@ object AiUsageFormat {
             " ${duration(totals.ttftMs)}"
 
     fun outRow(totals: AiUsageTotals): String =
-        "out-${tokens(totals.outTokens)} ${speed(totals.outTokens, totals.llmMs)}" +
-            " ${msPerToken(totals.llmMs, totals.outTokens)} ${duration(totals.llmMs)}"
+        "out-${tokens(totals.outTokens)} ${speed(totals.outTokens, generationMs(totals))}" +
+            " ${msPerToken(generationMs(totals), totals.outTokens)} ${duration(totals.llmMs)}"
 
     fun totalRow(totals: AiUsageTotals): String = "total-${tokens(totals.inTokens + totals.outTokens)}"
 
+    /** 会话总计卡首行：轮 = 会话轮数，步 = 模型请求总次数；轮步只出现在这里。 */
     fun header(totals: AiUsageTotals): String =
         "${totals.rounds} 轮 · ${totals.steps} 步 | LLM ${duration(totals.llmMs)} · Tool ${duration(totals.toolMs)}"
+
+    /** 单轮隐藏元数据行：本轮流模型步数与工具耗时，供总计卡汇总，界面不渲染。 */
+    fun meta(totals: AiUsageTotals): String = "steps=${totals.steps} tool=${totals.toolMs}"
 
     /** 解析单轮统计卡正文；只认自己渲染的固定格式，解析失败返回 null（不计入会话总计）。 */
     fun parseTurnCard(content: String): AiUsageTotals? {
@@ -133,16 +142,16 @@ object AiUsageFormat {
         val inParts = lines[1].split(' ')
         val outParts = lines[2].split(' ')
         if (inParts.size < 5 || outParts.size < 4) return null
-        val header = headerRegex.find(lines[4]) ?: return null
+        val meta = metaRegex.find(lines[4]) ?: return null
         return AiUsageTotals(
             inTokens = tokenCount(inParts[0], "in-") ?: return null,
             cachedTokens = tokenCount(inParts[1], "c-") ?: 0,
             outTokens = tokenCount(outParts[0], "out-") ?: return null,
             ttftMs = parseDuration(inParts.last()),
             llmMs = parseDuration(outParts.last()),
-            rounds = header.groupValues[1].toIntOrNull() ?: 0,
-            steps = header.groupValues[2].toIntOrNull() ?: 0,
-            toolMs = parseDuration(header.groupValues[4]),
+            rounds = 0,
+            steps = meta.groupValues[1].toIntOrNull() ?: 0,
+            toolMs = meta.groupValues[2].toLongOrNull() ?: 0,
             estimated = lines[0].endsWith("<e>")
         )
     }
