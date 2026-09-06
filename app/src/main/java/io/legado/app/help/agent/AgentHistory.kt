@@ -82,7 +82,6 @@ object AgentHistory {
             AgentStore.put("history.deleted", sessionId, JSONObject().put("deletedAt", System.currentTimeMillis())
                 .put("messages", JSONArray(AgentStore.dao.messages(sessionId).map { JSONObject(it.json) })))
             AgentStore.dao.deleteMessages(sessionId)
-            AgentStore.dao.deleteDocument("history.origin", sessionId)
             return
         }
         val current = texts(next)
@@ -95,8 +94,7 @@ object AgentHistory {
         val runs = AgentStore.dao.runs().filter { it.sessionId == sessionId }.associateBy { it.id }
         AgentStore.dao.messages(sessionId).groupBy { it.runId }.forEach { (runId, messages) ->
             val input = runs[runId]?.let { JSONObject(it.input) }
-            val ids = if (input == null && runId.startsWith("legacy:")) listOf(runId.removePrefix("legacy:"))
-                else listOfNotNull(input?.optString("messageId"), input?.optString("assistantMessageId")).filter { it.isNotBlank() }
+            val ids = listOfNotNull(input?.optString("messageId"), input?.optString("assistantMessageId")).filter { it.isNotBlank() }
             if (ids.none { it in changed }) return@forEach
             AgentStore.event(runId, "history.revised", JSONObject().put("sessionId", sessionId).put("changed", JSONArray(changed.toList()))
                 .put("original", JSONArray(messages.map { JSONObject(it.json) })).put("reason", "用户编辑或删除；派生上下文不再包含本回合工具链，原始往返保留在事件记录"))

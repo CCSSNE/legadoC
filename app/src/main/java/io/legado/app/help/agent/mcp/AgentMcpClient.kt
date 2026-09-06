@@ -7,7 +7,6 @@ import kotlinx.coroutines.CancellationException
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URI
-import java.util.Locale
 import java.util.UUID
 
 object AgentMcpClient {
@@ -143,7 +142,7 @@ object AgentMcpClient {
         }
     }
 
-    fun discover(id: String, config: JSONObject, control: AgentControl, migrateSelection: Boolean = true): List<AgentTool> {
+    fun discover(id: String, config: JSONObject, control: AgentControl): List<AgentTool> {
         try {
             validateConfig(config)
             val captured = JSONObject(config.toString())
@@ -187,7 +186,6 @@ object AgentMcpClient {
             } while (cursor != null)
             require(tools.isNotEmpty() || rejected.length() == 0) { "MCP $id 全部工具声明无效：$rejected" }
             val validated = AgentCapabilities.validate(tools)
-            if (migrateSelection) migrateToolSelection(id, validated)
             AgentStore.put("mcp.status", id, JSONObject().put("state", if (rejected.length() == 0) "ready" else "partial")
                 .put("protocolVersion", connection.version).put("toolCount", tools.size).put("rejectedTools", rejected))
             return validated
@@ -200,31 +198,4 @@ object AgentMcpClient {
         }
     }
 
-    private fun migrateToolSelection(id: String, tools: List<AgentTool>) {
-        val module = "external.$id"
-        val legacy = AgentStore.get("tool.selection.legacy", module) ?: return
-        if (AgentStore.get("tool.selection", module) != null) return
-        fun slug(value: String) = value.lowercase(Locale.getDefault()).map { if (it.isLetterOrDigit()) it else '_' }
-            .joinToString("").replace(Regex("_+"), "_").trim('_')
-        val selected = legacy.getJSONArray("enabled").let { array -> (0 until array.length()).map { array.getString(it) }.toSet() }
-        val serverSlug = slug(legacy.getString("serverName")).take(16).ifBlank { "server" }
-        val others = legacy.getJSONArray("otherServerNames")
-        require(selected.none { it.startsWith("mcp_${serverSlug}_") } || (0 until others.length()).none {
-            slug(others.getString(it)).take(16).ifBlank { "server" } == serverSlug
-        }) { "旧 MCP 显示名称寻址存在冲突，不能猜测选中工具；请在外部 MCP 的工具开关中明确重新选择，原配置保留" }
-        val aliases = mutableSetOf<String>()
-        val enabled = tools.mapIndexedNotNull { index, tool ->
-            val toolSlug = slug(tool.toolId).take(32).ifBlank { "tool" }
-            val base = "mcp_${serverSlug}_$toolSlug"
-            val suffix = "_${id.filter { it.isLetterOrDigit() }.takeLast(6)}_${index + 1}"
-            val alias = if (base.take(64) !in aliases) base.take(64) else (base.take(64 - suffix.length) + suffix).take(64)
-            aliases.add(alias)
-            tool.toolId.takeIf { alias in selected }
-        }
-        AgentStore.database.runInTransaction {
-            AgentStore.put("tool.selection", module, JSONObject().put("enabled", JSONArray(enabled)))
-            AgentStore.put("migration.tool.selection", module, legacy.put("mappedToolIds", JSONArray(enabled)))
-            AgentStore.dao.deleteDocument("tool.selection.legacy", module)
-        }
-    }
 }

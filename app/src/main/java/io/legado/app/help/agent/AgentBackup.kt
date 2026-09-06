@@ -67,6 +67,9 @@ object AgentBackup {
             require((0 until data.length()).all { data.getDouble(it).isFinite() }) { "备份向量包含非有限值" }
         }
         require(runs.map { it.id }.distinct().size == runs.size && events.map { it.sequence }.distinct().size == events.size && messages.map { it.sequence }.distinct().size == messages.size) { "备份运行/事件/消息 ID 重复" }
+        // 破坏性升级：旧版本备份直接拒绝，不混入当前数据，当前数据未动。
+        val backupVersion = documents.singleOrNull { it.namespace == "migration" && it.key == "v1" }?.let { JSONObject(it.json).optInt("schemaVersion", -1) }
+        require(backupVersion == AgentConfig.SCHEMA_VERSION) { "备份 Agent 配置版本过旧（$backupVersion），已放弃恢复，当前数据未动" }
         documents.forEach { JSONObject(it.json) }
         documents.filter { it.namespace == "plugin.revisions" }.forEach { document ->
             val id = document.key.substringBefore('@')

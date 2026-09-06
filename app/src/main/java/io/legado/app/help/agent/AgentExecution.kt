@@ -21,7 +21,7 @@ class AgentExecution(
     @Volatile var finished = false
     var lastStack = JSONObject()
     private var tools: List<AgentTool>? = null
-    private val providers = kotlin.run { AgentMigration.validateReferences(); AppConfig.aiProviderList.associateBy { it.id } }
+    private val providers = AppConfig.aiProviderList.associateBy { it.id }
     private val model = AppConfig.aiCurrentModelConfig
     private val clients = AgentStore.dao.documents("mcp.clients").associate { it.key to JSONObject(it.json) }
     private val pluginTools = io.legado.app.help.agent.mcp.AgentPluginTools.snapshots(plugin,

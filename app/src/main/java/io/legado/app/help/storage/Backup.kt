@@ -269,7 +269,6 @@ object Backup {
                     }
                 }
             }
-            edit.putInt("agentStorageVersion", 1)
             edit.commit()
         }
         currentCoroutineContext().ensureActive()

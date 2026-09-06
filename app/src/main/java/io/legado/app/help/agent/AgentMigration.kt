@@ -1,14 +1,11 @@
 package io.legado.app.help.agent
 
-import androidx.preference.PreferenceManager
-import android.content.SharedPreferences
-import io.legado.app.data.agent.AgentMessage
-import io.legado.app.help.agent.mcp.AgentCapabilities
-import org.json.JSONArray
 import org.json.JSONObject
-import splitties.init.appCtx
-import java.util.UUID
 
+/**
+ * 破坏性升级：AI 配置只看 AgentConfig.SCHEMA_VERSION，对不上就删了重建。
+ * 不校验旧数据、不迁移旧配置，自用应用不保留历史数据。
+ */
 object AgentMigration {
     @Volatile private var initialized = false
 
@@ -16,27 +13,19 @@ object AgentMigration {
     fun ensure() {
         if (initialized) return
         val marker = AgentStore.get("migration", "v1")
-        if (marker == null) migrate()
-        else AgentConfig.validateDocument("migration", "v1", marker)
-        AgentStore.database.runInTransaction {
-            // 兼容旧默认记忆配置缺 autoRecall：补齐后才做全量校验，避免老用户初始化失败。
-            AgentStore.dao.document("module.settings", "memory")?.let { document ->
-                val value = JSONObject(document.json)
-                if (!value.has("autoRecall")) {
-                    AgentStore.put("module.settings", "memory", value.put("autoRecall", true), document.revision)
+        if (marker == null || marker.optInt("schemaVersion", -1) != AgentConfig.SCHEMA_VERSION || !marker.optBoolean("complete", false)) {
+            resetAll()
+        } else {
+            AgentStore.database.runInTransaction {
+                AgentStore.dao.unfinished().forEach { run ->
+                    val reason = "应用进程在任务完成前终止；未完成写操作结果未知，未自动重放"
+                    AgentStore.dao.state(run.id, "interrupted", reason)
+                    AgentStore.event(run.id, "interrupted", JSONObject().put("reason", reason))
                 }
-            }
-            AgentStore.dao.allDocuments().forEach { document ->
-                AgentConfig.validateDocument(document.namespace, document.key, JSONObject(document.json))
-            }
-            AgentStore.dao.unfinished().forEach { run ->
-                val reason = "应用进程在任务完成前终止；未完成写操作结果未知，未自动重放"
-                AgentStore.dao.state(run.id, "interrupted", reason)
-                AgentStore.event(run.id, "interrupted", JSONObject().put("reason", reason))
-            }
-            AgentStore.dao.documents("mcp.server.status").forEach { document ->
-                if (JSONObject(document.json).optString("state") == "running") AgentStore.put("mcp.server.status", document.key,
-                    JSONObject().put("state", "interrupted").put("reason", "上次进程已终止，等待监听服务重新启动"))
+                AgentStore.dao.documents("mcp.server.status").forEach { document ->
+                    if (JSONObject(document.json).optString("state") == "running") AgentStore.put("mcp.server.status", document.key,
+                        JSONObject().put("state", "interrupted").put("reason", "上次进程已终止，等待监听服务重新启动"))
+                }
             }
         }
         initialized = true
@@ -44,246 +33,32 @@ object AgentMigration {
 
     fun resetAfterRestore() { initialized = false }
 
-    @Synchronized
-    fun restoreLegacy(preferences: SharedPreferences) {
-        AgentRuntime.restoreData {
-            io.legado.app.service.AgentMcpService.stopListeners()
-            migrate(preferences, replace = true)
-            resetAfterRestore()
-            ensure()
+    private fun resetAll() {
+        io.legado.app.service.AgentMcpService.stopListeners()
+        AgentRuntime.stopAll("Agent 配置版本升级，已重置重建")
+        AgentStore.database.runInTransaction {
+            val dao = AgentStore.dao
+            dao.clearDocuments()
+            dao.clearRuns()
+            dao.clearEvents()
+            dao.clearMessages()
+            dao.clearAllVectors()
+            val defaults = AgentConfig.defaults()
+            AgentStore.put("config", "agent", JSONObject().put("enabled", defaults.getBoolean("enabled"))
+                .put("mode", defaults.getString("mode")).put("schemaVersion", AgentConfig.SCHEMA_VERSION))
+            AgentStore.put("config", "modules", defaults.getJSONObject("modules"))
+            AgentStore.put("module.settings", "memory", defaults.getJSONObject("memory"))
+            AgentStore.put("module.settings", "web", JSONObject()
+                .put("apiKey", "")
+                .put("baseUrl", "https://api.tavily.com/search")
+                .put("searchDepth", "basic")
+                .put("topic", "general")
+                .put("maxResults", 5))
+            AgentStore.put("config", "ui", JSONObject().put("enterToSend", true).put("showToolSummary", false))
+            AgentStore.put("migration", "v1", JSONObject().put("schemaVersion", AgentConfig.SCHEMA_VERSION)
+                .put("complete", true).put("completedAt", System.currentTimeMillis()))
         }
-    }
-
-    private fun migrate(preferences: SharedPreferences = PreferenceManager.getDefaultSharedPreferences(appCtx), replace: Boolean = false) {
-        val original = JSONObject()
-        preferences.all.filterKeys { it.startsWith("ai", true) }.forEach { (key, value) ->
-            original.put(key, if (value is Set<*>) JSONArray(value.toList()) else value ?: JSONObject.NULL)
-        }
-        val originalKey = if (replace) "restore.${UUID.randomUUID()}" else "original"
-        if (AgentStore.get("migration", originalKey) == null) AgentStore.put("migration", originalKey, original)
-        try {
-            // 悬空的当前选择（指向不存在供应商/模型的 aiCurrentProviderId/aiCurrentModelId）
-            // 按项目既定语义清除选择（见 AppConfig.syncAiState 及各 setter：未知 id 即清除），
-            // 只修选择指针不动名单，修前原值已在 migration/original 快照保留。
-            val repairedSelections = sanitizeDanglingSelections(preferences)
-            validateReferences(preferences)
-            AgentStore.database.runInTransaction {
-                if (replace) {
-                    listOf("mcp.clients", "tool.selection", "tool.selection.legacy", "history.chat", "history.read", "history.origin").forEach { namespace ->
-                        AgentStore.dao.documents(namespace).forEach { document ->
-                            if (namespace == "history.origin") AgentStore.dao.deleteMessages(document.key)
-                            AgentStore.dao.deleteDocument(namespace, document.key)
-                        }
-                    }
-                    AgentStore.dao.allMessages().map { it.sessionId }.distinct().filter { it.startsWith("chat:") || it.startsWith("read:") }
-                        .forEach { AgentStore.dao.deleteMessages(it) }
-                }
-                val defaults = AgentConfig.defaults()
-                AgentStore.put("config", "agent", JSONObject().put("enabled",
-                    if (preferences.contains("aiAssistantEnabled")) preferences.getBoolean("aiAssistantEnabled", false) else defaults.getBoolean("enabled"))
-                    .put("mode", defaults.getString("mode")).put("schemaVersion", AgentConfig.SCHEMA_VERSION))
-                val modules = defaults.getJSONObject("modules")
-                if (preferences.contains("aiTavilyEnabled")) modules.put("web", preferences.getBoolean("aiTavilyEnabled", false))
-                AgentStore.put("config", "modules", modules)
-                if (!replace) AgentStore.put("module.settings", "memory", defaults.getJSONObject("memory"))
-                AgentStore.put("module.settings", "web", JSONObject()
-                    .put("apiKey", preferences.getString("aiTavilyApiKey", ""))
-                    .put("baseUrl", preferences.getString("aiTavilyBaseUrl", "https://api.tavily.com/search"))
-                    .put("searchDepth", preferences.getString("aiTavilySearchDepth", "basic"))
-                    .put("topic", preferences.getString("aiTavilyTopic", "general"))
-                    .put("maxResults", preferences.getInt("aiTavilyMaxResults", 5)))
-                AgentStore.put("config", "ui", JSONObject().put("enterToSend", preferences.getBoolean("aiEnterToSend", true))
-                    .put("showToolSummary", preferences.getBoolean("aiShowToolSummary", false)))
-                fun array(key: String): JSONArray {
-                    val raw = preferences.getString(key, null) ?: return JSONArray()
-                    return try { JSONArray(raw) } catch (error: Exception) { throw IllegalStateException("迁移 $key 失败；原数据已保留", error) }
-                }
-                val clients = array("aiMcpServerList")
-                val ids = mutableSetOf<String>()
-                for (index in 0 until clients.length()) {
-                    val client = clients.getJSONObject(index)
-                    val id = client.getString("id")
-                    require(id.isNotBlank() && ids.add(id)) { "aiMcpServerList[$index] ID 为空或重复" }
-                    require(client.getString("endpoint").isNotBlank()) { "aiMcpServerList[$index] endpoint 为空" }
-                    client.put("protocolVersion", "2025-06-18")
-                    if (!client.has("enabled")) client.put("enabled", true)
-                    AgentStore.put("mcp.clients", id, client)
-                }
-                val skills = array("aiSkillList")
-                val skillIds = mutableSetOf<String>()
-                for (index in 0 until skills.length()) {
-                    val skill = skills.getJSONObject(index)
-                    val id = skill.getString("id")
-                    require(id.isNotBlank() && skillIds.add(id)) { "aiSkillList[$index] ID 为空或重复" }
-                    skill.getString("content")
-                    if (!skill.has("enabled")) skill.put("enabled", true)
-                    AgentStore.put("skills", id, skill)
-                }
-                listOf("aiSystemPrompt" to "legacy.system", "aiSkillPrompt" to "legacy.skill-prompt").forEach { (old, key) ->
-                    preferences.getString(old, null)?.let { content ->
-                        AgentStore.put("prompts", key, JSONObject().put("name", "迁移：$old").put("content", content))
-                        if (old == "aiSkillPrompt" && skills.length() == 0 && content.isNotBlank()) {
-                            AgentStore.put("skills", key, JSONObject().put("name", "迁移 Skill").put("content", content).put("enabled", true))
-                        }
-                    }
-                }
-                if (preferences.contains("aiEnabledToolNames")) {
-                    val selection = preferences.getStringSet("aiEnabledToolNames", emptySet()) ?: error("aiEnabledToolNames 类型损坏")
-                    AgentCapabilities.names.keys.forEach { module ->
-                        if (module != "memory") {
-                            val selected = selection.filter { AgentCapabilities.moduleFor(it) == module && !it.startsWith("mcp_") }
-                            AgentStore.put("tool.selection", module, JSONObject().put("enabled", JSONArray(selected)))
-                            if (selected.isEmpty()) modules.put(module, false)
-                        }
-                    }
-                    for (index in 0 until clients.length()) {
-                        val client = clients.getJSONObject(index)
-                        val id = client.getString("id")
-                        AgentStore.put("tool.selection.legacy", "external.$id", JSONObject().put("enabled", JSONArray(selection.toList()))
-                            .put("serverName", client.getString("name")).put("otherServerNames", JSONArray((0 until clients.length())
-                                .filter { it != index }.map { clients.getJSONObject(it).getString("name") })))
-                        if (selection.isEmpty()) AgentStore.put("mcp.clients", id, client.put("enabled", false))
-                    }
-                    AgentStore.put("config", "modules", modules)
-                }
-                val chat = array("aiChatSessionList")
-                for (index in 0 until chat.length()) {
-                    val session = chat.getJSONObject(index)
-                    val id = session.getString("id")
-                    require(id.isNotBlank() && AgentStore.get("history.chat", id) == null) { "aiChatSessionList[$index] ID 重复或为空" }
-                    importMessages("chat:$id", session.getJSONArray("messages"), "aiChatSessionList[$index]")
-                    AgentStore.put("history.chat", id, session)
-                }
-                preferences.getString("aiCurrentChatSessionId", null)?.let { AgentStore.put("config", "chat.current", JSONObject().put("id", it)) }
-                val reading = array("aiReadHistoryList")
-                for (index in 0 until reading.length()) {
-                    val history = reading.getJSONObject(index)
-                    val bookUrl = history.getString("bookUrl")
-                    require(bookUrl.isNotBlank() && AgentStore.get("history.read", bookUrl) == null) { "aiReadHistoryList[$index] bookUrl 重复或为空" }
-                    if (!history.has("sessions")) history.put("sessions", legacyReading(history.getJSONArray("records"), bookUrl))
-                    val sessions = history.getJSONArray("sessions")
-                    val sessionIds = mutableSetOf<String>()
-                    for (sessionIndex in 0 until sessions.length()) {
-                        val session = sessions.getJSONObject(sessionIndex)
-                        val id = session.getString("id")
-                        require(id.isNotBlank() && sessionIds.add(id)) { "aiReadHistoryList[$index] 会话 ID 重复或为空" }
-                        importMessages("read:$bookUrl:$id", session.getJSONArray("messages"), "aiReadHistoryList[$index]/$sessionIndex")
-                    }
-                    if (!history.has("currentSessionId")) history.put("currentSessionId", if (sessions.length() > 0) sessions.getJSONObject(0).getString("id") else "")
-                    AgentStore.put("history.read", bookUrl, history)
-                }
-                AgentStore.put("migration", "v1", JSONObject().put("schemaVersion", AgentConfig.SCHEMA_VERSION)
-                    .put("complete", true).put("completedAt", System.currentTimeMillis())
-                    .put("repairedSelections", JSONArray(repairedSelections)))
-            }
-        } catch (error: Exception) {
-            AgentStore.put("migration", "error", JSONObject().put("error", error.stackTraceToString()).put("original", "migration/$originalKey"))
-            throw IllegalStateException("Agent 迁移失败；没有清理或覆盖原始配置。${error.message}", error)
-        }
-    }
-
-    private fun importMessages(sessionId: String, messages: JSONArray, origin: String) {
-        val ids = mutableSetOf<String>()
-        for (index in 0 until messages.length()) {
-            val message = messages.getJSONObject(index)
-            require(message.getString("id").isNotBlank() && ids.add(message.getString("id"))) { "$origin/messages[$index] 消息 ID 为空或重复" }
-            if (message.optString("kind") == "STATUS") continue
-            val role = message.getString("role").lowercase()
-            require(role in setOf("user", "assistant")) { "$origin/messages[$index] 未知角色" }
-            val content = message.getString("content")
-            AgentStore.dao.append(AgentMessage(sessionId = sessionId, turnId = "legacy", runId = "legacy:${message.getString("id")}",
-                json = JSONObject().put("role", role).put("content", content).toString()))
-        }
-        AgentStore.put("history.origin", sessionId, JSONObject().put("type", "legacy_text_only").put("source", origin)
-            .put("notice", "旧记录仅含显示文本，无法还原工具往返；没有伪造工具调用"))
-    }
-
-    /**
-     * 清除指向不存在名单的选择指针（aiCurrentProviderId/aiCurrentModelId），返回修复记录。
-     * 名单本身损坏时不处理，交由 validateReferences 严格暴露；选择悬空则按既定语义清除
-     * （见 AppConfig.syncAiState：未知 id 即清除，后续访问自动选中首个可用项）。
-     */
-    private fun sanitizeDanglingSelections(preferences: SharedPreferences): List<String> {
-        val repaired = mutableListOf<String>()
-        fun ids(key: String): Set<String>? = try {
-            val raw = preferences.getString(key, null) ?: return emptySet()
-            val values = JSONArray(raw)
-            (0 until values.length()).map { values.getJSONObject(it).getString("id") }.toSet()
-        } catch (error: Exception) { null }
-        fun modelOwners(): Map<String, String>? = try {
-            val raw = preferences.getString("aiModelConfigList", null) ?: return emptyMap()
-            val values = JSONArray(raw)
-            (0 until values.length()).associate {
-                val record = values.getJSONObject(it)
-                record.getString("id") to record.getString("providerId")
-            }
-        } catch (error: Exception) { null }
-        val providerIds = ids("aiProviderList") ?: return repaired
-        val owners = modelOwners() ?: return repaired
-        val editor = preferences.edit()
-        val currentProvider = preferences.getString("aiCurrentProviderId", null)
-        val effectiveProvider = currentProvider?.takeIf { it in providerIds }
-        if (currentProvider != null && effectiveProvider == null) {
-            editor.remove("aiCurrentProviderId")
-            repaired += "aiCurrentProviderId 指向不存在的供应商已清除：$currentProvider"
-        }
-        val currentModel = preferences.getString("aiCurrentModelId", null)
-        if (currentModel != null) {
-            val owner = owners[currentModel]
-            if (owner == null) {
-                editor.remove("aiCurrentModelId")
-                repaired += "aiCurrentModelId 指向不存在的模型已清除：$currentModel"
-            } else if (owner != effectiveProvider) {
-                editor.remove("aiCurrentModelId")
-                repaired += "aiCurrentModelId 与当前供应商不一致已清除：$currentModel（归属 $owner）"
-            }
-        }
-        if (repaired.isNotEmpty()) {
-            editor.apply()
-            io.legado.app.constant.AppLog.put("Agent 迁移清除悬空选择\n" + repaired.joinToString("\n"))
-        }
-        return repaired
-    }
-
-    fun validateReferences(preferences: SharedPreferences = PreferenceManager.getDefaultSharedPreferences(appCtx)) {
-        fun records(key: String): List<JSONObject> {
-            val raw = preferences.getString(key, null) ?: return emptyList()
-            return try {
-                val values = JSONArray(raw)
-                val records = (0 until values.length()).map { values.getJSONObject(it) }
-                val ids = mutableSetOf<String>()
-                records.forEachIndexed { index, record ->
-                    val id = record.getString("id")
-                    require(id.isNotBlank() && id == id.trim() && ids.add(id)) { "$key[$index] ID 无效或重复" }
-                }
-                records
-            } catch (error: Exception) { throw IllegalStateException("$key 损坏；原始数据保留，不转换为空配置", error) }
-        }
-        val providers = records("aiProviderList")
-        val models = records("aiModelConfigList")
-        val providerIds = providers.map { it.getString("id") }.toSet()
-        providers.forEachIndexed { index, provider ->
-            require(provider.getString("name").isNotBlank() && provider.has("baseUrl")) { "aiProviderList[$index] 名称或地址缺失" }
-        }
-        models.forEachIndexed { index, model ->
-            require(model.getString("providerId") in providerIds && model.getString("modelId").isNotBlank()) { "aiModelConfigList[$index] 供应商引用或模型参数无效" }
-        }
-        preferences.getString("aiCurrentProviderId", null)?.let { require(it in providerIds) { "aiCurrentProviderId 引用不存在：$it" } }
-        preferences.getString("aiCurrentModelId", null)?.let { id ->
-            val model = models.singleOrNull { it.getString("id") == id } ?: error("aiCurrentModelId 引用不存在：$id")
-            require(model.getString("providerId") == preferences.getString("aiCurrentProviderId", null)) { "当前模型与供应商引用不一致" }
-        }
-    }
-
-    private fun legacyReading(records: JSONArray, bookUrl: String) = JSONArray().apply {
-        for (index in 0 until records.length()) {
-            val record = records.getJSONObject(index)
-            val id = record.optString("id").ifBlank { UUID.nameUUIDFromBytes("$bookUrl:$index".toByteArray()).toString() }
-            val createdAt = record.optLong("createdAt", 0)
-            put(JSONObject().put("id", id).put("title", record.getString("question")).put("createdAt", createdAt).put("updatedAt", createdAt)
-                .put("chapterTitle", record.optString("chapterTitle")).put("chapterIndex", record.optInt("chapterIndex", -1))
-                .put("messages", JSONArray().put(JSONObject().put("id", "$id:user").put("role", "USER").put("content", record.getString("question")).put("createdAt", createdAt))
-                    .put(JSONObject().put("id", "$id:assistant").put("role", "ASSISTANT").put("content", record.getString("answer")).put("createdAt", createdAt))))
-        }
+        AgentPlugins.root.deleteRecursively()
+        AgentPlugins.installBuiltin()
     }
 }

@@ -140,11 +140,10 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
         }
         when {
             initializing -> showText("Agent", fragment.getString(R.string.agent_loading))
-            !ready -> menu("Agent 初始化失败", listOf("查看错误", "原始迁移快照", "重新尝试"), { index ->
+            !ready -> menu("Agent 初始化失败", listOf("查看错误", "重新尝试"), { index ->
                 when (index) {
                     0 -> showText("完整错误", migrationError ?: "尚未初始化")
-                    1 -> migrationSnapshots()
-                    2 -> initialize()
+                    1 -> initialize()
                 }
             })
             else -> action()
@@ -336,10 +335,7 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
                     val id = enabled.get(index)
                     require(id is String && id in toolIds && seen.add(id)) { "工具 ID 不存在或重复：$id" }
                 }
-                AgentStore.database.runInTransaction {
-                    AgentStore.put("tool.selection", moduleId, value, state.first?.revision ?: 0)
-                    AgentStore.dao.deleteDocument("tool.selection.legacy", moduleId)
-                }
+                AgentStore.put("tool.selection", moduleId, value, state.first?.revision ?: 0)
             }
         }
     }
@@ -359,7 +355,7 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
                     showText("实际工具定义", io { JSONArray(tools.map { it.mcpDefinition() }).toString(2) })
                 }
                 2 -> {
-                    val tools = controlled("读取实际工具目录") { AgentMcpClient.discover(old.key, value, it, migrateSelection = false) }
+                    val tools = controlled("读取实际工具目录") { AgentMcpClient.discover(old.key, value, it) }
                     toolSelection("external.${old.key}", tools.map { it.toolId })
                 }
                 3 -> confirm("删除此外部 MCP 连接？") {
@@ -367,7 +363,7 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
                         AgentStore.database.runInTransaction {
                             require(document(old.namespace, old.key).revision == old.revision) { "连接已被修改，请重新打开" }
                             AgentStore.dao.deleteDocument(old.namespace, old.key)
-                            listOf("tool.selection", "tool.selection.legacy").forEach { AgentStore.dao.deleteDocument(it, "external.${old.key}") }
+                            AgentStore.dao.deleteDocument("tool.selection", "external.${old.key}")
                             AgentStore.dao.deleteDocument("mcp.status", old.key)
                         }
                     }
@@ -523,7 +519,7 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
         menu("Agent 模式：短按选择，长按管理", records.map {
             val value = JSONObject(it.json)
             "${mark(it.key == state.second)} ${value.getString("name")} · ${if (value.getBoolean("enabled")) "启用" else "关闭"} · ${it.key}"
-        } + listOf("导入完整插件 ZIP", "运行诊断", "随包默认配置", "原始迁移快照"), { index ->
+        } + listOf("导入完整插件 ZIP", "运行诊断", "随包默认配置"), { index ->
             when (index) {
                 records.size -> importFile(arrayOf("application/zip", "application/octet-stream")) { bytes ->
                     val id = io { AgentPlugins.install(AgentPlugins.readZip(bytes.inputStream())) }
@@ -531,7 +527,6 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
                 }
                 records.size + 1 -> diagnostics()
                 records.size + 2 -> showText("随包默认配置", io { AgentConfig.defaults().toString(2) })
-                records.size + 3 -> migrationSnapshots()
                 else -> { io { AgentConfig.mode = records[index].key }; changed(); modes() }
             }
         }, { index -> if (index < records.size) pluginActions(records[index].key) })
@@ -803,17 +798,6 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
     private fun runEvents(id: String): JSONArray = JSONArray(AgentStore.dao.events(id).map {
         JSONObject().put("sequence", it.sequence).put("createdAt", it.createdAt).put("type", it.type).put("value", JSONObject(it.json))
     })
-
-    private fun migrationSnapshots(): Job = work {
-        val snapshots = io { AgentStore.dao.documents("migration").filter { it.key == "original" || it.key.startsWith("restore.") } }
-        menu("原始迁移快照（含密钥）", snapshots.map { it.key }, { index ->
-            val snapshot = snapshots[index]
-            menu(snapshot.key, listOf("查看 JSON", "导出 JSON"), { selected ->
-                if (selected == 0) showText("原始迁移数据", io { JSONObject(snapshot.json).toString(2) })
-                else exportFile("agent-migration-${snapshot.key}.json", snapshot.json.toByteArray(Charsets.UTF_8))
-            })
-        })
-    }
 
     private fun mark(enabled: Boolean): String = if (enabled) "●" else "○"
 }
