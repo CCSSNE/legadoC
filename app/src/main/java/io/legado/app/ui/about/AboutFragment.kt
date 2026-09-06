@@ -90,6 +90,7 @@ class AboutFragment : PreferenceFragmentCompat() {
         Coroutine.async {
             fetchReadmeFromGithub()
         }.onSuccess { text ->
+            if (!isAdded) return@onSuccess
             if (text.isNullOrBlank()) {
                 showMdFile(getString(R.string.update_log), "README.md")
             } else {
@@ -97,6 +98,7 @@ class AboutFragment : PreferenceFragmentCompat() {
             }
         }.onError {
             AppLog.put("拉取更新日志失败\n${it.localizedMessage}", it)
+            if (!isAdded) return@onError
             showMdFile(getString(R.string.update_log), "README.md")
         }
     }
@@ -104,7 +106,7 @@ class AboutFragment : PreferenceFragmentCompat() {
     private suspend fun fetchReadmeFromGithub(): String? {
         return runCatching {
             val url = UpdateManager.resolveAcceleratedUrl(
-                requireContext(),
+                appCtx,
                 "https://raw.githubusercontent.com/CCSSNE/legadoC/own/README.md"
             )
             okHttpClient.newCallStrResponse(retry = 1) {
@@ -123,7 +125,9 @@ class AboutFragment : PreferenceFragmentCompat() {
      * 显示md文件
      */
     private fun showMdFile(title: String, fileName: String) {
-        val mdText = String(requireContext().assets.open(fileName).readBytes())
+        if (!isAdded) return
+        val ctx = context ?: return
+        val mdText = String(ctx.assets.open(fileName).readBytes())
         showDialogFragment(TextDialog(title, mdText, TextDialog.Mode.MD))
     }
 
