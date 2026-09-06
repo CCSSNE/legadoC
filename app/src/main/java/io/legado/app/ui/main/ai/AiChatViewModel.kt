@@ -576,24 +576,23 @@ class AiChatViewModel : ViewModel() {
 
     /**
      * 导出当前会话完整原始数据：info + 协议消息全量 + 每次运行的完整事件。
-     * 流式分片（model.chunk/output/thinking）是重复噪音，不进导出；其余事件原样保留。
+     * 不设大小上限、不过滤事件类型：全部事件原样保留，文件流式写入，多大都导出。
      */
     fun exportCurrentChat(onResult: (File) -> Unit, onError: (String) -> Unit) {
         requestScope.launch {
             runCatching {
                 val sessionId = "chat:$currentSessionId"
-                val excludedEvents = setOf("model.chunk", "output", "thinking")
-                val messages = AgentStore.dao.messages(sessionId).map { org.json.JSONObject(it.json) }
+                val messageRows = AgentStore.dao.messages(sessionId)
                 val runs = AgentStore.dao.runs().filter { it.sessionId == sessionId }
-                if (messages.isEmpty() && runs.isEmpty()) {
+                if (messageRows.isEmpty() && runs.isEmpty()) {
                     error("当前对话还没有可导出的数据")
                 }
                 var promptTokens = 0L
                 var completionTokens = 0L
                 var cachedTokens = 0L
                 var billedRequests = 0
-                val runsJson = runs.map { run ->
-                    val events = org.json.JSONArray()
+                // 用量统计单走一遍事件，只解析 model.usage 小对象，不保留事件，内存不随导出体积增长。
+                runs.forEach { run ->
                     AgentStore.dao.events(run.id).forEach { event ->
                         if (event.type == "model.usage") {
                             val value = org.json.JSONObject(event.json)
@@ -604,14 +603,7 @@ class AiChatViewModel : ViewModel() {
                                 cachedTokens += value.optLong("cachedTokens", 0L)
                             }
                         }
-                        if (event.type !in excludedEvents) {
-                            events.put(org.json.JSONObject().put("sequence", event.sequence)
-                                .put("type", event.type).put("value", org.json.JSONObject(event.json)))
-                        }
                     }
-                    org.json.JSONObject().put("id", run.id).put("plugin", run.pluginId)
-                        .put("state", run.state).put("input", org.json.JSONObject(run.input))
-                        .put("events", events)
                 }
                 val session = AppConfig.aiChatSessionList.firstOrNull { it.id == currentSessionId }
                 val info = org.json.JSONObject()
@@ -625,15 +617,50 @@ class AiChatViewModel : ViewModel() {
                     .put("usage", org.json.JSONObject().put("promptTokens", promptTokens)
                         .put("completionTokens", completionTokens).put("cachedTokens", cachedTokens)
                         .put("billedRequests", billedRequests).put("runs", runs.size))
-                val root = org.json.JSONObject().put("info", info)
-                    .put("messages", org.json.JSONArray(messages))
-                    .put("runs", org.json.JSONArray(runsJson))
                 val dir = File(appCtx.cacheDir, "export").apply { mkdirs() }
                 val safeTitle = (session?.title ?: "chat").replace(Regex("[\\\\/:*?\"<>|]"), "_")
                     .take(24).trim().ifBlank { "chat" }
                 val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
                 val file = File(dir, "ai-chat-$safeTitle-$stamp.json")
-                file.writeText(root.toString(2))
+                try {
+                    file.outputStream().bufferedWriter(Charsets.UTF_8).use { w ->
+                        w.write("{\"info\":")
+                        w.write(info.toString())
+                        w.write(",\"messages\":[")
+                        messageRows.forEachIndexed { index, row ->
+                            if (index > 0) w.write(",")
+                            w.write(row.json.ifBlank { "null" })
+                        }
+                        w.write("],\"runs\":[")
+                        runs.forEachIndexed { runIndex, run ->
+                            if (runIndex > 0) w.write(",")
+                            w.write("{\"id\":")
+                            w.write(org.json.JSONObject.quote(run.id))
+                            w.write(",\"plugin\":")
+                            w.write(org.json.JSONObject.quote(run.pluginId))
+                            w.write(",\"state\":")
+                            w.write(org.json.JSONObject.quote(run.state))
+                            w.write(",\"input\":")
+                            w.write(run.input.ifBlank { "null" })
+                            w.write(",\"events\":[")
+                            AgentStore.dao.events(run.id).forEachIndexed { eventIndex, event ->
+                                if (eventIndex > 0) w.write(",")
+                                w.write("{\"sequence\":")
+                                w.write(event.sequence.toString())
+                                w.write(",\"type\":")
+                                w.write(org.json.JSONObject.quote(event.type))
+                                w.write(",\"value\":")
+                                w.write(event.json.ifBlank { "null" })
+                                w.write("}")
+                            }
+                            w.write("]}")
+                        }
+                        w.write("]}")
+                    }
+                } catch (e: Exception) {
+                    runCatching { if (file.exists()) file.delete() }
+                    throw e
+                }
                 file
             }.onSuccess(onResult).onFailure { onError(it.localizedMessage ?: it.toString()) }
         }
