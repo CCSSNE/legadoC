@@ -2,7 +2,6 @@ package io.legado.app.data.agent
 
 import androidx.room.*
 import androidx.annotation.Keep
-import androidx.sqlite.db.SupportSQLiteDatabase
 import splitties.init.appCtx
 
 @Entity(tableName = "documents", primaryKeys = ["namespace", "key"])
@@ -114,11 +113,6 @@ abstract class AgentDatabase : RoomDatabase() {
     companion object {
         val instance: AgentDatabase by lazy {
             Room.databaseBuilder(appCtx, AgentDatabase::class.java, "agent.db")
-                .addCallback(object : RoomDatabase.Callback() {
-                    override fun onOpen(db: SupportSQLiteDatabase) {
-                        AgentPayloadStore.migrate(db)
-                    }
-                })
                 .build()
         }
     }
