@@ -256,7 +256,7 @@ object AgentPlugins {
         val stored = AgentStore.get("plugin.settings", id) ?: error("插件配置缺失：$id")
         val settings = manifest.optJSONObject("settings")?.optJSONObject("defaults")
             ?.let { defaults -> JSONObject(defaults.toString()).apply { stored.keys().forEach { key -> put(key, stored.get(key)) } } }
-            ?: JSONObject(stored.json)
+            ?: stored
         manifest.optJSONObject("settings")?.getJSONObject("schema")?.let { io.legado.app.help.agent.mcp.AgentSchema.validate(settings, it, "$id.settings") }
         return AgentPluginSnapshot(id, selected, manifest, files, dependencies, prompts, skills, settings, skillResources)
     }
