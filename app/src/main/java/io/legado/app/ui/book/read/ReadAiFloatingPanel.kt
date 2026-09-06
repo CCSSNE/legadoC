@@ -11,6 +11,7 @@ import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.LinearLayout
 import androidx.core.view.doOnLayout
+import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ViewModelProvider
@@ -26,12 +27,16 @@ import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.lib.theme.uiTypeface
+import io.legado.app.ui.config.ConfigActivity
+import io.legado.app.ui.config.ConfigTag
 import io.legado.app.ui.main.ai.AiChatActivity
 import io.legado.app.ui.main.ai.AiChatAdapter
 import io.legado.app.ui.main.ai.AiChatSession
 import io.legado.app.ui.main.ai.AiChatViewModel
 import io.legado.app.utils.ColorUtils
+import io.legado.app.utils.PopupMenuAction
 import io.legado.app.utils.dpToPx
+import io.legado.app.utils.showPopupMenu
 import io.legado.app.utils.toastOnUi
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -86,8 +91,8 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         }
         binding.answerContainer.adapter = messageAdapter
         binding.btnClose.setOnClickListener { close() }
-        binding.btnNewChat.setOnClickListener { startNewChat() }
-        binding.btnHistory.setOnClickListener { openHistory() }
+        binding.tvModel.setOnClickListener { showModelSelectorDialog() }
+        binding.btnMore.setOnClickListener { showMoreMenu() }
         binding.btnFullscreen.setOnClickListener { openFullscreen() }
         binding.btnSend.setOnClickListener {
             val vm = viewModel ?: return@setOnClickListener
@@ -97,8 +102,12 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
                 askFromInput()
             }
         }
-        binding.etQuestion.setOnEditorActionListener { _, actionId, _ ->
-            if (AppConfig.aiEnterToSend && actionId == EditorInfo.IME_ACTION_SEND) {
+        binding.etQuestion.doAfterTextChanged { updateSendButtonState() }
+        binding.etQuestion.setOnEditorActionListener { _, actionId, event ->
+            val isSendAction = actionId == EditorInfo.IME_ACTION_SEND
+            val isEnterKey = event?.keyCode == android.view.KeyEvent.KEYCODE_ENTER
+                && event.action == android.view.KeyEvent.ACTION_DOWN
+            if (AppConfig.aiEnterToSend && (isSendAction || isEnterKey)) {
                 askFromInput()
                 true
             } else {
@@ -117,19 +126,11 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         val vm = ViewModelProvider(storeOwner)[AiChatViewModel::class.java]
         viewModel = vm
         vm.messagesLiveData.observe(lifecycleOwner) { messages ->
-            if (messages.isEmpty()) {
-                messageAdapter.submitList(
-                    listOf(
-                        io.legado.app.ui.main.ai.AiChatMessage(
-                            role = io.legado.app.ui.main.ai.AiChatMessage.Role.ASSISTANT,
-                            content = resources.getString(R.string.ai_chat_empty)
-                        )
-                    )
-                )
-            } else {
-                messageAdapter.submitList(messages)
-            }
-            if (messages.isNotEmpty()) {
+            messageAdapter.submitList(messages)
+            val hasMessages = messages.isNotEmpty()
+            binding.answerContainer.isVisible = hasMessages
+            binding.emptyContainer.isVisible = !hasMessages
+            if (hasMessages) {
                 binding.answerContainer.post {
                     binding.answerContainer.scrollToPosition(messages.lastIndex)
                 }
@@ -159,6 +160,8 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
             lifecycleOwner?.let { attach(it) }
         }
         viewModel?.syncFromStore()
+        updateHeader()
+        updateSendButtonState()
         binding.tvContext.text = buildContextLabel(readContext)
         binding.etQuestion.setText("")
         animate().cancel()
@@ -193,13 +196,50 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         visibility = GONE
     }
 
-    private fun startNewChat() {
+    private fun updateHeader() {
+        val model = AppConfig.aiCurrentModelConfig
+        binding.tvModel.text = model?.modelId ?: context.getString(R.string.ai_current_model_summary_empty)
+        binding.tvModel.alpha = if (model == null) 0.72f else 1f
+    }
+
+    private fun showMoreMenu() {
+        binding.btnMore.showPopupMenu(
+            listOf(
+                PopupMenuAction(context.getString(R.string.ai_new_chat)) {
+                    startNewChatFromMenu()
+                },
+                PopupMenuAction(context.getString(R.string.ai_chat_history)) {
+                    openHistoryFromMenu()
+                },
+                PopupMenuAction(context.getString(R.string.ai_setting)) {
+                    openAiSettings()
+                }
+            )
+        )
+    }
+
+    private fun startNewChatFromMenu() {
         val vm = viewModel ?: return
         if (vm.isRequesting) {
             context.toastOnUi(R.string.ai_chat_wait_current)
             return
         }
         vm.startNewSession()
+        updateHeader()
+    }
+
+    private fun openHistoryFromMenu() {
+        if (viewModel?.isRequesting == true) {
+            context.toastOnUi(R.string.ai_chat_wait_current)
+            return
+        }
+        showHistoryDialog()
+    }
+
+    private fun openAiSettings() {
+        Intent(context, ConfigActivity::class.java).apply {
+            putExtra("configTag", ConfigTag.AI_CONFIG)
+        }.also(context::startActivity)
     }
 
     private fun openFullscreen() {
@@ -208,8 +248,8 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
 
     private fun askFromInput() {
         val question = binding.etQuestion.text?.toString().orEmpty().trim()
-        if (question.isBlank()) return
-        binding.etQuestion.setText("")
+        if (question.isBlank() || viewModel?.isRequesting == true) return
+        binding.etQuestion.text?.clear()
         ask(question)
     }
 
@@ -252,16 +292,8 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         return base
     }
 
-    private fun openHistory() {
+    private fun showHistoryDialog() {
         val vm = viewModel ?: return
-        if (vm.isRequesting) {
-            context.toastOnUi(R.string.ai_chat_wait_current)
-            return
-        }
-        showHistoryDialog(vm)
-    }
-
-    private fun showHistoryDialog(vm: AiChatViewModel) {
         val sessions = vm.historySessions()
         if (sessions.isEmpty()) {
             context.toastOnUi(R.string.ai_history_empty)
@@ -292,7 +324,10 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
             )
         ) { _, _, index ->
             when (index) {
-                0 -> vm.loadSession(session.id)
+                0 -> {
+                    vm.loadSession(session.id)
+                    updateHeader()
+                }
                 1 -> confirmDeleteHistorySession(vm, session)
             }
         }
@@ -305,6 +340,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         ) {
             okButton {
                 vm.deleteSession(session.id)
+                updateHeader()
             }
             cancelButton()
         }
@@ -317,8 +353,29 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         ) {
             okButton {
                 vm.clearAllSessions()
+                updateHeader()
             }
             cancelButton()
+        }
+    }
+
+    private fun showModelSelectorDialog() {
+        val models = AppConfig.aiModelConfigList
+        if (models.isEmpty()) {
+            context.toastOnUi(R.string.ai_no_models)
+            return
+        }
+        val providerNameMap = AppConfig.aiProviderList.associateBy({ it.id }, { it.name })
+        context.selector(
+            context.getString(R.string.ai_current_model),
+            models.map { model ->
+                providerNameMap[model.providerId]?.takeIf { it.isNotBlank() }
+                    ?.let { "${model.modelId} · $it" }
+                    ?: model.modelId
+            }
+        ) { _, _, index ->
+            AppConfig.aiCurrentModelId = models[index].id
+            updateHeader()
         }
     }
 
@@ -378,15 +435,21 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         binding.btnSend.backgroundTintList = ColorStateList.valueOf(context.accentColor)
         binding.btnSend.setColorFilter(Color.WHITE)
         binding.btnClose.imageTintList = ColorStateList.valueOf(context.secondaryTextColor)
-        binding.btnHistory.imageTintList = ColorStateList.valueOf(context.secondaryTextColor)
-        binding.btnNewChat.imageTintList = ColorStateList.valueOf(context.secondaryTextColor)
+        binding.tvModel.setTextColor(context.primaryTextColor)
+        binding.btnMore.imageTintList = ColorStateList.valueOf(context.secondaryTextColor)
         binding.btnFullscreen.imageTintList = ColorStateList.valueOf(context.secondaryTextColor)
+        binding.tvAiEmpty.setTextColor(context.secondaryTextColor)
+        binding.ivAiEmptyIcon.setColorFilter(context.secondaryTextColor)
         binding.inputContainer.backgroundTintList =
             ColorStateList.valueOf(ColorUtils.adjustAlpha(context.primaryTextColor, 0.06f))
         updateSendButtonState()
     }
 
     private fun updateSendButtonState() {
+        val hasInput = binding.etQuestion.text?.isNotBlank() == true
+        binding.etQuestion.isEnabled = true
+        binding.btnSend.isEnabled = viewModel?.isRequesting == true || hasInput
+        binding.btnSend.alpha = if (binding.btnSend.isEnabled) 1f else 0.48f
         val requesting = viewModel?.isRequesting == true
         binding.btnSend.contentDescription = resources.getString(
             if (requesting) R.string.ai_chat_stop else R.string.ai_chat_send

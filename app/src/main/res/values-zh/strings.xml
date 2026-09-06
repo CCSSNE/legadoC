@@ -2103,10 +2103,6 @@
     <string name="ai_chat_send">发送</string>
     <string name="ai_chat_stop">停止</string>
     <string name="ai_chat_thinking">正在思考…</string>
-    <string name="ai_read_clear_history">清空本书历史</string>
-    <string name="ai_read_history_empty">本书暂无问 AI 历史</string>
-    <string name="ai_read_delete_history">删除这条记录</string>
-    <string name="ai_read_clear_history_confirm">清空本书全部问 AI 历史？</string>
     <string name="ai_chat_thinking_collapsed">正在思考，点按展开</string>
     <string name="ai_chat_thinking_done">思考完成，点按展开</string>
     <string name="select">选择</string>
@@ -2489,15 +2485,6 @@
     <string name="read_rank_widget_description">阅读排行桌面组件</string>
     <string name="color_format_error">颜色格式不正确</string>
     <string name="unknown">未知</string>
-    <string name="ai_read_prompt_template">你是阅读页里的问 AI 助手。请围绕当前书籍和选中文本回答，优先解释原文含义、上下文、人物关系、伏笔或用户提问，不要编造未给出的剧情。
-
-书名：%1$s
-作者：%2$s
-书源：%3$s
-当前章节：%4$s（第 %5$d 章）
-
-用户选中或追问：
-%6$s</string>
     <string name="epub_parse_mode">EPUB解析方式</string>
     <string name="epub_parse_mode_new">新版</string>
     <string name="epub_parse_mode_classic">经典</string>

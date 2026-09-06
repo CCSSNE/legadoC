@@ -1121,10 +1121,6 @@
     <string name="ai_chat_send">Send</string>
     <string name="ai_chat_stop">Stop</string>
     <string name="ai_chat_thinking">Thinking…</string>
-    <string name="ai_read_clear_history">Clear current book history</string>
-    <string name="ai_read_history_empty">No reading AI history for this book yet.</string>
-    <string name="ai_read_delete_history">Delete this record</string>
-    <string name="ai_read_clear_history_confirm">Clear all Ask AI history for this book?</string>
     <string name="ai_chat_thinking_collapsed">Thinking, tap to expand</string>
     <string name="ai_chat_thinking_done">Thinking completed, tap to expand</string>
     <string name="select">Select</string>
@@ -2613,16 +2609,6 @@
     <string name="read_rank_widget_description">Reading rank widget</string>
     <string name="color_format_error">Invalid color format</string>
     <string name="unknown">Unknown</string>
-    <string name="ai_read_prompt_template">You are the Ask AI assistant inside the reading page. Answer around the current book and selected text. Prioritize explaining the original text, context, character relationships, foreshadowing, or the user question. Do not invent plot details not provided.
-
-Book: %1$s
-Author: %2$s
-Source: %3$s
-Current chapter: %4$s (chapter %5$d)
-
-Selected text or question:
-%6$s</string>
-
     <!--配图（插图）-->
     <string name="menu_illustration">插入</string>
     <string name="illustration_title">插入</string>
