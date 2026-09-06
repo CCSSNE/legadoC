@@ -263,7 +263,7 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
         AgentStore.put(old.namespace, old.key, value, old.revision)
     }
 
-    private fun modules() = work {
+    private fun modules(): Job = work {
         val state = io {
             val internal = AgentCapabilities.moduleNames().keys.toList()
             val external = AgentStore.dao.documents("mcp.clients")
@@ -310,7 +310,7 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
         })
     }
 
-    private fun moduleActions(id: String) = menu(AgentCapabilities.moduleNames().getValue(id),
+    private fun moduleActions(id: String): Unit = menu(AgentCapabilities.moduleNames().getValue(id),
         listOf("模块配置", "内部工具开关", "实际工具定义"), { index ->
             when (index) {
                 0 -> editModule(id)
@@ -322,7 +322,7 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
             }
         })
 
-    private fun toolSelection(moduleId: String, toolIds: List<String>) = work {
+    private fun toolSelection(moduleId: String, toolIds: List<String>): Job = work {
         val state = io {
             val old = AgentStore.dao.document("tool.selection", moduleId)
             val value = old?.let { JSONObject(it.json) } ?: JSONObject().put("enabled", JSONArray(toolIds))
@@ -344,7 +344,7 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
         }
     }
 
-    private fun editClient(id: String?) = work {
+    private fun editClient(id: String?): Job = work {
         val old = if (id == null) null else io { document("mcp.clients", id) }
         val value = old?.let { JSONObject(it.json) } ?: JSONObject().put("name", "").put("endpoint", "")
             .put("apiKey", "").put("enabled", true).put("protocolVersion", "auto")
@@ -378,7 +378,7 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
         }
     }
 
-    private fun clientEditor(old: AgentDocument?, value: JSONObject) = editJson("外部连接：protocolVersion 为 auto 或明确版本", value) { updated ->
+    private fun clientEditor(old: AgentDocument?, value: JSONObject): Unit = editJson("外部连接：protocolVersion 为 auto 或明确版本", value) { updated ->
         io {
             AgentMcpClient.validateConfig(updated)
             AgentStore.put("mcp.clients", old?.key ?: UUID.randomUUID().toString(), updated, old?.revision ?: 0)
@@ -393,7 +393,7 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
         .put("allowedHosts", JSONArray(listOf("127.0.0.1", "localhost")))
         .put("allowedOrigins", JSONArray()).put("pageSize", 64)
 
-    private fun servers() = work {
+    private fun servers(): Job = work {
         val state = io {
             val ids = AgentCapabilities.moduleNames().keys.toList()
             ids to ids.map { id ->
@@ -417,7 +417,7 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
         }, { index -> if (index < state.first.size) serverActions(state.first[index]) else servers() })
     }
 
-    private fun serverActions(id: String) = menu("$id 对外服务", listOf("监听与认证配置", "复制客户端 JSON", "运行地址与错误", "应用配置 / 重试启动"), { index ->
+    private fun serverActions(id: String): Unit = menu("$id 对外服务", listOf("监听与认证配置", "复制客户端 JSON", "运行地址与错误", "应用配置 / 重试启动"), { index ->
         when (index) {
             0 -> {
                 val state = io { AgentStore.dao.document("mcp.servers", id) to serverConfig(id) }
@@ -457,7 +457,7 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
         })
     }
 
-    private fun editModule(id: String) = work {
+    private fun editModule(id: String): Job = work {
         if (id == "memory") {
             menu("记忆：共享供应商，模型仅作参数", listOf("自动召回 / 保存 / 作用域 / 检索配置", "选择嵌入供应商", "设置嵌入模型", "重建全部向量索引", "查看记忆文档"), { index ->
                 when (index) {
@@ -475,14 +475,14 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
         else showText("${AgentCapabilities.moduleNames().getValue(id)} 配置", "复用应用中的领域配置。内部工具选择在 MCP 管理中维护。")
     }
 
-    private fun moduleEditor(id: String) = work {
+    private fun moduleEditor(id: String): Job = work {
         val state = io { AgentStore.dao.document("module.settings", id) to AgentConfig.moduleSettings(id) }
         editJson(if (id == "memory") "记忆配置：嵌入配置为空时不会伪装成向量成功" else "Tavily 联网配置", state.second) { value ->
             io { AgentConfig.saveModuleSettings(id, value, state.first?.revision ?: 0) }
         }
     }
 
-    private fun memoryProvider() = work {
+    private fun memoryProvider(): Job = work {
         val providers = io { AppConfig.aiProviderList }
         menu("选择已有供应商（切换后需确认模型并重建索引）", providers.map { "${it.name} · ${it.id}" }, { index ->
             io {
@@ -494,7 +494,7 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
         })
     }
 
-    private fun memoryModel() = work {
+    private fun memoryModel(): Job = work {
         val old = io { document("module.settings", "memory") }
         val settings = JSONObject(old.json)
         val models = io { AppConfig.aiModelConfigList.filter { it.providerId == settings.getString("providerId") } }
@@ -509,7 +509,7 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
         })
     }
 
-    private fun memoryDocuments() = work {
+    private fun memoryDocuments(): Job = work {
         val records = io { AgentStore.dao.documents("memory") }
         menu("记忆文档及来源", records.map { record ->
             val value = JSONObject(record.json)
@@ -517,7 +517,7 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
         }, { index -> showText("记忆 ${records[index].key}", JSONObject(records[index].json).toString(2)) })
     }
 
-    private fun modes() = work {
+    private fun modes(): Job = work {
         val state = io { AgentStore.dao.documents("plugins") to AgentConfig.mode }
         val records = state.first
         menu("Agent 模式：短按选择，长按管理", records.map {
@@ -537,7 +537,7 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
         }, { index -> if (index < records.size) pluginActions(records[index].key) })
     }
 
-    private fun pluginActions(id: String) = work {
+    private fun pluginActions(id: String): Job = work {
         val old = io { document("plugins", id) }
         val metadata = JSONObject(old.json)
         val actions = listOf("包内文件", "模式配置与 schema", "导出 ZIP", "复制为用户包", "选择历史修订", "启用 / 关闭") +
@@ -579,7 +579,7 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
         })
     }
 
-    private fun pluginFiles(id: String) = work {
+    private fun pluginFiles(id: String): Job = work {
         val state = io { AgentPlugins.snapshot(id, allowDisabled = true) to document("plugins", id) }
         val snapshot = state.first
         val builtin = JSONObject(state.second.json).getBoolean("builtin")
@@ -624,7 +624,7 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
         pluginFiles(snapshot.id)
     }
 
-    private fun resources(namespace: String) = work {
+    private fun resources(namespace: String): Job = work {
         val records = io { AgentStore.dao.documents(namespace) }
         val skills = namespace == "skills"
         val actions = if (skills) listOf("新建 Skill", "导入 SKILL.md / ZIP") else listOf("新建提示词", "导入 JSON", "导出全部提示词")
@@ -654,7 +654,7 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
         }, { index -> if (index < records.size) resourceActions(namespace, records[index].key) })
     }
 
-    private fun resourceActions(namespace: String, key: String) = work {
+    private fun resourceActions(namespace: String, key: String): Job = work {
         val old = io { document(namespace, key) }
         val value = JSONObject(old.json)
         val actions = listOf("编辑正文", "编辑名称", "删除") + if (namespace == "skills") listOf("资源文件", "导出 Skill ZIP") else emptyList()
@@ -678,7 +678,7 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
         })
     }
 
-    private fun skillFiles(key: String) = work {
+    private fun skillFiles(key: String): Job = work {
         val files = io { AgentStore.dao.documents("skill.resources.$key") }
         menu("$key 支持资源", files.map { it.key } + listOf("新增文本资源", "导入资源文件"), { index ->
             if (index < files.size) skillFile(files[index])
@@ -691,7 +691,7 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
         })
     }
 
-    private fun skillFile(old: AgentDocument) = menu(old.key, listOf("查看 UTF-8 内容", "编辑 UTF-8 内容", "导出原文件", "导入替换", "删除资源"), { index ->
+    private fun skillFile(old: AgentDocument): Unit = menu(old.key, listOf("查看 UTF-8 内容", "编辑 UTF-8 内容", "导出原文件", "导入替换", "删除资源"), { index ->
         val bytes = io { Base64.decode(JSONObject(old.json).getString("base64"), Base64.DEFAULT) }
         val skillKey = old.namespace.removePrefix("skill.resources.")
         when (index) {
@@ -758,14 +758,14 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
         }.toByteArray()
     }
 
-    private fun diagnostics() = work {
+    private fun diagnostics(): Job = work {
         val runs = io { AgentStore.dao.runs() }
         menu("运行诊断", runs.map { "${it.state} · ${it.sessionId} · ${it.id}" } + "刷新", { index ->
             if (index == runs.size) diagnostics() else runActions(runs[index].id)
         })
     }
 
-    private fun runActions(id: String) = work {
+    private fun runActions(id: String): Job = work {
         val run = io { AgentStore.dao.run(id) ?: error("运行记录不存在：$id") }
         menu("${run.state} · ${run.pluginId}@${run.revision}", listOf("完整事件与实际请求", "导出完整事件", "调用栈 / 变量 / 等待输入", "暂停", "继续", "提供输入", "停止", "刷新状态"), { index ->
             when (index) {
@@ -804,7 +804,7 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
         JSONObject().put("sequence", it.sequence).put("createdAt", it.createdAt).put("type", it.type).put("value", JSONObject(it.json))
     })
 
-    private fun migrationSnapshots() = work {
+    private fun migrationSnapshots(): Job = work {
         val snapshots = io { AgentStore.dao.documents("migration").filter { it.key == "original" || it.key.startsWith("restore.") } }
         menu("原始迁移快照（含密钥）", snapshots.map { it.key }, { index ->
             val snapshot = snapshots[index]
