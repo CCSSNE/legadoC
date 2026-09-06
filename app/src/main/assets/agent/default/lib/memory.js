@@ -13,13 +13,33 @@ function call(catalog, id, args) {
 function scope(input, config) {
     if (config.memory.scope === "global") return "global";
     if (config.memory.scope !== "book") throw new Error("未知记忆作用域：" + config.memory.scope);
-    if (!input.reading.open || !input.reading.bookUrl) throw new Error("记忆作用域为书籍，但当前没有打开阅读页；请选择全局作用域或打开书籍");
+    if (!input.reading.open || !input.reading.bookUrl) {
+        var skip = new Error("记忆作用域为书籍，但当前没有打开阅读页；请选择全局作用域或打开书籍");
+        skip.skipPassive = true;
+        throw skip;
+    }
     return input.reading.bookUrl;
+}
+
+// 被动路径不得致命：无书可依时记一笔可查的跳过日志并返回空，
+// 本轮问答继续；真正的配置错误（未知作用域等）仍然抛出。
+function passiveScope(input, config, phase) {
+    try {
+        return scope(input, config);
+    } catch (error) {
+        if (error.skipPassive) {
+            host.call("log", {type: "memory." + phase + ".skip", reason: error.message, reading: input.reading});
+            return null;
+        }
+        throw error;
+    }
 }
 
 exports.recall = function(input, config, catalog) {
     if (!config.modules.memory) return [];
-    var result = call(catalog, "memory_search", {query: input.user, mode: "vector", scope: scope(input, config)});
+    var resolved = passiveScope(input, config, "recall");
+    if (resolved === null) return [];
+    var result = call(catalog, "memory_search", {query: input.user, mode: "vector", scope: resolved});
     if (!(config.memory.recallCount >= 0)) throw new Error("recallCount 必须为非负整数");
     result.matches.sort(function(left, right) { return right.score - left.score; });
     var fraction = config.memory.contextFraction;
@@ -35,6 +55,8 @@ exports.recall = function(input, config, catalog) {
 
 exports.save = function(input, answer, config, catalog, reference) {
     if (!config.modules.memory || !config.memory.autoSave) return;
+    var resolved = passiveScope(input, config, "save");
+    if (resolved === null) return;
     var response = model.complete({model: reference.model, messages: [
         {role: "system", content: host.call("prompts.get", {key: config.plugin.memoryPromptKey})},
         {role: "user", content: JSON.stringify({question: input.user, answer: answer, reading: input.reading})}
@@ -42,7 +64,7 @@ exports.save = function(input, answer, config, catalog, reference) {
     var extracted = JSON.parse(model.text(response.content));
     if (!Array.isArray(extracted.memories)) throw new Error("记忆提取结果缺少 memories 数组");
     extracted.memories.forEach(function(memory) {
-        call(catalog, "memory_add", {content: memory.content, type: memory.type, scope: scope(input, config),
+        call(catalog, "memory_add", {content: memory.content, type: memory.type, scope: resolved,
             source: "automatic", bookUrl: input.reading.bookUrl || "", chapterIndex: input.reading.chapterIndex, sourceMessageId: input.messageId});
     });
 };

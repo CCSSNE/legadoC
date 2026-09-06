@@ -626,18 +626,20 @@ FAKE_MODEL_ID = "regtest-fake-model"
 FAKE_MODEL_NAME = "regtest-model"
 FAKE_BASE_URL = f"http://127.0.0.1:{FAKE_PORT}"
 PREFS_XML = "shared_prefs/io.legado.app.dev_preferences.xml"
+DATA_DIR = f"/data/data/{PKG}"
+PREFS_ABS = f"{DATA_DIR}/{PREFS_XML}"
+AGENT_DB = f"{DATA_DIR}/databases/agent.db"
 
 
-def run_as(*args, input_text=None, timeout=60):
+def run_as(*args, input_bytes=None, timeout=60):
+    # 注意：run-as 下 sh 转域后丢写权限，写文件一律用 tee 直调，不用 shell 重定向
     p = subprocess.run(ADB + ["shell", "run-as", PKG] + list(args),
-                       input=(input_text.encode("utf-8")
-                              if input_text is not None else None),
-                       capture_output=True, timeout=timeout)
+                       input=input_bytes, capture_output=True, timeout=timeout)
     return p
 
 
 def prefs_pull():
-    p = run_as("cat", PREFS_XML, timeout=60)
+    p = run_as("cat", PREFS_ABS, timeout=60)
     if p.returncode != 0:
         raise RuntimeError(
             f"读偏好失败: {p.stderr.decode('utf-8', 'replace')[:200]}")
@@ -648,7 +650,8 @@ def prefs_pull():
 def prefs_push(xml_text):
     adb("shell", "am", "force-stop", PKG)
     time.sleep(2)
-    p = run_as("sh", "-c", f"cat > {PREFS_XML}", input_text=xml_text, timeout=60)
+    p = run_as("tee", PREFS_ABS, input_bytes=xml_text.encode("utf-8"),
+               timeout=60)
     if p.returncode != 0:
         raise RuntimeError(
             f"写偏好失败: {p.stderr.decode('utf-8', 'replace')[:200]}")
@@ -685,6 +688,13 @@ def prefs_set_fake_provider(enable):
                 root.remove(e)
     prefs_push(ET.tostring(root, encoding="unicode", xml_declaration=True))
     return backup
+
+
+def prefs_restore(backup):
+    adb("shell", "am", "force-stop", PKG)
+    time.sleep(2)
+    p = run_as("tee", PREFS_ABS, input_bytes=backup.encode("utf-8"), timeout=60)
+    assert p.returncode == 0, "偏好恢复失败"
 
 
 def cmd_chat():
@@ -756,19 +766,19 @@ def cmd_chat():
         assert chats[1]["has_tool_calls"] and "tool" in chats[1]["roles"], \
             f"R2应含完整工具往返: {chats[1]}"
         print(f"[chat] PASS 工具往返完整（R1工具数={chats[0]['n_tools']}）")
-        # 断言持久化：消息落库且含tool_calls
+        # 断言持久化：消息落库且含tool_calls；被动记忆跳过有据可查
         msgs = int(db("SELECT COUNT(*) FROM messages;") or 0)
         assert msgs > 0, "agent消息未落库"
         print(f"[chat] PASS 消息落库 {msgs} 条")
+        skips = db("SELECT COUNT(*) FROM events WHERE type='log' "
+                   "AND json LIKE '%memory.recall.skip%';")
+        print(f"[chat] 被动记忆跳过日志 {skips} 条（book作用域+无阅读页时应>=1）")
     finally:
         if fake is not None:
             fake.terminate()
         adb("forward", "--remove", f"tcp:{FAKE_PORT}")
         print("[chat] 恢复原供应商偏好…")
-        adb("shell", "am", "force-stop", PKG)
-        time.sleep(2)
-        p = run_as("sh", "-c", f"cat > {PREFS_XML}", input_text=backup, timeout=60)
-        assert p.returncode == 0, "偏好恢复失败"
+        prefs_restore(backup)
         adb("shell", "am", "start", "-n",
             f"{PKG}/io.legado.app.ui.main.MainActivity")
         time.sleep(3)
