@@ -283,20 +283,23 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
         }
         val (internal, external, rows) = state
         menu("MCP 管理：短按开关，长按编辑", rows, { index ->
-            when {
-                index < internal.size -> io {
-                    val id = internal[index]
-                    AgentConfig.setModuleEnabled(id, !AgentConfig.moduleEnabled(id))
+            if (index == internal.size + external.size) {
+                editClient(null)
+            } else {
+                when {
+                    index < internal.size -> io {
+                        val id = internal[index]
+                        AgentConfig.setModuleEnabled(id, !AgentConfig.moduleEnabled(id))
+                    }
+                    index < internal.size + external.size -> io {
+                        val old = external[index - internal.size]
+                        val value = JSONObject(old.json)
+                        putDocument(old, value.put("enabled", !value.getBoolean("enabled")))
+                    }
                 }
-                index < internal.size + external.size -> io {
-                    val old = external[index - internal.size]
-                    val value = JSONObject(old.json)
-                    putDocument(old, value.put("enabled", !value.getBoolean("enabled")))
-                }
-                index == internal.size + external.size -> { editClient(null); return@menu }
+                changed()
+                modules()
             }
-            changed()
-            modules()
         }, { index ->
             when {
                 index < internal.size -> moduleActions(internal[index])
@@ -345,8 +348,10 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
         val old = if (id == null) null else io { document("mcp.clients", id) }
         val value = old?.let { JSONObject(it.json) } ?: JSONObject().put("name", "").put("endpoint", "")
             .put("apiKey", "").put("enabled", true).put("protocolVersion", "auto")
-        if (old == null) { clientEditor(null, value); return@work }
-        menu("${value.getString("name")} · 外部 MCP", listOf("编辑连接", "发现工具", "内部工具开关", "删除连接"), { index ->
+        if (old == null) {
+            clientEditor(null, value)
+        } else {
+            menu("${value.getString("name")} · 外部 MCP", listOf("编辑连接", "发现工具", "内部工具开关", "删除连接"), { index ->
             when (index) {
                 0 -> clientEditor(old, value)
                 1 -> {
@@ -369,7 +374,8 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
                     modules()
                 }
             }
-        })
+            })
+        }
     }
 
     private fun clientEditor(old: AgentDocument?, value: JSONObject) = editJson("外部连接：protocolVersion 为 auto 或明确版本", value) { updated ->
