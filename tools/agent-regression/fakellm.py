@@ -63,8 +63,7 @@ class Handler(BaseHTTPRequestHandler):
             name = ""
             for t in tools:
                 fn = t.get("function", {})
-                if fn.get("description", "").strip().endswith(
-                        f"[{WANT_MODULE}/{WANT_TOOL}]"):
+                if f"[{WANT_MODULE}/{WANT_TOOL}]" in fn.get("description", ""):
                     name = fn.get("name", "")
                     break
             if not name:

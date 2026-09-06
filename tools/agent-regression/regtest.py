@@ -171,11 +171,16 @@ def set_all_servers(want_on):
     # 开关全部打开后，确认监听真起来；进程被杀后开关仍开但监听已死，
     # 此时点一次"刷新运行状态"（会调 AgentMcpService.refresh 重建监听）。
     for attempt in ("初检", "刷新后"):
-        if listeners_up():
+        if want_on == listeners_up():
             break
         tap_text("刷新运行状态", timeout=15)
         time.sleep(6)
-    assert listeners_up(), "监听起不来，查 logcat AgentMcpService"
+    if want_on:
+        assert listeners_up(), "监听起不来，查 logcat AgentMcpService"
+    else:
+        cfgs = server_configs()
+        still = [m for m in MODULES if cfgs.get(m, {}).get("enabled")]
+        assert not still, f"这些没关掉: {still}"
     adb("shell", "input", "keyevent", "4")
     time.sleep(1)
 
