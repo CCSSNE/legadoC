@@ -51,7 +51,7 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
     private var initializing = false
     private var migrationError: String? = null
     private var refreshJob: Job? = null
-    private var pendingImport: (suspend (ByteArray) -> Unit)? = null
+    private var pendingImport: (suspend (ByteArray) -> Any?)? = null
     private var pendingExport: ByteArray? = null
 
     private val importer = fragment.registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -97,10 +97,12 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
     }
 
     fun refresh() {
+        val switchSummary = migrationError
+            ?: context.getString(if (ready) R.string.agent_internal_switch_summary else R.string.agent_loading)
         fragment.findPreference<TwoStatePreference>("agentEnabled")?.apply {
             isPersistent = false
             isEnabled = ready
-            summary = migrationError ?: fragment.getString(if (ready) R.string.agent_internal_switch_summary else R.string.agent_loading)
+            summary = switchSummary
             setOnPreferenceChangeListener { _, value ->
                 work {
                     require(value is Boolean) { "Agent 开关必须为 Boolean" }
@@ -163,7 +165,7 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
         if (fragment.isAdded) showText(title, error.stackTraceToString())
     }
 
-    private fun menu(title: String, rows: List<String>, selected: suspend (Int) -> Unit, longPress: (suspend (Int) -> Unit)? = null) {
+    private fun menu(title: String, rows: List<String>, selected: suspend (Int) -> Any?, longPress: (suspend (Int) -> Any?)? = null) {
         val dialog = context.alert(title) {
             if (rows.isEmpty()) setMessage("当前没有记录")
             else items(rows) { _, index -> work { selected(index) } }
@@ -176,7 +178,7 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
         }
     }
 
-    private fun edit(title: String, text: String, save: suspend (String) -> Unit) {
+    private fun edit(title: String, text: String, save: suspend (String) -> Any?) {
         val input = EditText(context).apply {
             setText(text)
             setSingleLine(false)
@@ -203,7 +205,7 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
         }
     }
 
-    private fun editJson(title: String, value: JSONObject, save: suspend (JSONObject) -> Unit) =
+    private fun editJson(title: String, value: JSONObject, save: suspend (JSONObject) -> Any?) =
         edit(title, value.toString(2)) { source -> save(io { JSONObject(source) }) }
 
     private fun showText(title: String, text: String) {
@@ -221,14 +223,14 @@ class AgentSettingsUi(private val fragment: AiConfigFragment, private val change
         }
     }
 
-    private fun confirm(message: String, action: suspend () -> Unit) {
+    private fun confirm(message: String, action: suspend () -> Any?) {
         context.alert(message) {
             negativeButton("取消")
             positiveButton("确认") { work { action(); changed() } }
         }
     }
 
-    private fun importFile(types: Array<String> = arrayOf("*/*"), consume: suspend (ByteArray) -> Unit) {
+    private fun importFile(types: Array<String> = arrayOf("*/*"), consume: suspend (ByteArray) -> Any?) {
         check(pendingImport == null) { "已有文件选择正在进行" }
         pendingImport = consume
         importer.launch(types)
