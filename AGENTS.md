@@ -286,6 +286,8 @@ uiautomator2 / ADB
 - Release 正文通过 UTF-8 无 BOM JSON 文件提交：设置 `PYTHONUTF8=1`，用 `json.dump(..., ensure_ascii=False)` 生成（本机一律用 `python`；`python3.exe` 只是 WindowsApps 存根，调用无输出无动作），并使用 `curl.exe --data-binary "@<file>"`。不得将中文正文或二进制通过 PowerShell 文本管道传递。
 - APK 上传使用 `Content-Type: application/octet-stream` 和 `curl.exe --data-binary @<apk>`。
 - 发布后通过 API 和 GitHub 网页复查中文、排版、`draft=false`、`prerelease` 与用户要求一致（正式版为 `false`，用户点名 Pre 版时为 `true`）、tag、目标提交、资产大小和下载 200；发现乱码则用 UTF-8 无 BOM JSON PATCH 后重新复查。Pre 版创建时显式传 `"make_latest": "false"`，使 `Latest` 标记保持在正式版不动。
+- 公开仓库（`origin` / CCSSNE/legadoC）的 Release 只允许上传文件名含 `oss` 的公开版 APK（`assembleOssRelease` 产物，包名 `io.legado.app.c`、应用名 `阅读C`）；自用版 APK（`assembleAppC` 产物，包名 `io.legado.app.dev`、文件名 `legado_app_*`）绝对禁止作为资产出现在公开仓库的任何 Release（含 Pre 版）。判定以 `aapt` 包名为准，改名不算数。
+- 上一条是软性流程钩子：Git 钩子拦不到 Release 通道（网页 / `gh` / API 上传不经过本地 `commit` / `push`），只能靠上传前执行第 3 节产物验证并核对文件名含 `oss` 来自觉遵守；上传后按上一条复查资产，发现误传立即删除对应资产。
 
 ### Git
 
