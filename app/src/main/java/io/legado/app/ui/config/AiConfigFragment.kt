@@ -611,7 +611,7 @@ class AiConfigFragment : PreferenceFragment(),
                     content = requestTemplate,
                     validate = {
                         if (isVideo) AiCreationProviderStore.parseVideoRequestTemplateJson(it)
-                        else AiCreationProviderStore.parseImageRequestTemplateJson(it)
+                        else AiCreationProviderStore.parseImageRequestTemplateJson(it, provider?.id)
                     }
                 ) { json ->
                     requestTemplate = json

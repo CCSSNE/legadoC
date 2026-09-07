@@ -2,6 +2,7 @@ package io.legado.app.help.ai
 
 import android.util.Base64
 import android.content.ContentValues
+import android.graphics.Bitmap
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
@@ -27,6 +28,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import splitties.init.appCtx
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.atomic.AtomicInteger
@@ -46,14 +48,22 @@ object AiCreationImageFile {
     private val nameSeq = AtomicInteger(0)
 
     /** 文件名单点保证唯一：时间戳 + 进程内自增序号，并发任务同时落盘也不会撞名覆盖 */
-    fun saveBytes(bytes: ByteArray, workflow: AiCreationWorkflow? = null): String {
-        val fileName = "img_${System.currentTimeMillis()}_${nameSeq.incrementAndGet()}.png"
+    fun saveBytes(
+        bytes: ByteArray,
+        workflow: AiCreationWorkflow? = null,
+        extension: String = "png"
+    ): String {
+        val fileName = "img_${System.currentTimeMillis()}_${nameSeq.incrementAndGet()}.$extension"
         val target = File(dir, fileName)
         //工作流写入 PNG 文本块（ComfyUI 同款做法）；非真 PNG 或注入失败如实原样落盘
-        val outBytes = workflow?.let { meta ->
-            runCatching { AiCreationMediaMetadata.injectPngWorkflow(bytes, meta.toJsonString()) }
-                .getOrNull()
-        } ?: bytes
+        val outBytes = if (extension == "png") {
+            workflow?.let { meta ->
+                runCatching { AiCreationMediaMetadata.injectPngWorkflow(bytes, meta.toJsonString()) }
+                    .getOrNull()
+            } ?: bytes
+        } else {
+            bytes
+        }
         FileOutputStream(target).use { out ->
             out.write(outBytes)
         }
@@ -559,8 +569,16 @@ object AiCreationImageTaskHolder {
             return
         }
         // 第一级：单次批量请求 n 张（智谱等忽略 n 的服务只会返回 1 张，按实际返回数记账）
+        //SSE 进度（Local Dream 等）实时上报到过程提示；并发阶段多路进度交错，不上报
         val batch = runCatching {
-            requestImages(target, prompt, count, extraValues, llmInput = llmInput, imageDataUrls = imageDataUrls, llmImages = llmImages, llmOutput = llmOutput)
+            requestImages(
+                target, prompt, count, extraValues,
+                llmInput = llmInput, imageDataUrls = imageDataUrls,
+                llmImages = llmImages, llmOutput = llmOutput,
+                onProgress = { step, totalSteps ->
+                    if (totalSteps > 0) postNotice(task, "本地生成中：第 $step/$totalSteps 步")
+                }
+            )
         }
         var completed = 0
         batch.onSuccess { fileNames ->
@@ -641,7 +659,8 @@ object AiCreationImageTaskHolder {
         llmInput: String = "",
         imageDataUrls: List<String> = emptyList(),
         llmImages: List<String> = emptyList(),
-        llmOutput: String = ""
+        llmOutput: String = "",
+        onProgress: ((step: Int, totalSteps: Int) -> Unit)? = null
     ): List<String> {
         val retry = AiCreationConfig.imageRetryCount
         //种子空着=每次随机：模板下不了"省略字段"，空串发过去会被打回来，所以这里填真随机数
@@ -662,7 +681,7 @@ object AiCreationImageTaskHolder {
         val attempts = if (retryEnabled) retry + 1 else 1
         repeat(attempts) { attempt ->
             try {
-                return fetchImages(target.provider, body, workflow)
+                return fetchImages(target.provider, body, workflow, onProgress)
             } catch (throwable: Throwable) {
                 if (throwable is CancellationException) throw throwable
                 lastError = throwable
@@ -700,7 +719,8 @@ object AiCreationImageTaskHolder {
     private suspend fun fetchImages(
         provider: AiCreationProviderConfig,
         body: String,
-        workflow: AiCreationWorkflow? = null
+        workflow: AiCreationWorkflow? = null,
+        onProgress: ((step: Int, totalSteps: Int) -> Unit)? = null
     ): List<String> = withContext(Dispatchers.IO) {
         val response = okHttpClient.newCallResponse {
             url(provider.baseUrl)
@@ -716,10 +736,16 @@ object AiCreationImageTaskHolder {
             postJson(body)
         }
         response.use { rawResponse ->
-            val text = rawResponse.body?.string().orEmpty()
             if (!rawResponse.isSuccessful) {
+                val text = rawResponse.body?.string().orEmpty()
                 throw IllegalStateException("HTTP ${rawResponse.code}: ${text.take(300)}")
             }
+            //SSE 响应（如 Local Dream 本地后端 /generate）：流式逐事件解析，进度实时上报
+            val contentType = rawResponse.header("Content-Type").orEmpty()
+            if (contentType.contains("text/event-stream", ignoreCase = true)) {
+                return@withContext readSseImages(rawResponse, workflow, onProgress)
+            }
+            val text = rawResponse.body?.string().orEmpty()
             val root = JSONObject(text)
             val data = root.optJSONArray("data")
                 ?: throw IllegalStateException("响应缺少 data 字段：${text.take(200)}")
@@ -742,6 +768,112 @@ object AiCreationImageTaskHolder {
                 null
             }
         }
+    }
+
+    /**
+     * 流式解析生图 SSE（text/event-stream，如 Local Dream）：
+     * progress 事件实时回调步数进度，complete 事件携带最终图（image 为 base64，
+     * format 指明 jpeg/png/raw），error 事件原样抛出；无 complete 视为失败。
+     */
+    private fun readSseImages(
+        response: okhttp3.Response,
+        workflow: AiCreationWorkflow?,
+        onProgress: ((step: Int, totalSteps: Int) -> Unit)?
+    ): List<String> {
+        val source = response.body?.source()
+            ?: throw IllegalStateException("生成服务响应为空")
+        source.use { buffered ->
+            var completeJson: JSONObject? = null
+            while (true) {
+                val line = buffered.readUtf8Line() ?: break
+                if (line.startsWith("event:")) {
+                    val eventName = line.removePrefix("event:").trim()
+                    if (eventName == "error") {
+                        //error 事件的 data 在下一行，读完即抛
+                        val dataLine = buffered.readUtf8Line().orEmpty()
+                        throw IllegalStateException(
+                            "生成服务返回错误：${sseDataMessage(dataLine)}"
+                        )
+                    }
+                    continue
+                }
+                if (!line.startsWith("data:")) continue
+                val payload = line.removePrefix("data:").trim()
+                if (payload.isEmpty()) continue
+                //非 JSON 的 data 行（注释/心跳等）跳过：关键事件缺失时由下方无 complete 兜底报错
+                val event = runCatching { JSONObject(payload) }.getOrNull() ?: continue
+                when (event.optString("type")) {
+                    "progress" -> {
+                        if (onProgress != null) {
+                            onProgress(event.optInt("step"), event.optInt("total_steps"))
+                        }
+                    }
+                    "complete" -> completeJson = event
+                    "error" -> throw IllegalStateException(
+                        "生成服务返回错误：${event.optString("message").ifBlank { event.toString().take(200) }}"
+                    )
+                }
+            }
+            val complete = completeJson
+                ?: throw IllegalStateException("生成服务未返回图片")
+            return listOf(decodeCompleteImage(complete, workflow))
+        }
+    }
+
+    /** SSE error 事件数据行转错误文本 */
+    private fun sseDataMessage(dataLine: String): String {
+        val trimmed = dataLine.removePrefix("data:").trim()
+        val message = runCatching { JSONObject(trimmed).optString("message") }.getOrNull()
+        return message?.ifBlank { null } ?: trimmed.ifBlank { dataLine.take(200) }
+    }
+
+    /** complete 事件解图：jpeg/png 直接落盘；raw 为裸像素数据，按宽高转 PNG（确定性格式转换） */
+    private fun decodeCompleteImage(
+        event: JSONObject,
+        workflow: AiCreationWorkflow?
+    ): String {
+        val b64 = event.optString("image")
+        if (b64.isBlank()) throw IllegalStateException("生成服务未返回图片数据")
+        val bytes = Base64.decode(b64, Base64.DEFAULT)
+        return when (val format = event.optString("format", "raw")) {
+            "png" -> AiCreationImageFile.saveBytes(bytes, workflow)
+            "jpeg" -> AiCreationImageFile.saveBytes(bytes, workflow, extension = "jpg")
+            else -> {
+                val width = event.optInt("width")
+                val height = event.optInt("height")
+                require(width > 0 && height > 0) {
+                    "生成服务返回 raw 图像缺少宽高（format=$format）"
+                }
+                val channels = event.optInt("channels", 3)
+                require(channels == 3 || channels == 4) {
+                    "生成服务返回不支持的 raw 通道数：$channels"
+                }
+                require(bytes.size == width * height * channels) {
+                    "raw 图像数据大小不符：预期 ${width * height * channels} 字节，实际 ${bytes.size}"
+                }
+                AiCreationImageFile.saveBytes(rawRgbToPng(bytes, width, height, channels), workflow)
+            }
+        }
+    }
+
+    /** 裸 RGB(A) 像素转 PNG：本地后端默认输出 raw，转成标准图片文件后落盘 */
+    private fun rawRgbToPng(bytes: ByteArray, width: Int, height: Int, channels: Int): ByteArray {
+        val pixels = IntArray(width * height)
+        var offset = 0
+        for (index in pixels.indices) {
+            val r = bytes[offset].toInt() and 0xFF
+            val g = bytes[offset + 1].toInt() and 0xFF
+            val b = bytes[offset + 2].toInt() and 0xFF
+            val a = if (channels == 4) bytes[offset + 3].toInt() and 0xFF else 0xFF
+            pixels[index] = (a shl 24) or (r shl 16) or (g shl 8) or b
+            offset += channels
+        }
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
+        val output = ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+        bitmap.recycle()
+        return output.toByteArray()
     }
 
     private suspend fun downloadImage(
@@ -774,6 +906,8 @@ object AiCreationImageTaskHolder {
             put("image", imageDataUrls.getOrElse(0) { "" })
             put("image2", imageDataUrls.getOrElse(1) { "" })
             put("image3", imageDataUrls.getOrElse(2) { "" })
+            //Local Dream 等本地协议要纯 base64（无 data URL 前缀）；空串时整段字段被渲染引擎省略
+            put("image_b64", imageDataUrls.getOrElse(0) { "" }.substringAfterLast(","))
             putAll(extraValues)
             //种子后放：用户填了用填的，没填用本次随机数；旧模板没这个位置则忽略
             if (resolvedSeed.isNotBlank()) put("seed", resolvedSeed)
@@ -799,6 +933,7 @@ object AiCreationImageTaskHolder {
             put("image", "")
             put("image2", "")
             put("image3", "")
+            put("image_b64", "")
             variables.forEach { variable ->
                 put(variable.key, variable.effectiveValue(null))
             }
@@ -812,7 +947,9 @@ object AiCreationImageTaskHolder {
             providerName = provider.name,
             baseUrl = provider.baseUrl,
             model = modelId,
-            variables = tokens.filterKeys { it !in setOf("model", "prompt", "n", "image", "image2", "image3", "seed") },
+            variables = tokens.filterKeys {
+                it !in setOf("model", "prompt", "n", "image", "image2", "image3", "image_b64", "seed")
+            },
             llmInput = "",
             request = body
         )

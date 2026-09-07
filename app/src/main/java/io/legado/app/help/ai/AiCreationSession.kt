@@ -239,6 +239,79 @@ object AiCreationVariables {
         kolorsSeedVariable
     )
 
+    //Local Dream 采样器枚举（与客户端 SchedulerNames 一致，values 存纯 API 值）
+    private val localDreamSchedulerVariable = AiCreationVariable(
+        key = "scheduler",
+        label = "采样器",
+        format = AiCreationVariable.FORMAT_OPTIONS,
+        options = listOf(
+            "DPM++ 2M（dpm）",
+            "DPM++ 2M Karras（dpm_karras）",
+            "Euler（euler）",
+            "Euler Karras（euler_karras）",
+            "Euler A（euler_a）",
+            "Euler A Karras（euler_a_karras）",
+            "DPM++ 2M SDE（dpm_sde）",
+            "DPM++ 2M SDE Karras（dpm_sde_karras）",
+            "LCM（lcm）"
+        ),
+        values = listOf(
+            "dpm",
+            "dpm_karras",
+            "euler",
+            "euler_karras",
+            "euler_a",
+            "euler_a_karras",
+            "dpm_sde",
+            "dpm_sde_karras",
+            "lcm"
+        ),
+        defaultValue = "dpm",
+    )
+
+    //Local Dream 本地后端参数：SD1.5 常用 512，SDXL/Anima 后端强制 1024 画布（宽高传值会被忽略）
+    private val localDreamWidthVariable = AiCreationVariable(
+        key = "width",
+        label = "宽",
+        format = AiCreationVariable.FORMAT_INPUT,
+        defaultValue = "512",
+    )
+
+    private val localDreamHeightVariable = AiCreationVariable(
+        key = "height",
+        label = "高",
+        format = AiCreationVariable.FORMAT_INPUT,
+        defaultValue = "512",
+    )
+
+    private val localDreamStepsVariable = AiCreationVariable(
+        key = "steps",
+        label = "推理步数",
+        format = AiCreationVariable.FORMAT_INPUT,
+        defaultValue = "20",
+    )
+
+    private val localDreamCfgVariable = AiCreationVariable(
+        key = "cfg",
+        label = "引导系数",
+        format = AiCreationVariable.FORMAT_INPUT,
+        defaultValue = "7.5",
+    )
+
+    /** Local Dream 生图参数变量（style 属于 LLM 变量设置，不在此列） */
+    val localDreamImageVariables = listOf(
+        localDreamSchedulerVariable,
+        localDreamWidthVariable,
+        localDreamHeightVariable,
+        localDreamStepsVariable,
+        localDreamCfgVariable,
+        kolorsNegativePromptVariable,
+        kolorsSeedVariable
+    )
+
+    /** Local Dream 供应商的出厂变量定义（供初始配置与恢复默认）。 */
+    val localDreamImageVariablesJson: String by lazy { buildImageJson(localDreamImageVariables) }
+
     //视频供应商按智谱 CogVideoX 官方参数定义；key 统一加 video_ 前缀保证全局唯一
     private val zhipuVideoParameters = listOf(
         AiCreationVariable(

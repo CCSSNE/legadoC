@@ -62,6 +62,7 @@ object AiCreationProviderStore {
     //内置供应商使用固定 id，供初始配置与恢复默认定位。
     const val IMAGE_SILICONFLOW_ID = "builtin-img-siliconflow"
     const val IMAGE_ZHIPU_ID = "builtin-img-zhipu"
+    const val IMAGE_LOCALDREAM_ID = "builtin-img-localdream"
     const val VIDEO_ZHIPU_ID = "builtin-video-zhipu"
 
     const val API_KEY_URL_SILICONFLOW = "https://cloud.siliconflow.cn/me/account/ak"
@@ -80,6 +81,11 @@ object AiCreationProviderStore {
 
     const val ZHIPU_VIDEO_REQUEST_TEMPLATE =
         """{"model":"{{model}}","prompt":"{{prompt}}","quality":"{{video_quality}}","with_audio":{{video_with_audio}},"size":"{{video_size}}","fps":{{video_fps}},"duration":{{video_duration}},"watermark_enabled":{{watermark_enabled}},"request_id":"{{request_id}}","image_url":{{image_url}}}"""
+
+    //Local Dream 本地后端：无鉴权、无模型字段（模型由后端启动时选定）、SSE 响应；
+    //output_format 固定 png 保证落盘可预览，image 字段空值时由渲染引擎整段省略（纯文生图）
+    const val LOCALDREAM_IMAGE_REQUEST_TEMPLATE =
+        """{"prompt":"{{prompt}}","negative_prompt":"{{negative_prompt}}","steps":{{steps}},"cfg":{{cfg}},"scheduler":"{{scheduler}}","seed":{{seed}},"width":{{width}},"height":{{height}},"image":"{{image_b64}}","output_format":"png"}"""
 
     // ———————— 图片供应商 ————————
 
@@ -233,7 +239,7 @@ object AiCreationProviderStore {
             ?: error("请先在「管理图片供应商」中设为当前供应商")
         check(provider.baseUrl.isNotBlank()) { "当前图片供应商「${provider.name}」的 API 地址为空" }
         parsedVariables(provider, isVideo = false)
-        parseImageRequestTemplateJson(provider.requestTemplate)
+        parseImageRequestTemplateJson(provider.requestTemplate, provider.id)
         val model = imageCurrentModel
             ?: error("请先在「添加图片模型」中为当前供应商添加模型")
         check(model.modelId.isNotBlank()) { "当前图片模型不能为空" }
@@ -359,6 +365,7 @@ object AiCreationProviderStore {
         IMAGE_SILICONFLOW_ID ->
             AiCreationVariables.buildImageJson(AiCreationVariables.kolorsImageVariables)
         IMAGE_ZHIPU_ID -> AiCreationVariables.defaultJson
+        IMAGE_LOCALDREAM_ID -> AiCreationVariables.localDreamImageVariablesJson
         VIDEO_ZHIPU_ID -> AiCreationVariables.zhipuVideoVariablesJson
         else -> null
     }
@@ -367,6 +374,7 @@ object AiCreationProviderStore {
     fun defaultRequestTemplateOf(provider: AiCreationProviderConfig): String? = when (provider.id) {
         IMAGE_SILICONFLOW_ID -> SILICONFLOW_IMAGE_REQUEST_TEMPLATE
         IMAGE_ZHIPU_ID -> ZHIPU_IMAGE_REQUEST_TEMPLATE
+        IMAGE_LOCALDREAM_ID -> LOCALDREAM_IMAGE_REQUEST_TEMPLATE
         VIDEO_ZHIPU_ID -> ZHIPU_VIDEO_REQUEST_TEMPLATE
         else -> null
     }
@@ -376,16 +384,23 @@ object AiCreationProviderStore {
     /**
      * 渲染请求模板：裸占位符（值位置不带引号）按 JSON 字面量替换，布尔/整数/小数不加引号；
      * 带引号与字符串内嵌的 {{key}} 按字符串替换。
+     * 值为空串的 token：整串占位符字段（如 "image":"{{image}}"、image_url:{{image_url}}）
+     * 在渲染前整段删除——文生图/文生视频请求不带图字段，语义与各协议的“可选字段”一致；
+     * 字符串内嵌占位符不受影响，仍按普通文本替换。
      */
     fun renderRequestTemplate(template: String, tokens: Map<String, String>): String {
-        val unresolved = REQUEST_PLACEHOLDER.findAll(template)
+        var effectiveTemplate = template
+        tokens.filterValues { it.isEmpty() }.keys.forEach { key ->
+            effectiveTemplate = removeEmptyPlaceholderField(effectiveTemplate, key)
+        }
+        val unresolved = REQUEST_PLACEHOLDER.findAll(effectiveTemplate)
             .map { it.groupValues[1] }
             .filterNot { it in tokens }
             .toSet()
         require(unresolved.isEmpty()) {
             "请求模板引用了未定义的占位符：${unresolved.joinToString("、")}"
         }
-        var withLiterals = template
+        var withLiterals = effectiveTemplate
         tokens.forEach { (key, value) ->
             val tokenRegex = Regex("([:,\\[]\\s*)" + Regex.escape("{{$key}}") + "(\\s*[,}\\]])")
             withLiterals = tokenRegex.replace(withLiterals) { match ->
@@ -402,6 +417,20 @@ object AiCreationProviderStore {
         }
         replaceTokens(root, tokens)
         return root.toString()
+    }
+
+    /**
+     * 删除模板中值为整串空占位符的键值对：先删带尾逗号的，再删带前逗号的，最后删唯一字段。
+     * 顺序保证删除后不留双逗号或悬挂逗号；占位符两侧引号均可（裸值与字符串值两种写法）。
+     */
+    private fun removeEmptyPlaceholderField(template: String, key: String): String {
+        val token = Regex.escape("{{$key}}")
+        val name = Regex.escape(key)
+        val value = "\"?$token\"?"
+        var result = Regex("\"$name\"\\s*:\\s*$value\\s*,\\s*").replace(template, "")
+        result = Regex(",\\s*\"$name\"\\s*:\\s*$value").replace(result, "")
+        result = Regex("\"$name\"\\s*:\\s*$value").replace(result, "")
+        return result
     }
 
     /** 占位符替换为 JSON 字面量：布尔保持 true/false，整数与小数不加引号，其余按 JSON 字符串转义 */
@@ -493,8 +522,16 @@ object AiCreationProviderStore {
         return normalized
     }
 
-    fun parseImageRequestTemplateJson(json: String): String =
-        parseRequiredRequestTemplate(json, setOf("model", "prompt", "n"))
+    fun parseImageRequestTemplateJson(json: String, providerId: String? = null): String =
+        parseRequiredRequestTemplate(json, requiredImageTemplatePlaceholders(providerId))
+
+    /**
+     * 图片模板必含占位符：OpenAI 风格云端协议要求 model/prompt/n；
+     * Local Dream 本地后端无模型与张数字段（模型由后端选定、一次一张），只强制 prompt。
+     */
+    private fun requiredImageTemplatePlaceholders(providerId: String?): Set<String> =
+        if (providerId == IMAGE_LOCALDREAM_ID) setOf("prompt")
+        else setOf("model", "prompt", "n")
 
     fun parseVideoRequestTemplateJson(json: String): String =
         parseRequiredRequestTemplate(json, setOf("model", "prompt"))
@@ -535,6 +572,16 @@ object AiCreationProviderStore {
             variablesJson = AiCreationVariables.defaultJson,
             requestTemplate = ZHIPU_IMAGE_REQUEST_TEMPLATE,
             builtIn = true
+        ),
+        AiCreationProviderConfig(
+            id = IMAGE_LOCALDREAM_ID,
+            name = "Local Dream",
+            //默认同机直连；跨设备把 127.0.0.1 换成运行 Local Dream 的设备 IP（后端需开放局域网）
+            baseUrl = "http://127.0.0.1:8081/generate",
+            apiKey = "",
+            variablesJson = AiCreationVariables.localDreamImageVariablesJson,
+            requestTemplate = LOCALDREAM_IMAGE_REQUEST_TEMPLATE,
+            builtIn = true
         )
     )
 
@@ -548,6 +595,12 @@ object AiCreationProviderStore {
             id = "builtin-img-model-cogview3flash",
             providerId = IMAGE_ZHIPU_ID,
             modelId = "cogview-3-flash"
+        ),
+        AiCreationProviderModel(
+            id = "builtin-img-model-localdream",
+            providerId = IMAGE_LOCALDREAM_ID,
+            //本地后端没有模型查询接口：实际模型与参数由 Local Dream 启动后端时选定，此条仅作界面占位
+            modelId = "local-dream"
         )
     )
 
