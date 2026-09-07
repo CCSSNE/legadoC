@@ -81,7 +81,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         val bottomY: Int
     )
 
-    private val binding = ViewReadAiFloatingPanelBinding.inflate(LayoutInflater.from(context), this, true)
+    private val binding = ViewReadAiFloatingPanelBinding.inflate(LayoutInflater.from(context), this)
     private val messageAdapter = AiChatAdapter(context)
     private val timeFormat = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
     private var lifecycleOwner: LifecycleOwner? = null
