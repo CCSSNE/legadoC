@@ -303,6 +303,6 @@ AI 铁律（死路，见到先复述给用户再定夺）：模型永远只当�
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- 最近一次自用版交付为 `3.26.090703c` / `10871`，2026-09-07，基于提交 `f82db262`（Local Dream 参数默认值按 Anima 模型 /models defaults 与真机实测修正：euler/steps 10/cfg 1/宽高 1024；图生图输入图中心裁剪缩放到请求宽高后编码 PNG，修复 Img size mismatch）使用 `assembleAppC` daemon 编译成功（`BUILD SUCCESSFUL in 1m 5s`，`75 actionable tasks: 13 executed, 62 up-to-date`）。产物包名 `io.legado.app.dev`、versionName `3.26.090703c`、versionCode `10871`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C-自用`（label-zh 逐字匹配）、`apksigner verify` 退出码 0；APK 位于 `app\build\outputs\apk\app\c\legado_app_3.26.090703_10871.apk`，已无线 ADB（10.135.114.244:36681）覆盖安装 Success。Local Dream 真机约束：MIUI 必须对 Local Dream 开"无限制后台+自启动"，否则进程被 cgroup freezer 冻结、控制口 8808 全部超时；图生图引擎要求输入图与请求宽高完全一致（512/1024 实测均通过），文生图引擎固定出 1024 方图。
+- 最近一次自用版交付为 `3.26.090704c` / `10872`，2026-09-07，基于提交 `1380ef1e`（AI 设置新增「模型上下文设置」弹窗：上下文超限从最新往回按用户轮边界整轮裁剪历史，默认 200K token 触发、裁到 50K；工具输出按头尾/头/尾模式裁剪，默认 8K 字符可关；聊天流显示「上下文触发裁剪」卡；Agent JS 全部旧上下文预算限制已拆除；SCHEMA_VERSION 升 7 重建）使用 `assembleAppC` daemon 编译成功（`BUILD SUCCESSFUL in 1m 39s`，`75 actionable tasks: 7 executed, 68 up-to-date`；首次编译因 AiContextTrimConfig 缺 import 失败一次，补齐后通过）。产物包名 `io.legado.app.dev`、versionName `3.26.090704c`、versionCode `10872`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C-自用`（label-zh 逐字匹配）、`apksigner verify` 退出码 0；APK 位于 `app\build\outputs\apk\app\c\legado_app_3.26.090704_10872.apk`，尚未安装。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
