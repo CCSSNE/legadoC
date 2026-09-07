@@ -422,14 +422,14 @@ object AiCreationProviderStore {
     /**
      * 删除模板中值为整串空占位符的键值对：先删带尾逗号的，再删带前逗号的，最后删唯一字段。
      * 顺序保证删除后不留双逗号或悬挂逗号；占位符两侧引号均可（裸值与字符串值两种写法）。
+     * 字段按“值为整串占位符”定位，不按字段名（字段名与 key 可能不一致，如 "image":"{{image_b64}}"）。
      */
     private fun removeEmptyPlaceholderField(template: String, key: String): String {
         val token = Regex.escape("{{$key}}")
-        val name = Regex.escape(key)
         val value = "\"?$token\"?"
-        var result = Regex("\"$name\"\\s*:\\s*$value\\s*,\\s*").replace(template, "")
-        result = Regex(",\\s*\"$name\"\\s*:\\s*$value").replace(result, "")
-        result = Regex("\"$name\"\\s*:\\s*$value").replace(result, "")
+        var result = Regex("\"[^\"]+\"\\s*:\\s*$value\\s*,\\s*").replace(template, "")
+        result = Regex(",\\s*\"[^\"]+\"\\s*:\\s*$value").replace(result, "")
+        result = Regex("\"[^\"]+\"\\s*:\\s*$value").replace(result, "")
         return result
     }
 
