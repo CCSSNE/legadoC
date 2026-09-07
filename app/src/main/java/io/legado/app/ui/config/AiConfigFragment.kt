@@ -1776,8 +1776,13 @@ class AiConfigFragment : PreferenceFragment(),
         findPreference<Preference>("aiEditRequest")?.isVisible = advancedSettingsEnabled
         findPreference<Preference>(PreferKey.aiApiRedactionEnabled)?.isVisible =
             advancedSettingsEnabled
+        findPreference<Preference>("aiContextTrim")?.isVisible = advancedSettingsEnabled
+        findPreference<Preference>(PreferKey.aiSendImageMaxPixels)?.isVisible =
+            advancedSettingsEnabled
         findPreference<PreferenceGroup>("aiTimeoutCategory")?.isVisible = advancedSettingsEnabled
         findPreference<PreferenceGroup>("aiCreationCategory")?.isVisible = advancedSettingsEnabled
+        findPreference<PreferenceGroup>("aiStoryboardCategory")?.isVisible = advancedSettingsEnabled
+        findPreference<PreferenceGroup>("agentCategory")?.isVisible = advancedSettingsEnabled
         listOf(
             "aiChapterPurifyFlowInfo",
             PreferKey.aiChapterPurifyReuseCurrentModel,
