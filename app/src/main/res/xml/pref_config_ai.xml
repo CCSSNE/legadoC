@@ -28,6 +28,12 @@
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
+            android:key="aiContextTrim"
+            android:summary="@string/ai_context_trim_summary"
+            android:title="@string/ai_context_trim"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
             android:key="aiSendImageMaxPixels"
             android:summary="@string/ai_send_image_max_resolution_summary"
             android:title="@string/ai_send_image_max_resolution"

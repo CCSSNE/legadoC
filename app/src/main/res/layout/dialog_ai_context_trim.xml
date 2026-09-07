@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:padding="16dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <io.legado.app.ui.widget.text.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/ai_context_max_tokens">
+
+            <io.legado.app.lib.theme.view.ThemeEditText
+                android:id="@+id/et_context_max_tokens"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:digits="1234567890"
+                android:imeOptions="actionNext"
+                android:inputType="number" />
+
+        </io.legado.app.ui.widget.text.TextInputLayout>
+
+        <io.legado.app.ui.widget.text.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:hint="@string/ai_context_trim_to_tokens">
+
+            <io.legado.app.lib.theme.view.ThemeEditText
+                android:id="@+id/et_trim_to_tokens"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:digits="1234567890"
+                android:imeOptions="actionNext"
+                android:inputType="number" />
+
+        </io.legado.app.ui.widget.text.TextInputLayout>
+
+        <io.legado.app.lib.theme.view.ThemeCheckBox
+            android:id="@+id/cb_tool_trim"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="@string/ai_context_tool_trim" />
+
+        <io.legado.app.ui.widget.text.AccentTextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="@string/ai_context_tool_trim_mode" />
+
+        <RadioGroup
+            android:id="@+id/rg_tool_trim_mode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <io.legado.app.lib.theme.view.ThemeRadioButton
+                android:id="@+id/rb_mode_head_tail"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/ai_context_tool_trim_mode_head_tail" />
+
+            <io.legado.app.lib.theme.view.ThemeRadioButton
+                android:id="@+id/rb_mode_head"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/ai_context_tool_trim_mode_head" />
+
+            <io.legado.app.lib.theme.view.ThemeRadioButton
+                android:id="@+id/rb_mode_tail"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/ai_context_tool_trim_mode_tail" />
+
+        </RadioGroup>
+
+        <io.legado.app.ui.widget.text.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:hint="@string/ai_context_tool_trim_chars">
+
+            <io.legado.app.lib.theme.view.ThemeEditText
+                android:id="@+id/et_tool_trim_chars"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:digits="1234567890"
+                android:inputType="number" />
+
+        </io.legado.app.ui.widget.text.TextInputLayout>
+
+    </LinearLayout>
+
+</androidx.core.widget.NestedScrollView>

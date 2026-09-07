@@ -15,10 +15,12 @@ import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
+import io.legado.app.databinding.DialogAiContextTrimBinding
 import io.legado.app.databinding.DialogAiCreationProviderEditBinding
 import io.legado.app.databinding.DialogAiProviderEditBinding
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.ai.AiChapterPurifyConfig
+import io.legado.app.help.ai.AiContextTrimConfig
 import io.legado.app.help.ai.AiStoryboardConfig
 import io.legado.app.help.ai.AiChatService
 import io.legado.app.help.ai.AiCreationConfig
@@ -101,6 +103,7 @@ class AiConfigFragment : PreferenceFragment(),
             "aiTestCurrentConnection" -> testCurrentAiConnection()
             "aiManageModels" -> showManageModelsDialog()
             "aiEditRequest" -> showEditRequestDialog()
+            "aiContextTrim" -> showContextTrimDialog()
             PreferKey.aiSendImageMaxPixels -> showChapterPurifyIntDialog(
                 R.string.ai_send_image_max_resolution,
                 AiCreationCardImages.sendImageMaxWanPixels,
@@ -273,6 +276,45 @@ class AiConfigFragment : PreferenceFragment(),
                 AppLog.put("AI 日志导出失败\n${it.localizedMessage}", it)
                 toastOnUi(getString(R.string.ai_log_export_failed, it.localizedMessage ?: "未知错误"))
             }
+        }
+    }
+
+    private fun showContextTrimDialog() {
+        val binding = DialogAiContextTrimBinding.inflate(layoutInflater).apply {
+            etContextMaxTokens.setText(AiContextTrimConfig.contextMaxTokens.toString())
+            etTrimToTokens.setText(AiContextTrimConfig.trimToTokens.toString())
+            cbToolTrim.isChecked = AiContextTrimConfig.toolOutputTrimEnabled
+            when (AiContextTrimConfig.toolOutputTrimMode) {
+                AiContextTrimConfig.MODE_HEAD -> rbModeHead.isChecked = true
+                AiContextTrimConfig.MODE_TAIL -> rbModeTail.isChecked = true
+                else -> rbModeHeadTail.isChecked = true
+            }
+            etToolTrimChars.setText(AiContextTrimConfig.toolOutputTrimChars.toString())
+        }
+        alert(titleResource = R.string.ai_context_trim) {
+            customView { binding.root }
+            okButton {
+                val maxTokens = binding.etContextMaxTokens.text?.toString()?.trim()?.toIntOrNull()
+                val trimTo = binding.etTrimToTokens.text?.toString()?.trim()?.toIntOrNull()
+                val toolChars = binding.etToolTrimChars.text?.toString()?.trim()?.toIntOrNull()
+                if (maxTokens == null || maxTokens <= 0 || trimTo == null || trimTo <= 0 ||
+                    toolChars == null || toolChars <= 0 || trimTo >= maxTokens
+                ) {
+                    toastOnUi(R.string.ai_context_trim_invalid)
+                    return@okButton
+                }
+                AiContextTrimConfig.contextMaxTokens = maxTokens
+                AiContextTrimConfig.trimToTokens = trimTo
+                AiContextTrimConfig.toolOutputTrimEnabled = binding.cbToolTrim.isChecked
+                AiContextTrimConfig.toolOutputTrimMode = when {
+                    binding.rbModeHead.isChecked -> AiContextTrimConfig.MODE_HEAD
+                    binding.rbModeTail.isChecked -> AiContextTrimConfig.MODE_TAIL
+                    else -> AiContextTrimConfig.MODE_HEAD_TAIL
+                }
+                AiContextTrimConfig.toolOutputTrimChars = toolChars
+                refreshUi()
+            }
+            cancelButton()
         }
     }
 

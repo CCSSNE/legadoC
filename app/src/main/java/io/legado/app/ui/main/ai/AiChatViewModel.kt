@@ -68,6 +68,9 @@ class AiChatViewModel : ViewModel() {
 
         /** 本轮最近一次请求的真实 prompt（= 当时上下文锚点）；-1 表示尚未记录。 */
         var lastPromptTokens: Long = -1L
+
+        /** 本轮触发的上下文裁剪记录（历史裁剪 / 工具输出裁剪），按发生顺序渲染成提示卡。 */
+        val trimmedLines: MutableList<String> = mutableListOf()
     }
 
     private val turnTraces = mutableMapOf<String, TurnTrace>()
@@ -224,7 +227,7 @@ class AiChatViewModel : ViewModel() {
                     statusStage = status.optString("type")))
                 return
             }
-            "tool.start", "tool.result", "tool.unknown", "model.request", "model.response", "model.usage", "prompt.context", "memory.recalled" -> Unit
+            "tool.start", "tool.result", "tool.unknown", "model.request", "model.response", "model.usage", "prompt.context", "memory.recalled", "context.trimmed" -> Unit
             else -> return
         }
         val turnKey = activeTurnKey ?: return
@@ -288,6 +291,19 @@ class AiChatViewModel : ViewModel() {
             "memory.recalled" -> {
                 trace.recalled = status.optJSONArray("matches")
             }
+            "context.trimmed" -> {
+                if (status.optString("kind") == "history") {
+                    val before = status.optLong("beforeTokens", 0L)
+                    val after = status.optLong("afterTokens", 0L)
+                    trace.trimmedLines.add(
+                        "历史 ${AiUsageFormat.tokens(before)} → ${AiUsageFormat.tokens(after)}（丢弃 ${AiUsageFormat.tokens((before - after).coerceAtLeast(0))}）"
+                    )
+                } else {
+                    val pruned = status.optInt("pruned", 0)
+                    val chars = status.optLong("charsRemoved", 0L)
+                    if (pruned > 0) trace.trimmedLines.add("工具输出 $pruned 条，省略 $chars 字符")
+                }
+            }
             "model.request" -> {
                 // display=true 的才是注入本轮问答的主循环请求（附带调用无此标记）；
                 // 若插件/旧运行没打标记，有工具表的是主循环（附带调用 tools 为空）。
@@ -305,6 +321,10 @@ class AiChatViewModel : ViewModel() {
     private fun refreshTurnCards(turnKey: String, trace: TurnTrace) {
         renderPromptContext(trace)?.let { text ->
             upsertCard(id = "ctx:$turnKey", kind = AiChatMessage.Kind.CONTEXT, content = text)
+        }
+        if (trace.trimmedLines.isNotEmpty()) {
+            upsertCard(id = "trim:$turnKey", kind = AiChatMessage.Kind.CONTEXT,
+                content = "上下文触发裁剪\n" + trace.trimmedLines.joinToString("\n"))
         }
         if (trace.calls.isNotEmpty()) {
             upsertCard(id = "tools:$turnKey", kind = AiChatMessage.Kind.TOOLS, content = renderToolsCard(trace))

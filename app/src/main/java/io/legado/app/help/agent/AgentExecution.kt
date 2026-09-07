@@ -36,6 +36,7 @@ class AgentExecution(
         return when (operation) {
             "config" -> JSONObject().put("plugin", owner.settings).put("revision", owner.revision)
                 .put("modules", JSONObject(modulesSnapshot.toString())).put("memory", moduleSnapshots["memory"] ?: JSONObject())
+                .put("context", io.legado.app.help.ai.AiContextTrimConfig.snapshot())
             "context.snapshot" -> JSONObject(run.input).getJSONObject("reading")
             "context.refresh" -> AgentReading.current()
             "model.reference" -> {
