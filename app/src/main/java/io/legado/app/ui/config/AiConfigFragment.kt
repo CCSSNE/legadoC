@@ -1037,7 +1037,16 @@ class AiConfigFragment : PreferenceFragment(),
         toastOnUi(R.string.ai_creation_image_test_running)
         lifecycleScope.launch {
             val result = withContext(IO) {
-                runCatching { AiCreationImageTaskHolder.testConnection(target.provider, target.modelId) }
+                runCatching {
+                    AiCreationImageTaskHolder.testConnection(
+                        target.provider,
+                        target.modelId,
+                        onProgress = { step, totalSteps ->
+                            if (totalSteps > 0) toastOnUi("本地生成中：第 $step/$totalSteps 步")
+                        },
+                        onStatus = { message -> toastOnUi(message) }
+                    )
+                }
             }
             result.onSuccess {
                 toastOnUi(R.string.ai_creation_image_test_success)

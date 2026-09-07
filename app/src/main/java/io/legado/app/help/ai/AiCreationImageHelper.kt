@@ -992,10 +992,13 @@ object AiCreationImageTaskHolder {
     /**
      * 图片测试连接：用当前供应商全部配置真实请求一次（变量取默认值，出 1 张），
      * 图片落盘并计入创作缓存，返回文件名。
+     * 进度与拉起状态与书内生图同口径上报，调用方自行展示。
      */
     suspend fun testConnection(
         provider: AiCreationProviderConfig,
-        modelId: String
+        modelId: String,
+        onProgress: ((step: Int, totalSteps: Int) -> Unit)? = null,
+        onStatus: (String) -> Unit = {}
     ): String = withContext(Dispatchers.IO) {
         check(provider.requestTemplate.isNotBlank()) { "当前图片供应商「${provider.name}」的图片请求模板为空" }
         val variables = AiCreationProviderStore.parsedVariables(provider, isVideo = false)
@@ -1007,7 +1010,8 @@ object AiCreationImageTaskHolder {
                 width = variables.firstOrNull { it.key == "width" }
                     ?.effectiveValue(null)?.trim()?.toIntOrNull() ?: 1024,
                 height = variables.firstOrNull { it.key == "height" }
-                    ?.effectiveValue(null)?.trim()?.toIntOrNull() ?: 1024
+                    ?.effectiveValue(null)?.trim()?.toIntOrNull() ?: 1024,
+                onStatus = onStatus
             )
         }
         val tokens = buildMap {
@@ -1038,7 +1042,7 @@ object AiCreationImageTaskHolder {
             llmInput = "",
             request = body
         )
-        val fileNames = fetchImages(provider, body, workflow)
+        val fileNames = fetchImages(provider, body, workflow, onProgress)
         val fileName = fileNames.firstOrNull()
             ?: throw IllegalStateException("服务未返回图片")
         appDb.creationResultDao.insert(CreationResult(fileName = fileName))
