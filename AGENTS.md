@@ -303,6 +303,7 @@ AI 铁律（死路，见到先复述给用户再定夺）：模型永远只当�
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- 最近一次自用版交付为 `3.26.090704c` / `10872`，2026-09-07，基于提交 `1380ef1e`（AI 设置新增「模型上下文设置」弹窗：上下文超限从最新往回按用户轮边界整轮裁剪历史，默认 200K token 触发、裁到 50K；工具输出按头尾/头/尾模式裁剪，默认 8K 字符可关；聊天流显示「上下文触发裁剪」卡；Agent JS 全部旧上下文预算限制已拆除；SCHEMA_VERSION 升 7 重建）使用 `assembleAppC` daemon 编译成功（`BUILD SUCCESSFUL in 1m 39s`，`75 actionable tasks: 7 executed, 68 up-to-date`；首次编译因 AiContextTrimConfig 缺 import 失败一次，补齐后通过）。产物包名 `io.legado.app.dev`、versionName `3.26.090704c`、versionCode `10872`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C-自用`（label-zh 逐字匹配）、`apksigner verify` 退出码 0；APK 位于 `app\build\outputs\apk\app\c\legado_app_3.26.090704_10872.apk`，尚未安装。
+- 最近一次自用版交付为 `3.26.090704c` / `10873`，2026-09-07，基于提交 `093043ac`（高级设置开关移到 AI 设置末尾并扩大管辖；AI 设置文案精简：编辑请求体/模型上下文/图片分辨率简介改为一句话、流程说明去简介；删除供应商与模型的二次确认弹窗改为直接删除）使用 `assembleAppC` 编译成功（`BUILD SUCCESSFUL in 4m 1s`，`75 actionable tasks: 20 executed, 55 up-to-date`）。产物包名 `io.legado.app.dev`、versionName `3.26.090704c`、versionCode `10873`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C-自用`（label-zh 逐字匹配）、`apksigner verify` 退出码 0；APK 位于 `app\build\outputs\apk\app\c\legado_app_3.26.090704_10873.apk`，尚未安装。
+- 最近一次公开版交付为 `3.26.090704` / `10874`，2026-09-07，基于提交 `093043ac` 使用 `assembleOssRelease` 编译成功（`BUILD SUCCESSFUL in 5m 10s`，`121 actionable tasks: 29 executed, 2 from cache, 90 up-to-date`）。产物包名 `io.legado.app.c`、versionName `3.26.090704`（无 c 后缀）、versionCode `10874`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C`（label-zh 逐字匹配）、`apksigner verify` 退出码 0；APK 位于 `app\build\outputs\apk\oss\release\legado_oss_3.26.090704_10874.apk`，尚未发布。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
