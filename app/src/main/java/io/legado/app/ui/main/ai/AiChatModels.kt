@@ -150,7 +150,7 @@ object AiUsageFormat {
 
     /** 会话总计卡首行：轮 = 会话轮数，步 = 模型请求总次数；轮步只出现在这里。 */
     fun header(totals: AiUsageTotals): String =
-        "${totals.rounds} 轮 · ${totals.steps} 步 | LLM ${duration(totals.llmMs)} · Tool ${duration(totals.toolMs)}"
+        "${totals.rounds}-Turn ${totals.steps}-Step | LLM-${duration(totals.llmMs)} Tool-${duration(totals.toolMs)}"
 
     /** 单轮隐藏元数据行：本轮流模型步数、工具耗时与上下文锚点，供总计卡汇总，界面不渲染。 */
     fun meta(totals: AiUsageTotals): String =
