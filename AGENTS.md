@@ -303,7 +303,7 @@ AI 铁律（死路，见到先复述给用户再定夺）：模型永远只当�
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- 最近一次自用版交付为 `3.26.090709c` / `10876`，2026-09-07，基于提交 `e4272f33`（空占位符字段改按值定位删除：真机 A/B 实测确认 `"image":"{{image_b64}}"` 空字段误发导致后端 `Img size mismatch`，无 image 字段 steps=1 真后端 25.7 秒出 1024 图）使用 `assembleAppC` 编译成功（`BUILD SUCCESSFUL in 37s`，`75 actionable tasks: 13 executed, 62 up-to-date`）。产物包名 `io.legado.app.dev`、versionName `3.26.090709c`、versionCode `10876`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C-自用`（label-zh 逐字匹配）、`apksigner verify` 退出码 0；APK 位于 `app\build\outputs\apk\app\c\legado_app_3.26.090709_10876.apk`，尚未安装。
+- 最近一次自用版交付为 `3.26.090710c` / `10877`，2026-09-07，基于提交 `e284f289`（图片测试连接接上生成进度与拉起状态提示，与书内生图同口径）使用 `assembleAppC` 编译成功（`BUILD SUCCESSFUL in 37s`，`75 actionable tasks: 13 executed, 62 up-to-date`）。产物包名 `io.legado.app.dev`、versionName `3.26.090710c`、versionCode `10877`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C-自用`（label-zh 逐字匹配）、`apksigner verify` 退出码 0；APK 位于 `app\build\outputs\apk\app\c\legado_app_3.26.090710_10877.apk`，尚未安装。
 - 最近一次公开版交付为 `3.26.090704` / `10874`，2026-09-07，基于提交 `093043ac` 使用 `assembleOssRelease` 编译成功（`BUILD SUCCESSFUL in 5m 10s`，`121 actionable tasks: 29 executed, 2 from cache, 90 up-to-date`）。产物包名 `io.legado.app.c`、versionName `3.26.090704`（无 c 后缀）、versionCode `10874`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C`（label-zh 逐字匹配）、`apksigner verify` 退出码 0；APK 位于 `app\build\outputs\apk\oss\release\legado_oss_3.26.090704_10874.apk`，尚未发布。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
