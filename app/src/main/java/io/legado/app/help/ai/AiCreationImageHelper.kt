@@ -961,7 +961,8 @@ object AiCreationImageTaskHolder {
         val width = extraValues["width"]?.trim()?.toIntOrNull() ?: 1024
         val height = extraValues["height"]?.trim()?.toIntOrNull() ?: 1024
         val rawBase64 = dataUrl.substringAfterLast(",")
-        val source = BitmapFactory.decodeByteArray(Base64.decode(rawBase64, Base64.DEFAULT), 0, -1)
+        val imageBytes = Base64.decode(rawBase64, Base64.DEFAULT)
+        val source = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
             ?: return rawBase64
         val cropped = centerCropScale(source, width, height)
         val out = ByteArrayOutputStream()
