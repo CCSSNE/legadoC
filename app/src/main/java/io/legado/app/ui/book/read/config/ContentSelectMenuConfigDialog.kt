@@ -49,7 +49,7 @@ class ContentSelectMenuConfigDialog :
             "edit_config" to R.string.edit
         )
         private val defaultCheckedIds =
-            setOf("replace", "copy", "bookmark", "paragraph_bookmark", "aloud", "ai_create", "stage", "edit_config")
+            setOf("replace", "copy", "bookmark", "paragraph_bookmark", "aloud", "ask_ai", "ai_create", "stage", "edit_config")
         private val removedActionIds = setOf("generate_image")
     }
 

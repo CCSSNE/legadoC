@@ -124,6 +124,8 @@
         android:id="@+id/read_ai_panel"
         android:layout_width="320dp"
         android:layout_height="wrap_content"
+        android:background="@drawable/bg_read_ai_panel"
+        android:elevation="12dp"
         android:visibility="gone" />
 
     <View

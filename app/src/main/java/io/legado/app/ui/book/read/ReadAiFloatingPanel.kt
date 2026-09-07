@@ -9,6 +9,7 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import androidx.core.view.doOnLayout
 import androidx.core.view.isVisible
@@ -49,12 +50,19 @@ import kotlin.math.min
  * 阅读页问 AI 悬浮窗：与应用外大界面（[AiChatActivity]）完全同一套会话。
  * 只是在书里选一段正文点问 AI 时，把该段正文预填进输入框等待用户补充问题后手动发送；
  * 不做任何按书隔离，历史、新对话、模型、工具卡等全部与大界面一致。
- * 本体只是悬浮外壳（拖动、关闭、全屏放大），消息渲染与请求都走 [AiChatViewModel]。
+ * 本体只是悬浮外壳（顶栏拖动、四边四角拖拽调大小、关闭、全屏放大），消息渲染与请求都走 [AiChatViewModel]。
  */
 class ReadAiFloatingPanel @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null
-) : LinearLayout(context, attrs) {
+) : FrameLayout(context, attrs) {
+
+    companion object {
+        private const val DIR_LEFT = 1
+        private const val DIR_RIGHT = 1 shl 1
+        private const val DIR_TOP = 1 shl 2
+        private const val DIR_BOTTOM = 1 shl 3
+    }
 
     data class ReadContext(
         val bookUrl: String,
@@ -83,10 +91,18 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
     private var downRawY = 0f
     private var startX = 0f
     private var startY = 0f
+    private val minPanelWidth = 200.dpToPx()
+    private val minPanelHeight = 200.dpToPx()
+    private var resizeDir = 0
+    private var resizeDownRawX = 0f
+    private var resizeDownRawY = 0f
+    private var resizeStartX = 0f
+    private var resizeStartY = 0f
+    private var resizeStartWidth = 0
+    private var resizeStartHeight = 0
 
     init {
-        orientation = VERTICAL
-        binding.root.applyUiBodyTypefaceDeep(context.uiTypeface())
+        applyUiBodyTypefaceDeep(context.uiTypeface())
         binding.answerContainer.layoutManager = LinearLayoutManager(context).apply {
             stackFromEnd = true
         }
@@ -116,6 +132,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
             }
         }
         binding.dragHandle.setOnTouchListener { _, event -> handleDrag(event) }
+        setupResizeHandles()
         applyTheme()
     }
 
@@ -409,6 +426,111 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         return false
     }
 
+    private fun setupResizeHandles() {
+        binding.handleTop.setOnTouchListener { _, event -> handleResize(event, DIR_TOP) }
+        binding.handleBottom.setOnTouchListener { _, event -> handleResize(event, DIR_BOTTOM) }
+        binding.handleLeft.setOnTouchListener { _, event -> handleResize(event, DIR_LEFT) }
+        binding.handleRight.setOnTouchListener { _, event -> handleResize(event, DIR_RIGHT) }
+        binding.handleTopLeft.setOnTouchListener { _, event -> handleResize(event, DIR_TOP or DIR_LEFT) }
+        binding.handleTopRight.setOnTouchListener { _, event -> handleResize(event, DIR_TOP or DIR_RIGHT) }
+        binding.handleBottomLeft.setOnTouchListener { _, event -> handleResize(event, DIR_BOTTOM or DIR_LEFT) }
+        binding.handleBottomRight.setOnTouchListener { _, event -> handleResize(event, DIR_BOTTOM or DIR_RIGHT) }
+    }
+
+    /**
+     * 按住四边或四角拖拽调整面板大小：边只改一个方向，角同时改宽高；
+     * 上边/左边的缩放固定对边不动、整体跟随移动。
+     */
+    private fun handleResize(event: MotionEvent, dir: Int): Boolean {
+        val parentView = parent as? ViewGroup ?: return false
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                resizeDir = dir
+                resizeDownRawX = event.rawX
+                resizeDownRawY = event.rawY
+                resizeStartX = x
+                resizeStartY = y
+                resizeStartWidth = width
+                resizeStartHeight = height
+                parentView.requestDisallowInterceptTouchEvent(true)
+                return true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (resizeDir != dir || resizeStartWidth <= 0 || resizeStartHeight <= 0) return true
+                val dx = event.rawX - resizeDownRawX
+                val dy = event.rawY - resizeDownRawY
+                var newWidth = resizeStartWidth
+                var newHeight = resizeStartHeight
+                var newX = resizeStartX
+                var newY = resizeStartY
+                val rightEdge = resizeStartX + resizeStartWidth
+                val bottomEdge = resizeStartY + resizeStartHeight
+                if (dir and DIR_LEFT != 0) {
+                    newWidth = (resizeStartWidth - dx).toInt()
+                        .coerceIn(minPanelWidth, rightEdge.toInt().coerceAtLeast(minPanelWidth))
+                    newX = rightEdge - newWidth
+                } else if (dir and DIR_RIGHT != 0) {
+                    newWidth = (resizeStartWidth + dx).toInt()
+                        .coerceIn(
+                            minPanelWidth,
+                            (parentView.width - resizeStartX).toInt().coerceAtLeast(minPanelWidth)
+                        )
+                }
+                if (dir and DIR_TOP != 0) {
+                    newHeight = (resizeStartHeight - dy).toInt()
+                        .coerceIn(minPanelHeight, bottomEdge.toInt().coerceAtLeast(minPanelHeight))
+                    newY = bottomEdge - newHeight
+                } else if (dir and DIR_BOTTOM != 0) {
+                    newHeight = (resizeStartHeight + dy).toInt()
+                        .coerceIn(
+                            minPanelHeight,
+                            (parentView.height - resizeStartY).toInt().coerceAtLeast(minPanelHeight)
+                        )
+                }
+                applyPanelSize(newWidth, newHeight, dir)
+                x = newX
+                y = newY
+                return true
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                ensureInsideParent()
+                parentView.requestDisallowInterceptTouchEvent(false)
+                return true
+            }
+        }
+        return false
+    }
+
+    private fun applyPanelSize(newWidth: Int, newHeight: Int, dir: Int) {
+        val lp = layoutParams ?: return
+        if (dir and (DIR_LEFT or DIR_RIGHT) != 0) {
+            lp.width = newWidth
+        }
+        if (dir and (DIR_TOP or DIR_BOTTOM) != 0) {
+            lp.height = newHeight
+            switchToFlexHeight()
+        }
+        layoutParams = lp
+    }
+
+    /**
+     * 纵向第一次被用户手动缩放时才切换：内容层改为撑满面板固定高度，
+     * 中间消息列表改成 weight 填充剩余空间，后续纵向缩放由列表吃掉高度差。
+     */
+    private fun switchToFlexHeight() {
+        binding.panelContent.layoutParams?.let { lp ->
+            if (lp.height != ViewGroup.LayoutParams.MATCH_PARENT) {
+                lp.height = ViewGroup.LayoutParams.MATCH_PARENT
+            }
+        }
+        (binding.answerContainer.layoutParams as? LinearLayout.LayoutParams)?.let { lp ->
+            if (lp.height != 0 || lp.weight != 1f) {
+                lp.height = 0
+                lp.weight = 1f
+            }
+        }
+    }
+
     private fun ensureInsideParent() {
         val parentView = parent as? ViewGroup ?: return
         if (width <= 0 || height <= 0 || parentView.width <= 0 || parentView.height <= 0) return
@@ -438,6 +560,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         binding.btnSend.backgroundTintList = ColorStateList.valueOf(context.accentColor)
         binding.btnSend.setColorFilter(Color.WHITE)
         binding.btnClose.imageTintList = ColorStateList.valueOf(context.secondaryTextColor)
+        binding.handleBottomRight.setColorFilter(context.secondaryTextColor)
         binding.tvModel.setTextColor(context.primaryTextColor)
         binding.btnMore.imageTintList = ColorStateList.valueOf(context.secondaryTextColor)
         binding.btnFullscreen.imageTintList = ColorStateList.valueOf(context.secondaryTextColor)
