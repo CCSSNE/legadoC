@@ -1,6 +1,12 @@
 package io.legado.app.help.ai
 
 import io.legado.app.constant.PreferKey
+import io.legado.app.utils.getPrefBoolean
+import io.legado.app.utils.getPrefInt
+import io.legado.app.utils.getPrefString
+import io.legado.app.utils.putPrefBoolean
+import io.legado.app.utils.putPrefInt
+import io.legado.app.utils.putPrefString
 import org.json.JSONObject
 import splitties.init.appCtx
 
