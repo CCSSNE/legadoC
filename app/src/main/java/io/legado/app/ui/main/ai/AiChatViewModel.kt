@@ -65,6 +65,9 @@ class AiChatViewModel : ViewModel() {
     ) {
         /** 本轮第一步的首 token 延迟（首字口径与 DSH 轮尾一致）；-1 表示尚未记录。 */
         var firstTtftMs: Long = -1L
+
+        /** 本轮最近一次请求的真实 prompt（= 当时上下文锚点）；-1 表示尚未记录。 */
+        var lastPromptTokens: Long = -1L
     }
 
     private val turnTraces = mutableMapOf<String, TurnTrace>()
@@ -269,6 +272,7 @@ class AiChatViewModel : ViewModel() {
                     trace.usage.ttftMs += status.optLong("ttftMs", 0L)
                     trace.usage.llmMs += status.optLong("elapsedMs", 0L)
                     if (trace.firstTtftMs < 0) trace.firstTtftMs = status.optLong("ttftMs", 0L)
+                    trace.lastPromptTokens = status.optLong("promptTokens", 0L)
                     if (status.optBoolean("estimated", false)) trace.usage.estimated = true
                 }
             }
@@ -379,7 +383,7 @@ class AiChatViewModel : ViewModel() {
         return "$header\n$debug\n$detail"
     }
 
-    /** 单轮用量统计卡：首行收起摘要（总 token / 输出速度 / 首字），展开显示 in/out/total；轮步不进单轮卡。 */
+    /** 单轮用量统计卡：收起一行摘要，展开显示 in/ctx/out/total；ctx = 本轮最后一次请求的真实输入。 */
     private fun renderTurnStats(trace: TurnTrace): String {
         val totals = AiUsageTotals(
             inTokens = trace.usage.inTokens,
@@ -389,35 +393,50 @@ class AiChatViewModel : ViewModel() {
             llmMs = trace.usage.llmMs,
             steps = trace.rounds.coerceAtLeast(1),
             toolMs = trace.calls.values.filter { it.elapsedMs >= 0 }.sumOf { it.elapsedMs },
-            estimated = trace.usage.estimated
+            estimated = trace.usage.estimated,
+            ctxAnchor = trace.lastPromptTokens
         )
         return listOf(
             AiUsageFormat.collapsed(totals, if (trace.firstTtftMs >= 0) trace.firstTtftMs else totals.ttftMs),
             AiUsageFormat.inRow(totals),
+            AiUsageFormat.ctxRow(totals.ctxAnchor.coerceAtLeast(0), approx = false),
             AiUsageFormat.outRow(totals),
             AiUsageFormat.totalRow(totals),
             AiUsageFormat.meta(totals)
         ).joinToString("\n")
     }
 
-    /** 会话总计卡：轮 = 统计卡张数（一轮问答一张），步 = 各轮流模型步数之和，速度为加总后的平均。 */
+    /**
+     * 会话总计卡：轮 = 统计卡张数，步 = 各轮流模型步数之和，速度为加总后的平均。
+     * ctx = 锚点（最后一张统计卡记录的最后一次请求真实 prompt）+ 其后新增的助手正文字符估算，
+     * 即对下一次请求输入的预测；未发送的输入框草稿不计入（与 DSH 圈圈一致）。
+     */
     private fun renderSessionTotal(): String {
         val totals = AiUsageTotals()
         var turns = 0
+        var anchor = -1L
         messages.filter { (it.kind ?: AiChatMessage.Kind.TEXT) == AiChatMessage.Kind.STATS }
             .forEach { card ->
                 AiUsageFormat.parseTurnCard(card.content)?.let {
                     totals.add(it)
                     turns += 1
+                    if (it.ctxAnchor >= 0) anchor = it.ctxAnchor
                 }
             }
         totals.rounds = turns
-        return listOf(
+        val lines = mutableListOf(
             AiUsageFormat.header(totals) + if (totals.estimated) " <e>" else "",
-            AiUsageFormat.inRow(totals),
-            AiUsageFormat.outRow(totals),
-            AiUsageFormat.totalRow(totals)
-        ).joinToString("\n")
+            AiUsageFormat.inRow(totals)
+        )
+        if (anchor >= 0) {
+            val tail = messages.lastOrNull {
+                it.role == AiChatMessage.Role.ASSISTANT && (it.kind ?: AiChatMessage.Kind.TEXT) == AiChatMessage.Kind.TEXT
+            }?.content.orEmpty()
+            lines.add(AiUsageFormat.ctxRow(anchor + AiUsageFormat.estimate(tail), approx = true))
+        }
+        lines.add(AiUsageFormat.outRow(totals))
+        lines.add(AiUsageFormat.totalRow(totals))
+        return lines.joinToString("\n")
     }
 
     /**
