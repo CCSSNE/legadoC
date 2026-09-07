@@ -677,7 +677,7 @@ class AiConfigFragment : PreferenceFragment(),
             //删除放最左（neutral）：取消/确定左侧，编辑态才有，含内置图片/视频供应商
             if (provider != null) {
                 neutralButton(R.string.ai_remove_provider) {
-                    confirmRemoveCreationProvider(provider, isVideo)
+                    removeCreationProvider(provider, isVideo)
                 }
             }
             okButton {
@@ -800,33 +800,17 @@ class AiConfigFragment : PreferenceFragment(),
         }
     }
 
-    private fun confirmRemoveCreationProvider(
+    private fun removeCreationProvider(
         provider: AiCreationProviderConfig,
         isVideo: Boolean
     ) {
         //内置图片/视频供应商同样允许删除：存储层已支持删空不再重种内置项
-        val relatedModelCount = creationModels(isVideo).count { it.providerId == provider.id }
-        alert(
-            title = provider.name,
-            message = getString(
-                if (relatedModelCount > 0) {
-                    R.string.ai_remove_provider_confirm_with_models
-                } else {
-                    R.string.ai_remove_provider_confirm
-                },
-                relatedModelCount
-            )
-        ) {
-            okButton {
-                saveCreationProviders(
-                    isVideo,
-                    creationProviders(isVideo).filterNot { it.id == provider.id }
-                )
-                refreshUi()
-                toastOnUi(R.string.ai_provider_removed)
-            }
-            cancelButton()
-        }
+        saveCreationProviders(
+            isVideo,
+            creationProviders(isVideo).filterNot { it.id == provider.id }
+        )
+        refreshUi()
+        toastOnUi(R.string.ai_provider_removed)
     }
 
     private fun showCreationAddModelDialog(isVideo: Boolean) {
@@ -1364,7 +1348,7 @@ class AiConfigFragment : PreferenceFragment(),
             //删除放最左（neutral）：取消/确定左侧，编辑态才有
             if (provider != null) {
                 neutralButton(R.string.ai_remove_provider) {
-                    confirmRemoveProvider(provider)
+                    removeProvider(provider)
                 }
             }
             okButton {
@@ -1435,26 +1419,10 @@ class AiConfigFragment : PreferenceFragment(),
         }
     }
 
-    private fun confirmRemoveProvider(provider: AiProviderConfig) {
-        val relatedModelCount = AppConfig.aiModelConfigList.count { it.providerId == provider.id }
-        alert(
-            title = provider.name,
-            message = getString(
-                if (relatedModelCount > 0) {
-                    R.string.ai_remove_provider_confirm_with_models
-                } else {
-                    R.string.ai_remove_provider_confirm
-                },
-                relatedModelCount
-            )
-        ) {
-            okButton {
-                AppConfig.aiProviderList = AppConfig.aiProviderList.filterNot { it.id == provider.id }
-                refreshUi()
-                toastOnUi(R.string.ai_provider_removed)
-            }
-            cancelButton()
-        }
+    private fun removeProvider(provider: AiProviderConfig) {
+        AppConfig.aiProviderList = AppConfig.aiProviderList.filterNot { it.id == provider.id }
+        refreshUi()
+        toastOnUi(R.string.ai_provider_removed)
     }
 
     private fun showEditModelDialog(model: AiModelConfig? = null) {
@@ -1478,7 +1446,7 @@ class AiConfigFragment : PreferenceFragment(),
             //删除放最左（neutral）：取消/确定左侧，编辑态才有
             if (model != null) {
                 neutralButton(R.string.ai_remove_model) {
-                    confirmRemoveModel(model)
+                    removeModel(model)
                 }
             }
             okButton {
@@ -1685,19 +1653,11 @@ class AiConfigFragment : PreferenceFragment(),
         toastOnUi(getString(R.string.ai_fetch_models_success, newModels.size))
     }
 
-    private fun confirmRemoveModel(model: AiModelConfig) {
-        alert(
-            title = model.modelId,
-            message = getString(R.string.ai_remove_model_confirm)
-        ) {
-            okButton {
-                AppConfig.aiModelConfigList =
-                    AppConfig.aiModelConfigList.filterNot { it.id == model.id }
-                refreshUi()
-                toastOnUi(R.string.ai_model_removed)
-            }
-            cancelButton()
-        }
+    private fun removeModel(model: AiModelConfig) {
+        AppConfig.aiModelConfigList =
+            AppConfig.aiModelConfigList.filterNot { it.id == model.id }
+        refreshUi()
+        toastOnUi(R.string.ai_model_removed)
     }
 
     private fun currentProviderModels(): List<AiModelConfig> {

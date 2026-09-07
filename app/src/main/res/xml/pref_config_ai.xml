@@ -84,7 +84,6 @@
 
         <io.legado.app.lib.prefs.Preference
             android:key="aiChapterPurifyFlowInfo"
-            android:summary="@string/ai_chapter_purify_flow_info_summary"
             android:title="@string/ai_chapter_purify_flow_info"
             app:iconSpaceReserved="false" />
 
