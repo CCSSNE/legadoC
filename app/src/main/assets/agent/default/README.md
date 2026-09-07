@@ -18,4 +18,4 @@ storage 使用插件隔离的 namespace/key；put 可提供 revision 做乐观�
 
 可在 manifest.tools 声明 `{id,description,inputSchema,entry,export}`，entry 必须是包内 .js 文件，导出函数接收 JSON 参数并返回结构化工具结果。提示词按唯一 key 引用；Skill 是知识指导，不会变成工具。
 
-默认配置与源码都可查看。上下文预算是可编辑的 JS 请求策略，不截断原始记录；记忆召回、自动写入、排序和压缩均在 lib 中维护。
+默认配置与源码都可查看。上下文不做任何预算裁剪或摘要压缩：完整对话与完整工具结果原样发给模型，真实上下文上限由模型供应商暴露；记忆召回、自动写入和排序均在 lib 中维护。

@@ -47,14 +47,11 @@ exports.recall = function(input, config) {
     var result = call("memory_search", {query: input.user, mode: "vector", scope: resolved});
     if (!(config.memory.recallCount >= 0)) throw new Error("recallCount 必须为非负整数");
     result.matches.sort(function(left, right) { return right.score - left.score; });
-    var fraction = config.memory.contextFraction;
-    if (!(fraction > 0 && fraction <= 1)) throw new Error("记忆 contextFraction 必须在 (0,1] 内");
-    var budget = config.plugin.contextCharacters * fraction;
     var recalled = [];
     result.matches.forEach(function(item) {
-        if (item.score >= config.memory.minimumScore && recalled.length < config.memory.recallCount && JSON.stringify(recalled.concat([item])).length <= budget) recalled.push(item);
+        if (item.score >= config.memory.minimumScore && recalled.length < config.memory.recallCount) recalled.push(item);
     });
-    host.call("emit", {type: "memory.recalled", value: {matches: recalled, candidates: result.matches.length, contextCharacters: budget}});
+    host.call("emit", {type: "memory.recalled", value: {matches: recalled, candidates: result.matches.length}});
     return recalled;
 };
 

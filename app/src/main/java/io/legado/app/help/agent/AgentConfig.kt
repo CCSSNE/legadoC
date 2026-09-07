@@ -9,7 +9,7 @@ import java.net.URI
 object AgentConfig {
     // 破坏性升级版本号：只看它，对不上就删了重建，不迁移旧数据。
     // 内置插件、默认配置、记忆策略或存储结构改了就升它；版本不兼容时直接清空重建。
-    const val SCHEMA_VERSION = 6
+    const val SCHEMA_VERSION = 7
     private val bundledDefaults: JSONObject by lazy {
         JSONObject(appCtx.assets.open("agent/defaults.json").bufferedReader().use { it.readText() })
     }
@@ -119,9 +119,7 @@ object AgentConfig {
                     require(string("scope") in setOf("book", "global")) { "记忆作用域必须为 book/global" }
                     integer("recallCount", 0)
                     val minimumScore = value.getDouble("minimumScore")
-                    val fraction = value.getDouble("contextFraction")
                     require(minimumScore.isFinite() && minimumScore in -1.0..1.0) { "minimumScore 必须在 [-1,1]" }
-                    require(fraction.isFinite() && fraction > 0 && fraction <= 1) { "contextFraction 必须在 (0,1]" }
                 }
                 "web" -> {
                     string("apiKey"); url("baseUrl")

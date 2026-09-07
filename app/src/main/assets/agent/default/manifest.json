@@ -1,11 +1,11 @@
 {
   "id": "legado.reader",
   "name": "通用助手与陪读",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "hostApiVersion": 1,
   "entry": "main.js",
   "dependencies": {"prompts": [], "skills": [], "plugins": {}},
-  "prompts": {"reader.system": "prompts/system.md", "reader.memory": "prompts/memory.md", "reader.compress": "prompts/compress.md"},
+  "prompts": {"reader.system": "prompts/system.md", "reader.memory": "prompts/memory.md"},
   "skills": {},
   "tools": [],
   "settings": {
@@ -13,22 +13,14 @@
       "type": "object",
       "properties": {
         "systemPromptKey": {"type": "string"},
-        "memoryPromptKey": {"type": "string"},
-        "compressionPromptKey": {"type": "string"},
-        "contextCharacters": {"type": "integer", "minimum": 1},
-        "compressionEnabled": {"type": "boolean"},
-        "historyRetentionTokens": {"type": "integer", "minimum": 1}
+        "memoryPromptKey": {"type": "string"}
       },
-      "required": ["systemPromptKey", "memoryPromptKey", "compressionPromptKey", "contextCharacters", "compressionEnabled"],
+      "required": ["systemPromptKey", "memoryPromptKey"],
       "additionalProperties": false
     },
     "defaults": {
       "systemPromptKey": "reader.system",
-      "memoryPromptKey": "reader.memory",
-      "compressionPromptKey": "reader.compress",
-      "contextCharacters": 120000,
-      "compressionEnabled": true,
-      "historyRetentionTokens": 20000
+      "memoryPromptKey": "reader.memory"
     }
   }
 }

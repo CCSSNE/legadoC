@@ -50,7 +50,7 @@ class AgentExecution(
                 require(body.has("messages") && body.has("model")) { "模型请求必须提供完整 messages 和 model" }
                 val requestId = UUID.randomUUID().toString()
                 val startedAt = System.currentTimeMillis()
-                // display 标记区分主循环与附带调用（记忆提取/压缩）：展示层只认主循环。
+                // display 标记区分主循环与附带调用（记忆提取）：展示层只认主循环。
                 emit("model.request", JSONObject().put("requestId", requestId).put("providerId", providerId)
                     .put("display", arguments.optBoolean("display", false)).put("body", body))
                 val response = try {

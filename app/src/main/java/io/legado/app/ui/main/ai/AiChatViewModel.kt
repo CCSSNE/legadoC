@@ -257,14 +257,14 @@ class AiChatViewModel : ViewModel() {
                 record.summary = "结果未知，未自动重放"
             }
             "model.response" -> {
-                // 只认主循环（display=true）的累计耗时与轮数：记忆提取/压缩是附带调用。
+                // 只认主循环（display=true）的累计耗时与轮数：记忆提取是附带调用。
                 if (trace.mainRequestIds.remove(status.optString("requestId"))) {
                     trace.rounds += 1
                     trace.modelMs += status.optLong("elapsedMs", 0L)
                 }
             }
             "model.usage" -> {
-                // 只累计主循环（display=true）的用量；记忆提取/压缩等附带调用不进统计。
+                // 只累计主循环（display=true）的用量；记忆提取等附带调用不进统计。
                 if (status.optBoolean("display", false)) {
                     trace.usage.inTokens += status.optLong("promptTokens", 0L)
                     trace.usage.outTokens += status.optLong("completionTokens", 0L)
