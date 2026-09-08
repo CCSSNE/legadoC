@@ -25,6 +25,7 @@ data class AiChatMessage(
     @Keep
     enum class Kind {
         TEXT,
+        THINKING,
         STATUS,
         TOOLS,
         CONTEXT,

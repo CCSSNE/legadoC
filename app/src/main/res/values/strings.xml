@@ -1133,6 +1133,8 @@
     <string name="ai_chat_thinking">Thinking…</string>
     <string name="ai_chat_thinking_collapsed">Thinking, tap to expand</string>
     <string name="ai_chat_thinking_done">Thinking completed, tap to expand</string>
+    <string name="ai_chat_think">Think</string>
+    <string name="ai_chat_thought_done">Thought for a while</string>
     <string name="select">Select</string>
     <string name="expand">Expand</string>
     <string name="collapse">Collapse</string>

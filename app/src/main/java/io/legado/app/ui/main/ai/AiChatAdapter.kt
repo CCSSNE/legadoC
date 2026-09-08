@@ -1,6 +1,7 @@
 package io.legado.app.ui.main.ai
 
 import android.content.Context
+import android.animation.ValueAnimator
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -11,9 +12,12 @@ import android.text.TextPaint
 import android.text.method.LinkMovementMethod
 import android.text.style.ClickableSpan
 import android.text.style.URLSpan
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.LinearInterpolator
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -63,6 +67,7 @@ class AiChatAdapter(
         items.addAll(list.filter { message ->
             when (message.kind ?: AiChatMessage.Kind.TEXT) {
                 AiChatMessage.Kind.TEXT,
+                AiChatMessage.Kind.THINKING,
                 AiChatMessage.Kind.TOOLS,
                 AiChatMessage.Kind.CONTEXT,
                 AiChatMessage.Kind.STATS,
@@ -104,6 +109,11 @@ class AiChatAdapter(
     }
 
     override fun getItemCount(): Int = items.size
+
+    override fun onViewRecycled(holder: RecyclerView.ViewHolder) {
+        if (holder is AssistantViewHolder) holder.cancelSweep()
+        super.onViewRecycled(holder)
+    }
 
     private fun createBubble(
         fillColor: Int,
@@ -200,6 +210,18 @@ class AiChatAdapter(
             cards.distinctBy { it.bookUrl },
             toolEvents.values.toList()
         )
+    }
+
+    /** DSH 同口径：跑时摘要取最后一行（跟尾），结束后取第一行。 */
+    private fun firstLine(text: String): String {
+        val index = text.indexOf('\n')
+        return if (index < 0) text else text.substring(0, index)
+    }
+
+    private fun latestLine(text: String): String {
+        val visible = text.trimEnd()
+        val index = visible.lastIndexOf('\n')
+        return if (index < 0) visible else visible.substring(index + 1)
     }
 
     private fun bindSearchCards(binding: ItemAiMessageAssistantBinding, cards: List<SearchBookCard>) {
@@ -611,18 +633,58 @@ class AiChatAdapter(
         private val binding: ItemAiMessageAssistantBinding
     ) : RecyclerView.ViewHolder(binding.root) {
 
+        private var sweepAnimator: ValueAnimator? = null
+        private var boundThinkingId: String? = null
+        private var thinkingTitle: TextView? = null
+        private var thinkingSummary: TextView? = null
+        private var thinkingDetail: TextView? = null
+        private var thinkingChevron: ImageView? = null
+        private var thinkingSweep: View? = null
+
+        fun cancelSweep() {
+            sweepAnimator?.cancel()
+            sweepAnimator = null
+            boundThinkingId = null
+            thinkingTitle = null
+            thinkingSummary = null
+            thinkingDetail = null
+            thinkingChevron = null
+            thinkingSweep = null
+            binding.root.contentDescription = null
+        }
+
+        private fun setFullBleed(full: Boolean) {
+            val params = binding.messageContainer.layoutParams
+            val target = if (full) ViewGroup.LayoutParams.MATCH_PARENT
+            else ViewGroup.LayoutParams.WRAP_CONTENT
+            if (params.width != target) {
+                params.width = target
+                binding.messageContainer.layoutParams = params
+            }
+        }
+
         fun bind(message: AiChatMessage) {
             when (message.kind) {
                 AiChatMessage.Kind.TOOLS, AiChatMessage.Kind.CONTEXT -> {
+                    cancelSweep()
+                    setFullBleed(false)
                     bindInfoCard(binding, message)
                     return
                 }
                 AiChatMessage.Kind.STATS, AiChatMessage.Kind.TOTAL -> {
+                    cancelSweep()
+                    setFullBleed(false)
                     bindUsageCard(binding, message)
+                    return
+                }
+                AiChatMessage.Kind.THINKING -> {
+                    bindThinking(message)
                     return
                 }
                 else -> Unit
             }
+            cancelSweep()
+            setFullBleed(false)
             val parsed = parseMessageContent(message.content)
             binding.messageContainer.minimumWidth = if (message.pending) 220.dpToPx() else 0
             binding.tvMessage.background = createBubble(
@@ -649,6 +711,182 @@ class AiChatAdapter(
             }
             bindSearchCards(binding, parsed.searchCards)
             bindToolEvents(binding, parsed.toolEvents)
+        }
+
+        /**
+         * 思考横条：贯穿整行的单层折叠行。跑时单行跟尾冒字 + 扫光，点整行展开全文；
+         * 结束后转为“已思考”永久保留。同 id 流式更新只刷字不重建行，扫光不中断。
+         */
+        private fun bindThinking(message: AiChatMessage) {
+            if (boundThinkingId == message.id && thinkingSummary != null) {
+                refreshThinkingTexts(message)
+                return
+            }
+            cancelSweep()
+            setFullBleed(true)
+            binding.tvMessage.isVisible = false
+            binding.searchCardScroller.isVisible = false
+            val container = binding.toolEventContainer
+            container.removeAllViews()
+            container.isVisible = true
+            val row = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                background = GradientDrawable().apply {
+                    val fill = ColorUtils.blendColors(context.backgroundColor, context.accentColor, 0.05f)
+                    cornerRadius = UiCorner.scaledDp(16f)
+                    setColor(UiCorner.surfaceColor(fill))
+                    setStroke(1.dpToPx(), UiCorner.effectStrokeColor(fill))
+                }
+                setPadding(14.dpToPx(), 10.dpToPx(), 14.dpToPx(), 10.dpToPx())
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    topMargin = 6.dpToPx()
+                }
+            }
+            val headerFrame = FrameLayout(context).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            }
+            val header = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                layoutParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT
+                )
+            }
+            val titleView = TextView(context).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+                setTextColor(context.primaryTextColor)
+                textSize = 13f
+                setTypeface(typeface, Typeface.BOLD)
+                maxLines = 1
+            }
+            val summaryView = TextView(context).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+                ).apply {
+                    marginStart = 8.dpToPx()
+                }
+                setTextColor(context.secondaryTextColor)
+                textSize = 12.5f
+                maxLines = 1
+            }
+            val chevron = ImageView(context).apply {
+                layoutParams = LinearLayout.LayoutParams(14.dpToPx(), 14.dpToPx()).apply {
+                    marginStart = 8.dpToPx()
+                }
+                setImageResource(R.drawable.ic_arrow_drop_down)
+                setColorFilter(context.secondaryTextColor)
+            }
+            header.addView(titleView)
+            header.addView(summaryView)
+            header.addView(chevron)
+            val sweep = View(context).apply {
+                layoutParams = FrameLayout.LayoutParams(
+                    120.dpToPx(), FrameLayout.LayoutParams.MATCH_PARENT
+                )
+                background = GradientDrawable(
+                    GradientDrawable.Orientation.LEFT_RIGHT,
+                    intArrayOf(
+                        Color.TRANSPARENT,
+                        ColorUtils.adjustAlpha(Color.WHITE, 0.55f),
+                        Color.TRANSPARENT
+                    )
+                )
+                isClickable = false
+                isFocusable = false
+            }
+            headerFrame.addView(header)
+            headerFrame.addView(sweep)
+            val detailView = TextView(context).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    topMargin = 8.dpToPx()
+                }
+                setTextColor(context.secondaryTextColor)
+                textSize = 12.5f
+                maxLines = Int.MAX_VALUE
+                setTextIsSelectable(true)
+            }
+            row.addView(headerFrame)
+            row.addView(detailView)
+            row.setOnClickListener {
+                if (message.id in expandedIds) expandedIds.remove(message.id)
+                else expandedIds.add(message.id)
+                val position = items.indexOfFirst { it.id == message.id }
+                if (position >= 0) notifyItemChanged(position)
+            }
+            container.addView(row)
+            boundThinkingId = message.id
+            thinkingTitle = titleView
+            thinkingSummary = summaryView
+            thinkingDetail = detailView
+            thinkingChevron = chevron
+            thinkingSweep = sweep
+            refreshThinkingTexts(message)
+            if (message.pending) startSweep(sweep, headerFrame, message.id)
+        }
+
+        /** 只刷字与展开态：流式更新与点开展开都走这里，不重建行。 */
+        private fun refreshThinkingTexts(message: AiChatMessage) {
+            val full = message.content
+            val running = message.pending
+            val expanded = message.id in expandedIds
+            thinkingTitle?.text = context.getString(
+                if (running) R.string.ai_chat_think else R.string.ai_chat_thought_done
+            )
+            thinkingSummary?.apply {
+                text = if (running) latestLine(full) else firstLine(full)
+                // 跑时掐头留尾（跟尾冒字），结束后正常省略尾部。
+                ellipsize = if (running) TextUtils.TruncateAt.START else TextUtils.TruncateAt.END
+            }
+            thinkingDetail?.apply {
+                text = full
+                isVisible = expanded
+            }
+            thinkingChevron?.rotation = if (expanded) 180f else 0f
+            thinkingSweep?.isVisible = running
+            if (running) {
+                if (sweepAnimator == null) {
+                    val sweep = thinkingSweep
+                    (sweep?.parent as? FrameLayout)?.let { startSweep(sweep, it, message.id) }
+                }
+            } else {
+                sweepAnimator?.cancel()
+                sweepAnimator = null
+            }
+            binding.root.contentDescription = context.getString(
+                if (running) R.string.ai_chat_thinking_collapsed else R.string.ai_chat_thinking_done
+            )
+        }
+
+        /** 扫光：渐变条 2.6s 横扫一行（DSH dsh-reasoning-row-sweep 同口径），字本身不动。 */
+        private fun startSweep(sweep: View, host: FrameLayout, messageId: String) {
+            sweepAnimator?.cancel()
+            sweepAnimator = null
+            host.post {
+                if (boundThinkingId != messageId) return@post
+                val width = host.width
+                if (width <= 0) return@post
+                sweep.translationX = -width.toFloat()
+                sweepAnimator = ValueAnimator.ofFloat(-width.toFloat(), width.toFloat()).apply {
+                    duration = 2600L
+                    interpolator = LinearInterpolator()
+                    repeatCount = ValueAnimator.INFINITE
+                    addUpdateListener { sweep.translationX = it.animatedValue as Float }
+                    start()
+                }
+            }
         }
     }
 

@@ -21,6 +21,37 @@ function estimateTokens(text) {
     return exports.estimateTokens(text);
 }
 
+// 思考通道只认透传字段，不配协议：reasoning_content / reasoning / thinking 三者取首个非空字符串。
+function deltaReasoning(delta) {
+    var value = delta.reasoning_content;
+    if (typeof value !== "string" || !value) value = delta.reasoning;
+    if (typeof value !== "string" || !value) value = delta.thinking;
+    return (typeof value === "string") ? value : "";
+}
+
+// 与 AiChatService.stripInlineThinking 同口径：content 里夹带的 <think> 类标签属于思考，不属于正文。
+function splitInlineThinking(text) {
+    var value = text || "";
+    var parts = [];
+    var visible = value.replace(/<(think|thinking|analysis|reasoning)>[\s\S]*?<\/\1>/gi, function(block) {
+        var inner = block.replace(/^<[^>]+>/, "").replace(/<\/[^>]+>$/, "").trim();
+        if (inner) parts.push(inner);
+        return "";
+    });
+    var open = /<(think|thinking|analysis|reasoning)>/i.exec(visible);
+    if (open) {
+        var tail = visible.substring(open.index + open[0].length).replace(/<\/(think|thinking|analysis|reasoning)>/gi, "").trim();
+        if (tail) parts.push(tail);
+        visible = visible.substring(0, open.index);
+    }
+    return {visible: visible, reasoning: parts.join("\n\n")};
+}
+
+function joinReasoning(fieldReasoning, inlineReasoning) {
+    if (fieldReasoning && inlineReasoning) return fieldReasoning + "\n\n" + inlineReasoning;
+    return fieldReasoning || inlineReasoning;
+}
+
 // 用量事件只做观测：emit 失败不得影响本次模型调用本身。
 function emitModelUsage(value) {
     try {
@@ -74,7 +105,8 @@ exports.complete = function(body, providerId, display) {
         if (choice.finish_reason) finishReason = choice.finish_reason;
         var delta = choice.delta || choice.message || {};
         if (delta.content) { noteToken(); content += exports.text(delta.content); }
-        if (delta.reasoning_content) { noteToken(); reasoning += delta.reasoning_content; }
+        var deltaThink = deltaReasoning(delta);
+        if (deltaThink) { noteToken(); reasoning += deltaThink; }
         (delta.tool_calls || []).forEach(function(part) {
             noteToken();
             if (typeof part.index !== "number") throw new Error("流式 tool_calls 缺少 index");
@@ -87,8 +119,10 @@ exports.complete = function(body, providerId, display) {
             }
         });
         if (display) {
-            if (content) host.call("emit", {type: "output", value: {text: content}});
-            else if (reasoning) host.call("emit", {type: "thinking", value: {text: reasoning}});
+            var split = splitInlineThinking(content);
+            var streamReasoning = joinReasoning(reasoning, split.reasoning);
+            if (split.visible) host.call("emit", {type: "output", value: {text: split.visible}});
+            else if (streamReasoning) host.call("emit", {type: "thinking", value: {text: streamReasoning}});
         }
         return false;
     });
@@ -103,14 +137,23 @@ exports.complete = function(body, providerId, display) {
         rawUsage = complete.usage || null;
         if (!assistant) throw new Error("模型响应缺少 assistant message");
         assistant.role = "assistant";
-        if (display) host.call("emit", {type: "output", value: {text: exports.text(assistant.content)}});
+        var nonStreamSplit = splitInlineThinking(exports.text(assistant.content));
+        var directReasoning = joinReasoning(deltaReasoning(assistant), nonStreamSplit.reasoning);
+        assistant.content = nonStreamSplit.visible || null;
+        if (directReasoning) assistant.reasoning_content = directReasoning;
+        if (display) {
+            if (directReasoning) host.call("emit", {type: "thinking", value: {text: directReasoning}});
+            if (assistant.content) host.call("emit", {type: "output", value: {text: exports.text(assistant.content)}});
+        }
     } else {
         if (!finished && !finishReason) throw new Error("模型流意外中断，未收到完成标记；未自动重发");
-        assistant = {role: "assistant", content: content || null};
+        var finalSplit = splitInlineThinking(content);
+        var finalReasoning = joinReasoning(reasoning, finalSplit.reasoning);
+        assistant = {role: "assistant", content: finalSplit.visible || null};
         rawUsage = streamedUsage;
         var toolCalls = Object.keys(calls).sort(function(left, right) { return Number(left) - Number(right); }).map(function(key) { return calls[key]; });
         if (toolCalls.length) assistant.tool_calls = toolCalls;
-        if (reasoning) assistant.reasoning_content = reasoning;
+        if (finalReasoning) assistant.reasoning_content = finalReasoning;
     }
     emitModelUsage(readModelUsage(rawUsage, body, content, reasoning, startedAt, firstTokenAt, display));
     if (finishReason === "length" || finishReason === "content_filter") throw new Error("模型未完成输出：" + finishReason + "，请修改模式上下文/请求参数");

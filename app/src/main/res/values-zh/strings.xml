@@ -2115,6 +2115,8 @@
     <string name="ai_chat_thinking">正在思考…</string>
     <string name="ai_chat_thinking_collapsed">正在思考，点按展开</string>
     <string name="ai_chat_thinking_done">思考完成，点按展开</string>
+    <string name="ai_chat_think">思考</string>
+    <string name="ai_chat_thought_done">已思考</string>
     <string name="select">选择</string>
     <string name="expand">展开</string>
     <string name="collapse">收起</string>

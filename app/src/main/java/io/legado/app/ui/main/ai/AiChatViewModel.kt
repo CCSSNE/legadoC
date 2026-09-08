@@ -2,6 +2,7 @@ package io.legado.app.ui.main.ai
 
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
+import android.os.SystemClock
 import io.legado.app.BuildConfig
 import io.legado.app.R
 import io.legado.app.constant.AppLog
@@ -42,6 +43,8 @@ class AiChatViewModel : ViewModel() {
         private var activeThinkingMessageId: String? = null
         private var activePendingAssistantMessageId: String? = null
         private const val TOTAL_CARD_ID = "usage-total"
+        /** 思考流节流：model.js 按 SSE chunk 全量重发，150ms 合批后由下一次全量补齐，不丢字。 */
+        private const val THINKING_PUBLISH_THROTTLE_MS = 150L
     }
 
     private data class ToolCallRecord(
@@ -71,6 +74,10 @@ class AiChatViewModel : ViewModel() {
 
         /** 本轮触发的上下文裁剪记录（历史裁剪 / 工具输出裁剪），按发生顺序渲染成提示卡。 */
         val trimmedLines: MutableList<String> = mutableListOf()
+
+        /** 本轮思考全文（model.js 全量重发，这里只做替换不做追加）；空表示本轮无思考。 */
+        val thinking = StringBuilder()
+        var lastThinkingPublishAt: Long = 0L
     }
 
     private val turnTraces = mutableMapOf<String, TurnTrace>()
@@ -199,17 +206,23 @@ class AiChatViewModel : ViewModel() {
         publish()
     }
 
+    /**
+     * 思考流只做替换（上游全量重发）：空字不建卡；输出一旦开始冒字就停更（与 model.js 先正文后思考同口径）；
+     * 发布按 150ms 节流，跳过的中间帧由下一次全量补齐。
+     * 首 token 到来前无卡，pending 气泡的静态文案继续兜底。
+     */
     fun upsertThinkingStatus(thinkingTitle: String, thinking: String) {
         if (activePendingContent.isNotBlank()) return
-        val messageId = activePendingAssistantMessageId ?: return
-        val index = messages.indexOfFirst { it.id == messageId }
-        if (index >= 0) {
-            messages[index] = messages[index].copy(
-                content = pendingThinkingLabel,
-                pending = true
-            )
-            publish()
-        }
+        val turnKey = activeTurnKey ?: return
+        if (thinking.isBlank()) return
+        val trace = turnTraces.getOrPut(turnKey) { TurnTrace() }
+        if (trace.thinking.toString() == thinking) return
+        trace.thinking.clear().append(thinking)
+        val now = SystemClock.uptimeMillis()
+        if (now - trace.lastThinkingPublishAt < THINKING_PUBLISH_THROTTLE_MS) return
+        trace.lastThinkingPublishAt = now
+        upsertCard(id = thinkingCardId(turnKey), kind = AiChatMessage.Kind.THINKING,
+            content = thinking, pending = true)
     }
 
     fun upsertStatus(status: org.json.JSONObject) {
@@ -339,12 +352,33 @@ class AiChatViewModel : ViewModel() {
     }
 
     private fun endTurn(turnKey: String, stopped: Boolean) {
+        finalizeThinking(turnKey)
         if (activeTurnKey == turnKey) activeTurnKey = null
         finishTurnCard(turnKey, stopped)
     }
 
+    private fun thinkingCardId(turnKey: String) = "think:$turnKey"
+
+    /**
+     * 思考卡定稿：有思考则转非 pending 永久保留（随会话落盘），无思考则移除空卡。
+     * 已定稿的不重复发布，避免结束路径（endTurn + finishTurnCard）双刷。
+     */
+    private fun finalizeThinking(turnKey: String) {
+        val trace = turnTraces[turnKey] ?: return
+        val text = trace.thinking.toString()
+        val cardId = thinkingCardId(turnKey)
+        if (text.isBlank()) {
+            if (messages.removeAll { it.id == cardId }) publish(saveHistory = false)
+            return
+        }
+        val index = messages.indexOfFirst { it.id == cardId }
+        if (index >= 0 && messages[index].content == text && !messages[index].pending) return
+        upsertCard(id = cardId, kind = AiChatMessage.Kind.THINKING, content = text, pending = false)
+    }
+
     private fun finishTurnCard(turnKey: String?, stopped: Boolean) {
         if (turnKey == null) return
+        finalizeThinking(turnKey)
         val trace = turnTraces[turnKey] ?: return
         if (!stopped) return
         var changed = false
@@ -363,11 +397,12 @@ class AiChatViewModel : ViewModel() {
         id: String,
         kind: AiChatMessage.Kind,
         content: String,
-        atEnd: Boolean = false
+        atEnd: Boolean = false,
+        pending: Boolean = false
     ) {
         val index = messages.indexOfFirst { it.id == id }
         val message = AiChatMessage(id = id, role = AiChatMessage.Role.ASSISTANT,
-            content = content, kind = kind)
+            content = content, kind = kind, pending = pending)
         if (index >= 0) {
             messages[index] = message
         } else if (atEnd) {
@@ -761,7 +796,8 @@ class AiChatViewModel : ViewModel() {
     }
 
     fun snapshotForRequest(): List<AiChatMessage> {
-        return messages.filterNot { it.pending || (it.kind ?: AiChatMessage.Kind.TEXT) == AiChatMessage.Kind.STATUS }
+        // 只取已定稿的正文：思考/工具/上下文/统计卡不进下一轮请求上下文。
+        return messages.filter { !it.pending && (it.kind ?: AiChatMessage.Kind.TEXT) == AiChatMessage.Kind.TEXT }
     }
 
     fun restoreCurrentSession() {
