@@ -80,7 +80,7 @@ class CacheAdapter(context: Context, private val callBack: CallBack) :
                 tvDownload.text = context.getString(
                     R.string.download_count_review_loading, cacheSize, item.totalChapterNum
                 )
-                progressView.gone()
+                progressExport.gone()
                 return
             }
             tvDownload.text = context.getString(
