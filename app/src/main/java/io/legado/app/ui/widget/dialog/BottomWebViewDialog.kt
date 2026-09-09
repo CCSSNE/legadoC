@@ -1148,7 +1148,33 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
             }
             // 快照显示中：注入章评/书评补充 section 与离线 tab/楼中楼交互
             if (displayingSnapshotHtml && view != null) {
+                compensateSnapshotViewportClip(view)
                 injectReviewSupplements(view)
+            }
+        }
+
+        /**
+         * 折叠态 BottomSheet 的 WebView 仍可能按整窗高度测量，实际可见底边却是
+         * 屏幕底边。快照没有原页脚本重新布局 fixed 底栏，因此按真实越界量把
+         * 发送栏上移，并给正文追加同量滚动留白。
+         */
+        private fun compensateSnapshotViewportClip(view: WebView) {
+            view.post {
+                if (!displayingSnapshotHtml || !view.isAttachedToWindow) return@post
+                val location = IntArray(2)
+                view.getLocationOnScreen(location)
+                val clippedDevicePx =
+                    (location[1] + view.height - resources.displayMetrics.heightPixels).coerceAtLeast(0)
+                if (clippedDevicePx == 0) return@post
+                val clippedCssPx = clippedDevicePx / view.resources.displayMetrics.density
+                view.evaluateJavascript(
+                    "(function(){" +
+                        "var b=document.getElementById('bottomBar');" +
+                        "if(b)b.style.bottom='${clippedCssPx}px';" +
+                        "document.body.style.paddingBottom='calc(80px + var(--safe-b) + ${clippedCssPx}px)';" +
+                        "})()",
+                    null
+                )
             }
         }
 
