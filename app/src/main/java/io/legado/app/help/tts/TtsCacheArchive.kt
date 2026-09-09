@@ -92,7 +92,7 @@ object TtsCacheArchive {
             val units = when (val result = TtsChapterUnits.of(book, chapter, this)) {
                 is TtsChapterUnits.Result.Ok ->
                     result.units.filterNot { it.matches(AppPattern.notReadAloudRegex) }
-                else -> emptyList()
+                else -> error("TTS 缓存导出无法解析第${chapter.index + 1}章 ${chapter.title}：$result")
             }
             val explained = hashSetOf<String>()
             val unitRecords = mutableListOf<ManifestUnit>()

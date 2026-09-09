@@ -6,7 +6,6 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
-import android.system.Os
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
@@ -56,6 +55,8 @@ import io.legado.app.model.localBook.EpubFile
 import io.legado.app.model.localBook.LocalBook
 import io.legado.app.ui.book.cache.CacheActivity
 import io.legado.app.utils.FileDoc
+import io.legado.app.utils.ExportFileWriter
+import io.legado.app.utils.createFolderIfNotExist
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.ExportImageSanitizer
 import io.legado.app.utils.ConvertUtils
@@ -77,7 +78,6 @@ import io.legado.app.utils.mapAsyncIndexed
 import io.legado.app.utils.normalizeFileName
 import io.legado.app.utils.openInputStream
 import io.legado.app.utils.openOutputStream
-import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.servicePendingIntent
 import io.legado.app.utils.toastOnUi
@@ -85,9 +85,9 @@ import io.legado.app.utils.writeFile
 import io.legado.app.utils.externalCache
 import java.io.File
 import java.io.FileOutputStream
-import java.io.OutputStream
+import java.io.OutputStreamWriter
+import java.util.UUID
 import java.util.zip.Deflater
-import kotlin.coroutines.CoroutineContext
 import kotlin.math.ceil
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
@@ -98,6 +98,8 @@ import kotlinx.coroutines.flow.collectIndexed
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.runInterruptible
 import me.ag2s.epublib.domain.Author
 import me.ag2s.epublib.domain.Date
 import me.ag2s.epublib.domain.EpubBook
@@ -112,6 +114,7 @@ import me.ag2s.epublib.epub.EpubWriterProcessor
 import me.ag2s.epublib.util.ResourceUtil
 import splitties.init.appCtx
 import splitties.systemservices.notificationManager
+import java.nio.charset.CodingErrorAction
 import java.nio.charset.Charset
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.min
@@ -125,7 +128,6 @@ class ExportBookService : BaseService() {
         val exportProgress = ConcurrentHashMap<String, Int>()
         val exportMsg = ConcurrentHashMap<String, String>()
         private const val EPUB_ASSET_BACKGROUND_PREFIX = "asset://bg/"
-        private const val EXPORT_IMAGE_DIR_NAME_MAX_LENGTH = 80
         @Volatile
         private var exportFinishedNotificationVisible = false
 
@@ -170,6 +172,9 @@ class ExportBookService : BaseService() {
     private val groupKey = "${appCtx.packageName}.exportBook"
     private val waitExportBooks = linkedMapOf<String, ExportConfig>()
     private var exportJob: Job? = null
+    private var succeededExports = 0
+    private var failedExports = 0
+    private val exportWarnings = arrayListOf<String>()
     private var notificationContentText = appCtx.getString(R.string.service_starting)
     @Volatile
     private var lastExportFileName = ""
@@ -180,6 +185,7 @@ class ExportBookService : BaseService() {
             IntentAction.start -> kotlin.runCatching {
                 val bookUrl = intent.getStringExtra("bookUrl")!!
                 if (!exportProgress.contains(bookUrl)) {
+                    require(intent.getStringExtra("exportType") in setOf("txt", "txt_zip", "epub", "pdf")) { "不支持的导出格式" }
                     val exportConfig = ExportConfig(
                         path = intent.getStringExtra("exportPath")!!,
                         type = intent.getStringExtra("exportType")!!,
@@ -262,6 +268,7 @@ class ExportBookService : BaseService() {
                             false
                         )
                     )
+                    exportProgress[bookUrl] = 0
                     waitExportBooks[bookUrl] = exportConfig
                     exportMsg[bookUrl] = getString(R.string.export_wait)
                     postEvent(EventBus.EXPORT_BOOK, bookUrl)
@@ -282,11 +289,13 @@ class ExportBookService : BaseService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        val unfinished = exportProgress.keys.toList()
         exportProgress.clear()
-        exportMsg.clear()
-        waitExportBooks.keys.forEach {
+        unfinished.forEach {
+            exportMsg[it] = "导出已取消"
             postEvent(EventBus.EXPORT_BOOK, it)
         }
+        waitExportBooks.clear()
     }
 
     @SuppressLint("MissingPermission")
@@ -328,7 +337,7 @@ class ExportBookService : BaseService() {
         if (exportJob?.isActive == true) {
             return
         }
-        exportJob = lifecycleScope.launch(IO) {
+        exportJob = lifecycleScope.launch {
             while (isActive) {
                 val (bookUrl, exportConfig) = waitExportBooks.entries.firstOrNull() ?: let {
                     finishExportNotification()
@@ -337,36 +346,46 @@ class ExportBookService : BaseService() {
                 }
                 exportProgress[bookUrl] = 0
                 waitExportBooks.remove(bookUrl)
-                val book = appDb.bookDao.getBook(bookUrl)
+                val pendingExportCount = waitExportBooks.size
+                exportWarnings.clear()
+                var book: Book? = null
                 try {
-                    book ?: throw NoStackTraceException("获取${bookUrl}书籍出错")
-                    require(!book.isAudio || exportConfig.type == "txt_zip") {
-                        "Audio books can only be exported as complete TXT-ZIP archives"
+                    withContext(IO) {
+                        val loadedBook = appDb.bookDao.getBook(bookUrl)
+                        book = loadedBook
+                        val book = loadedBook
+                        book ?: throw NoStackTraceException("获取${bookUrl}书籍出错")
+                        require(!book.isAudio || exportConfig.type == "txt_zip") {
+                            "Audio books can only be exported as complete TXT-ZIP archives"
+                        }
+                        refreshChapterList(book)
+                        if (exportConfig.type == "epub" &&
+                            appDb.bookChapterDao.getChapterCount(book.bookUrl) == 0
+                        ) {
+                            throw NoStackTraceException("EPUB 导出失败：书籍没有解析出章节目录")
+                        }
+                        notificationContentText = getString(
+                            R.string.export_book_notification_content,
+                            book.name,
+                            pendingExportCount
+                        )
+                        upExportNotification()
+                        if (exportConfig.type == "pdf") {
+                            exportPdf(exportConfig.path, book, exportConfig)
+                        } else if (exportConfig.type == "epub") {
+                            exportEpub(exportConfig.path, book, exportConfig)
+                        } else if (exportConfig.type == "txt_zip") {
+                            exportTxtZip(exportConfig.path, book, exportConfig)
+                        } else {
+                            exportTxt(exportConfig.path, book, exportConfig)
+                        }
+                        exportMsg[book.bookUrl] = (listOf(getString(R.string.export_success)) +
+                            exportWarnings).joinToString("；")
                     }
-                    refreshChapterList(book)
-                    if (exportConfig.type == "epub" &&
-                        appDb.bookChapterDao.getChapterCount(book.bookUrl) == 0
-                    ) {
-                        throw NoStackTraceException("EPUB 导出失败：书籍没有解析出章节目录")
-                    }
-                    notificationContentText = getString(
-                        R.string.export_book_notification_content,
-                        book.name,
-                        waitExportBooks.size
-                    )
-                    upExportNotification()
-                    if (exportConfig.type == "pdf") {
-                        exportPdf(exportConfig.path, book, exportConfig)
-                    } else if (exportConfig.type == "epub") {
-                        exportEpub(exportConfig.path, book, exportConfig)
-                    } else if (exportConfig.type == "txt_zip") {
-                        exportTxtZip(exportConfig.path, book, exportConfig)
-                    } else {
-                        exportTxt(exportConfig.path, book, exportConfig)
-                    }
-                    exportMsg[book.bookUrl] = getString(R.string.export_success)
+                    succeededExports++
                 } catch (e: Throwable) {
                     ensureActive()
+                    failedExports++
                     exportMsg[bookUrl] = e.localizedMessage ?: "ERROR"
                     AppLog.put("导出书籍<${book?.name ?: bookUrl}>出错", e)
                 } finally {
@@ -378,7 +397,8 @@ class ExportBookService : BaseService() {
     }
 
     private fun finishExportNotification() {
-        notificationContentText = "导出完成：$lastExportFileName"
+        notificationContentText = "导出结束：成功 $succeededExports，失败 $failedExports" +
+            lastExportFileName.takeIf { it.isNotBlank() }?.let { "；已保存：$it" }.orEmpty()
         if (LifecycleHelp.isAppVisible()) {
             exportFinishedNotificationVisible = false
             notificationManager.cancel(NotificationId.ExportBook)
@@ -399,9 +419,11 @@ class ExportBookService : BaseService() {
         if (chapters.isEmpty()) {
             throw NoStackTraceException("书籍<${book.name}>没有解析出章节目录")
         }
-        appDb.bookChapterDao.delByBook(book.bookUrl)
-        appDb.bookChapterDao.insert(*chapters.toTypedArray())
-        appDb.bookDao.update(book)
+        appDb.runInTransaction {
+            appDb.bookChapterDao.delByBook(book.bookUrl)
+            appDb.bookChapterDao.insert(*chapters.toTypedArray())
+            appDb.bookDao.update(book)
+        }
         ReadBook.onChapterListUpdated(book)
     }
 
@@ -420,37 +442,35 @@ class ExportBookService : BaseService() {
 
     private suspend fun exportTxt(fileDoc: FileDoc, book: Book, config: ExportConfig) {
         val filename = book.getLiteralExportFileName("txt", config.bookExportFileName)
-        fileDoc.find(filename)?.delete()
-
-        val bookDoc = fileDoc.createFileIfNotExist(filename)
-        val charset = Charset.forName(config.charset)
-        bookDoc.openOutputStream().getOrThrow().bufferedWriter(charset).use { bw ->
-            getAllContents(book, config) { text, srcList ->
-                bw.write(text)
-                srcList?.forEach {
-                    val vFile = BookHelp.getImage(book, it.src)
-                    if (vFile.exists()) {
-                        kotlin.runCatching {
-                            fileDoc.createFileIfNotExist(
-                                "${it.index}-${MD5Utils.md5Encode16(it.src)}.jpg",
-                                subDirs = arrayOf(
-                                    "${book.name}_${book.author}".toExportImageDirName("book"),
-                                    "images",
-                                    it.chapterTitle.toExportImageDirName("chapter_${it.index}")
-                                )
-                            ).writeFile(vFile)
-                        }.onFailure { e ->
-                            AppLog.put("导出图片文件失败: ${book.name} ${it.chapterTitle}", e)
+        ExportFileWriter.validateName(filename)
+        val source = File.createTempFile("export_txt_", ".txt", cacheDir)
+        try {
+            val encoder = Charset.forName(config.charset).newEncoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+            OutputStreamWriter(source.outputStream(), encoder).buffered().use { writer ->
+                getAllContents(book, config) { text, srcList ->
+                    writer.write(text)
+                    srcList?.forEach { image ->
+                        val imageFile = BookHelp.getImage(book, image.src)
+                        require(imageFile.isFile && imageFile.length() > 0L) {
+                            "导出图片缺失：${image.chapterTitle} ${image.src}"
                         }
+                        val imageParent = fileDoc.createFolderIfNotExist(
+                            "${book.name}_${book.author}".toExportImageDirName("book"), "images",
+                            image.chapterTitle.toExportImageDirName("chapter_${image.index}"),
+                        )
+                        ExportFileWriter.save(imageParent,
+                            "${image.index}-${MD5Utils.md5Encode16(image.src)}.jpg", imageFile, "image/jpeg")
                     }
                 }
             }
+            val bookDoc = ExportFileWriter.save(fileDoc, filename, source, "text/plain")
+            lastExportFileName = filename
+            if (config.toWebDav) AppWebDav.exportWebDav(bookDoc.uri, filename)
+        } finally {
+            source.delete()
         }
-        if (config.toWebDav) {
-            // 导出到webdav
-            AppWebDav.exportWebDav(bookDoc.uri, filename)
-        }
-        lastExportFileName = filename
     }
 
     /**
@@ -477,88 +497,88 @@ class ExportBookService : BaseService() {
         } else {
             literalTxtName
         }
+        ExportFileWriter.validateName(txtName)
         val zipName = txtName.removeSuffix(".txt") + ".zip"
         val tmpRoot = FileUtils.createFolderIfNotExist(
             appCtx.externalCache,
-            "ExportTxtZip"
+            "ExportTxtZip_${UUID.randomUUID()}"
         )
-        FileUtils.delete(tmpRoot)
-        FileUtils.createFolderIfNotExist(tmpRoot.absolutePath)
-        val tmpTxt = File(tmpRoot, txtName)
-        val tmpImagesDir = File(tmpRoot, IllustrationHelp.EXPORT_IMAGES_DIR)
-        FileUtils.createFolderIfNotExist(tmpImagesDir.absolutePath)
-        val tmpJson = File(tmpRoot, IllustrationHelp.EXPORT_JSON_NAME)
-        val audioSelection = if (book.isAudio) {
-            updateAudioExportStatus(book, "正在筛选已完成的音频与字幕")
-            AudioExportSelection(availableAudioExportChapters(book))
-        } else {
-            null
-        }
-        val audioChapters = audioSelection?.chapters
-        val illustrations = appDb.bookIllustrationDao.getByBook(book.bookUrl).let { records ->
-            audioSelection?.remapIllustrations(records) ?: records
-        }
-        val tmpBookmarks = if (config.exportBookmarks) {
-            File(tmpRoot, IllustrationHelp.EXPORT_BOOKMARKS_NAME).also { f ->
-                val bookmarks = appDb.bookmarkDao.getByBook(book.name, book.author).let { records ->
-                    audioSelection?.remapBookmarks(records) ?: records
-                }
-                if (bookmarks.isNotEmpty()) {
-                    f.writeText(GSON.toJson(bookmarks), Charsets.UTF_8)
-                }
-            }
-        } else {
-            null
-        }
-        // 替换净化开启时，把该书当前生效的替换规则作为外挂数据写入 zip，
-        // 正文 txt 保持原文，规则在导入时同步还原（原文+规则，规则不作用于导出文本）
-        val tmpReplaceRules = if (config.useReplace && book.getUseReplaceRule()) {
-            File(tmpRoot, IllustrationHelp.EXPORT_REPLACE_RULES_NAME).also { f ->
-                val rules = arrayListOf<ReplaceRule>()
-                rules.addAll(appDb.replaceRuleDao.findEnabledByContentScope(book.name, book.origin))
-                rules.addAll(appDb.replaceRuleDao.findEnabledByTitleScope(book.name, book.origin))
-                if (rules.isNotEmpty()) {
-                    f.writeText(GSON.toJson(rules), Charsets.UTF_8)
-                }
-            }
-        } else {
-            null
-        }
-        // 高亮规则同样作为外挂数据写入 zip：按该书 scope 命中的启用规则收集，
-        // 导入时还原规则数据，显示效果在排版时重新计算，不影响导出正文
-        val tmpHighlightRules = run {
-            File(tmpRoot, IllustrationHelp.EXPORT_HIGHLIGHT_RULES_NAME).also { f ->
-                val rules: List<HighlightRule> =
-                    appDb.highlightRuleDao.findEnabledByScope(book.name, book.origin)
-                if (rules.isNotEmpty()) {
-                    f.writeText(GSON.toJson(rules), Charsets.UTF_8)
-                }
-            }
-        }
-        // 评论页快照：按存储原样导出 reviews/*.json，导入时原样还原
-        val tmpReviewsDir = if (config.exportReviews) {
-            File(tmpRoot, ReviewSnapshotStore.REVIEWS_DIR_NAME).also { dir ->
-                if (book.isAudio) {
-                    ReviewSnapshotStore.copyChaptersTo(
-                        book,
-                        dir,
-                        requireNotNull(audioChapters),
-                    )
-                } else {
-                    ReviewSnapshotStore.copyAllTo(book, dir)
-                }
-            }
-        } else {
-            null
-        }
-        // TTS 音频缓存归档：按清单收集已缓存的朗读单元音频，
-        // 导入端以清单重算缓存 key 落位，回导后可直接命中
-        val tmpTtsCacheDir = if (config.exportTtsCache) {
-            exportTtsCacheArchive(book, tmpRoot)
-        } else {
-            null
-        }
         try {
+            val tmpTxt = File(tmpRoot, txtName)
+            val tmpImagesDir = File(tmpRoot, IllustrationHelp.EXPORT_IMAGES_DIR)
+            FileUtils.createFolderIfNotExist(tmpImagesDir.absolutePath)
+            val tmpJson = File(tmpRoot, IllustrationHelp.EXPORT_JSON_NAME)
+            val audioSelection = if (book.isAudio) {
+                updateAudioExportStatus(book, "正在检查全部音频与字幕")
+                AudioExportSelection(availableAudioExportChapters(book))
+            } else {
+                null
+            }
+            val audioChapters = audioSelection?.chapters
+            val illustrations = appDb.bookIllustrationDao.getByBook(book.bookUrl).let { records ->
+                audioSelection?.remapIllustrations(records) ?: records
+            }
+            val tmpBookmarks = if (config.exportBookmarks) {
+                File(tmpRoot, IllustrationHelp.EXPORT_BOOKMARKS_NAME).also { f ->
+                    val bookmarks = appDb.bookmarkDao.getByBook(book.name, book.author).let { records ->
+                        audioSelection?.remapBookmarks(records) ?: records
+                    }
+                    if (bookmarks.isNotEmpty()) {
+                        f.writeText(GSON.toJson(bookmarks), Charsets.UTF_8)
+                    }
+                }
+            } else {
+                null
+            }
+            // 替换净化开启时，把该书当前生效的替换规则作为外挂数据写入 zip，
+            // 正文 txt 保持原文，规则在导入时同步还原（原文+规则，规则不作用于导出文本）
+            val tmpReplaceRules = if (config.useReplace && book.getUseReplaceRule()) {
+                File(tmpRoot, IllustrationHelp.EXPORT_REPLACE_RULES_NAME).also { f ->
+                    val rules = arrayListOf<ReplaceRule>()
+                    rules.addAll(appDb.replaceRuleDao.findEnabledByContentScope(book.name, book.origin))
+                    rules.addAll(appDb.replaceRuleDao.findEnabledByTitleScope(book.name, book.origin))
+                    if (rules.isNotEmpty()) {
+                        f.writeText(GSON.toJson(rules), Charsets.UTF_8)
+                    }
+                }
+            } else {
+                null
+            }
+            // 高亮规则同样作为外挂数据写入 zip：按该书 scope 命中的启用规则收集，
+            // 导入时还原规则数据，显示效果在排版时重新计算，不影响导出正文
+            val tmpHighlightRules = run {
+                File(tmpRoot, IllustrationHelp.EXPORT_HIGHLIGHT_RULES_NAME).also { f ->
+                    val rules: List<HighlightRule> =
+                        appDb.highlightRuleDao.findEnabledByScope(book.name, book.origin)
+                    if (rules.isNotEmpty()) {
+                        f.writeText(GSON.toJson(rules), Charsets.UTF_8)
+                    }
+                }
+            }
+            // 评论页快照：按存储原样导出 reviews/*.json，导入时原样还原
+            val tmpReviewsDir = if (config.exportReviews) {
+                File(tmpRoot, ReviewSnapshotStore.REVIEWS_DIR_NAME).also { dir ->
+                    val warning = if (book.isAudio) {
+                        ReviewSnapshotStore.copyChaptersTo(
+                            book,
+                            dir,
+                            requireNotNull(audioChapters),
+                        )
+                    } else {
+                        ReviewSnapshotStore.copyAllTo(book, dir)
+                    }
+                    warning?.let { exportWarnings.add(it) }
+                }
+            } else {
+                null
+            }
+            // TTS 音频缓存归档：按清单收集已缓存的朗读单元音频，
+            // 导入端以清单重算缓存 key 落位，回导后可直接命中
+            val tmpTtsCacheDir = if (config.exportTtsCache) {
+                exportTtsCacheArchive(book, tmpRoot)
+            } else {
+                null
+            }
             val bookArchiveEntries = exportBookArchiveMetadata(book, tmpRoot, txtName)
             val tmpAudioManifest = if (book.isAudio) {
                 exportAudioBookMedia(book, tmpRoot, txtName, requireNotNull(audioChapters))
@@ -575,14 +595,16 @@ class ExportBookService : BaseService() {
                     }
                 }
             } else {
-                val charset = Charset.forName(config.charset)
-                tmpTxt.bufferedWriter(charset).use { bw ->
+                val charset = Charsets.UTF_8
+                OutputStreamWriter(tmpTxt.outputStream(), charset.newEncoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)).buffered().use { bw ->
                     if (book.isAudio) {
                         updateAudioExportStatus(book, "正在生成字幕文本")
                     }
                     getAllContents(
                         book,
-                        config,
+                        config.copy(useReplace = false, noChapterName = false, pictureFile = false),
                         reportProgress = !book.isAudio,
                         chapters = audioChapters,
                     ) { text, _ ->
@@ -597,7 +619,9 @@ class ExportBookService : BaseService() {
                         "TXT-ZIP export failed: illustration is missing " +
                             "chapter=${illustration.chapterIndex + 1} ${illustration.chapterName} src=$src"
                     }
+                    require(src.startsWith(IllustrationHelp.SRC_PREFIX)) { "配图引用无效：$src" }
                     val imageName = src.substringAfter(IllustrationHelp.SRC_PREFIX)
+                    ExportFileWriter.validateName(imageName)
                     val targetFile = File(tmpImagesDir, imageName)
                     srcFile.copyTo(targetFile, overwrite = true)
                     require(targetFile.length() == srcFile.length()) {
@@ -627,15 +651,21 @@ class ExportBookService : BaseService() {
             if (book.isAudio) {
                 zipAudioBookArchive(book, zipEntries, tmpZip)
             } else {
-                require(ZipUtils.zipFiles(zipEntries, tmpZip, null)) {
+                val context = currentCoroutineContext()
+                require(ZipUtils.zipFiles(zipEntries, tmpZip, onProgress = { _, _ -> context.ensureActive() })) {
                     "TXT-ZIP export failed: unable to create archive"
                 }
             }
-            val zipDoc = saveCompletedTxtZip(fileDoc, zipName, tmpZip, book)
+            updateAudioExportStatus(book, "正在保存并校验压缩包")
+            val zipDoc = ExportFileWriter.save(fileDoc, zipName, tmpZip, "application/zip") { done, total, verifying ->
+                val stage = if (verifying) "正在校验压缩包" else "正在保存压缩包"
+                updateAudioExportStatus(book,
+                    "$stage ${ConvertUtils.formatFileSize(done)}/${ConvertUtils.formatFileSize(total)}")
+            }
+            lastExportFileName = zipName
             if (config.toWebDav) {
                 AppWebDav.exportWebDav(zipDoc.uri, zipName)
             }
-            lastExportFileName = zipName
         } finally {
             FileUtils.delete(tmpRoot)
         }
@@ -644,7 +674,7 @@ class ExportBookService : BaseService() {
     /**
      * 收集 TTS 音频缓存归档：逐章排版推导朗读单元，按 key 维度候选枚举命中的
      * 缓存文件，产出 tts_cache/ 目录（单元文件 + manifest 清单）。清单与文件在
-     * 复制阶段重新对账，收集后被打包前清除/删改的单元自动剔除。无可导出内容
+     * 复制阶段重新对账，已入选单元在打包前丢失或复制不完整时直接报错。无可导出内容
      * 返回 null。
      */
     private suspend fun exportTtsCacheArchive(book: Book, tmpRoot: File): File? {
@@ -667,12 +697,11 @@ class ExportBookService : BaseService() {
                     TtsCacheStore.ttsCacheDir(book),
                     "${chapter.stem}/${unit.file}",
                 )
-                if (!source.isFile) return@mapNotNull null
+                require(source.isFile && source.length() > 0L) { "TTS 缓存导出源文件缺失：${source.name}" }
                 val target = File(chapterDir, unit.file)
                 source.copyTo(target, overwrite = true)
-                if (!target.isFile || target.length() != source.length()) {
-                    AppLog.put("TTS 音频缓存导出：复制不完整，跳过 ${chapter.stem}/${unit.file}")
-                    return@mapNotNull null
+                require(target.isFile && target.length() == source.length()) {
+                    "TTS 缓存导出复制不完整：${chapter.stem}/${unit.file}"
                 }
                 unit
             }
@@ -696,36 +725,26 @@ class ExportBookService : BaseService() {
         return exportDir
     }
 
-    private fun exportBookArchiveMetadata(
+    private suspend fun exportBookArchiveMetadata(
         book: Book,
         tmpRoot: File,
         txtName: String,
     ): List<File> {
         val coverFile = book.getDisplayCover()?.takeIf { it.isNotBlank() }?.let { coverPath ->
-            val coverRequest = ImageLoader.loadFile(
-                this,
-                coverPath,
-                sourceOrigin = book.origin,
-            ).onlyRetrieveFromCache(coverPath.isAbsUrl())
-            val source = kotlin.runCatching {
-                coverRequest.submit().get()
-            }.getOrElse { error ->
-                if (coverPath.isAbsUrl()) {
-                    throw NoStackTraceException(
-                        "TXT-ZIP export failed: HTTP cover is not available in the local image cache; " +
-                            "export will not request the network"
-                    )
+            val request = ImageLoader.loadFile(this, coverPath, sourceOrigin = book.origin).submit()
+            try {
+                val source = runInterruptible(IO) { request.get() }
+                require(source.isFile && source.length() > 0L) {
+                    "TXT-ZIP export failed: cover is missing or empty for ${book.name}"
                 }
-                throw error
-            }
-            require(source.isFile && source.length() > 0L) {
-                "TXT-ZIP export failed: cover is missing or empty for ${book.name}"
-            }
-            File(tmpRoot, BookArchive.COVER_FILE_NAME).also { target ->
-                source.copyTo(target, overwrite = true)
-                require(target.isFile && target.length() == source.length()) {
-                    "TXT-ZIP export failed: cover copy is incomplete for ${book.name}"
+                File(tmpRoot, BookArchive.COVER_FILE_NAME).also { target ->
+                    source.copyTo(target, overwrite = true)
+                    require(target.isFile && target.length() == source.length()) {
+                        "TXT-ZIP export failed: cover copy is incomplete for ${book.name}"
+                    }
                 }
+            } finally {
+                Glide.with(this).clear(request)
             }
         }
         val manifestFile = File(tmpRoot, BookArchive.MANIFEST_FILE_NAME).also { file ->
@@ -795,22 +814,20 @@ class ExportBookService : BaseService() {
         }
     }
 
-    /**
-     * An audio TXT-ZIP is the coherent set of already-complete chapter artifacts. Incomplete
-     * chapters are deliberately absent from both its media manifest and TXT, rather than causing
-     * source resolution or a background download during export.
-     */
+    /** 导出请求覆盖整本书，缺失章节必须报告，不能筛掉后宣称完整成功。 */
     private fun availableAudioExportChapters(book: Book): List<BookChapter> {
-        val chapters = appDb.bookChapterDao.getChapterList(book.bookUrl)
-            .filterNot { it.isVolume }
-        require(chapters.isNotEmpty()) { "Audio TXT-ZIP export failed: chapter list is empty" }
-        val completed = chapters.filter { chapter ->
-            AudioOfflineState.inspect(book, chapter).isComplete
+        val chapters = appDb.bookChapterDao.getChapterList(book.bookUrl).filterNot { it.isVolume }
+        require(chapters.isNotEmpty()) { "音频导出失败：章节目录为空" }
+        val missing = chapters.mapNotNull { chapter ->
+            val state = AudioOfflineState.inspect(book, chapter)
+            if (state.isComplete) null else
+                "第${chapter.index + 1}章 ${chapter.title}：${state.incompleteReason()}"
         }
-        require(completed.isNotEmpty()) {
-            "Audio TXT-ZIP export failed: no chapter has both completed media and lyric"
+        require(missing.isEmpty()) {
+            "音频导出失败：${missing.size}/${chapters.size} 章缓存不完整，请先完成缓存。\n" +
+                missing.joinToString("\n")
         }
-        return completed
+        return chapters
     }
 
     /**
@@ -896,150 +913,6 @@ class ExportBookService : BaseService() {
             }
         ) {
             "Audio TXT-ZIP export failed: unable to create archive"
-        }
-    }
-
-    private fun copyAudioArchiveToDestination(
-        book: Book,
-        source: File,
-        output: OutputStream,
-        exportContext: CoroutineContext,
-    ) {
-        val totalBytes = source.length().coerceAtLeast(0L)
-        var copiedBytes = 0L
-        var lastUpdateAt = 0L
-        updateAudioExportStatus(book, "正在保存音频压缩包")
-        source.inputStream().buffered().use { input ->
-            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-            while (true) {
-                exportContext.ensureActive()
-                val count = input.read(buffer)
-                if (count < 0) break
-                output.write(buffer, 0, count)
-                copiedBytes += count
-                val now = System.currentTimeMillis()
-                if (now - lastUpdateAt >= 350L || copiedBytes == totalBytes) {
-                    lastUpdateAt = now
-                    updateAudioExportStatus(
-                        book,
-                        "正在保存音频压缩包 ${ConvertUtils.formatFileSize(copiedBytes)}/" +
-                            ConvertUtils.formatFileSize(totalBytes),
-                    )
-                }
-            }
-        }
-        require(copiedBytes == totalBytes) {
-            "Audio TXT-ZIP export failed: archive changed while writing destination"
-        }
-    }
-
-    /**
-     * Writes beside the current archive and promotes only a fully persisted staging ZIP.
-     * Direct-file destinations use the platform rename operation, which replaces atomically on
-     * Android's Linux filesystems. SAF destinations keep the old document under a temporary backup
-     * name until the staged document has been promoted successfully.
-     */
-    private suspend fun saveCompletedTxtZip(
-        parent: FileDoc,
-        zipName: String,
-        source: File,
-        book: Book,
-    ): FileDoc {
-        require(source.isFile && source.length() > 0L) {
-            "TXT-ZIP export failed: generated archive is empty"
-        }
-        val transactionId = "${System.currentTimeMillis()}_${System.nanoTime()}"
-        val stagingName = ".$zipName.$transactionId.tmp.zip"
-        val backupName = ".$zipName.$transactionId.old.zip"
-        require(parent.find(stagingName) == null && parent.find(backupName) == null) {
-            "TXT-ZIP export failed: destination transaction names already exist"
-        }
-
-        val oldArchive = parent.find(zipName)
-        val staging = parent.createFileIfNotExistWithMime(stagingName, "application/zip")
-        var oldRenamed = false
-        var promoted = false
-        val backupDocument = oldArchive?.asDocumentFile()
-        try {
-            staging.openOutputStream(truncate = true).getOrThrow().use { out ->
-                if (book.isAudio) {
-                    copyAudioArchiveToDestination(
-                        book,
-                        source,
-                        out,
-                        currentCoroutineContext(),
-                    )
-                } else {
-                    source.inputStream().use { it.copyTo(out) }
-                }
-            }
-            val persistedStaging = FileDoc.fromUri(staging.uri, false)
-            require(persistedStaging.size == source.length()) {
-                "TXT-ZIP export failed: staged archive size mismatch " +
-                    "expected=${source.length()} actual=${persistedStaging.size}"
-            }
-
-            if (!parent.isContentScheme) {
-                val stagingFile = requireNotNull(persistedStaging.asFile()) {
-                    "TXT-ZIP export failed: staging file path is unavailable"
-                }
-                val parentFile = requireNotNull(parent.asFile()) {
-                    "TXT-ZIP export failed: destination directory path is unavailable"
-                }
-                val targetFile = File(parentFile, zipName)
-                Os.rename(stagingFile.absolutePath, targetFile.absolutePath)
-                promoted = true
-                return FileDoc.fromFile(targetFile)
-            }
-
-            val stagingDocument = requireNotNull(staging.asDocumentFile()) {
-                "TXT-ZIP export failed: staging document is unavailable"
-            }
-            if (backupDocument != null) {
-                require(backupDocument!!.renameTo(backupName)) {
-                    "TXT-ZIP export failed: unable to preserve existing $zipName"
-                }
-                oldRenamed = true
-            }
-            require(stagingDocument.renameTo(zipName)) {
-                "TXT-ZIP export failed: unable to promote staged archive"
-            }
-            promoted = true
-            val committed = FileDoc.fromDocumentFile(stagingDocument)
-            backupDocument?.let { backup ->
-                runCatching {
-                    require(backup.delete() && !backup.exists()) {
-                        "Unable to remove replaced archive backup: $backupName"
-                    }
-                }.onFailure { cleanupError ->
-                    AppLog.put(
-                        "TXT-ZIP export completed but could not remove replaced archive backup: " +
-                            backupName,
-                        cleanupError,
-                    )
-                }
-            }
-            return committed
-        } catch (cause: Throwable) {
-            if (!promoted && oldRenamed) {
-                runCatching {
-                    val backup = requireNotNull(backupDocument)
-                    require(backup.renameTo(zipName)) {
-                        "TXT-ZIP export rollback failed: unable to restore existing $zipName"
-                    }
-                }.onFailure(cause::addSuppressed)
-            }
-            if (!promoted) {
-                runCatching {
-                    if (staging.exists()) {
-                        staging.delete()
-                        require(!staging.exists()) {
-                            "TXT-ZIP export rollback failed: unable to remove staging archive"
-                        }
-                    }
-                }.onFailure(cause::addSuppressed)
-            }
-            throw cause
         }
     }
 
@@ -1190,7 +1063,7 @@ class ExportBookService : BaseService() {
         config: ExportConfig,
         reportProgress: Boolean = true,
         chapters: List<BookChapter>? = null,
-        append: (text: String, srcList: ArrayList<SrcData>?) -> Unit
+        append: suspend (text: String, srcList: ArrayList<SrcData>?) -> Unit
     ) = coroutineScope {
         val useReplace = config.useReplace && book.getUseReplaceRule()
         val contentProcessor = ContentProcessor.get(book.name, book.origin)
@@ -1208,8 +1081,10 @@ class ExportBookService : BaseService() {
         } else {
             1
         }
+        val selectedChapters = chapters ?: appDb.bookChapterDao.getChapterList(book.bookUrl)
+        require(selectedChapters.isNotEmpty()) { "导出失败：章节目录为空" }
         flow {
-            (chapters ?: appDb.bookChapterDao.getChapterList(book.bookUrl)).forEach { chapter ->
+            selectedChapters.forEach { chapter ->
                 emit(chapter)
             }
         }.mapAsync(threads) { chapter ->
@@ -1236,18 +1111,15 @@ class ExportBookService : BaseService() {
         } else {
             BookHelp.getContent(book, chapter).withoutReadableContentVersionFlag()
         }
-        // 未缓存章节直接跳过，不写 "null" 占位：占位章会让重新导入时分章规则
-        // 误判（标题间距<100字被计为误识别），导致规则整体被拒、章节标题丢失、
-        // 评论快照 remap 失败。卷章节（isVolume）无正文属正常结构，仍保留标题。
-        if (content == null && !chapter.isVolume) {
-            return Pair("", null)
+        require(content != null || chapter.isVolume) {
+            "导出失败：第${chapter.index + 1}章 ${chapter.title} 正文未缓存，请先完成缓存"
         }
         val content1 = contentProcessor
             .getContent(
                 book,
                 // 不导出vip标识
-                chapter.apply { isVip = false },
-                content ?: if (chapter.isVolume) "" else "null",
+                chapter.copy(isVip = false),
+                content.orEmpty(),
                 includeTitle = !config.noChapterName,
                 useReplace = useReplace,
                 chineseConvert = false,
@@ -1285,7 +1157,7 @@ class ExportBookService : BaseService() {
             .normalizeFileName()
             .trim()
             .ifBlank { defaultName }
-        return name.take(EXPORT_IMAGE_DIR_NAME_MAX_LENGTH).ifBlank { defaultName }
+        return name
     }
 
     /**

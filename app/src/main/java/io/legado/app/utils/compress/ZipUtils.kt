@@ -188,13 +188,13 @@ object ZipUtils {
         fileFilter: ((File) -> Boolean)? = null,
         onBytesWritten: ((Int) -> Unit)? = null,
     ): Boolean {
-        if (!srcFile.exists()) return true
+        require(srcFile.exists()) { "ZIP 源文件不存在：$srcFile" }
         if (fileFilter != null && !fileFilter.invoke(srcFile)) return true
         var rootPath1 = rootPath
         rootPath1 = rootPath1 + (if (isSpace(rootPath1)) "" else File.separator) + srcFile.name
         if (srcFile.isDirectory) {
-            val fileList = srcFile.listFiles()
-            if (fileList == null || fileList.isEmpty()) {
+            val fileList = requireNotNull(srcFile.listFiles()) { "无法读取 ZIP 源目录：$srcFile" }
+            if (fileList.isEmpty()) {
                 val entry = ZipEntry("$rootPath1/")
                 entry.comment = comment
                 zos.putNextEntry(entry)
@@ -207,6 +207,8 @@ object ZipUtils {
                 }
             }
         } else {
+            val expectedSize = srcFile.length()
+            var copied = 0L
             BufferedInputStream(FileInputStream(srcFile)).use {
                 val entry = ZipEntry(rootPath1)
                 entry.comment = comment
@@ -216,7 +218,11 @@ object ZipUtils {
                     val count = it.read(buffer)
                     if (count < 0) break
                     zos.write(buffer, 0, count)
+                    copied += count
                     onBytesWritten?.invoke(count)
+                }
+                check(copied == expectedSize && srcFile.length() == expectedSize) {
+                    "ZIP 源文件在打包期间发生变化：$srcFile"
                 }
                 zos.closeEntry()
             }

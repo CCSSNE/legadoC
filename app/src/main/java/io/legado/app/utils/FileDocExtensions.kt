@@ -162,13 +162,13 @@ fun FileDoc.list(filter: FileDocFilter? = null): ArrayList<FileDoc>? {
             val docList = arrayListOf<FileDoc>()
             var cursor: Cursor? = null
             try {
-                cursor = appCtx.contentResolver.query(
+                cursor = requireNotNull(appCtx.contentResolver.query(
                     childrenUri,
                     projection,
                     null,
                     null,
                     DocumentsContract.Document.COLUMN_DISPLAY_NAME
-                )
+                )) { "无法读取文档目录：$uri" }
                 cursor?.let {
                     val ici = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
                     val nci = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)

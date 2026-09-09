@@ -264,8 +264,18 @@ object ReviewSnapshotResourceStore {
         val statusFiles = extractedFiles.filter(ReviewSnapshotStore::isChapterStatusFile)
         val containsReviewData = snapshotFiles.isNotEmpty() || statusFiles.isNotEmpty()
         if (!containsReviewData) return@synchronized
-        check(snapshotFiles.isEmpty() || statusFiles.isNotEmpty()) {
-            "导入评论缓存缺少章节状态文件，旧格式不受支持"
+        val statusChapters = statusFiles.map { file ->
+            requireNotNull(ReviewSnapshotStore.readChapterStatus(file)) {
+                "无法读取导入评论状态：$file"
+            }.chapterUrl.trim()
+        }.toSet()
+        snapshotFiles.forEach { file ->
+            val metadata = file.bufferedReader(Charsets.UTF_8).use(::readReviewSnapshotHotMetadata)
+            check(metadata.buttonSrc == ReviewSnapshotStore.CHAPTER_TAB_SRC ||
+                ReviewSnapshotStore.isSupplementChapterUrl(metadata.chapterUrl) ||
+                metadata.chapterUrl.trim() in statusChapters) {
+                "导入评论缓存缺少对应章节状态：${metadata.chapterUrl}"
+            }
         }
         val indexFile = extractedFiles.firstOrNull { it.name == DATABASE_FILE_NAME }
             ?: error("导入评论缓存缺少 $DATABASE_FILE_NAME，旧的非资源库格式不受支持")
