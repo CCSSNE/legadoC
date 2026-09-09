@@ -65,7 +65,7 @@ class ReviewSnapshotStatusDialog :
 
     private fun retryFailed(items: List<ReviewSnapshotChapterItem>) {
         if (items.isEmpty()) return
-        lifecycleScope.launch {
+        viewLifecycleOwner.lifecycleScope.launch {
             val retryStartedAt = System.currentTimeMillis()
             val count = withContext(Dispatchers.IO) {
                 CacheCoordinator.retryReviewSnapshots(book, items.map { it.chapter })
@@ -84,7 +84,7 @@ class ReviewSnapshotStatusDialog :
 
     private fun observeRetryCompletion(retryStartedAt: Long, chapterIndexes: Set<Int>) {
         retryCompletionJob?.cancel()
-        retryCompletionJob = lifecycleScope.launch {
+        retryCompletionJob = viewLifecycleOwner.lifecycleScope.launch {
             CacheCoordinator.snapshot.first { snapshot ->
                 snapshot.hasFinishedReviewRetry(book.bookUrl, chapterIndexes, retryStartedAt)
             }
@@ -94,8 +94,9 @@ class ReviewSnapshotStatusDialog :
 
     private fun loadItems() {
         loadJob?.cancel()
-        loadJob = lifecycleScope.launch {
-            binding.rotateLoading.visible()
+        val loading = binding.rotateLoading
+        loadJob = viewLifecycleOwner.lifecycleScope.launch {
+            loading.visible()
             binding.tvEmpty.gone()
             try {
                 val items = viewModel.getReviewSnapshotItems(book)
@@ -119,7 +120,7 @@ class ReviewSnapshotStatusDialog :
                 binding.tvEmpty.visible()
                 updateRetryAll(emptyList())
             } finally {
-                binding.rotateLoading.gone()
+                loading.gone()
             }
         }
     }
