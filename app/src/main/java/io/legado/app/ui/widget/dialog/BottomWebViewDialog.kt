@@ -1145,7 +1145,21 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
             }
             // 快照显示中：注入章评/书评补充 section 与离线 tab/楼中楼交互
             if (displayingSnapshotHtml && view != null) {
+                expandSnapshotSheet()
                 injectReviewSupplements(view)
+            }
+        }
+
+        /**
+         * 离线评论快照弹窗直接展开：折叠态 sheet 底部必然溢出屏幕，
+         * fixed 在布局底的发送栏会被裁掉一半；展开后底回到屏内，栏自然完整。
+         * 只动快照路径，在线活页不受影响。
+         */
+        private fun expandSnapshotSheet() {
+            if (!displayingSnapshotHtml) return
+            behavior?.let {
+                it.skipCollapsed = true
+                it.state = BottomSheetBehavior.STATE_EXPANDED
             }
         }
 
