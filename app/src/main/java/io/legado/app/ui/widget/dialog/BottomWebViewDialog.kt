@@ -31,6 +31,8 @@ import android.widget.FrameLayout
 import androidx.annotation.Keep
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.net.toUri
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.FragmentManager
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.bottomsheet.BottomSheetBehavior
@@ -1145,8 +1147,28 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
             }
             // 快照显示中：注入章评/书评补充 section 与离线 tab/楼中楼交互
             if (displayingSnapshotHtml && view != null) {
+                applySnapshotSafeArea(view)
                 injectReviewSupplements(view)
             }
+        }
+
+        /**
+         * Android WebView 在 BottomSheet 中不会可靠地向 CSS
+         * env(safe-area-inset-bottom) 暴露系统底部 inset。评论页把发送栏和正文
+         * 垫高都建立在 --safe-b 上；快照又移除了原页脚本，因此这里用原生
+         * WindowInsets 写回该变量，避免固定发送栏贴底或遮住最后一条评论。
+         */
+        private fun applySnapshotSafeArea(view: WebView) {
+            val insets = ViewCompat.getRootWindowInsets(view) ?: return
+            val navigationBottom = insets.getInsets(
+                WindowInsetsCompat.Type.navigationBars() or
+                    WindowInsetsCompat.Type.mandatorySystemGestures()
+            ).bottom
+            val bottomCssPx = navigationBottom / view.resources.displayMetrics.density
+            view.evaluateJavascript(
+                "document.documentElement.style.setProperty('--safe-b','${bottomCssPx}px')",
+                null
+            )
         }
 
         /**
