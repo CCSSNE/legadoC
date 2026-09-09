@@ -6,6 +6,7 @@ import android.os.SystemClock
 import io.legado.app.BuildConfig
 import io.legado.app.R
 import io.legado.app.constant.AppLog
+import io.legado.app.help.agent.AgentConfig
 import io.legado.app.help.agent.AgentStore
 import io.legado.app.help.ai.AiChatService
 import io.legado.app.help.config.AppConfig
@@ -42,6 +43,7 @@ class AiChatViewModel : ViewModel() {
         private var activePendingContent: String = ""
         private var activeThinkingMessageId: String? = null
         private var activePendingAssistantMessageId: String? = null
+        private var activeUsesAgent = false
         private const val TOTAL_CARD_ID = "usage-total"
         /** 思考流节流：model.js 按 SSE chunk 全量重发，150ms 合批后由下一次全量补齐，不丢字。 */
         private const val THINKING_PUBLISH_THROTTLE_MS = 150L
@@ -123,27 +125,42 @@ class AiChatViewModel : ViewModel() {
         val requestMessages = snapshotForRequest()
         activeJob = requestScope.launch {
             val result = runCatching {
-                io.legado.app.help.agent.AgentRuntime.chat(
-                    sessionId = "chat:$requestSessionId",
-                    assistantMessageId = pendingMessage.id,
-                    readingContext = readingContext
-                        ?: io.legado.app.help.agent.mcp.AgentReading.current(),
-                    messages = requestMessages,
-                    onPartial = { partial ->
-                        activePendingContent = partial
-                        targetFor(requestSessionId).upsertPendingAssistant(partial.ifBlank { "" })
-                    },
-                    onThinking = { thinking ->
-                        targetFor(requestSessionId).upsertThinkingStatus(thinkingText, thinking)
-                    },
-                    onStatus = { status ->
-                        targetFor(requestSessionId).upsertStatus(status)
-                    }
-                )
+                val usesAgent = AgentConfig.enabled
+                activeUsesAgent = usesAgent
+                val onPartial: (String) -> Unit = { partial ->
+                    activePendingContent = partial
+                    targetFor(requestSessionId).upsertPendingAssistant(partial.ifBlank { "" })
+                }
+                val onThinking: (String) -> Unit = { thinking ->
+                    targetFor(requestSessionId).upsertThinkingStatus(thinkingText, thinking)
+                }
+                val onStatus: (org.json.JSONObject) -> Unit = { status ->
+                    targetFor(requestSessionId).upsertStatus(status)
+                }
+                if (usesAgent) {
+                    io.legado.app.help.agent.AgentRuntime.chat(
+                        sessionId = "chat:$requestSessionId",
+                        assistantMessageId = pendingMessage.id,
+                        readingContext = readingContext
+                            ?: io.legado.app.help.agent.mcp.AgentReading.current(),
+                        messages = requestMessages,
+                        onPartial = onPartial,
+                        onThinking = onThinking,
+                        onStatus = onStatus
+                    )
+                } else {
+                    AiChatService.chatStream(
+                        messages = requestMessages,
+                        onPartial = onPartial,
+                        onThinking = onThinking,
+                        onStatus = onStatus
+                    )
+                }
             }
             targetFor(requestSessionId).setRequesting(false)
             activeJob = null
             activeSessionId = null
+            activeUsesAgent = false
             result.onSuccess { content ->
                 activePendingContent = ""
                 targetFor(requestSessionId).endTurn(pendingMessage.id, stopped = false)
@@ -169,10 +186,13 @@ class AiChatViewModel : ViewModel() {
 
     fun stopRequest(cancelledText: String) {
         val job = activeJob ?: return
-        activeSessionId?.let { io.legado.app.help.agent.AgentRuntime.stop("chat:$it") }
+        if (activeUsesAgent) {
+            activeSessionId?.let { io.legado.app.help.agent.AgentRuntime.stop("chat:$it") }
+        }
         job.cancel(CancellationException("User stopped generation"))
         activeJob = null
         activeSessionId = null
+        activeUsesAgent = false
         activePendingContent = ""
         activeThinkingMessageId = null
         activePendingAssistantMessageId = null

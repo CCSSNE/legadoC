@@ -280,10 +280,6 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
             context.toastOnUi(R.string.ai_missing_config)
             return
         }
-        if (!AppConfig.aiAssistantEnabled) {
-            context.toastOnUi(R.string.ai_not_enabled)
-            return
-        }
         vm.startRequest(
             userContent = question,
             thinkingText = resources.getString(R.string.ai_chat_thinking),

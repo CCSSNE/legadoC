@@ -1,7 +1,6 @@
 package io.legado.app.help.ai
 
 import android.os.SystemClock
-import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.addHeaders
@@ -94,7 +93,15 @@ object AiChatService {
         val responseFormat: String? = null,
         val thinkingType: String? = null,
         val reasoningEffort: String? = null,
-        val requestTemplate: String? = null
+        val requestTemplate: String? = null,
+        val useConversationMessages: Boolean = false
+    )
+
+    private data class CompletionUsage(
+        var promptTokens: Long = 0L,
+        var completionTokens: Long = 0L,
+        var cachedTokens: Long = 0L,
+        var reported: Boolean = false
     )
 
     suspend fun chat(messages: List<AiChatMessage>): String {
@@ -296,11 +303,81 @@ object AiChatService {
         onThinking: (String) -> Unit = {},
         onStatus: (JSONObject) -> Unit = {},
         includeStructuredBlocks: Boolean = true
-    ): String = io.legado.app.help.agent.AgentRuntime.chat(
-        sessionId = "selection:${messages.first().id}", messages = messages,
-        onPartial = onPartial, onThinking = onThinking, onStatus = onStatus,
-        includeStructuredBlocks = includeStructuredBlocks
-    )
+    ): String {
+        val provider = AppConfig.aiCurrentProvider
+        val modelConfig = AppConfig.aiCurrentModelConfig
+        val baseUrl = provider?.baseUrl?.trim().orEmpty()
+        val model = modelConfig?.modelId?.trim().orEmpty()
+        require(baseUrl.isNotBlank()) { "供应商 API 地址为空" }
+        require(model.isNotBlank()) { "模型未配置" }
+
+        val conversation = buildPlainConversation(messages)
+        val requestLog = StringBuilder().apply {
+            append("purpose=plain_chat").append('\n')
+            append("url=${resolveChatUrl(baseUrl)}").append('\n')
+            append("model=$model").append('\n')
+            append("provider=${provider?.name.orEmpty()}").append('\n')
+            append("tools=").append('\n')
+        }
+        return try {
+            val turn = requestCompletionStream(
+                baseUrl = baseUrl,
+                model = model,
+                providerApiKey = provider?.apiKey.orEmpty(),
+                providerHeaders = provider?.headers.orEmpty(),
+                messages = conversation,
+                tools = emptyList(),
+                requestLog = requestLog,
+                round = 1,
+                onPartial = onPartial,
+                onThinking = onThinking,
+                onStatus = onStatus,
+                options = CompletionRequestOptions(
+                    requestTemplate = AiStructuredRequestTemplate.global,
+                    useConversationMessages = true
+                )
+            )
+            if (turn.toolCalls.isNotEmpty()) {
+                throw AiChatException(
+                    message = "普通对话未提供工具，但模型返回了工具调用",
+                    debugLog = requestLog.toString()
+                )
+            }
+            turn.content.takeIf { it.isNotBlank() } ?: throw AiChatException(
+                message = "模型没有返回内容",
+                debugLog = requestLog.toString()
+            )
+        } catch (throwable: Throwable) {
+            if (throwable is CancellationException) throw throwable
+            if (throwable is AiChatException) throw throwable
+            throw AiChatException(
+                message = throwable.message ?: throwable.javaClass.simpleName,
+                debugLog = requestLog.toString(),
+                cause = throwable
+            )
+        }
+    }
+
+    private fun buildPlainConversation(messages: List<AiChatMessage>): List<JSONObject> {
+        return buildList {
+            add(JSONObject().put("role", "system").put(
+                "content",
+                AppConfig.aiSystemPrompt.ifBlank { AppConfig.DEFAULT_AI_SYSTEM_PROMPT }
+            ))
+            messages.forEach { message ->
+                add(JSONObject().apply {
+                    put("role", if (message.role == AiChatMessage.Role.USER) "user" else "assistant")
+                    if (message.role == AiChatMessage.Role.ASSISTANT) {
+                        val (content, reasoning) = splitInlineThinking(message.content)
+                        put("content", content)
+                        if (reasoning.isNotBlank()) put("reasoning_content", reasoning)
+                    } else {
+                        put("content", message.content)
+                    }
+                })
+            }
+        }
+    }
 
     private suspend fun requestCompletionStream(
         baseUrl: String,
@@ -313,6 +390,7 @@ object AiChatService {
         round: Int,
         onPartial: (String) -> Unit,
         onThinking: (String) -> Unit,
+        onStatus: (JSONObject) -> Unit = {},
         onRequestAccepted: suspend () -> Unit = {},
         onStreamProgress: suspend (AiStreamProgress) -> Unit = {},
         options: CompletionRequestOptions = CompletionRequestOptions(),
@@ -332,6 +410,7 @@ object AiChatService {
                     round = round,
                     onPartial = onPartial,
                     onThinking = onThinking,
+                    onStatus = onStatus,
                     onRequestAccepted = onRequestAccepted,
                     onStreamProgress = onStreamProgress,
                     options = options,
@@ -373,6 +452,7 @@ object AiChatService {
         round: Int,
         onPartial: (String) -> Unit,
         onThinking: (String) -> Unit,
+        onStatus: (JSONObject) -> Unit,
         onRequestAccepted: suspend () -> Unit = {},
         onStreamProgress: suspend (AiStreamProgress) -> Unit = {},
         options: CompletionRequestOptions = CompletionRequestOptions(),
@@ -383,7 +463,7 @@ object AiChatService {
         val requestHeaders = formatRequestHeaders(providerApiKey, providerHeaders)
         val requestBody = try {
             options.requestTemplate?.let { template ->
-                AiStructuredRequestTemplate.render(
+                val rendered = AiStructuredRequestTemplate.render(
                     template = template,
                     model = model,
                     systemPrompt = messages
@@ -393,6 +473,18 @@ object AiChatService {
                     userContent = messages.lastOrNull { it.optString("role") == "user" }
                         ?.opt("content") ?: ""
                 )
+                if (options.useConversationMessages) {
+                    JSONObject(rendered).apply {
+                        put("messages", JSONArray(messages))
+                        remove("tools")
+                        remove("tool_choice")
+                        remove("parallel_tool_calls")
+                        remove("functions")
+                        remove("function_call")
+                    }.toString()
+                } else {
+                    rendered
+                }
             } ?: buildRequestBody(messages, model, tools, stream = true, options = options)
         } catch (throwable: Throwable) {
             AppLog.putAi(
@@ -406,6 +498,10 @@ object AiChatService {
             )
             throw throwable
         }
+        val requestJson = JSONObject(requestBody)
+        val requestEventId = requestId.toString()
+        onStatus(JSONObject().put("type", "model.request").put("requestId", requestEventId)
+            .put("display", true))
         val idleTimeoutSeconds = AiRequestTimeoutConfig.sseIdleTimeoutSeconds
         val generationTimeoutSeconds = AiRequestTimeoutConfig.generationTimeoutSeconds
         val thinkingInterruptSeconds = AiRequestTimeoutConfig.thinkingInterruptSeconds
@@ -516,7 +612,9 @@ object AiChatService {
             val reasoningRendered = StringBuilder()
             val rawPayload = StringBuilder()
             val toolCallBuilders = linkedMapOf<Int, ToolCallBuilder>()
+            val usage = CompletionUsage()
             var latestProgress: AiStreamProgress? = null
+            var firstTokenAt = 0L
             var lastProgressLogAt = Long.MIN_VALUE
             var lastStreamEventAt = streamStartedAt
             try {
@@ -546,6 +644,7 @@ object AiChatService {
                                 rendered = rendered,
                                 reasoningRendered = reasoningRendered,
                                 toolCallBuilders = toolCallBuilders,
+                                usage = usage,
                                 onPartial = onPartial,
                                 onThinking = onThinking,
                                 streamStartedAt = streamStartedAt,
@@ -561,6 +660,11 @@ object AiChatService {
                                     )
                                     lastStreamEventAt = now
                                     latestProgress = enrichedProgress
+                                    if (firstTokenAt == 0L &&
+                                        (enrichedProgress.reasoningChars > 0 || enrichedProgress.contentChars > 0)
+                                    ) {
+                                        firstTokenAt = now
+                                    }
                                     if (lastProgressLogAt == Long.MIN_VALUE || now - lastProgressLogAt >= 1_000L) {
                                         lastProgressLogAt = now
                                         AppLog.putAi(
@@ -643,6 +747,16 @@ object AiChatService {
                 if (fallback.isNotBlank()) {
                     val visibleFallback = stripInlineThinking(fallback, onThinking)
                     onPartial(visibleFallback)
+                    emitPlainChatCompletionStatus(
+                        onStatus = onStatus,
+                        requestId = requestEventId,
+                        requestBody = requestJson,
+                        usage = usage,
+                        content = visibleFallback,
+                        reasoning = reasoningRendered.toString(),
+                        startedAt = streamStartedAt,
+                        firstTokenAt = firstTokenAt
+                    )
                     return AssistantTurn(
                         visibleFallback,
                         emptyList(),
@@ -651,6 +765,16 @@ object AiChatService {
                     )
                 }
             }
+            emitPlainChatCompletionStatus(
+                onStatus = onStatus,
+                requestId = requestEventId,
+                requestBody = requestJson,
+                usage = usage,
+                content = rendered.toString(),
+                reasoning = reasoningRendered.toString(),
+                startedAt = streamStartedAt,
+                firstTokenAt = firstTokenAt
+            )
             return AssistantTurn(
                 content = rendered.toString(),
                 toolCalls = toolCalls,
@@ -748,6 +872,7 @@ object AiChatService {
         rendered: StringBuilder,
         reasoningRendered: StringBuilder,
         toolCallBuilders: MutableMap<Int, ToolCallBuilder>,
+        usage: CompletionUsage,
         onPartial: (String) -> Unit,
         onThinking: (String) -> Unit,
         streamStartedAt: Long,
@@ -757,6 +882,14 @@ object AiChatService {
             throw IllegalStateException("模型服务请求失败：$it")
         }
         val root = JSONObject(payload)
+        root.optJSONObject("usage")?.let { rawUsage ->
+            usage.promptTokens = rawUsage.optLong("prompt_tokens", rawUsage.optLong("input_tokens", 0L))
+            usage.completionTokens = rawUsage.optLong("completion_tokens", rawUsage.optLong("output_tokens", 0L))
+            val promptDetails = rawUsage.optJSONObject("prompt_tokens_details")
+            usage.cachedTokens = promptDetails?.optLong("cached_tokens", 0L)
+                ?: rawUsage.optLong("cached_tokens", rawUsage.optLong("cache_read_input_tokens", 0L))
+            usage.reported = true
+        }
         val choice = root.optJSONArray("choices")?.optJSONObject(0)
         val delta = choice?.optJSONObject("delta") ?: choice?.optJSONObject("message") ?: JSONObject()
         val reasoningText = extractContentText(delta.opt("reasoning_content"))
@@ -764,7 +897,7 @@ object AiChatService {
             .ifBlank { extractContentText(delta.opt("thinking")) }
         if (reasoningText.isNotBlank()) {
             reasoningRendered.append(reasoningText)
-            onThinking(reasoningText)
+            onThinking(reasoningRendered.toString())
         }
         val deltaText = extractContentText(delta.opt("content"))
         if (deltaText.isNotEmpty()) {
@@ -867,6 +1000,36 @@ object AiChatService {
 
     private fun estimateOutputTokens(outputChars: Int): Int {
         return ((outputChars + 3) / 4).coerceAtLeast(0)
+    }
+
+    private fun emitPlainChatCompletionStatus(
+        onStatus: (JSONObject) -> Unit,
+        requestId: String,
+        requestBody: JSONObject,
+        usage: CompletionUsage,
+        content: String,
+        reasoning: String,
+        startedAt: Long,
+        firstTokenAt: Long
+    ) {
+        val elapsedMs = (SystemClock.elapsedRealtime() - startedAt).coerceAtLeast(0L)
+        val ttftMs = if (firstTokenAt > 0L) (firstTokenAt - startedAt).coerceAtLeast(0L) else elapsedMs
+        if (!usage.reported) {
+            usage.promptTokens = estimateTokens(requestBody.optJSONArray("messages")?.toString().orEmpty())
+            usage.completionTokens = estimateTokens(content) + estimateTokens(reasoning)
+        }
+        onStatus(JSONObject().put("type", "model.response").put("requestId", requestId)
+            .put("elapsedMs", elapsedMs))
+        onStatus(JSONObject().put("type", "model.usage").put("requestId", requestId)
+            .put("promptTokens", usage.promptTokens).put("completionTokens", usage.completionTokens)
+            .put("cachedTokens", usage.cachedTokens).put("elapsedMs", elapsedMs).put("ttftMs", ttftMs)
+            .put("display", true).put("estimated", !usage.reported))
+    }
+
+    private fun estimateTokens(text: String): Long {
+        var cjk = 0L
+        text.forEach { if (it.code >= 0x2E80) cjk++ }
+        return cjk + ((text.length.toLong() - cjk + 3L) / 4L)
     }
 
     private fun buildAssistantRawMessage(

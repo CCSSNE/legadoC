@@ -429,19 +429,11 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         }
         sideSearchButton.setOnLongClickListener {
             closeSideNavigation()
-            if (AppConfig.aiAssistantEnabled) {
-                startActivity(Intent(this@MainActivity, AiChatActivity::class.java))
-            } else {
-                toastOnUi(R.string.ai_enable_summary)
-            }
+            startActivity(Intent(this@MainActivity, AiChatActivity::class.java))
             true
         }
         searchButton.setOnLongClickListener {
-            if (AppConfig.aiAssistantEnabled) {
-                startActivity(Intent(this@MainActivity, AiChatActivity::class.java))
-            } else {
-                toastOnUi(R.string.ai_enable_summary)
-            }
+            startActivity(Intent(this@MainActivity, AiChatActivity::class.java))
             true
         }
         scheduleLiquidGlassSetup()

@@ -1598,10 +1598,6 @@ class ReadBookActivity : BaseReadBookActivity(),
             toastOnUi(R.string.ai_missing_config)
             return
         }
-        if (!AppConfig.aiAssistantEnabled) {
-            toastOnUi(R.string.ai_not_enabled)
-            return
-        }
         val book = ReadBook.book
         val chapter = ReadBook.curTextChapter?.chapter
         val anchor = lastTextMenuAnchor
