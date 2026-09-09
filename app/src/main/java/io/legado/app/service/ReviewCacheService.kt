@@ -12,6 +12,7 @@ import io.legado.app.utils.startService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import splitties.init.appCtx
@@ -77,6 +78,7 @@ class ReviewCacheService : BaseService() {
                         try {
                             val result = runCatching { ReviewSnapshotManager.processTask(task) }
                                 .onFailure {
+                                    ensureActive()
                                     AppLog.put(
                                         "评论快照任务处理失败 ${task.key}\n${it.localizedMessage}",
                                         it,

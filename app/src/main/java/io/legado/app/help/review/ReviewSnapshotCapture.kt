@@ -82,23 +82,13 @@ object ReviewSnapshotCapture {
 
     /** 页面加载与评论展开共享的执行预算；不包含重内存阶段的排队或执行。 */
     private const val PAGE_EXECUTION_TIMEOUT_MS = 60_000L
-    /** 已取得 permit 后，资源内联、outerHTML 与解码共享的执行预算。 */
-    private const val HEAVY_STAGE_WORK_TIMEOUT_MS = 60_000L
-    /** 穷尽循环轮数上限 */
-    private const val MAX_EXPAND_ROUNDS = 40
     /** 每轮之间的等待 */
     private const val EXPAND_ROUND_INTERVAL_MS = 800L
     /** 连续几轮稳定才判定完成（含慢加载评论） */
     private const val STABLE_ROUNDS_TO_FINISH = 3
-    /** 楼中楼兜底强展轮数上限（每轮点击后可能出现新的“加载更多回复”） */
-    private const val MAX_FORCE_EXPAND_PASSES = 12
     /** 章评/书评 tab 点击校验重试上限 */
     private const val MAX_TAB_CLICK_ATTEMPTS = 5
-    /** Resource budget for one complete offline snapshot. Budget excess is a visible failure. */
-    private const val MAX_SNAPSHOT_RESOURCES = 200
-    private const val MAX_TOTAL_RESOURCE_BYTES = 30L * 1024 * 1024
-    private const val MAX_RESOURCE_BYTES = 8L * 1024 * 1024
-    /** 单个资源抓取超时；传输失败会记录并移除该非关键资源，取消与预算失败仍会中止快照。 */
+    /** 单个资源抓取超时；传输失败会记录并移除该非关键资源，取消仍会中止快照。 */
     private const val RESOURCE_FETCH_TIMEOUT_MS = 8_000L
     private const val HEAVY_STAGE_CONCURRENCY = 1
     private const val RESOURCE_COPY_BUFFER_BYTES = 32 * 1024
@@ -107,8 +97,6 @@ object ReviewSnapshotCapture {
      * 唯一的重内存区段。页面加载/展开仍可并行，只有进入该区段才排队。
      */
     private val heavyStagePermits = Semaphore(HEAVY_STAGE_CONCURRENCY, true)
-
-    private class ResourceBudgetExceededException(message: String) : IllegalStateException(message)
 
     private class CaptureStageTimeoutException(message: String) : NoStackTraceException(message)
 
@@ -643,32 +631,6 @@ object ReviewSnapshotCapture {
             val mimeType: String,
         )
 
-        /**
-         * 并发下载时只允许受控大小的临时文件总量，避免多个完整响应同时占满可用资源。
-         */
-        private class ResourceStagingBudget {
-            private var reservedBytes = 0L
-
-            @Synchronized
-            fun reserve(bytes: Long) {
-                if (bytes <= 0L) return
-                val next = reservedBytes + bytes
-                if (next > MAX_TOTAL_RESOURCE_BYTES) {
-                    throw ResourceBudgetExceededException(
-                        "评论快照资源 $next B 超过总预算 $MAX_TOTAL_RESOURCE_BYTES B",
-                    )
-                }
-                reservedBytes = next
-            }
-
-            @Synchronized
-            fun release(bytes: Long) {
-                if (bytes > 0L) {
-                    reservedBytes = (reservedBytes - bytes).coerceAtLeast(0L)
-                }
-            }
-        }
-
         @Volatile
         private var destroyed = false
         private var expandRounds = 0
@@ -910,8 +872,8 @@ object ReviewSnapshotCapture {
         }
 
         /**
-         * 只有页面执行与 permit 后的重内存处理拥有执行超时。permit 排队没有失败时限，
-         * 只记录自己的等待耗时；这样队列中的时间永远不会消耗 heavy work 的执行预算。
+         * 页面执行超时直接报告失败；资源阶段和 permit 排队不共享页面执行时限。
+         * 单资源网络停滞由网络层超时处理，资源总量不作为失败条件。
          */
         private fun startTimedStage(stage: CaptureStage, timeoutMs: Long, timeoutLabel: String) {
             completeActiveStage()
@@ -978,11 +940,7 @@ object ReviewSnapshotCapture {
                     if (stats == null) {
                         // 页面还未就绪：下一轮再试
                         expandRounds++
-                        if (expandRounds >= MAX_EXPAND_ROUNDS) {
-                            afterExpandLoop()
-                        } else {
-                            mHandler.postDelayed({ expandRound() }, EXPAND_ROUND_INTERVAL_MS)
-                        }
+                        mHandler.postDelayed({ expandRound() }, EXPAND_ROUND_INTERVAL_MS)
                         return@post
                     }
                     // 稳定要求：本轮没点过展开按钮，且 文本长度/页面高度/DOM 节点数 全部一致
@@ -997,7 +955,7 @@ object ReviewSnapshotCapture {
                     lastNodes = stats.nodes
                     stableRounds = if (stable) stableRounds + 1 else 0
                     expandRounds++
-                    if (stableRounds >= STABLE_ROUNDS_TO_FINISH || expandRounds >= MAX_EXPAND_ROUNDS) {
+                    if (stableRounds >= STABLE_ROUNDS_TO_FINISH) {
                         afterExpandLoop()
                     } else {
                         mHandler.postDelayed({ expandRound() }, EXPAND_ROUND_INTERVAL_MS)
@@ -1023,7 +981,7 @@ object ReviewSnapshotCapture {
         /**
          * 楼中楼兜底强展：逐一点击全部未展开的回复 toggle（不限每轮数量），
          * 直到页面再无“展开 N 条回复”类元素。点击后可能出现新的“加载更多回复”，
-         * 因此按轮收敛；轮数有上限，绝不无限循环。
+         * 因此按页面稳定状态收敛；页面执行超时必须报错，不能把未展开完的页面当作完整结果。
          */
         private fun forceExpandReplies() {
             if (destroyed) return
@@ -1031,12 +989,15 @@ object ReviewSnapshotCapture {
             webView.evaluateJavascript(FORCE_EXPAND_JS) { json ->
                 mHandler.post {
                     if (destroyed) return@post
-                    val clicked = parseForceClicked(json) ?: 0
+                    val clicked = parseForceClicked(json) ?: run {
+                        fail(IllegalStateException("无法读取评论回复展开结果"))
+                        return@post
+                    }
                     diagnostics?.mark(
                         "FORCE_EXPAND_PASS",
                         CacheOperationDiagnostics.Metrics(resourceCount = clicked),
                     )
-                    if (clicked > 0 && forceExpandPasses < MAX_FORCE_EXPAND_PASSES) {
+                    if (clicked > 0) {
                         mHandler.postDelayed({ forceExpandReplies() }, EXPAND_ROUND_INTERVAL_MS)
                     } else {
                         inlineResources()
@@ -1132,11 +1093,12 @@ object ReviewSnapshotCapture {
                                 releaseHeavyStagePermit()
                             } else {
                                 diagnostics?.mark("HEAVY_STAGE_ACQUIRED")
-                                startTimedStage(
-                                    CaptureStage.HEAVY_STAGE_WORK,
-                                    HEAVY_STAGE_WORK_TIMEOUT_MS,
-                                    "评论快照重内存处理",
-                                )
+                                completeActiveStage()
+                                synchronized(lifecycleLock) {
+                                    activeStage = CaptureStage.HEAVY_STAGE_WORK
+                                }
+                                diagnostics?.stageStart(CaptureStage.HEAVY_STAGE_WORK.diagnosticsStage)
+                                // 网络请求各自超时；完整资源集不共享一个随数量增长必然耗尽的总时限。
                                 collectAndInlineResources()
                             }
                         }
@@ -1378,11 +1340,6 @@ object ReviewSnapshotCapture {
 
         private fun downloadResources(urls: ResourceUrls): InlineResources {
             val resourceCount = urls.resourceCount
-            if (resourceCount > MAX_SNAPSHOT_RESOURCES) {
-                throw ResourceBudgetExceededException(
-                    "评论快照资源数 $resourceCount 超过预算 $MAX_SNAPSHOT_RESOURCES",
-                )
-            }
             if (resourceCount == 0) {
                 return InlineResources(
                     imgMap = urls.databaseImages.mapValues { (_, entry) ->
@@ -1410,12 +1367,10 @@ object ReviewSnapshotCapture {
             check(stagingDir.mkdirs() || stagingDir.isDirectory) {
                 "无法创建评论快照资源暂存目录"
             }
-            val budget = ResourceStagingBudget()
             try {
-                val stagedResources = stageResources(targets, stagingDir, budget)
+                val stagedResources = stageResources(targets, stagingDir)
                 val imgMap = linkedMapOf<String, String>()
                 val cssMap = linkedMapOf<String, String>()
-                var embeddedTextBytes = 0L
                 var resourceBytes = 0L
                 urls.databaseImages.forEach { (imageUrl, entry) ->
                     imgMap[imageUrl] = ReviewSnapshotResourceStore.referenceFor(entry.key)
@@ -1452,7 +1407,7 @@ object ReviewSnapshotCapture {
                 // 必失败）。统一入库并把引用改写为 review-resource:；下载失败的子资源
                 // 按非关键资源策略改写为 #，stageResources 已留 RESOURCE_DOWNLOAD_SKIPPED
                 // 诊断，不静默丢弃。
-                val subStage = stageCssSubResources(stagedCss, stagingDir, budget)
+                val subStage = stageCssSubResources(stagedCss, stagingDir)
                 val subReferences = subStage.references
                 resourceBytes += subStage.storedBytes
                 val subResourceKeys = subReferences.values.mapNotNull { reference ->
@@ -1461,13 +1416,6 @@ object ReviewSnapshotCapture {
                 for (css in stagedCss) {
                     val rewritten = rewriteCssSubResources(css, subReferences)
                     val textBytes = rewritten.toByteArray(Charsets.UTF_8).size.toLong()
-                    val nextTotal = embeddedTextBytes + textBytes
-                    if (nextTotal > MAX_TOTAL_RESOURCE_BYTES) {
-                        throw ResourceBudgetExceededException(
-                            "评论快照样式 $nextTotal B 超过总预算 $MAX_TOTAL_RESOURCE_BYTES B",
-                        )
-                    }
-                    embeddedTextBytes = nextTotal
                     resourceBytes += textBytes
                     cssMap[css.url] = rewritten
                 }
@@ -1496,7 +1444,6 @@ object ReviewSnapshotCapture {
         private fun stageCssSubResources(
             stagedCss: List<StagedCss>,
             stagingDir: File,
-            budget: ResourceStagingBudget,
         ): CssSubStageResult {
             val subUrls = stagedCss.asSequence()
                 .flatMap { css -> css.refs.asSequence() }
@@ -1504,15 +1451,10 @@ object ReviewSnapshotCapture {
                 .distinct()
                 .toList()
             if (subUrls.isEmpty()) return CssSubStageResult(emptyMap(), 0L, 0)
-            if (subUrls.size > MAX_SNAPSHOT_RESOURCES) {
-                throw ResourceBudgetExceededException(
-                    "评论快照 CSS 子资源数 ${subUrls.size} 超过预算 $MAX_SNAPSHOT_RESOURCES",
-                )
-            }
             val subTargets = subUrls.mapIndexed { index, url ->
                 ResourceTarget(index, url, ResourceKind.SUB_RESOURCE)
             }
-            val stagedSubs = stageResources(subTargets, stagingDir, budget)
+            val stagedSubs = stageResources(subTargets, stagingDir)
             val subReferences = linkedMapOf<String, String>()
             var storedBytes = 0L
             for (staged in stagedSubs) {
@@ -1613,14 +1555,13 @@ object ReviewSnapshotCapture {
         private fun stageResources(
             targets: List<ResourceTarget>,
             stagingDir: File,
-            budget: ResourceStagingBudget,
         ): List<StagedResource> {
             val threadCount = AppConfig.reviewResourceDownloadConcurrency.coerceIn(1, 32)
             val executor = Executors.newFixedThreadPool(threadCount) { runnable ->
                 Thread(runnable, "ReviewSnapshotResource").apply { isDaemon = true }
             }
             val futures = targets.map { target ->
-                target to executor.submit(Callable { stageResource(target, stagingDir, budget) })
+                target to executor.submit(Callable { stageResource(target, stagingDir) })
             }
             try {
                 return futures.mapNotNull { (target, future) ->
@@ -1670,7 +1611,6 @@ object ReviewSnapshotCapture {
         private fun stageResource(
             target: ResourceTarget,
             stagingDir: File,
-            budget: ResourceStagingBudget,
         ): StagedResource {
             val targetFile = File(stagingDir, target.index.toString())
             val request = okhttp3.Request.Builder()
@@ -1683,7 +1623,6 @@ object ReviewSnapshotCapture {
                 .build()
                 .newCall(request)
             registerResourceCall(call)
-            var reservedBytes = 0L
             var completed = false
             try {
                 ensureHeavyActive()
@@ -1708,15 +1647,6 @@ object ReviewSnapshotCapture {
                                     val count = input.read(buffer)
                                     if (count < 0) break
                                     val nextBytes = copiedBytes + count
-                                    if (nextBytes > MAX_RESOURCE_BYTES) {
-                                        throw ResourceBudgetExceededException(
-                                            "评论快照资源 $nextBytes B 超过单资源预算 " +
-                                                "$MAX_RESOURCE_BYTES B: ${target.url}",
-                                        )
-                                    }
-                                    val nextReserved = estimatedStagingBytes(nextBytes)
-                                    budget.reserve(nextReserved - reservedBytes)
-                                    reservedBytes = nextReserved
                                     output.write(buffer, 0, count)
                                     copiedBytes = nextBytes
                                 }
@@ -1734,13 +1664,10 @@ object ReviewSnapshotCapture {
             } finally {
                 unregisterResourceCall(call)
                 if (!completed) {
-                    budget.release(reservedBytes)
                     targetFile.delete()
                 }
             }
         }
-
-        private fun estimatedStagingBytes(rawBytes: Long): Long = rawBytes
 
         private fun prepareImage(staged: StagedResource): PreparedImage {
             check(staged.file.length() == staged.byteCount) {
