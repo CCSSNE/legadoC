@@ -31,8 +31,6 @@ import android.widget.FrameLayout
 import androidx.annotation.Keep
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.net.toUri
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.FragmentManager
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.bottomsheet.BottomSheetBehavior
@@ -266,7 +264,10 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         val dialog = super.onCreateDialog(savedInstanceState)
         dialog.window?.let { window ->
             window.decorView.systemUiVisibility = activity?.window?.decorView?.systemUiVisibility ?: 0
-            window.addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+            // BottomSheet 自身已经负责窗口内布局。FLAG_LAYOUT_NO_LIMITS 会让从屏幕
+            // 中部展开的 sheet 仍按整屏高度测量，导致 WebView 底部（包括发送栏）
+            // 伸出物理屏幕，只剩上半截可见。
+            window.clearFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
         }
         return dialog
     }
@@ -1147,28 +1148,8 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
             }
             // 快照显示中：注入章评/书评补充 section 与离线 tab/楼中楼交互
             if (displayingSnapshotHtml && view != null) {
-                applySnapshotSafeArea(view)
                 injectReviewSupplements(view)
             }
-        }
-
-        /**
-         * Android WebView 在 BottomSheet 中不会可靠地向 CSS
-         * env(safe-area-inset-bottom) 暴露系统底部 inset。评论页把发送栏和正文
-         * 垫高都建立在 --safe-b 上；快照又移除了原页脚本，因此这里用原生
-         * WindowInsets 写回该变量，避免固定发送栏贴底或遮住最后一条评论。
-         */
-        private fun applySnapshotSafeArea(view: WebView) {
-            val insets = ViewCompat.getRootWindowInsets(view) ?: return
-            val navigationBottom = insets.getInsets(
-                WindowInsetsCompat.Type.navigationBars() or
-                    WindowInsetsCompat.Type.mandatorySystemGestures()
-            ).bottom
-            val bottomCssPx = navigationBottom / view.resources.displayMetrics.density
-            view.evaluateJavascript(
-                "document.documentElement.style.setProperty('--safe-b','${bottomCssPx}px')",
-                null
-            )
         }
 
         /**
