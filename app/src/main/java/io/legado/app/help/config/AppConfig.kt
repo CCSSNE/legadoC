@@ -57,6 +57,13 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     const val DEFAULT_AI_PROVIDER_API_KEY = "public"
     const val DEFAULT_AI_MODEL_ID = "big-pickle"
 
+    //出厂第二供应商：本机 local-core 落地后端，只管连线（地址/钥匙/多模态开关），
+    //名下不挂默认模型（模型只当参数，用户在“添加模型”里自己加）；当前选择不动，仍是默认供应商。
+    const val LOCAL_CORE_PROVIDER_ID = "builtin-llm-localcore"
+    const val LOCAL_CORE_PROVIDER_NAME = "local-core"
+    const val LOCAL_CORE_PROVIDER_BASE_URL = "http://127.0.0.1:11434/v1"
+    const val LOCAL_CORE_PROVIDER_API_KEY = "test"
+
     val isCronet = appCtx.getPrefBoolean(PreferKey.cronet)
     var useAntiAlias = appCtx.getPrefBoolean(PreferKey.antiAlias)
     var useHighRefreshRate = appCtx.getPrefBoolean(PreferKey.highBrush, true)
@@ -738,6 +745,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     private fun ensureDefaultAiConfigIfNeeded() {
         if (appCtx.getPrefBoolean(PreferKey.aiDefaultConfigSeeded, false)) {
             fillDefaultAiHeadersIfNeeded()
+            ensureLocalCoreProviderIfMissing()
             return
         }
         if (appCtx.getPrefString(PreferKey.aiProviderList).isNullOrBlank()) {
@@ -750,13 +758,41 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
                 supportVision = false
             )
             val model = AiModelConfig(providerId = provider.id, modelId = DEFAULT_AI_MODEL_ID)
-            persistAiProviders(listOf(provider))
+            persistAiProviders(listOf(provider, defaultLocalCoreProvider()))
             persistAiModels(listOf(model))
             appCtx.putPrefString(PreferKey.aiCurrentProviderId, provider.id)
             appCtx.putPrefString(PreferKey.aiCurrentModelId, model.id)
         }
         appCtx.putPrefBoolean(PreferKey.aiDefaultConfigSeeded, true)
         appCtx.putPrefBoolean(PreferKey.aiLlmBuiltinHeadersFilled, true)
+    }
+
+    private fun defaultLocalCoreProvider(): AiProviderConfig = AiProviderConfig(
+        id = LOCAL_CORE_PROVIDER_ID,
+        name = LOCAL_CORE_PROVIDER_NAME,
+        baseUrl = LOCAL_CORE_PROVIDER_BASE_URL,
+        apiKey = LOCAL_CORE_PROVIDER_API_KEY,
+        supportVision = true
+    )
+
+    /**
+     * 存量补齐：已有出厂标记的老机器缺 local-core 时追加一个，模型与当前选择一律不动。
+     * 按 id/名/地址三者任一命中即视为已存在（用户自建的同名同址项不重复加，也不动用户改过的钥匙）。
+     * 列表为空是用户清空了全部供应商，保持清空，不复活。
+     */
+    private fun ensureLocalCoreProviderIfMissing() {
+        val providers = GSON.fromJsonArray<AiProviderConfig>(
+            appCtx.getPrefString(PreferKey.aiProviderList)
+        ).getOrDefault(emptyList())
+        if (providers.isEmpty()) return
+        val factoryBaseUrl = LOCAL_CORE_PROVIDER_BASE_URL.trim().trimEnd('/')
+        val exists = providers.any { provider ->
+            provider.id == LOCAL_CORE_PROVIDER_ID ||
+                provider.name.equals(LOCAL_CORE_PROVIDER_NAME, ignoreCase = true) ||
+                provider.baseUrl.trim().trimEnd('/') == factoryBaseUrl
+        }
+        if (exists) return
+        persistAiProviders(normalizeAiProviders(providers + defaultLocalCoreProvider()))
     }
 
     /**
