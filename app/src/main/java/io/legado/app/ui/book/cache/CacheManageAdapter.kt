@@ -130,11 +130,16 @@ class CacheManageAdapter(
             btnStop.gone()
         }
         val hasCache = item.cachedCount > 0
+        // 自播产生的媒体缓存只占存储、不计完整章节：只要实际占了存储就允许删除。
+        // 上传（导出）仍要求有完整章节计数，不在此放宽。
+        val hasStoredBytes = item.storageCalculated && item.storageSizeBytes > 0
         val taskLocked = isCaching || isPaused
-        btnUpload.isEnabled = hasCache && !taskLocked
-        btnDelete.isEnabled = hasCache && !taskLocked
-        btnUpload.alpha = if (hasCache && !taskLocked) 1f else 0.45f
-        btnDelete.alpha = if (hasCache && !taskLocked) 1f else 0.45f
+        val canUpload = hasCache && !taskLocked
+        val canDelete = (hasCache || hasStoredBytes) && !taskLocked
+        btnUpload.isEnabled = canUpload
+        btnDelete.isEnabled = canDelete
+        btnUpload.alpha = if (canUpload) 1f else 0.45f
+        btnDelete.alpha = if (canDelete) 1f else 0.45f
     }
 
     override fun registerListener(holder: ItemViewHolder, binding: ItemCacheManageBookBinding) {
