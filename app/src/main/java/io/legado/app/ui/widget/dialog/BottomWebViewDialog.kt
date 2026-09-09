@@ -5,7 +5,6 @@ import android.app.Dialog
 import android.content.Context
 import android.content.pm.ActivityInfo
 import android.graphics.Bitmap
-import android.graphics.Rect
 import android.net.Uri
 import android.net.http.SslError
 import android.os.Build
@@ -18,7 +17,6 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewConfiguration
-import android.view.ViewTreeObserver
 import android.view.WindowManager
 import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
@@ -227,8 +225,6 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
     private var pullDownStartY = 0f
     private var pullDownDragStartY = 0f
     private var pullDownLastDistance = 0f
-    private var lastSnapshotClipCssPx: Float? = null
-    private var snapshotPreDrawListener: ViewTreeObserver.OnPreDrawListener? = null
     private val touchSlop by lazy {
         ViewConfiguration.get(requireContext()).scaledTouchSlop
     }
@@ -929,13 +925,6 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
     override fun onDestroyView() {
         customWebViewCallback?.onCustomViewHidden()
         cancelFallbackTimeout()
-        snapshotPreDrawListener?.let { listener ->
-            if (currentWebView.viewTreeObserver.isAlive) {
-                currentWebView.viewTreeObserver.removeOnPreDrawListener(listener)
-            }
-        }
-        snapshotPreDrawListener = null
-        lastSnapshotClipCssPx = null
         WebViewPool.release(pooledWebView)
         originOrientation?.let {
             activity?.requestedOrientation = it
@@ -1098,35 +1087,6 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         }
     }
 
-    private fun ensureSnapshotViewportClipTracking(view: WebView) {
-        if (snapshotPreDrawListener != null) return
-        snapshotPreDrawListener = ViewTreeObserver.OnPreDrawListener {
-            updateSnapshotViewportClip(view)
-            true
-        }.also(view.viewTreeObserver::addOnPreDrawListener)
-    }
-
-    private fun updateSnapshotViewportClip(view: WebView) {
-        if (!displayingSnapshotHtml || !view.isAttachedToWindow) return
-        val location = IntArray(2)
-        view.getLocationOnScreen(location)
-        val visibleRect = Rect()
-        if (!view.getGlobalVisibleRect(visibleRect)) return
-        val visibleBottomInView = visibleRect.bottom - location[1]
-        val clippedDevicePx = (view.height - visibleBottomInView).coerceAtLeast(0)
-        val clippedCssPx = clippedDevicePx / view.resources.displayMetrics.density
-        if (lastSnapshotClipCssPx?.let { abs(it - clippedCssPx) < 0.5f } == true) return
-        lastSnapshotClipCssPx = clippedCssPx
-        view.evaluateJavascript(
-            "(function(){" +
-                "var b=document.getElementById('bottomBar');" +
-                "if(b)b.style.bottom='${clippedCssPx}px';" +
-                "document.body.style.paddingBottom='calc(80px + var(--safe-b) + ${clippedCssPx}px)';" +
-                "})()",
-            null
-        )
-    }
-
     inner class CustomWebViewClient : WebViewClient() {
         override fun shouldOverrideUrlLoading(
             view: WebView?, request: WebResourceRequest?
@@ -1185,19 +1145,8 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
             }
             // 快照显示中：注入章评/书评补充 section 与离线 tab/楼中楼交互
             if (displayingSnapshotHtml && view != null) {
-                compensateSnapshotViewportClip(view)
                 injectReviewSupplements(view)
             }
-        }
-
-        /**
-         * 折叠态 BottomSheet 的 WebView 仍可能按整窗高度测量，实际可见底边却是
-         * 屏幕底边。快照没有原页脚本重新布局 fixed 底栏，因此按真实越界量把
-         * 发送栏上移，并给正文追加同量滚动留白。
-         */
-        private fun compensateSnapshotViewportClip(view: WebView) {
-            ensureSnapshotViewportClipTracking(view)
-            view.post { updateSnapshotViewportClip(view) }
         }
 
         /**
