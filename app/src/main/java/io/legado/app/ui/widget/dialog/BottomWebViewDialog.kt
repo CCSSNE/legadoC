@@ -225,6 +225,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
     private var pullDownStartY = 0f
     private var pullDownDragStartY = 0f
     private var pullDownLastDistance = 0f
+    private var snapshotClipUpdatePosted = false
     private val touchSlop by lazy {
         ViewConfiguration.get(requireContext()).scaledTouchSlop
     }
@@ -622,6 +623,15 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         view.setBackgroundColor(0)
         binding.webViewContainer.addView(currentWebView)
         setPullDownToDismiss(true)
+        behavior?.addBottomSheetCallback(object : BottomSheetBehavior.BottomSheetCallback() {
+            override fun onStateChanged(bottomSheet: View, newState: Int) {
+                scheduleSnapshotViewportClipUpdate()
+            }
+
+            override fun onSlide(bottomSheet: View, slideOffset: Float) {
+                scheduleSnapshotViewportClipUpdate()
+            }
+        })
         lifecycleScope.launch(IO) {
             val args = arguments
             if (args == null) {
@@ -1090,6 +1100,32 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         }
     }
 
+    private fun scheduleSnapshotViewportClipUpdate() {
+        if (!displayingSnapshotHtml || snapshotClipUpdatePosted) return
+        snapshotClipUpdatePosted = true
+        currentWebView.postOnAnimation {
+            snapshotClipUpdatePosted = false
+            updateSnapshotViewportClip(currentWebView)
+        }
+    }
+
+    private fun updateSnapshotViewportClip(view: WebView) {
+        if (!displayingSnapshotHtml || !view.isAttachedToWindow) return
+        val location = IntArray(2)
+        view.getLocationOnScreen(location)
+        val clippedDevicePx =
+            (location[1] + view.height - resources.displayMetrics.heightPixels).coerceAtLeast(0)
+        val clippedCssPx = clippedDevicePx / view.resources.displayMetrics.density
+        view.evaluateJavascript(
+            "(function(){" +
+                "var b=document.getElementById('bottomBar');" +
+                "if(b)b.style.bottom='${clippedCssPx}px';" +
+                "document.body.style.paddingBottom='calc(80px + var(--safe-b) + ${clippedCssPx}px)';" +
+                "})()",
+            null
+        )
+    }
+
     inner class CustomWebViewClient : WebViewClient() {
         override fun shouldOverrideUrlLoading(
             view: WebView?, request: WebResourceRequest?
@@ -1159,23 +1195,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
          * 发送栏上移，并给正文追加同量滚动留白。
          */
         private fun compensateSnapshotViewportClip(view: WebView) {
-            view.post {
-                if (!displayingSnapshotHtml || !view.isAttachedToWindow) return@post
-                val location = IntArray(2)
-                view.getLocationOnScreen(location)
-                val clippedDevicePx =
-                    (location[1] + view.height - resources.displayMetrics.heightPixels).coerceAtLeast(0)
-                if (clippedDevicePx == 0) return@post
-                val clippedCssPx = clippedDevicePx / view.resources.displayMetrics.density
-                view.evaluateJavascript(
-                    "(function(){" +
-                        "var b=document.getElementById('bottomBar');" +
-                        "if(b)b.style.bottom='${clippedCssPx}px';" +
-                        "document.body.style.paddingBottom='calc(80px + var(--safe-b) + ${clippedCssPx}px)';" +
-                        "})()",
-                    null
-                )
-            }
+            updateSnapshotViewportClip(view)
         }
 
         /**
