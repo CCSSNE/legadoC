@@ -360,10 +360,6 @@ object AiChatService {
 
     private fun buildPlainConversation(messages: List<AiChatMessage>): List<JSONObject> {
         return buildList {
-            add(JSONObject().put("role", "system").put(
-                "content",
-                AppConfig.aiSystemPrompt.ifBlank { AppConfig.DEFAULT_AI_SYSTEM_PROMPT }
-            ))
             messages.forEach { message ->
                 add(JSONObject().apply {
                     put("role", if (message.role == AiChatMessage.Role.USER) "user" else "assistant")
