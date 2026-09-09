@@ -268,10 +268,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         val dialog = super.onCreateDialog(savedInstanceState)
         dialog.window?.let { window ->
             window.decorView.systemUiVisibility = activity?.window?.decorView?.systemUiVisibility ?: 0
-            // BottomSheet 自身已经负责窗口内布局。FLAG_LAYOUT_NO_LIMITS 会让从屏幕
-            // 中部展开的 sheet 仍按整屏高度测量，导致 WebView 底部（包括发送栏）
-            // 伸出物理屏幕，只剩上半截可见。
-            window.clearFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+            window.addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
         }
         return dialog
     }
@@ -626,10 +623,6 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         view.setBackgroundColor(0)
         binding.webViewContainer.addView(currentWebView)
         setPullDownToDismiss(true)
-        snapshotPreDrawListener = ViewTreeObserver.OnPreDrawListener {
-            scheduleSnapshotViewportClipUpdate()
-            true
-        }.also(currentWebView.viewTreeObserver::addOnPreDrawListener)
         lifecycleScope.launch(IO) {
             val args = arguments
             if (args == null) {
@@ -1114,6 +1107,14 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         }
     }
 
+    private fun ensureSnapshotViewportClipTracking(view: WebView) {
+        if (snapshotPreDrawListener != null) return
+        snapshotPreDrawListener = ViewTreeObserver.OnPreDrawListener {
+            scheduleSnapshotViewportClipUpdate()
+            true
+        }.also(view.viewTreeObserver::addOnPreDrawListener)
+    }
+
     private fun updateSnapshotViewportClip(view: WebView) {
         if (!displayingSnapshotHtml || !view.isAttachedToWindow) return
         val location = IntArray(2)
@@ -1202,6 +1203,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
          * 发送栏上移，并给正文追加同量滚动留白。
          */
         private fun compensateSnapshotViewportClip(view: WebView) {
+            ensureSnapshotViewportClipTracking(view)
             updateSnapshotViewportClip(view)
         }
 
