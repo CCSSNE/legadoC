@@ -57,7 +57,7 @@ object AiChatService {
 
     private val requestSequence = AtomicLong(0)
     private val inlineThinkingBlockRegex = Regex(
-        "<(think|thinking|analysis|reasoning)>[\\s\\S]*?</\\1>",
+        "<(think|thinking|analysis|reasoning)>([\\s\\S]*?)</\\1>",
         RegexOption.IGNORE_CASE
     )
     private val inlineThinkingOpenTagRegex = Regex(
