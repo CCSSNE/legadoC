@@ -17,6 +17,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewConfiguration
+import android.view.ViewTreeObserver
 import android.view.WindowManager
 import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
@@ -226,6 +227,8 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
     private var pullDownDragStartY = 0f
     private var pullDownLastDistance = 0f
     private var snapshotClipUpdatePosted = false
+    private var lastSnapshotClipCssPx: Float? = null
+    private var snapshotPreDrawListener: ViewTreeObserver.OnPreDrawListener? = null
     private val touchSlop by lazy {
         ViewConfiguration.get(requireContext()).scaledTouchSlop
     }
@@ -623,15 +626,10 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         view.setBackgroundColor(0)
         binding.webViewContainer.addView(currentWebView)
         setPullDownToDismiss(true)
-        behavior?.addBottomSheetCallback(object : BottomSheetBehavior.BottomSheetCallback() {
-            override fun onStateChanged(bottomSheet: View, newState: Int) {
-                scheduleSnapshotViewportClipUpdate()
-            }
-
-            override fun onSlide(bottomSheet: View, slideOffset: Float) {
-                scheduleSnapshotViewportClipUpdate()
-            }
-        })
+        snapshotPreDrawListener = ViewTreeObserver.OnPreDrawListener {
+            scheduleSnapshotViewportClipUpdate()
+            true
+        }.also(currentWebView.viewTreeObserver::addOnPreDrawListener)
         lifecycleScope.launch(IO) {
             val args = arguments
             if (args == null) {
@@ -938,6 +936,13 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
     override fun onDestroyView() {
         customWebViewCallback?.onCustomViewHidden()
         cancelFallbackTimeout()
+        snapshotPreDrawListener?.let { listener ->
+            if (currentWebView.viewTreeObserver.isAlive) {
+                currentWebView.viewTreeObserver.removeOnPreDrawListener(listener)
+            }
+        }
+        snapshotPreDrawListener = null
+        lastSnapshotClipCssPx = null
         WebViewPool.release(pooledWebView)
         originOrientation?.let {
             activity?.requestedOrientation = it
@@ -1116,6 +1121,8 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         val clippedDevicePx =
             (location[1] + view.height - resources.displayMetrics.heightPixels).coerceAtLeast(0)
         val clippedCssPx = clippedDevicePx / view.resources.displayMetrics.density
+        if (lastSnapshotClipCssPx?.let { abs(it - clippedCssPx) < 0.5f } == true) return
+        lastSnapshotClipCssPx = clippedCssPx
         view.evaluateJavascript(
             "(function(){" +
                 "var b=document.getElementById('bottomBar');" +
