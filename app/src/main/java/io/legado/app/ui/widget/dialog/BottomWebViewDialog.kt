@@ -5,6 +5,7 @@ import android.app.Dialog
 import android.content.Context
 import android.content.pm.ActivityInfo
 import android.graphics.Bitmap
+import android.graphics.Rect
 import android.net.Uri
 import android.net.http.SslError
 import android.os.Build
@@ -226,7 +227,6 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
     private var pullDownStartY = 0f
     private var pullDownDragStartY = 0f
     private var pullDownLastDistance = 0f
-    private var snapshotClipUpdatePosted = false
     private var lastSnapshotClipCssPx: Float? = null
     private var snapshotPreDrawListener: ViewTreeObserver.OnPreDrawListener? = null
     private val touchSlop by lazy {
@@ -1098,19 +1098,10 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         }
     }
 
-    private fun scheduleSnapshotViewportClipUpdate() {
-        if (!displayingSnapshotHtml || snapshotClipUpdatePosted) return
-        snapshotClipUpdatePosted = true
-        currentWebView.postOnAnimation {
-            snapshotClipUpdatePosted = false
-            updateSnapshotViewportClip(currentWebView)
-        }
-    }
-
     private fun ensureSnapshotViewportClipTracking(view: WebView) {
         if (snapshotPreDrawListener != null) return
         snapshotPreDrawListener = ViewTreeObserver.OnPreDrawListener {
-            scheduleSnapshotViewportClipUpdate()
+            updateSnapshotViewportClip(view)
             true
         }.also(view.viewTreeObserver::addOnPreDrawListener)
     }
@@ -1119,8 +1110,10 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         if (!displayingSnapshotHtml || !view.isAttachedToWindow) return
         val location = IntArray(2)
         view.getLocationOnScreen(location)
-        val clippedDevicePx =
-            (location[1] + view.height - resources.displayMetrics.heightPixels).coerceAtLeast(0)
+        val visibleRect = Rect()
+        if (!view.getGlobalVisibleRect(visibleRect)) return
+        val visibleBottomInView = visibleRect.bottom - location[1]
+        val clippedDevicePx = (view.height - visibleBottomInView).coerceAtLeast(0)
         val clippedCssPx = clippedDevicePx / view.resources.displayMetrics.density
         if (lastSnapshotClipCssPx?.let { abs(it - clippedCssPx) < 0.5f } == true) return
         lastSnapshotClipCssPx = clippedCssPx
@@ -1204,7 +1197,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
          */
         private fun compensateSnapshotViewportClip(view: WebView) {
             ensureSnapshotViewportClipTracking(view)
-            updateSnapshotViewportClip(view)
+            view.post { updateSnapshotViewportClip(view) }
         }
 
         /**
