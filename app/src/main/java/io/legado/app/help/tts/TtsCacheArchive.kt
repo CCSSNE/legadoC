@@ -75,6 +75,7 @@ object TtsCacheArchive {
     suspend fun collectManifest(
         book: Book,
         onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
+        onIssue: (chapter: BookChapter, error: Throwable) -> Unit = { _, _ -> },
     ): Manifest? = coroutineScope {
         val cacheDir = TtsCacheStore.ttsCacheDir(book)
         if (!cacheDir.isDirectory) return@coroutineScope null
@@ -89,10 +90,16 @@ object TtsCacheArchive {
             onProgress(position + 1, chapters.size)
             val stem = TtsCacheStore.chapterStem(chapter)
             if (!File(cacheDir, stem).isDirectory) return@forEachIndexed
-            val units = when (val result = TtsChapterUnits.of(book, chapter, this)) {
-                is TtsChapterUnits.Result.Ok ->
-                    result.units.filterNot { it.matches(AppPattern.notReadAloudRegex) }
-                else -> error("TTS 缓存导出无法解析第${chapter.index + 1}章 ${chapter.title}：$result")
+            val units = try {
+                when (val result = TtsChapterUnits.of(book, chapter, this)) {
+                    is TtsChapterUnits.Result.Ok ->
+                        result.units.filterNot { it.matches(AppPattern.notReadAloudRegex) }
+                    else -> error("无法解析朗读单元：$result")
+                }
+            } catch (error: Throwable) {
+                currentCoroutineContext().ensureActive()
+                onIssue(chapter, error)
+                return@forEachIndexed
             }
             val explained = hashSetOf<String>()
             val unitRecords = mutableListOf<ManifestUnit>()

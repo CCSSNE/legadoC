@@ -18,7 +18,7 @@ object AudioBookArchive {
     const val MANIFEST_FILE_NAME = "audio_book.json"
     const val MEDIA_DIR_NAME = "audio"
     const val MIN_SUPPORTED_VERSION = 1
-    const val VERSION = 2
+    const val VERSION = 3
 
     /** Imported media is book content, deliberately outside BookHelp's cache domain. */
     const val PERSISTENT_MEDIA_DIR_NAME = "audio_book_resources"

@@ -470,66 +470,105 @@ object ReviewSnapshotStore {
     }
 
     /** 按原文件字节流导出，避免“读取所有快照 -> 重新序列化所有快照”的全量内存占用。 */
-    fun copyAllTo(book: Book, targetDir: File): String? {
-        return copyTo(book, targetDir, selectedChapterUrls = null)
+    fun copyAllTo(
+        book: Book,
+        targetDir: File,
+        onIssue: (item: String, error: Throwable) -> Unit = { _, _ -> },
+    ): String? {
+        return copyTo(book, targetDir, selectedChapterUrls = null, onIssue = onIssue)
     }
 
     /**
      * Exports review artifacts owned by [chapters] only. The snapshot/status files and their
      * resource library are selected by the same stable chapterUrl set.
      */
-    fun copyChaptersTo(book: Book, targetDir: File, chapters: Collection<BookChapter>): String? {
-        val chapterUrls = chapters.mapTo(linkedSetOf()) { chapter ->
-            chapter.url.trim().also {
-                require(it.isNotBlank()) { "评论导出章节缺少 chapterUrl" }
+    fun copyChaptersTo(
+        book: Book,
+        targetDir: File,
+        chapters: Collection<BookChapter>,
+        onIssue: (item: String, error: Throwable) -> Unit = { _, _ -> },
+    ): String? {
+        val chapterUrls = chapters.mapNotNullTo(linkedSetOf()) { chapter ->
+            chapter.url.trim().takeIf(String::isNotBlank) ?: run {
+                onIssue(
+                    "第${chapter.index + 1}章 ${chapter.title}",
+                    IllegalArgumentException("评论导出章节缺少 chapterUrl"),
+                )
+                null
             }
         }
-        return copyTo(book, targetDir, selectedChapterUrls = chapterUrls)
+        return copyTo(book, targetDir, selectedChapterUrls = chapterUrls, onIssue = onIssue)
     }
 
-    private fun copyTo(book: Book, targetDir: File, selectedChapterUrls: Set<String>?): String? {
-        val snapshots = reviewFiles(book).filter { file ->
-            val metadata = requireNotNull(readMetadata(file)) {
-                "无法读取评论快照元数据: ${file.absolutePath}"
+    private fun copyTo(
+        book: Book,
+        targetDir: File,
+        selectedChapterUrls: Set<String>?,
+        onIssue: (item: String, error: Throwable) -> Unit,
+    ): String? {
+        val sourceDir = reviewsDir(book)
+        val sources = sourceDir.walkTopDown().onFail { file, error ->
+            onIssue(file.relativeToOrSelf(sourceDir).path, error)
+        }.filter(File::isFile).filter { file ->
+            if (selectedChapterUrls == null || !isSnapshotFile(file) && !isChapterStatusFile(file)) {
+                true
+            } else {
+                runCatching {
+                    val chapterUrl = if (isSnapshotFile(file)) {
+                        requireNotNull(readMetadata(file)).chapterUrl
+                    } else {
+                        requireNotNull(readChapterStatus(file)).chapterUrl
+                    }
+                    isSupplementChapterUrl(chapterUrl) || chapterUrl.trim() in selectedChapterUrls
+                }.getOrElse { error ->
+                    // 无法识别归属的原始文件仍然出包，同时明确记录无法筛选的原因。
+                    onIssue(file.name, error)
+                    true
+                }
             }
-            selectedChapterUrls == null || isSupplementChapterUrl(metadata.chapterUrl) ||
-                metadata.chapterUrl.trim() in selectedChapterUrls
-        }
-        snapshots.forEach { file -> readCompleteSnapshot(book, file) }
-        val statuses = statusFiles(book).filter { file ->
-            selectedChapterUrls == null || requireNotNull(readChapterStatus(file)) {
-                "无法读取评论状态文件: ${file.absolutePath}"
-            }.chapterUrl.trim() in selectedChapterUrls
-        }
-        if (snapshots.isEmpty() && statuses.isEmpty()) return "没有已缓存的评论快照"
+        }.toList()
+        if (sources.isEmpty()) return "没有已缓存的评论快照"
         check(targetDir.isDirectory || targetDir.mkdirs()) {
             "无法创建评论快照导出目录: ${targetDir.absolutePath}"
         }
-        // 先冻结 JSON，再按冻结的引用复制资源，不能复制完资源后又读取正在更新的源 JSON。
-        val copiedSnapshots = snapshots.map { source ->
-            source.copyTo(File(targetDir, source.name), overwrite = false)
-        }
-        val copiedStatuses = statuses.map { source ->
-            source.copyTo(File(targetDir, source.name), overwrite = false)
-        }
-        val statusRecords = copiedStatuses.map { file ->
-            requireNotNull(readChapterStatus(file)) { "无法读取已复制的评论状态：$file" }
-        }
-        val statusChapters = statusRecords.map { it.chapterUrl.trim() }.toSet()
-        var partialCount = 0
-        copiedSnapshots.forEach { file ->
-            val metadata = requireNotNull(readMetadata(file)) { "无法读取已复制的评论快照：$file" }
-            if (metadata.partial) partialCount++
-            check(metadata.buttonSrc == CHAPTER_TAB_SRC ||
-                isSupplementChapterUrl(metadata.chapterUrl) || metadata.chapterUrl.trim() in statusChapters) {
-                "评论缓存缺少对应章节状态：${metadata.chapterUrl}"
+        var failed = 0
+        sources.forEach { source ->
+            val relative = source.relativeTo(sourceDir)
+            val target = File(targetDir, relative.path)
+            try {
+                val expected = source.length()
+                target.parentFile?.mkdirs()
+                source.copyTo(target, overwrite = true)
+                check(expected == source.length() && target.length() == expected) {
+                    "评论缓存文件在复制期间变化或复制不完整"
+                }
+            } catch (error: Throwable) {
+                failed++
+                target.delete()
+                onIssue(relative.path, error)
+                return@forEach
+            }
+            // 原始字节已经可靠复制。后续解析只用于把已知的不完整状态写进报告，
+            // 解析失败不能反过来删除这个仍有逃逸价值的原始文件。
+            try {
+                when {
+                    isSnapshotFile(source) -> readMetadata(source)?.takeIf { it.partial }?.let {
+                        onIssue(relative.path, IllegalStateException("原缓存是部分快照"))
+                    }
+                    isChapterStatusFile(source) -> readChapterStatus(source)
+                        ?.takeIf { it.failedSnapshots > 0 }
+                        ?.let { status ->
+                            onIssue(
+                                relative.path,
+                                IllegalStateException("记录了 ${status.failedSnapshots} 项抓取失败"),
+                            )
+                        }
+                }
+            } catch (error: Throwable) {
+                onIssue(relative.path, error)
             }
         }
-        ReviewSnapshotResourceStore.copyReferencedTo(book, targetDir, copiedSnapshots)
-        val failedCount = statusRecords.sumOf { it.failedSnapshots }
-        return if (failedCount > 0 || partialCount > 0) {
-            "评论缓存含 $failedCount 项失败记录、$partialCount 份部分快照，已原样导出"
-        } else null
+        return if (failed > 0) "评论缓存有 $failed 个文件未能复制，其余文件已原样导出" else null
     }
 
     private fun readMetadata(file: File): ReviewSnapshotHotMetadata? {

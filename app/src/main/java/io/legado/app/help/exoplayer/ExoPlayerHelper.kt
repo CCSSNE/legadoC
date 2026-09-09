@@ -513,12 +513,22 @@ object ExoPlayerHelper {
         }
     }
 
-    fun copyMediaCache(url: String?, targetDir: File, book: Book? = null): Int {
-        return copyCache(audioCache(book), url, targetDir)
+    fun copyMediaCache(
+        url: String?,
+        targetDir: File,
+        book: Book? = null,
+        onIssue: ((item: String, error: Throwable) -> Unit)? = null,
+    ): Int {
+        return copyCache(audioCache(book), url, targetDir, onIssue)
     }
 
-    fun copyVideoCache(url: String?, targetDir: File, book: Book? = null): Int {
-        return copyCache(videoCache(book?.let(::videoBookCacheDir)), url, targetDir)
+    fun copyVideoCache(
+        url: String?,
+        targetDir: File,
+        book: Book? = null,
+        onIssue: ((item: String, error: Throwable) -> Unit)? = null,
+    ): Int {
+        return copyCache(videoCache(book?.let(::videoBookCacheDir)), url, targetDir, onIssue)
     }
 
     /**
@@ -545,16 +555,21 @@ object ExoPlayerHelper {
                 targetDir,
                 "${filePrefix}_part_${(index + 1).toString().padStart(3, '0')}.${mediaFileExtension(mediaUrl)}"
             )
-            if (isLocalMediaUrl(mediaUrl)) {
-                copyLocalMedia(mediaUrl, output)
-            } else {
-                require(isHttpMediaUrl(mediaUrl)) {
-                    "Audio export does not support media scheme: $mediaUrl"
+            try {
+                if (isLocalMediaUrl(mediaUrl)) {
+                    copyLocalMedia(mediaUrl, output)
+                } else {
+                    require(isHttpMediaUrl(mediaUrl)) {
+                        "Audio export does not support media scheme: $mediaUrl"
+                    }
+                    require(isMediaUrlCached(mediaUrl, book)) {
+                        "Audio export requires completed offline media: $mediaUrl"
+                    }
+                    copyCachedMedia(mediaUrl, book, output)
                 }
-                require(isMediaUrlCached(mediaUrl, book)) {
-                    "Audio export requires completed offline media: $mediaUrl"
-                }
-                copyCachedMedia(mediaUrl, book, output)
+            } catch (error: Throwable) {
+                output.delete()
+                throw error
             }
             output
         }
@@ -646,18 +661,45 @@ object ExoPlayerHelper {
         return extension.takeIf { it.matches(Regex("[a-z0-9]{1,8}")) } ?: "m4a"
     }
 
-    private fun copyCache(cache: Cache, url: String?, targetDir: File): Int {
+    private fun copyCache(
+        cache: Cache,
+        url: String?,
+        targetDir: File,
+        onIssue: ((item: String, error: Throwable) -> Unit)?,
+    ): Int {
         if (url.isNullOrBlank()) return 0
         if (!targetDir.exists()) targetDir.mkdirs()
         var count = 0
         getMediaUrls(url).forEachIndexed { urlIndex, mediaUrl ->
-            for (span in cache.getCachedSpans(mediaUrl)) {
+            val spans = try {
+                cache.getCachedSpans(mediaUrl)
+            } catch (error: Throwable) {
+                if (onIssue == null) throw error
+                onIssue(mediaUrl, error)
+                return@forEachIndexed
+            }
+            for (span in spans) {
                 if (!span.isCached) continue
-                val source = span.file ?: continue
-                if (!source.exists() || !source.isFile) continue
+                val item = "$mediaUrl@${span.position}+${span.length}"
+                val source = span.file
+                if (source == null || !source.isFile || source.length() != span.length) {
+                    onIssue?.invoke(item, IllegalStateException("音频缓存片段源文件缺失或长度不一致"))
+                    continue
+                }
                 val name = "${urlIndex}_${span.position}_${span.length}_${source.name}"
-                source.copyTo(File(targetDir, name), overwrite = true)
-                count++
+                val target = File(targetDir, name)
+                try {
+                    target.parentFile?.mkdirs()
+                    source.copyTo(target, overwrite = true)
+                    check(source.length() == span.length && target.length() == span.length) {
+                        "音频缓存片段在复制期间变化或复制不完整"
+                    }
+                    count++
+                } catch (error: Throwable) {
+                    target.delete()
+                    if (onIssue == null) throw error
+                    onIssue(item, error)
+                }
             }
         }
         return count

@@ -681,8 +681,10 @@ object LocalBook {
             "Audio TXT-ZIP import failed: unsupported manifest version ${manifest.version}"
         }
         validateArchiveTextFile(manifest.textFile, "Audio TXT-ZIP import failed")
-        require(manifest.name.isNotBlank()) {
-            "Audio TXT-ZIP import failed: book name is empty"
+        if (manifest.version < 3) {
+            require(manifest.name.isNotBlank()) {
+                "Audio TXT-ZIP import failed: book name is empty"
+            }
         }
         require(manifest.chapters.isNotEmpty()) {
             "Audio TXT-ZIP import failed: chapter mapping is empty"
@@ -691,7 +693,7 @@ object LocalBook {
             "Audio TXT-ZIP import failed: duplicate chapter index"
         }
         val sourceChapterUrls = manifest.chapters.mapNotNull { it.sourceChapterUrl }
-        if (manifest.version >= 2) {
+        if (manifest.version == 2) {
             require(sourceChapterUrls.size == manifest.chapters.size) {
                 "Audio TXT-ZIP import failed: incomplete source chapter identities"
             }
@@ -701,7 +703,7 @@ object LocalBook {
             require(sourceChapterUrls.distinct().size == sourceChapterUrls.size) {
                 "Audio TXT-ZIP import failed: duplicate source chapter identity"
             }
-        } else {
+        } else if (manifest.version == 1) {
             require(sourceChapterUrls.isEmpty()) {
                 "Audio TXT-ZIP import failed: version 1 contains version 2 chapter identities"
             }
@@ -720,11 +722,15 @@ object LocalBook {
                     manifest.textFile
             )
         val mediaPaths = manifest.chapters.flatMap { chapter ->
-            require(chapter.title.isNotBlank()) {
-                "Audio TXT-ZIP import failed: chapter ${chapter.index + 1} has no title"
+            if (manifest.version < 3) {
+                require(chapter.title.isNotBlank()) {
+                    "Audio TXT-ZIP import failed: chapter ${chapter.index + 1} has no title"
+                }
             }
-            require(chapter.mediaFiles.isNotEmpty()) {
-                "Audio TXT-ZIP import failed: chapter ${chapter.index + 1} has no audio"
+            if (manifest.version < 3) {
+                require(chapter.mediaFiles.isNotEmpty()) {
+                    "Audio TXT-ZIP import failed: chapter ${chapter.index + 1} has no audio"
+                }
             }
             chapter.mediaFiles
         }
@@ -770,8 +776,10 @@ object LocalBook {
                 start = archivedChapter.start,
                 end = archivedChapter.end,
             )
-            require(localChapter.getVariable("lyric").isNotBlank()) {
-                "Audio TXT-ZIP import failed: chapter ${archivedChapter.index + 1} has no lyric"
+            if (manifest.version < 3) {
+                require(localChapter.getVariable("lyric").isNotBlank()) {
+                    "Audio TXT-ZIP import failed: chapter ${archivedChapter.index + 1} has no lyric"
+                }
             }
             archivedChapter to localChapter
         }
@@ -803,10 +811,10 @@ object LocalBook {
                 val localMediaUrls = archivedChapter.mediaFiles.map { path ->
                     Uri.fromFile(File(targetDir, path.substringAfterLast('/'))).toString()
                 }
-                localChapter.resourceUrl = if (localMediaUrls.size == 1) {
-                    localMediaUrls.first()
-                } else {
-                    GSON.toJson(localMediaUrls)
+                localChapter.resourceUrl = when (localMediaUrls.size) {
+                    0 -> null
+                    1 -> localMediaUrls.first()
+                    else -> GSON.toJson(localMediaUrls)
                 }
             }
             val localChapters = chapterAssignments.map { it.second }
@@ -819,15 +827,19 @@ object LocalBook {
                 appDb.bookChapterDao.insert(*localChapters.toTypedArray())
                 appDb.bookDao.update(book)
             }
+            val hasCompleteSourceIdentity = manifest.chapters.all {
+                !it.sourceChapterUrl.isNullOrBlank()
+            } && manifest.chapters.mapNotNull { it.sourceChapterUrl }.distinct().size ==
+                manifest.chapters.size
             return AudioArchiveImportMapping(
                 bookUrl = book.bookUrl,
-                chaptersBySourceUrl = manifest.chapters.first().sourceChapterUrl?.let {
+                chaptersBySourceUrl = if (hasCompleteSourceIdentity) {
                     chapterAssignments.associate { (archivedChapter, localChapter) ->
                         requireNotNull(archivedChapter.sourceChapterUrl) to localChapter
                     }
-                },
-                legacyChapters = manifest.chapters.first().sourceChapterUrl?.let { null }
-                    ?: chapterAssignments.associate { (archivedChapter, localChapter) ->
+                } else null,
+                legacyChapters = if (hasCompleteSourceIdentity) null else
+                    chapterAssignments.associate { (archivedChapter, localChapter) ->
                         AudioArchiveChapterIdentity(
                             archivedChapter.index,
                             archivedChapter.title,
