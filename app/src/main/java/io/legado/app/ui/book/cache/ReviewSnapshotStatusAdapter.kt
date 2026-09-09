@@ -48,7 +48,7 @@ class ReviewSnapshotStatusAdapter(
                 item.totalSnapshots
             )
             tvState.setText(R.string.cache_manage_review_status_missing)
-            btnRetry.gone()
+            btnRetry.visible()
         } else {
             tvProgress.text = context.getString(
                 R.string.cache_manage_review_progress,
@@ -72,7 +72,7 @@ class ReviewSnapshotStatusAdapter(
     override fun registerListener(holder: ItemViewHolder, binding: ItemReviewSnapshotStatusBinding) {
         binding.btnRetry.setOnClickListener {
             getItem(holder.layoutPosition)
-                ?.takeIf { it.canRetryFailedSnapshots }
+                ?.takeIf { it.canRetryChapter }
                 ?.let(callback::retry)
         }
     }

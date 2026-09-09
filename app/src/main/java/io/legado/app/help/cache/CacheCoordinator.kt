@@ -386,7 +386,7 @@ object CacheCoordinator : CacheUiPort {
         return retryReviewSnapshots(book, listOf(chapter)) == 1
     }
 
-    /** Retries only the durable failed-button identities as one Coordinator task. */
+    /** Retries recorded failed buttons, or sends status-less chapters through the normal cache path. */
     fun retryReviewSnapshots(book: Book, chapters: List<BookChapter>): Int {
         if (!AppConfig.syncCacheReview || book.isLocal || book.isVideo) return 0
         val reviewKind = if (book.isAudio) CacheKind.AUDIO else CacheKind.TEXT
@@ -398,6 +398,20 @@ object CacheCoordinator : CacheUiPort {
         if (requested.isEmpty()) return 0
         val statusesByChapterUrl = ReviewSnapshotStore.chapterStatuses(book)
             .associateBy { it.chapterUrl.trim() }
+        val statuslessChapters = requested.filter { chapter ->
+            chapter.url.trim() !in statusesByChapterUrl
+        }
+        if (statuslessChapters.isNotEmpty()) {
+            // A missing sidecar has no safe failed-button identities. Reuse the ordinary
+            // one-chapter BODY -> REVIEW path so the existing snapshot is retained and a
+            // fresh chapter status is written by the normal review worker.
+            submitBookDownload(
+                book = book,
+                chapterIndexes = statuslessChapters.map { it.index },
+                source = CacheRequestSource.CACHE_MANAGE,
+                reviewEnabled = true,
+            )
+        }
         val retryTargets = requested.mapNotNull { chapter ->
             val failedButtonSources = statusesByChapterUrl[chapter.url.trim()]
                 ?.failedButtonSourcesForRetry()
@@ -407,7 +421,7 @@ object CacheCoordinator : CacheUiPort {
                 buttonSources = failedButtonSources,
             )
         }
-        if (retryTargets.isEmpty()) return 0
+        if (retryTargets.isEmpty()) return statuslessChapters.size
         synchronized(reviewTaskLock) {
             val activeIndexes = snapshot.value.sessions.asSequence()
                 .flatMap { it.tasks.asSequence() }
@@ -436,7 +450,7 @@ object CacheCoordinator : CacheUiPort {
                     )
                 )
             }
-            return unownedTargets.size
+            return statuslessChapters.size + unownedTargets.size
         }
     }
 

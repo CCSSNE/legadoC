@@ -2560,7 +2560,7 @@
     <string name="cache_manage_review_persisted">%1$d cached snapshots</string>
     <string name="cache_manage_review_success">Success</string>
     <string name="cache_manage_review_failed">Failed %1$d</string>
-    <string name="cache_manage_review_status_missing">Status not recorded; existing snapshots kept</string>
+    <string name="cache_manage_review_status_missing">Status not recorded; retry this chapter</string>
     <string name="cache_manage_review_retry">Retry</string>
     <string name="cache_manage_review_retry_all">Retry all failed</string>
     <string name="cache_manage_review_empty">No review snapshots</string>

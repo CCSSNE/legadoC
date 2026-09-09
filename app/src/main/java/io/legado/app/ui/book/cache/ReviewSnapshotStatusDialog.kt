@@ -10,6 +10,7 @@ import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.databinding.DialogReviewSnapshotStatusBinding
 import io.legado.app.data.entities.Book
+import io.legado.app.help.book.isAudio
 import io.legado.app.help.cache.CacheCoordinator
 import io.legado.app.help.cache.CacheKind
 import io.legado.app.help.cache.CacheLifecycle
@@ -54,7 +55,7 @@ class ReviewSnapshotStatusDialog :
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
         binding.btnRetryAll.setOnClickListener {
-            retryFailed(reviewItems.filter { it.canRetryFailedSnapshots })
+            retryFailed(reviewItems.filter { it.canRetryChapter })
         }
         loadItems()
     }
@@ -85,8 +86,14 @@ class ReviewSnapshotStatusDialog :
     private fun observeRetryCompletion(retryStartedAt: Long, chapterIndexes: Set<Int>) {
         retryCompletionJob?.cancel()
         retryCompletionJob = viewLifecycleOwner.lifecycleScope.launch {
+            val reviewKind = if (book.isAudio) CacheKind.AUDIO else CacheKind.TEXT
             CacheCoordinator.snapshot.first { snapshot ->
-                snapshot.hasFinishedReviewRetry(book.bookUrl, chapterIndexes, retryStartedAt)
+                snapshot.hasFinishedReviewRetry(
+                    book.bookUrl,
+                    chapterIndexes,
+                    retryStartedAt,
+                    reviewKind,
+                )
             }
             loadItems()
         }
@@ -126,7 +133,7 @@ class ReviewSnapshotStatusDialog :
     }
 
     private fun updateRetryAll(items: List<ReviewSnapshotChapterItem>) {
-        val enabled = items.any { it.canRetryFailedSnapshots }
+        val enabled = items.any { it.canRetryChapter }
         binding.btnRetryAll.isEnabled = enabled
         binding.btnRetryAll.alpha = if (enabled) 1f else 0.45f
     }
@@ -146,12 +153,13 @@ private fun CacheSnapshot.hasFinishedReviewRetry(
     bookUrl: String,
     chapterIndexes: Set<Int>,
     retryStartedAt: Long,
+    reviewKind: CacheKind,
 ): Boolean {
     if (chapterIndexes.isEmpty()) return false
     val terminalIndexes = sessions.asSequence()
         .flatMap { it.tasks.asSequence() }
         .filter { task ->
-            task.kind == CacheKind.TEXT &&
+            task.kind == reviewKind &&
                 task.phase == CachePhase.REVIEW &&
                 task.bookUrl == bookUrl &&
                 task.updatedAt >= retryStartedAt &&

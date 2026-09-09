@@ -1202,11 +1202,14 @@ data class ReviewSnapshotChapterItem(
     val failedSnapshots: Int,
     /** Empty only when an old status recorded a count without safe button identities. */
     val failedButtonSources: List<String>,
-    /** Existing snapshots have no durable chapter status; do not infer completion or retry targets. */
+    /** Existing snapshots have no durable chapter status; retry through the normal chapter path. */
     val statusMissing: Boolean = false,
 ) {
     val canRetryFailedSnapshots: Boolean
         get() = failedSnapshots > 0 && failedButtonSources.size == failedSnapshots
+
+    val canRetryChapter: Boolean
+        get() = statusMissing || canRetryFailedSnapshots
 }
 
 data class CacheSummary(
