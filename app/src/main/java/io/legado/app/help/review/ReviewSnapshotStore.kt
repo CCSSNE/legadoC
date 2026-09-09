@@ -343,38 +343,30 @@ object ReviewSnapshotStore {
         File(reviewsDir(book), statusFileName(chapter.url)).delete()
     }
 
-    /**
-     * 只读取统计所需的章节字段。JsonReader.skipValue 会流式越过超大的 html 字段，
-     * 缓存页统计不会把整书所有快照同时留在 heap 中。
-     * 书评补充快照的伪章节 url 不代表章节，必须排除。
-     */
-    fun chapterUrls(book: Book): Set<String> {
-        requireCurrentFormatIfReviewData(book)
-        return reviewFiles(book)
-            .asSequence()
-            .map { file -> readHotMetadata(book, file) }
-            .map { metadata ->
-                metadata.chapterUrl.trim().also { chapterUrl ->
-                    require(chapterUrl.isNotBlank()) { "评论快照缺少 chapterUrl" }
-                }
-            }
+    /** 管理统计使用目录索引，书评补充快照不计入章节。 */
+    fun chapterUrls(book: Book, checkActive: () -> Unit = {}): Set<String> {
+        return ReviewSnapshotInventory.read(book, checkActive).files.values.asSequence()
+            .filter { it.status == null }
+            .map { it.chapterUrl }
             .filterNot(::isSupplementChapterUrl)
             .toSet()
     }
 
     /** Counts persisted snapshots without reading their potentially huge HTML fields. */
     fun snapshotCounts(book: Book): ReviewSnapshotCounts {
-        requireCurrentFormatIfReviewData(book)
-        val byChapterUrl = hashMapOf<String, Int>()
-        reviewFiles(book).forEach { file ->
-            readHotMetadata(book, file).let { metadata ->
-                val key = metadata.chapterUrl.trim()
-                require(key.isNotBlank()) { "评论快照缺少 chapterUrl: ${file.absolutePath}" }
-                if (isSupplementChapterUrl(key)) return@let
-                byChapterUrl[key] = (byChapterUrl[key] ?: 0) + 1
-            }
-        }
-        return ReviewSnapshotCounts(byChapterUrl)
+        return managementState(book).first
+    }
+
+    /** 一次索引查询同时提供快照计数和状态，避免详情页重复遍历。 */
+    fun managementState(
+        book: Book,
+        checkActive: () -> Unit = {},
+    ): Pair<ReviewSnapshotCounts, List<ReviewChapterSnapshotStatus>> {
+        val entries = ReviewSnapshotInventory.read(book, checkActive).files.values
+        val counts = entries.asSequence()
+            .filter { it.status == null && !isSupplementChapterUrl(it.chapterUrl) }
+            .groupingBy { it.chapterUrl }.eachCount()
+        return ReviewSnapshotCounts(counts) to entries.mapNotNull { it.status }
     }
 
     /** Latest completed capture result for every chapter that has been attempted. */

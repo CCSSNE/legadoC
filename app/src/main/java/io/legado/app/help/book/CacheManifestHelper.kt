@@ -25,6 +25,23 @@ object CacheManifestHelper {
         return read(manifestFile(book))
     }
 
+    /** 管理页读取已落盘清单；无清单的正文只按文件名列举，不执行正文/图片体检。 */
+    fun cachedChapterUrls(
+        book: Book,
+        chapters: List<BookChapter>,
+        manifest: CacheBookManifest? = read(book),
+    ): Set<String> {
+        if (manifest != null) {
+            return manifest.chapters.asSequence().filter { it.cached }.map { it.url }.toSet()
+        }
+        val dir = BookHelp.getCacheDir(book)
+        if (!dir.exists()) return emptySet()
+        val names = checkNotNull(dir.list()) { "无法读取正文缓存目录: ${dir.absolutePath}" }.toHashSet()
+        return chapters.asSequence()
+            .filter { chapter -> BookHelp.getChapterCacheFileNames(book, chapter).any(names::contains) }
+            .map { it.url }.toSet()
+    }
+
     fun read(file: File): CacheBookManifest? {
         if (!file.isFile) return null
         return GSON.fromJsonObject<CacheBookManifest>(file.readText()).getOrThrow()

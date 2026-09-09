@@ -75,7 +75,14 @@ class CacheAdapter(context: Context, private val callBack: CallBack) :
         if (cacheSize == null) {
             tvDownload.setText(R.string.loading)
         } else {
-            val reviewSize = callBack.reviewChapters[item.bookUrl]?.size ?: 0
+            val reviewSize = callBack.reviewChapters[item.bookUrl]?.size
+            if (reviewSize == null) {
+                tvDownload.text = context.getString(
+                    R.string.download_count_review_loading, cacheSize, item.totalChapterNum
+                )
+                progressView.gone()
+                return
+            }
             tvDownload.text = context.getString(
                 if (item.isAudio) {
                     R.string.download_count_review_audio

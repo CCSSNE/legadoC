@@ -6,7 +6,7 @@ import io.legado.app.base.BaseViewModel
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.help.book.AudioOfflineState
-import io.legado.app.help.book.BodyOfflineState
+import io.legado.app.help.book.CacheManifestHelper
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isVideo
@@ -14,6 +14,7 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.utils.sendValue
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.currentCoroutineContext
 import kotlin.collections.set
 
 
@@ -35,6 +36,13 @@ class CacheViewModel(application: Application) : BaseViewModel(application) {
                 }
                 ensureActive()
             }
+            // 先完成所有书的正文统计，单本书首次建立评论索引不阻塞后面的书。
+            books.forEach { book ->
+                ensureActive()
+                if (!book.isLocal && !reviewChapters.contains(book.bookUrl)) {
+                    loadReviewCacheFiles(book)
+                }
+            }
         }
     }
 
@@ -42,28 +50,40 @@ class CacheViewModel(application: Application) : BaseViewModel(application) {
         if (book.isLocal) return
         execute {
             loadBookCacheFiles(book)
+            loadReviewCacheFiles(book)
         }
     }
 
-    private fun loadBookCacheFiles(book: Book) {
+    private suspend fun loadBookCacheFiles(book: Book) {
+        val taskContext = currentCoroutineContext()
         val chapterCaches = hashSetOf<String>()
-        appDb.bookChapterDao.getChapterList(book.bookUrl).also {
+        val chapters = appDb.bookChapterDao.getChapterList(book.bookUrl).also {
             book.totalChapterNum = it.size
-        }.forEach { chapter ->
+        }
+        val bodyUrls = if (!book.isAudio && !book.isVideo) {
+            CacheManifestHelper.cachedChapterUrls(book, chapters)
+        } else emptySet()
+        chapters.forEach { chapter ->
+            taskContext.ensureActive()
             val cached = when {
                 chapter.isVolume -> true
                 book.isAudio -> AudioOfflineState.isComplete(book, chapter)
                 book.isVideo -> ExoPlayerHelper.isVideoCached(chapter.resourceUrl, book)
-                else -> BodyOfflineState.isComplete(book, chapter)
+                else -> chapter.url in bodyUrls
             }
             if (cached) {
                 chapterCaches.add(chapter.url)
             }
         }
         cacheChapters[book.bookUrl] = chapterCaches
-        // 评论快照章数：统计该书快照文件（按章去重），后续由事件增量更新
+        upAdapterLiveData.sendValue(book.bookUrl)
+    }
+
+    private suspend fun loadReviewCacheFiles(book: Book) {
+        val taskContext = currentCoroutineContext()
+        // 正文先显示；评论只读轻量目录索引，后续由事件增量更新。
         reviewChapters[book.bookUrl] = io.legado.app.help.review.ReviewSnapshotStore
-            .chapterUrls(book)
+            .chapterUrls(book) { taskContext.ensureActive() }
             .toHashSet()
         upAdapterLiveData.sendValue(book.bookUrl)
     }

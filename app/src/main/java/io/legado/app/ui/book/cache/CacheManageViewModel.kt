@@ -100,17 +100,7 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
                 val items = groupByBook(currentItems + manifestItems)
                 ensureActive()
                 itemsLiveData.postValue(items)
-                startSizeUpdateJob(items, mode)
-                summaryLiveData.postValue(
-                    CacheSummary(
-                        bookCount = items.size,
-                        cachedChapterCount = items.sumOf { it.cachedCount },
-                        currentModeSize = 0L,
-                        totalCacheSize = getAppStorageSize(),
-                        storageDetails = emptyList(),
-                        mode = mode
-                    )
-                )
+                startSizeUpdateJob(items)
             } catch (e: CancellationException) {
                 throw e
             } finally {
@@ -123,27 +113,18 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
         job.start()
     }
 
-    private fun startSizeUpdateJob(items: List<CacheBookItem>, mode: CacheManageMode) {
+    private fun startSizeUpdateJob(items: List<CacheBookItem>) {
         sizeJob?.cancel()
         sizeJob = viewModelScope.launch(Dispatchers.IO) {
             var updatedItems = items
             items.forEach { item ->
                 ensureActive()
-                val updated = item.withStorageCalculated()
+                val updated = item.withStorageCalculated { ensureActive() }
+                ensureActive()
                 updatedItems = updatedItems.replaceGroupItem(updated)
                 itemsLiveData.postValue(updatedItems)
             }
-            val storageBreakdown = buildStorageBreakdown()
-            summaryLiveData.postValue(
-                CacheSummary(
-                    bookCount = updatedItems.size,
-                    cachedChapterCount = updatedItems.sumOf { it.cachedCount },
-                    currentModeSize = updatedItems.sumOf { it.storageSizeBytes },
-                    totalCacheSize = getAppStorageSize(),
-                    storageDetails = storageBreakdown,
-                    mode = mode
-                )
-            )
+            // 全应用目录分类和总量统计只在用户打开“统计”时执行。
         }
     }
 
@@ -240,14 +221,15 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
             val chapters = dbChapters.takeIf { it.isNotEmpty() }
                 ?: CacheManifestHelper.toChapters(manifest ?: return@withContext emptyList())
                     .filterByKey(key)
+            val bodyUrls = if (!book.isMedia && !book.isLocal) {
+                CacheManifestHelper.cachedChapterUrls(book, chapters, manifest)
+            } else emptySet()
             chapters
                 .asSequence()
                 .filterNot { it.isVolume }
                 .mapNotNull { chapter ->
-                    val cached = isChapterCached(
-                        book,
-                        chapter,
-                    )
+                    val cached = if (book.isMedia) isChapterCached(book, chapter)
+                        else chapter.url in bodyUrls
                     when (filter) {
                         CacheChapterFilter.CACHED -> if (!cached) return@mapNotNull null
                         CacheChapterFilter.UNCACHED -> if (cached) return@mapNotNull null
@@ -266,12 +248,11 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
      */
     suspend fun getReviewSnapshotItems(book: Book): List<ReviewSnapshotChapterItem> {
         return withContext(Dispatchers.IO) {
-            val manifest = CacheManifestHelper.read(book)
             val dbChapters = appDb.bookChapterDao.getChapterList(book.bookUrl)
             val chapters = dbChapters.takeIf { it.isNotEmpty() }
-                ?: CacheManifestHelper.toChapters(manifest ?: return@withContext emptyList())
-            val counts = ReviewSnapshotStore.snapshotCounts(book)
-            val statuses = ReviewSnapshotStore.chapterStatuses(book)
+                ?: CacheManifestHelper.toChapters(CacheManifestHelper.read(book)
+                    ?: return@withContext emptyList())
+            val (counts, statuses) = ReviewSnapshotStore.managementState(book) { ensureActive() }
             val statusesByUrl = statuses.associateBy { it.chapterUrl.trim() }
             chapters.asSequence()
                 .filterNot { it.isVolume }
@@ -569,7 +550,7 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
         }
         val chapters = dbChapters.takeIf { it.isNotEmpty() }
             ?: CacheManifestHelper.toChapters(manifest)
-        val rawCachedCount = chapters.count { BodyOfflineState.isComplete(book, it) }
+        val rawCachedCount = manifest.cachedChapterCount
         val totalChapterCount = book.totalChapterNum.takeIf { it > 0 }
             ?: chapters.size.takeIf { it > 0 }
             ?: rawCachedCount
@@ -631,7 +612,7 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
         val rawCachedCount = if (mode.isMedia) {
             getMediaCachedCount(book, chapters)
         } else {
-            chapters.count { isChapterCached(book, it) }
+            manifest.cachedChapterCount
         }
         val totalChapterCount = manifest.totalChapterNum.takeIf { it > 0 }
             ?: chapters.size.takeIf { it > 0 }
@@ -659,18 +640,18 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
 
     private fun getBookStorage(
         book: Book,
-        chapters: List<BookChapter> = emptyList()
+        checkActive: () -> Unit,
     ): CacheBookStorage {
         val cacheDir = BookHelp.getCacheDir(book)
         return CacheBookStorage(
-            totalBytes = cacheDir.directorySize(),
+            totalBytes = cacheDir.directorySize(checkActive),
             displayText = ""
         )
     }
 
-    private fun CacheBookItem.withStorageCalculated(): CacheBookItem {
+    private fun CacheBookItem.withStorageCalculated(checkActive: () -> Unit): CacheBookItem {
         val updatedVariants = sourceVariants.map { variant ->
-            val storage = getBookStorage(variant.book, variant.manifest?.let(CacheManifestHelper::toChapters).orEmpty())
+            val storage = getBookStorage(variant.book, checkActive)
             variant.copy(
                 storageSizeBytes = storage.totalBytes,
                 storageSummary = storage.displayText,
@@ -678,11 +659,11 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
             )
         }
         val selfStorage = if (sourceVariants.isEmpty()) {
-            getBookStorage(book, manifest?.let(CacheManifestHelper::toChapters).orEmpty())
+            getBookStorage(book, checkActive)
         } else {
             updatedVariants.firstOrNull { it.sourceKey == sourceKey }?.let {
                 CacheBookStorage(it.storageSizeBytes, it.storageSummary)
-            } ?: getBookStorage(book, manifest?.let(CacheManifestHelper::toChapters).orEmpty())
+            } ?: getBookStorage(book, checkActive)
         }
         return copy(
             storageSizeBytes = selfStorage.totalBytes,
@@ -1326,10 +1307,11 @@ private fun File.fileSize(): Long {
     return if (isFile) allocatedSize() else 0L
 }
 
-private fun File.directorySize(): Long {
+private fun File.directorySize(checkActive: () -> Unit = {}): Long {
+    checkActive()
     if (!exists()) return 0L
     if (isFile) return allocatedSize()
-    return allocatedSize() + (listFiles()?.sumOf { it.directorySize() } ?: 0L)
+    return allocatedSize() + (listFiles()?.sumOf { it.directorySize(checkActive) } ?: 0L)
 }
 
 private fun File.childrenSize(excludes: Set<String> = emptySet()): Long {
