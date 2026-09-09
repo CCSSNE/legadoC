@@ -42,21 +42,30 @@ class ReviewSnapshotStatusAdapter(
         payloads: MutableList<Any>,
     ) = binding.run {
         tvChapter.text = context.getString(R.string.cache_manage_review_chapter, item.chapter.index + 1)
-        tvProgress.text = context.getString(
-            R.string.cache_manage_review_progress,
-            item.processedSnapshots,
-            item.totalSnapshots
-        )
-        if (item.failedSnapshots > 0) {
-            tvState.text = context.getString(R.string.cache_manage_review_failed, item.failedSnapshots)
-            if (item.canRetryFailedSnapshots) {
-                btnRetry.visible()
+        if (item.statusMissing) {
+            tvProgress.text = context.getString(
+                R.string.cache_manage_review_persisted,
+                item.totalSnapshots
+            )
+            tvState.setText(R.string.cache_manage_review_status_missing)
+            btnRetry.gone()
+        } else {
+            tvProgress.text = context.getString(
+                R.string.cache_manage_review_progress,
+                item.processedSnapshots,
+                item.totalSnapshots
+            )
+            if (item.failedSnapshots > 0) {
+                tvState.text = context.getString(R.string.cache_manage_review_failed, item.failedSnapshots)
+                if (item.canRetryFailedSnapshots) {
+                    btnRetry.visible()
+                } else {
+                    btnRetry.gone()
+                }
             } else {
+                tvState.setText(R.string.cache_manage_review_success)
                 btnRetry.gone()
             }
-        } else {
-            tvState.setText(R.string.cache_manage_review_success)
-            btnRetry.gone()
         }
     }
 

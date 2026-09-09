@@ -260,10 +260,18 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
                     val cachedSnapshots = counts.forChapter(chapter)
                     val status = statusesByUrl[chapter.url.trim()]
                     if (status == null) {
-                        check(cachedSnapshots == 0) {
-                            "评论快照缺少章节状态文件: chapter=${chapter.index} ${chapter.url}"
+                        if (cachedSnapshots == 0) {
+                            return@mapNotNull null
                         }
-                        return@mapNotNull null
+                        return@mapNotNull ReviewSnapshotChapterItem(
+                            chapter = chapter,
+                            processedSnapshots = 0,
+                            successfulSnapshots = 0,
+                            totalSnapshots = cachedSnapshots,
+                            failedSnapshots = 0,
+                            failedButtonSources = emptyList(),
+                            statusMissing = true,
+                        )
                     }
                     ReviewSnapshotChapterItem(
                         chapter = chapter,
@@ -1194,6 +1202,8 @@ data class ReviewSnapshotChapterItem(
     val failedSnapshots: Int,
     /** Empty only when an old status recorded a count without safe button identities. */
     val failedButtonSources: List<String>,
+    /** Existing snapshots have no durable chapter status; do not infer completion or retry targets. */
+    val statusMissing: Boolean = false,
 ) {
     val canRetryFailedSnapshots: Boolean
         get() = failedSnapshots > 0 && failedButtonSources.size == failedSnapshots
