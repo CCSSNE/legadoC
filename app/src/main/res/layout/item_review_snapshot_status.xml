@@ -20,6 +20,16 @@
         android:textSize="14sp" />
 
     <TextView
+        android:id="@+id/tv_status_missing"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="10dp"
+        android:text="@string/cache_manage_review_status_missing"
+        android:textColor="@color/secondaryText"
+        android:textSize="13sp"
+        android:visibility="gone" />
+
+    <TextView
         android:id="@+id/tv_progress"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
