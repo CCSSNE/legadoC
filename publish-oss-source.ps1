@@ -100,8 +100,9 @@ try {
     $originUrl = git -C $own remote get-url $remoteName
     git remote add $remoteName $originUrl
     if ($LASTEXITCODE -ne 0) { throw '临时克隆添加远端失败' }
-    git push --force $remoteName ("{0}:refs/heads/{1}" -f $cleanSha, $branch) 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw '清洗镜像推送失败' }
+    $originPushOut = git push --force $remoteName ("{0}:refs/heads/{1}" -f $cleanSha, $branch) 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) { throw "清洗镜像推送失败: $originPushOut" }
+    Write-Output $originPushOut
     git -C $own fetch $remoteName --quiet 2>&1 | Out-Null
     Write-Output "已强推公开镜像：origin/$branch = $cleanSha"
     git -C $own log "refs/remotes/$remoteName/$branch" --oneline -5 2>&1 | Out-Null
@@ -111,14 +112,16 @@ try {
     if ($LASTEXITCODE -ne 0) {
       Write-Output "[警告] 未配置私有备份 remote '$privateRemote'，跳过备份推送"
     } else {
-      git -C $own push $privateRemote ("{0}:refs/heads/{1}" -f $localSha, $branch) 2>&1 | Out-Null
-      if ($LASTEXITCODE -ne 0) { throw '私有备份推送失败' }
+      $privatePushOut = git -C $own push $privateRemote ("{0}:refs/heads/{1}" -f $localSha, $branch) 2>&1 | Out-String
+      if ($LASTEXITCODE -ne 0) { throw "私有备份推送失败: $privatePushOut" }
+      Write-Output $privatePushOut
       Write-Output "已同步私有备份：private/own = $localSha（完整历史）"
     }
 
     # 7) 公开备份fork同步（legado-backup/legado-c，与公开镜像同一条清洗历史）
-    git push --force $backupForkUrl ("{0}:refs/heads/{1}" -f $cleanSha, $branch) 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw '公开备份fork推送失败' }
+    $backupPushOut = git push --force $backupForkUrl ("{0}:refs/heads/{1}" -f $cleanSha, $branch) 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) { throw "公开备份fork推送失败: $backupPushOut" }
+    Write-Output $backupPushOut
     Write-Output "已同步公开备份fork：legado-backup/legado-c own = $cleanSha"
   } finally { Pop-Location }
 } finally {
