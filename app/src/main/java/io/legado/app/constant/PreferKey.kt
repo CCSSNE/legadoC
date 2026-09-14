@@ -184,7 +184,6 @@ object PreferKey {
     const val compressReviewImages = "compressReviewImages"
     const val reviewAvatarCompressionMaxKb = "reviewAvatarCompressionMaxKb"
     const val reviewImageCompressionMaxKb = "reviewImageCompressionMaxKb"
-    const val reviewCacheConcurrency = "reviewCacheConcurrency"
     const val exportReviews = "exportReviews"
     const val exportTtsCache = "exportTtsCache"
     const val reviewOpenMode = "reviewOpenMode"

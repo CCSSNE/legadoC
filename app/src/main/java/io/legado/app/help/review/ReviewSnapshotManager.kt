@@ -26,7 +26,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.withTimeout
@@ -51,36 +50,6 @@ object ReviewSnapshotManager {
 
     /** 评论网络打开链路有本地快照时的网络加载上限。 */
     const val NETWORK_FALLBACK_LOAD_TIMEOUT_MS = 5_000L
-
-    /** 预热当前 Capture 与下一条 Capture；不随用户资源下载设置改变。 */
-    private const val CAPTURE_PIPELINE_CONCURRENCY = 2
-
-    /** 全局页面流水线固定为两条；无论按钮数多少，活动 Capture 都不会超过该值。 */
-    private val pipelineLock = Any()
-    private var activePipelines = 0
-
-    private suspend fun <T> withPipelinePermit(block: suspend () -> T): T {
-        while (true) {
-            val acquired = synchronized(pipelineLock) {
-                if (activePipelines < CAPTURE_PIPELINE_CONCURRENCY) {
-                    activePipelines++
-                    true
-                } else {
-                    false
-                }
-            }
-            if (acquired) {
-                return try {
-                    block()
-                } finally {
-                    synchronized(pipelineLock) {
-                        activePipelines--
-                    }
-                }
-            }
-            delay(100)
-        }
-    }
 
     /** 对外任务（key = bookUrl|chapterIndex；force 为消费时聚合值） */
     internal data class QueueTask(
@@ -380,7 +349,7 @@ object ReviewSnapshotManager {
         boundary: String,
         action: () -> Unit,
     ) {
-        if (!commitIfLeaseActive(action)) {
+        if (!ReviewDownloadScheduler.heavy.blocking { commitIfLeaseActive(action) }) {
             throw CancellationException("review lease is no longer active at $boundary")
         }
     }
@@ -650,8 +619,8 @@ object ReviewSnapshotManager {
             }
         }
         reportChapterProgress()
-        // 单章只预热当前按钮与下一条；全局也由 [withPipelinePermit] 固定为两条 Capture。
-        val buttonConcurrency = CAPTURE_PIPELINE_CONCURRENCY.coerceAtMost(
+        // 按已配置的活动阶段预取按钮；每种实际请求仍受对应的全局配额约束。
+        val buttonConcurrency = maxOf(ReviewDownloadConfig.Number.DATA.value, ReviewDownloadConfig.Number.PAGES.value).coerceAtMost(
             processButtons.size.coerceAtLeast(1)
         )
         val resolvedPageRecorder = AtomicReference<ResolvedPageContext?>(null)
@@ -842,7 +811,7 @@ object ReviewSnapshotManager {
             }
             else -> {
                 val outcome = runCatching {
-                    withPipelinePermit {
+                    run {
                         ReviewSnapshotCapture.captureChapterTab(
                             bookSource,
                             book,
@@ -927,7 +896,7 @@ object ReviewSnapshotManager {
             }
             else -> {
                 val outcome = runCatching {
-                    withPipelinePermit {
+                    run {
                         ReviewSnapshotCapture.captureBookTab(
                             bookSource,
                             book,
@@ -989,7 +958,7 @@ object ReviewSnapshotManager {
         capture: suspend (Boolean) -> ReviewSnapshotCapture.CaptureOutcome,
     ) {
         val outcome = runCatching {
-            withPipelinePermit {
+            run {
                 capture(true)
             }
         }
@@ -1002,8 +971,10 @@ object ReviewSnapshotManager {
             return
         }
         val mergeResult = runCatching {
-            ReviewSnapshotMerger.merge(existing.html, captureResult.snapshot.html)
-        }.getOrNull()
+            ReviewDownloadScheduler.heavy.withPermit {
+                ReviewSnapshotMerger.merge(existing.html, captureResult.snapshot.html)
+            }
+        }.onFailure { if (it is CancellationException) throw it }.getOrNull()
         if (mergeResult == null) {
             sb.append("   ").append(tabLabel).append("：增量合并失败，保留原快照\n")
             return
@@ -1054,7 +1025,7 @@ object ReviewSnapshotManager {
         diagnostics: CacheOperationDiagnostics.Context,
         commitIfLeaseActive: ((() -> Unit) -> Boolean),
         onSnapshotSaved: () -> Unit,
-    ): ButtonOutcome = withPipelinePermit {
+    ): ButtonOutcome = run {
         processButtonInPipeline(
             book,
             bookSource,
@@ -1176,7 +1147,7 @@ object ReviewSnapshotManager {
             val e = outcome.exceptionOrNull()!!
             if (e is CancellationException) throw e
             val reason = when {
-                e is kotlinx.coroutines.TimeoutCancellationException -> "WebView 抓取超时(60s)"
+                e is kotlinx.coroutines.TimeoutCancellationException -> "评论抓取超时"
                 e is kotlinx.coroutines.CancellationException -> "任务被取消"
                 e.localizedMessage?.contains("序列化为空") == true -> "页面 HTML 为空"
                 else -> (e.localizedMessage ?: "未知错误")
@@ -1190,17 +1161,22 @@ object ReviewSnapshotManager {
             return ButtonOutcome(buttonIndex, button.src, sb.toString(), failed = true)
         }
         val capture = outcome.getOrNull()!!
-        sb.append("4. 打开评论页：成功\n")
+        sb.append("4. 抓取成功，引擎：").append(capture.engine).append('\n')
+        sb.append("   资源失败记录：").append(capture.snapshot.resourceFailures.size)
+            .append("；按当前策略影响完整性：").append(capture.droppedResources).append('\n')
+        capture.snapshot.resourceFailures.forEach { sb.append("   ").append(it).append('\n') }
         sb.append("5. 展开检测轮次：").append(capture.expandRounds)
             .append(" 次；实际点击“展开/加载更多”按钮：").append(capture.expandClickCount).append(" 次\n")
         sb.append("6. 最终 HTML：").append(capture.snapshot.html.length / 1024).append(" KB\n")
         val base = incrementalBase
         if (base != null) {
             // 增量合并：原快照为基底，只合入第一屏新增的评论；任何失败都保留原快照
-            val mergeResult = ReviewSnapshotMerger.merge(base.html, capture.snapshot.html)
+            val mergeResult = ReviewDownloadScheduler.heavy.withPermit {
+                ReviewSnapshotMerger.merge(base.html, capture.snapshot.html)
+            }
             if (mergeResult == null) {
                 sb.append("7. 增量合并：无法可靠合并（评论页结构变化），保留原快照\n")
-                return ButtonOutcome(buttonIndex, button.src, sb.toString())
+                return ButtonOutcome(buttonIndex, button.src, sb.toString(), failed = true)
             }
             if (mergeResult.addedCount == 0) {
                 sb.append("7. 增量合并：无新增评论，原快照保持不变\n")

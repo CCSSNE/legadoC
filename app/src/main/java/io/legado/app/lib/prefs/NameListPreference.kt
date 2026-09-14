@@ -12,7 +12,7 @@ import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.utils.ColorUtils
 
 
-class NameListPreference(context: Context, attrs: AttributeSet) : ListPreference(context, attrs) {
+class NameListPreference(context: Context, attrs: AttributeSet? = null) : ListPreference(context, attrs) {
 
     private val isBottomBackground: Boolean
 

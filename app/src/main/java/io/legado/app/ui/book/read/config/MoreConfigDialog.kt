@@ -129,7 +129,6 @@ class MoreConfigDialog : BaseReaderSheetPrefDialogFragment() {
             )
             upPreferenceSummary(PreferKey.pageAnimationSpeed, AppConfig.pageAnimationSpeed.toString())
             upPreferenceSummary(PreferKey.keyPageAnimationSpeed, AppConfig.keyPageAnimationSpeed.toString())
-            upPreferenceSummary(PreferKey.reviewCacheConcurrency, AppConfig.reviewResourceDownloadConcurrency.toString())
             upReviewCompressionSummary(
                 PreferKey.compressReviewAvatars,
                 AppConfig.reviewAvatarCompressionMaxKb
@@ -279,7 +278,6 @@ class MoreConfigDialog : BaseReaderSheetPrefDialogFragment() {
             findPreference<Preference>(PreferKey.compressReviewAvatars)?.isVisible = cacheAvatars
             findPreference<Preference>(PreferKey.cacheReviewImages)?.isVisible = cacheReview
             findPreference<Preference>(PreferKey.compressReviewImages)?.isVisible = cacheImages
-            findPreference<Preference>(PreferKey.reviewCacheConcurrency)?.isVisible = cacheReview
         }
 
         private fun showReviewCompressionSizeInput(isAvatar: Boolean, preferenceKey: String) {
@@ -390,19 +388,6 @@ class MoreConfigDialog : BaseReaderSheetPrefDialogFragment() {
                     }
                 }
 
-                PreferKey.reviewCacheConcurrency -> {
-                    showIntegerInputDialog(
-                        title = R.string.comment_cache_concurrency,
-                        currentValue = AppConfig.reviewResourceDownloadConcurrency,
-                        validRange = 1..32
-                    ) {
-                        AppConfig.reviewResourceDownloadConcurrency = it
-                        upPreferenceSummary(
-                            PreferKey.reviewCacheConcurrency,
-                            AppConfig.reviewResourceDownloadConcurrency.toString()
-                        )
-                    }
-                }
 
                 PreferKey.bookmarkNoteBubbleBgAlpha -> showBubbleBgAlphaDialog()
                 PreferKey.bookmarkNoteBubbleColor -> showBubbleColorDialog()

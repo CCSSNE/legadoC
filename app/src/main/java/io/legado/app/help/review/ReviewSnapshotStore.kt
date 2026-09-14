@@ -43,7 +43,10 @@ data class ReviewSnapshot(
      * 对应按钮仍计为失败，等待重新抓取覆盖。
      */
     val partial: Boolean = false,
-    val savedAt: Long = 0L
+    val savedAt: Long = 0L,
+    val downloadEngine: String = "web",
+    /** 包括按用户完整性策略忽略的失败；不能把成功状态当作资源齐全。 */
+    val resourceFailures: List<String> = emptyList(),
 )
 
 /**

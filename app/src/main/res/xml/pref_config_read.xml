@@ -413,13 +413,6 @@
         android:summary="@string/cache_review_compression_size_summary"
         android:title="@string/cache_review_image_compression" />
 
-    <io.legado.app.lib.prefs.Preference
-        android:dependency="syncCacheReview"
-        android:key="reviewCacheConcurrency"
-        android:summary="@string/comment_cache_concurrency_summary"
-        android:title="@string/comment_cache_concurrency"
-        app:iconSpaceReserved="false" />
-
     <io.legado.app.lib.prefs.SwitchPreference
         android:defaultValue="false"
         android:key="ttsCacheIncludeInPackage"

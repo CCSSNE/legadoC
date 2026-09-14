@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="review_download_engine">评论抓取引擎</string>
+    <string name="review_download_engine_summary">自动按书源声明或页面协议特征选择。目前数据接口支持 idea_comment 段评及楼中楼；章评、书评自动选择网页。强制数据接口时不支持即报错，执行失败不会切换引擎。</string>
+    <string name="review_download_data_concurrency">评论数据请求并发数</string>
+    <string name="review_download_reply_concurrency">楼中楼请求并发数</string>
+    <string name="review_download_resource_concurrency">离线资源请求并发数</string>
+    <string name="review_download_page_concurrency">网页快照页面并发数</string>
+    <string name="review_download_heavy_concurrency">快照重处理并发数</string>
+    <string name="review_download_page_size">评论每页请求数量</string>
+    <string name="review_download_reply_size">回复每页请求数量</string>
+    <string name="review_download_stable_interval">网页稳定检测间隔（毫秒）</string>
+    <string name="review_download_stable_rounds">网页稳定确认轮数</string>
+    <string name="review_download_page_timeout">网页加载与展开超时（毫秒）</string>
+    <string name="review_download_data_timeout">评论数据请求超时（毫秒）</string>
+    <string name="review_download_resource_timeout">离线资源请求超时（毫秒）</string>
+    <string name="review_download_retries">请求失败重试次数</string>
+    <string name="review_download_retry_interval">请求重试基础间隔（毫秒）</string>
+    <string name="review_download_backoff">请求重试退避方式</string>
+    <string name="review_download_reuse_replies">复用接口内嵌完整回复</string>
+    <string name="review_download_reuse_resources">复用已缓存公共资源</string>
+    <string name="review_download_require_avatars">头像失败标记部分快照</string>
+    <string name="review_download_require_images">评论图片失败标记部分快照</string>
+    <string name="review_download_require_css">样式表失败标记部分快照</string>
+    <string name="review_download_require_fonts">字体候选全部失败标记部分快照</string>
+    <string name="review_download_requirement_summary">关闭后仍保留失败记录和缺失数量，但此类资源失败不影响任务成功。关闭缓存该类内容时不发起请求。</string>
+    <string name="review_download_protocol">评论数据协议（snapshotProtocol：留空自动识别；idea_comment 支持段评及楼中楼）</string>
+    <string name="review_download_numeric_summary">当前：%1$d；默认：%2$d。%3$s</string>
+    <string-array name="review_download_engine_entries"><item>自动按协议能力选择</item><item>强制数据接口</item><item>强制网页快照</item></string-array>
+    <string-array name="review_download_engine_values"><item>auto</item><item>data</item><item>web</item></string-array>
+    <string-array name="review_download_backoff_entries"><item>固定间隔</item><item>线性增长</item><item>指数增长</item></string-array>
+    <string-array name="review_download_backoff_values"><item>fixed</item><item>linear</item><item>exponential</item></string-array>
+</resources>

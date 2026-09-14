@@ -51,6 +51,23 @@ object ReviewSnapshotMerger {
         return runCatching {
             val baseDoc = Jsoup.parse(baseHtml)
             val incomingDoc = Jsoup.parse(incomingHtml)
+            if (baseDoc.body().attr("data-review-protocol") == "idea_comment" &&
+                incomingDoc.body().attr("data-review-protocol") == "idea_comment") {
+                val existing = baseDoc.select("[data-comment-id]")
+                val incoming = incomingDoc.select("[data-comment-id]")
+                val ids = existing.mapTo(hashSetOf()) { it.attr("data-comment-id") }
+                check(ids.size == existing.size) { "已存数据快照包含重复评论 ID" }
+                check(incoming.map { it.attr("data-comment-id") }.distinct().size == incoming.size) {
+                    "新数据快照包含重复评论 ID"
+                }
+                val fresh = incoming.filter { it.attr("data-comment-id") !in ids }
+                val anchor = existing.firstOrNull()
+                fresh.forEach { item ->
+                    if (anchor == null) baseDoc.body().appendChild(item.clone())
+                    else anchor.before(item.clone())
+                }
+                return@runCatching Result(baseDoc.outerHtml(), fresh.size)
+            }
             val baseGroup = dominantRepeatedGroup(baseDoc.body()) ?: return@runCatching null
             val incomingGroup = dominantRepeatedGroup(incomingDoc.body()) ?: return@runCatching null
             // 条目形态不一致说明模板已变化（改版/命中了错误分组），合入只会产生脏 DOM

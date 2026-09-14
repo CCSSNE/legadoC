@@ -46,7 +46,6 @@ import java.io.FileOutputStream
 import java.io.InterruptedIOException
 import java.io.Reader
 import java.util.concurrent.Executors
-import java.util.concurrent.Semaphore
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.ScheduledThreadPoolExecutor
 import java.util.concurrent.TimeUnit
@@ -81,22 +80,21 @@ object ReviewSnapshotCapture {
     }
 
     /** 页面加载与评论展开共享的执行预算；不包含重内存阶段的排队或执行。 */
-    private const val PAGE_EXECUTION_TIMEOUT_MS = 60_000L
+    private val PAGE_EXECUTION_TIMEOUT_MS get() = ReviewDownloadConfig.Number.PAGE_TIMEOUT.value.toLong()
     /** 每轮之间的等待 */
-    private const val EXPAND_ROUND_INTERVAL_MS = 800L
+    private val EXPAND_ROUND_INTERVAL_MS get() = ReviewDownloadConfig.Number.STABLE_INTERVAL.value.toLong()
     /** 连续几轮稳定才判定完成（含慢加载评论） */
-    private const val STABLE_ROUNDS_TO_FINISH = 3
+    private val STABLE_ROUNDS_TO_FINISH get() = ReviewDownloadConfig.Number.STABLE_ROUNDS.value
     /** 章评/书评 tab 点击校验重试上限 */
     private const val MAX_TAB_CLICK_ATTEMPTS = 5
     /** 单个资源抓取超时；传输失败会记录并移除该非关键资源，取消仍会中止快照。 */
-    private const val RESOURCE_FETCH_TIMEOUT_MS = 8_000L
-    private const val HEAVY_STAGE_CONCURRENCY = 1
+    private val RESOURCE_FETCH_TIMEOUT_MS get() = ReviewDownloadConfig.Number.RESOURCE_TIMEOUT.value.toLong()
     private const val RESOURCE_COPY_BUFFER_BYTES = 32 * 1024
     /**
      * 内联资源构建、outerHTML 回传和 JSON 解码会短时保留完整页面及其副本；这是本进程
      * 唯一的重内存区段。页面加载/展开仍可并行，只有进入该区段才排队。
      */
-    private val heavyStagePermits = Semaphore(HEAVY_STAGE_CONCURRENCY, true)
+    private val heavyStagePermits = ReviewDownloadScheduler.heavy
 
     private class CaptureStageTimeoutException(message: String) : NoStackTraceException(message)
 
@@ -136,7 +134,8 @@ object ReviewSnapshotCapture {
         /** 实际点击“展开/回复/加载更多”按钮的次数（stats.clicked 累计） */
         val expandClickCount: Int,
         /** 未能入库、以 # 占位或从快照中剔除的资源数；>0 时快照为部分成功 */
-        val droppedResources: Int = 0
+        val droppedResources: Int = 0,
+        val engine: String = "web",
     )
 
     /**
@@ -329,28 +328,50 @@ object ReviewSnapshotCapture {
             )
         }
         return try {
-            if (initialHtml != null && !isValidCommentHtml(initialHtml)) {
+            val protocol = bookSource.ruleReview?.snapshotProtocol?.trim().orEmpty()
+            val engine = ReviewDownloadConfig.engine
+            val supported = engine != ReviewDownloadConfig.Engine.WEB &&
+                ReviewDataCapture.supports(url, initialHtml, tab, protocol)
+            val useData = when (engine) {
+                ReviewDownloadConfig.Engine.WEB -> false
+                ReviewDownloadConfig.Engine.AUTO -> supported
+                ReviewDownloadConfig.Engine.DATA -> {
+                    check(supported) { "当前评论类型/书源不支持数据接口（目前支持 idea_comment 段评）；请选择自动或网页引擎" }
+                    true
+                }
+            }
+            trace?.mark(if (useData) "ENGINE_DATA" else "ENGINE_WEB", force = true)
+            val preparedHtml = if (useData) ReviewDataCapture.capture(
+                url, AnalyzeUrl(url, source = bookSource).headerMap, initialHtml, trace
+            ) else initialHtml
+            if (!useData && initialHtml != null && !isValidCommentHtml(initialHtml)) {
                 throw NoStackTraceException(
                     "showBrowser 带回的 HTML 非有效评论页（疑似 ajax 错误/异常文本，" +
                         "${initialHtml.length} 字符，已按失败处理）"
                 )
             }
-            val page = snapshotPage(
+            suspend fun loadPage() = snapshotPage(
                 url,
                 bookSource,
                 book,
-                initialHtml,
-                preloadJs,
+                preparedHtml,
+                if (useData) null else preloadJs,
                 tab,
                 trace,
                 commitIfLeaseActive,
                 paginationEnabled = !incremental,
+                dataPrepared = useData,
             )
+            val page = if (useData) loadPage() else ReviewDownloadScheduler.pages.withPermit { loadPage() }
             CaptureOutcome(
-                snapshot = buildSnapshot(page),
+                snapshot = buildSnapshot(page).copy(
+                    downloadEngine = if (useData) "data" else "web",
+                    resourceFailures = page.resourceFailures,
+                ),
                 expandRounds = page.expandRounds,
                 expandClickCount = page.expandClickCount,
-                droppedResources = page.droppedResources
+                droppedResources = page.droppedResources,
+                engine = if (useData) "data" else "web",
             ).also {
                 trace?.done(CacheOperationDiagnostics.Metrics(outputChars = page.html.length))
             }
@@ -366,6 +387,7 @@ object ReviewSnapshotCapture {
         val expandRounds: Int,
         val expandClickCount: Int,
         val resourceKeys: List<String>,
+        val resourceFailures: List<String>,
         /** 序列化时被剔除/占位的资源数；>0 表示快照为部分成功 */
         val droppedResources: Int = 0,
     )
@@ -388,9 +410,11 @@ object ReviewSnapshotCapture {
         diagnostics: CacheOperationDiagnostics.Operation? = null,
         commitIfLeaseActive: ((() -> Unit) -> Boolean),
         paginationEnabled: Boolean = true,
+        dataPrepared: Boolean = false,
     ): SnapshotPageResult {
         val analyzeUrl = AnalyzeUrl(url, source = bookSource)
         val headerMap = analyzeUrl.headerMap
+        val resourceFailures = java.util.Collections.synchronizedList(mutableListOf<String>())
         return suspendCancellableCoroutine { block ->
             val pooledRef = AtomicReference<io.legado.app.help.webView.PooledWebView?>()
             val sessionRef = AtomicReference<SnapshotSession?>()
@@ -425,7 +449,7 @@ object ReviewSnapshotCapture {
                         headerMap[AppConst.UA_NAME]?.let { userAgentString = it }
                     }
                     AppCookieManager.applyToWebView(url)
-                    val jsBridge = if (!initialHtml.isNullOrBlank()) {
+                    val jsBridge = if (!dataPrepared && !initialHtml.isNullOrBlank()) {
                         PageJsBridge(preloadJs)
                     } else {
                         null
@@ -439,6 +463,8 @@ object ReviewSnapshotCapture {
                         diagnostics,
                         commitIfLeaseActive,
                         paginationEnabled,
+                        dataPrepared,
+                        resourceFailures,
                     ) {
                         result, error, rounds, clicks, discardWebView, resourceKeys, droppedResources ->
                         sessionRef.set(null)
@@ -451,6 +477,7 @@ object ReviewSnapshotCapture {
                                     rounds,
                                     clicks,
                                     resourceKeys,
+                                    resourceFailures.toList(),
                                     droppedResources
                                 )
                             )
@@ -466,7 +493,7 @@ object ReviewSnapshotCapture {
                         webView.addJavascriptInterface(bookSource, nameSource)
                         webView.addJavascriptInterface(WebJsExtensions(bookSource, null, webView), nameJava)
                         webView.loadDataWithBaseURL(
-                            url, spliceJsUrl(initialHtml), "text/html", "utf-8", url
+                            url, if (dataPrepared) initialHtml else spliceJsUrl(initialHtml), "text/html", "utf-8", url
                         )
                     } else {
                         webView.loadUrl(url, headerMap)
@@ -515,6 +542,8 @@ object ReviewSnapshotCapture {
         private val diagnostics: CacheOperationDiagnostics.Operation?,
         private val commitIfLeaseActive: ((() -> Unit) -> Boolean),
         private val paginationEnabled: Boolean = true,
+        private val dataPrepared: Boolean = false,
+        private val resourceFailures: MutableList<String>,
         private val done: (String?, Throwable?, Int, Int, Boolean, List<String>, Int) -> Unit
     ) {
 
@@ -567,6 +596,7 @@ object ReviewSnapshotCapture {
         private data class ImageResource(
             val url: String,
             val compressionMaxBytes: Long?,
+            val required: Boolean,
         )
 
         /** A shared URL can occur in both an avatar and a comment image. */
@@ -680,7 +710,9 @@ object ReviewSnapshotCapture {
         val client = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, finishedUrl: String?) {
                 if (destroyed) return
-                if (tab == null) {
+                if (dataPrepared) {
+                    inlineResources()
+                } else if (tab == null) {
                     mHandler.postDelayed({ expandRound() }, 1500L)
                 } else {
                     // 章评/书评补充抓取：先点目标 tab，切换校验通过后再进入展开循环
@@ -744,6 +776,9 @@ object ReviewSnapshotCapture {
                 view: WebView,
                 request: WebResourceRequest
             ): WebResourceResponse? {
+                if (dataPrepared && request.url.scheme in listOf("http", "https")) {
+                    return WebResourceResponse("text/plain", "utf-8", ByteArrayInputStream(ByteArray(0)))
+                }
                 // 初始 HTML 模式：拦截 nameUrl，注入 JS_INJECTION + 书源 preloadJs，
                 // 给真实评论页提供 window.java/run/ajaxAwait 等 JS bridge 环境
                 val bridge = jsBridge
@@ -882,6 +917,7 @@ object ReviewSnapshotCapture {
                 activeStage = stage
             }
             diagnostics?.stageStart(stage.diagnosticsStage, startAlways = true)
+            if (timeoutMs == 0L) return
             stageTimeout = timeoutScheduler.schedule({
                 failStageTimeout(
                     stage,
@@ -1077,8 +1113,10 @@ object ReviewSnapshotCapture {
         }
 
         /** 收集图片与样式表并内联，然后取最终 HTML */
+        private val inliningStarted = AtomicBoolean(false)
+
         private fun inlineResources() {
-            if (destroyed) return
+            if (destroyed || !inliningStarted.compareAndSet(false, true)) return
             startQueueWaitStage()
             // 只限流会创建完整 Java 大对象的阶段；此时之前的页面加载与展开可以继续并行。
             val waiter = Thread {
@@ -1312,14 +1350,17 @@ object ReviewSnapshotCapture {
                             add(imageCompressionMaxBytes)
                         }
                     }
-                    ImageResource(roles.url, maximums.minOrNull())
+                    ImageResource(roles.url, maximums.minOrNull(),
+                        (roles.hasAvatar && cacheAvatars && ReviewDownloadConfig.enabled(ReviewDownloadConfig.REQUIRE_AVATARS)) ||
+                        (roles.hasCommentImage && cacheCommentImages && ReviewDownloadConfig.enabled(ReviewDownloadConfig.REQUIRE_IMAGES)))
                 }
                 .toList()
             val storedImages = ReviewSnapshotResourceStore.entries(book)
             val reusableImages = linkedMapOf<String, ReviewSnapshotResourceEntry>()
             val imagesToDownload = selectedImages.filter { image ->
                 val stored = storedImages[image.url]
-                if (stored != null &&
+                if (ReviewDownloadConfig.enabled(ReviewDownloadConfig.REUSE_RESOURCES) && stored != null &&
+                    stored.processing == imageProcessing(image.compressionMaxBytes) &&
                     (image.compressionMaxBytes == null ||
                         stored.byteCount <= image.compressionMaxBytes)
                 ) {
@@ -1337,6 +1378,9 @@ object ReviewSnapshotCapture {
                 cacheCommentImages = cacheCommentImages,
             )
         }
+
+        private val selectedFontKeys = mutableListOf<String>()
+        private var failedFontGroups = 0
 
         private fun downloadResources(urls: ResourceUrls): InlineResources {
             val resourceCount = urls.resourceCount
@@ -1384,7 +1428,8 @@ object ReviewSnapshotCapture {
                             val image = prepareImage(staged)
                             resourceBytes += image.byteCount
                             val committed =
-                                putResource(staged.target.url, image.mimeType, image.file)
+                                putResource(staged.target.url, image.mimeType, image.file,
+                                    imageProcessing(staged.target.compressionMaxBytes))
                             imgMap[staged.target.url] =
                                 ReviewSnapshotResourceStore.referenceFor(committed.key)
                         }
@@ -1394,9 +1439,15 @@ object ReviewSnapshotCapture {
                             check(bytes.size.toLong() == staged.byteCount) {
                                 "评论快照资源暂存文件长度异常: ${staged.target.url}"
                             }
-                            val text = bytes.toString(Charsets.UTF_8).takeIf { it.isNotBlank() }
-                                ?: continue
-                            stagedCss += parseCssSubResources(staged.target.url, text)
+                            val text = bytes.toString(Charsets.UTF_8)
+                            if (text.isBlank()) {
+                                val error = IllegalStateException("评论样式表内容为空: ${staged.target.url}")
+                                resourceFailures += error.message.orEmpty()
+                                diagnostics?.warn("RESOURCE_CSS_EMPTY", error)
+                                continue
+                            }
+                            putResource(staged.target.url, "text/css", staged.file)
+                            stagedCss += parseCssSubResources(staged.target.url, selectFontCandidates(staged.target.url, text, stagingDir))
                         }
 
                         ResourceKind.SUB_RESOURCE -> Unit
@@ -1425,10 +1476,10 @@ object ReviewSnapshotCapture {
                     resourceBytes = resourceBytes,
                     cacheAvatars = urls.cacheAvatars,
                     cacheCommentImages = urls.cacheCommentImages,
-                    subResourceKeys = subResourceKeys,
-                    droppedResources = urls.images.count { imgMap[it.url] == null } +
-                        urls.css.count { cssMap[it] == null } +
-                        subStage.failedCount,
+                    subResourceKeys = subResourceKeys + selectedFontKeys,
+                    droppedResources = urls.images.count { it.required && imgMap[it.url] == null } +
+                        (if (ReviewDownloadConfig.enabled(ReviewDownloadConfig.REQUIRE_CSS)) urls.css.count { cssMap[it] == null } else 0) +
+                        subStage.failedCount + failedFontGroups,
                     removeUnstagedExternalResources = true,
                 )
             } finally {
@@ -1471,8 +1522,51 @@ object ReviewSnapshotCapture {
             return CssSubStageResult(
                 subReferences,
                 storedBytes,
-                failedCount = subUrls.size - stagedSubs.size,
+                failedCount = subUrls.filter { candidate -> stagedSubs.none { it.target.url == candidate } }.count { candidate ->
+                    ReviewDownloadConfig.enabled(if (cssSubResourceMime(candidate).startsWith("font/"))
+                        ReviewDownloadConfig.REQUIRE_FONTS else ReviewDownloadConfig.REQUIRE_CSS)
+                },
             )
+        }
+
+        /** src 的多个 URL 是候选格式；成功一个便停止，失败的候选保留在诊断中。 */
+        private fun selectFontCandidates(cssUrl: String, css: String, stagingDir: File): String {
+            val fontFace = Regex("@font-face\\s*\\{[^}]*}", RegexOption.IGNORE_CASE)
+            val src = Regex("(?i)(?<![\\w-])src\\s*:[^;}]*(?:;|(?=}))")
+            return fontFace.replace(css) { face ->
+                src.replace(face.value) declaration@{ declaration ->
+                    val candidates = CSS_URL_REF_REGEX.findAll(declaration.value).toList()
+                    if (candidates.isEmpty()) return@declaration declaration.value
+                    var reference: String? = null
+                    for (candidate in candidates) {
+                        val raw = candidate.groupValues[2]
+                        if (CSS_LOCAL_REF_PREFIX_REGEX.containsMatchIn(raw)) {
+                            reference = raw
+                            break
+                        }
+                        val address = cssUrl.toHttpUrlOrNull()?.resolve(raw)?.toString()
+                            ?: error("字体候选地址无效: $cssUrl -> $raw")
+                        val mime = cssSubResourceMime(address)
+                        val suffix = declaration.value.substring(candidate.range.last + 1).substringBefore(',')
+                        if (!mime.startsWith("font/") && !Regex("(?i)format\\s*\\(\\s*['\"](?:woff2?|truetype|opentype)['\"]\\s*\\)").containsMatchIn(suffix)) {
+                            val error = IllegalStateException("字体候选格式不受支持: $address")
+                            resourceFailures += error.message.orEmpty()
+                            diagnostics?.warn("FONT_FORMAT_UNSUPPORTED", error)
+                            continue
+                        }
+                        val target = ResourceTarget(-1, address, ResourceKind.SUB_RESOURCE)
+                        val staged = stageResources(listOf(target), stagingDir).singleOrNull() ?: continue
+                        val stored = putResource(address, cssSubResourceMime(address), staged.file)
+                        selectedFontKeys += stored.key
+                        reference = ReviewSnapshotResourceStore.referenceFor(stored.key)
+                        break
+                    }
+                    if (reference == null && ReviewDownloadConfig.enabled(ReviewDownloadConfig.REQUIRE_FONTS)) {
+                        failedFontGroups++
+                    }
+                    "src:url('${reference ?: "#"}');"
+                }
+            }
         }
 
         /** 按解析结果改写 CSS 文本：入库引用 → review-resource:，失败引用 → #，本地形式保留。 */
@@ -1528,10 +1622,13 @@ object ReviewSnapshotCapture {
         }
 
         /** 单个资源入库统一走 lease 提交：lease 失效即取消整个 Capture，不落半套资源。 */
+        private fun imageProcessing(maxBytes: Long?) = maxBytes?.let { "webp-max:$it" } ?: "original"
+
         private fun putResource(
             url: String,
             mimeType: String,
             file: File,
+            processing: String = "original",
         ): ReviewSnapshotResourceEntry {
             var stored: ReviewSnapshotResourceEntry? = null
             val committedLease = commitIfLeaseActive.invoke {
@@ -1540,6 +1637,7 @@ object ReviewSnapshotCapture {
                     url = url,
                     mimeType = mimeType,
                     source = file,
+                    processing = processing,
                 )
             }
             if (!committedLease) {
@@ -1556,10 +1654,11 @@ object ReviewSnapshotCapture {
             targets: List<ResourceTarget>,
             stagingDir: File,
         ): List<StagedResource> {
-            val threadCount = AppConfig.reviewResourceDownloadConcurrency.coerceIn(1, 32)
+            val threadCount = ReviewDownloadConfig.Number.RESOURCES.value
             val executor = Executors.newFixedThreadPool(threadCount) { runnable ->
                 Thread(runnable, "ReviewSnapshotResource").apply { isDaemon = true }
             }
+            releaseHeavyStagePermit()
             val futures = targets.map { target ->
                 target to executor.submit(Callable { stageResource(target, stagingDir) })
             }
@@ -1569,9 +1668,9 @@ object ReviewSnapshotCapture {
                         future.get()
                     } catch (error: java.util.concurrent.ExecutionException) {
                         val cause = error.cause ?: error
-                        // 资源下载失败一律按非关键资源跳过（CSS 也一样）：快照以部分
-                        // 成功落盘，剔除/占位数量计入 partial，等待重试补全。
+                        // 保留每次最终失败；是否标记 partial 由资源角色和用户策略统一判定。
                         if (cause is ResourceDownloadException) {
+                            resourceFailures += cause.message.orEmpty() + ": " + cause.cause?.message.orEmpty()
                             diagnostics?.warn("RESOURCE_DOWNLOAD_SKIPPED", cause)
                             null
                         } else {
@@ -1590,6 +1689,10 @@ object ReviewSnapshotCapture {
                 throw error
             } finally {
                 shutdownResourceWorkers(executor)
+                ensureHeavyActive()
+                heavyStagePermits.acquire()
+                heavyStagePermitHeld.set(true)
+                ensureHeavyActive()
             }
         }
 
@@ -1607,12 +1710,38 @@ object ReviewSnapshotCapture {
             if (restoreInterrupt) Thread.currentThread().interrupt()
         }
 
-        /** 单个资源以流式方式暂存；单请求仍保持 8s 网络超时。 */
-        private fun stageResource(
+        /** 每次尝试单独取得资源配额；退避等待不占用网络配额。 */
+        private fun stageResource(target: ResourceTarget, stagingDir: File): StagedResource {
+            var attempt = 0
+            while (true) {
+                ensureHeavyActive()
+                try {
+                    return ReviewDownloadScheduler.resources.blocking { stageResourceOnce(target, stagingDir) }
+                } catch (error: ResourceDownloadException) {
+                    diagnostics?.warn("RESOURCE_HTTP_FAILED", error)
+                    ensureHeavyActive()
+                    if (attempt >= ReviewDownloadConfig.Number.RETRIES.value) throw error
+                    attempt++
+                    diagnostics?.mark("RESOURCE_HTTP_RETRY_$attempt", force = true)
+                    Thread.sleep(ReviewDownloadConfig.retryDelay(attempt))
+                }
+            }
+        }
+
+        private fun stageResourceOnce(
             target: ResourceTarget,
             stagingDir: File,
         ): StagedResource {
             val targetFile = File(stagingDir, target.index.toString())
+            if (ReviewDownloadConfig.enabled(ReviewDownloadConfig.REUSE_RESOURCES) && target.kind != ResourceKind.IMAGE) {
+                val stored = ReviewSnapshotResourceStore.entries(book)[target.url]
+                if (stored != null) {
+                    val handle = checkNotNull(ReviewSnapshotResourceStore.open(book, stored.key))
+                    handle.inputStream.use { input -> targetFile.outputStream().use { input.copyTo(it) } }
+                    diagnostics?.mark("RESOURCE_CACHE_HIT", force = true)
+                    return StagedResource(target, targetFile, stored.byteCount)
+                }
+            }
             val request = okhttp3.Request.Builder()
                 .url(target.url)
                 .header("Referer", url)
@@ -1620,6 +1749,8 @@ object ReviewSnapshotCapture {
             val call = okHttpClient.newBuilder()
                 .connectTimeout(RESOURCE_FETCH_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                 .readTimeout(RESOURCE_FETCH_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                .callTimeout(RESOURCE_FETCH_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                .retryOnConnectionFailure(false)
                 .build()
                 .newCall(request)
             registerResourceCall(call)
@@ -1650,6 +1781,8 @@ object ReviewSnapshotCapture {
                                     output.write(buffer, 0, count)
                                     copiedBytes = nextBytes
                                 }
+                                if (copiedBytes == 0L) throw ResourceDownloadException(target,
+                                    IllegalStateException("评论资源响应内容为空"))
                                 completed = true
                                 return StagedResource(target, targetFile, copiedBytes)
                             }

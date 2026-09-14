@@ -902,13 +902,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val reviewImageCompressionMaxBytes: Long
         get() = reviewImageCompressionMaxKb.toLong() * 1024L
 
-    /** 评论快照资源下载线程数；页面与 Heavy 并发由固定调度策略控制。 */
-    var reviewResourceDownloadConcurrency: Int
-        get() = appCtx.getPrefInt(PreferKey.reviewCacheConcurrency, 8)
-        set(value) {
-            appCtx.putPrefInt(PreferKey.reviewCacheConcurrency, value)
-        }
-
     /** 评论打开方式：network / snapshot_first / snapshot_only */
     val reviewOpenMode: String
         get() = appCtx.getPrefString(PreferKey.reviewOpenMode, ReviewOpenMode.NETWORK)

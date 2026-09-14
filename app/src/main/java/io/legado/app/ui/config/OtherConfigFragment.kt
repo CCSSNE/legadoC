@@ -70,6 +70,7 @@ class OtherConfigFragment : PreferenceFragment(),
         putPrefBoolean(PreferKey.processText, isProcessTextEnabled())
         migrateListPreferenceValues()
         addPreferencesFromResource(R.xml.pref_config_other)
+        addReviewDownloadPreferences()
         upPreferenceSummary(PreferKey.userAgent, AppConfig.userAgent)
         upPreferenceSummary(PreferKey.preDownloadNum, AppConfig.preDownloadNum.toString())
         upPreferenceSummary(

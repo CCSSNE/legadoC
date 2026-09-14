@@ -307,6 +307,7 @@ class BookSourceEditActivity :
         sourceEntities.apply {
             add(EditEntity("bookSourceUrl", bs.bookSourceUrl, R.string.source_url))
             add(EditEntity("bookSourceName", bs.bookSourceName, R.string.source_name))
+            add(EditEntity("snapshotProtocol", bs.ruleReview?.snapshotProtocol, R.string.review_download_protocol))
             add(EditEntity("bookSourceGroup", bs.bookSourceGroup, R.string.source_group))
             add(EditEntity("bookSourceComment", bs.bookSourceComment, R.string.comment))
             add(EditEntity("loginUrl", bs.loginUrl, R.string.login_url))
@@ -441,6 +442,11 @@ class BookSourceEditActivity :
             when (it.key) {
                 "bookSourceUrl" -> source.bookSourceUrl = it.value ?: ""
                 "bookSourceName" -> source.bookSourceName = it.value ?: ""
+                "snapshotProtocol" -> {
+                    val protocol = it.value?.trim().orEmpty()
+                    require(protocol.isEmpty() || protocol == "idea_comment") { "未知评论数据协议：$protocol" }
+                    source.ruleReview = (source.ruleReview ?: io.legado.app.data.entities.rule.ReviewRule()).copy(snapshotProtocol = protocol)
+                }
                 "bookSourceGroup" -> source.bookSourceGroup = it.value
                 "loginUrl" -> source.loginUrl = it.value
                 "loginUi" -> source.loginUi = it.value

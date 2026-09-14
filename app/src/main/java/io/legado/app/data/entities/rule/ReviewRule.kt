@@ -7,6 +7,7 @@ import kotlinx.parcelize.Parcelize
 
 @Parcelize
 data class ReviewRule(
+    var snapshotProtocol: String? = null, // 离线数据协议；空值按页面协议特征识别
     var reviewUrl: String? = null,          // 段评URL
     var avatarRule: String? = null,         // 段评发布者头像
     var contentRule: String? = null,        // 段评内容

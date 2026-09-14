@@ -27,6 +27,7 @@ data class ReviewSnapshotResourceEntry(
     val key: String = "",
     val mimeType: String = "",
     val byteCount: Long = 0L,
+    val processing: String = "unknown",
 )
 
 data class ReviewSnapshotResourceHandle(
@@ -176,6 +177,7 @@ object ReviewSnapshotResourceStore {
         url: String,
         mimeType: String,
         source: File,
+        processing: String = "original",
     ): ReviewSnapshotResourceEntry = synchronized(lock) {
         require(url.isNotBlank()) { "评论资源 URL 为空" }
         require(mimeType.isNotBlank()) { "评论资源 MIME 为空: $url" }
@@ -198,6 +200,7 @@ object ReviewSnapshotResourceStore {
             key = key,
             mimeType = mimeType,
             byteCount = source.length(),
+            processing = processing,
         )
         val old = requireDatabase(book)
         val updated = old.resources
