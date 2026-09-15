@@ -15,6 +15,7 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.http.BackstageWebView
 import io.legado.app.help.http.StrResponse
 import io.legado.app.help.review.ReviewSnapshot
+import io.legado.app.help.review.ReviewParagraphTemplate
 import io.legado.app.help.review.ReviewSnapshotCapture
 import io.legado.app.help.review.ReviewSnapshotManager
 import io.legado.app.help.review.ReviewSnapshotStore
@@ -109,10 +110,13 @@ object BookImgClick {
         )
     }
 
-    private fun cachedSnapshot(context: ReviewContext, src: String): CachedReviewSnapshot? {
+    private fun cachedSnapshot(context: ReviewContext, src: String, syntheticPara: SyntheticParaContent? = null): CachedReviewSnapshot? {
         val snapshot = ReviewSnapshotStore.get(context.book, context.chapter, src.trim())
             ?: return null
-        return CachedReviewSnapshot(context.book, context.chapter, snapshot)
+        val page = if (syntheticPara?.snapshotFallbackAllowed == false) {
+            ReviewParagraphTemplate.create(snapshot, syntheticPara)
+        } else snapshot
+        return CachedReviewSnapshot(context.book, context.chapter, page)
     }
 
     private fun resolveNetworkSource(context: ReviewContext): BookSource? {
@@ -171,12 +175,13 @@ object BookImgClick {
         src: String,
         hostChapter: BookChapter?,
         refreshToNetwork: Boolean,
-        offlineOnly: Boolean
+        offlineOnly: Boolean,
+        syntheticPara: SyntheticParaContent? = null,
     ): Boolean {
         val chapter = currentChapter(hostChapter) ?: return false
         // 先持有本地快照；网络刷新条件不得影响离线快照可用性。
         val resolvedContext = reviewContext(chapter, src) ?: return false
-        val cached = cachedSnapshot(resolvedContext, src) ?: return false
+        val cached = cachedSnapshot(resolvedContext, src, syntheticPara) ?: return false
         // 快照优先：后台解析真实评论页并加载在线内容，成功后覆盖当前快照
         var refresher: (suspend () -> Pair<String, String>?)? = null
         val snapshotSource = resolveNetworkSource(resolvedContext)
@@ -184,6 +189,9 @@ object BookImgClick {
             val button = reviewButtonOf(src)
             if (button != null) {
                 refresher = refresh@{
+                    if (syntheticPara?.snapshotFallbackAllowed == false) {
+                        return@refresh fetchOnlineHtml(cached.snapshot.url, snapshotSource)
+                    }
                     val page = ReviewSnapshotManager.resolveReviewPageUrl(
                         cached.book, snapshotSource, cached.chapter, button
                     )
@@ -214,16 +222,13 @@ object BookImgClick {
         hostChapter: BookChapter? = null,
         syntheticPara: SyntheticParaContent? = null,
     ) {
-        // 快照兜底安全性：真实泡/自带原始 src 的收纳泡 = 本段快照，可用；
-        // 合成入口借用锚点泡 src，其快照属于其他段落，必须跳过
-        val allowSnapshot = syntheticPara == null || syntheticPara.snapshotFallbackAllowed
+        // 合成入口只复用缓存地址创建本段本地模板，不展示锚点段的评论。
         when (openMode()) {
             AppConfig.ReviewOpenMode.SNAPSHOT_ONLY -> {
                 // 仅使用快照：绝不执行 click/js，也绝不允许快照内残留资源联网
-                if (allowSnapshot &&
-                    openSnapshotIfCached(
+                if (openSnapshotIfCached(
                         context, src, hostChapter,
-                        refreshToNetwork = false, offlineOnly = true
+                        refreshToNetwork = false, offlineOnly = true, syntheticPara = syntheticPara
                     )
                 ) {
                     return
@@ -231,10 +236,9 @@ object BookImgClick {
                 context.toastOnUi(R.string.review_no_cached_snapshot)
             }
             AppConfig.ReviewOpenMode.SNAPSHOT_FIRST -> {
-                if (allowSnapshot &&
-                    openSnapshotIfCached(
+                if (openSnapshotIfCached(
                         context, src, hostChapter,
-                        refreshToNetwork = true, offlineOnly = false
+                        refreshToNetwork = true, offlineOnly = false, syntheticPara = syntheticPara
                     )
                 ) {
                     return
@@ -329,14 +333,9 @@ object BookImgClick {
             val chapter = currentChapter(hostChapter)
                 ?: error("无法定位当前章节，无法执行评论网络打开")
             // 快照必须在任何网络执行条件、click/js 解析之前读出并持有。
-            // 合成入口（无泡段落）的 src 是锚点泡的 src，其快照属于别的段落，
-            // 不得作为本段落的兜底展示，按 snapshotFallbackAllowed 禁用。
+            // 合成入口从锚点缓存地址创建独立段评模板。
             val resolvedContext = reviewContext(chapter, src)
-            val fallback = if (syntheticPara == null || syntheticPara.snapshotFallbackAllowed) {
-                resolvedContext?.let { cachedSnapshot(it, src) }
-            } else {
-                null
-            }
+            val fallback = resolvedContext?.let { cachedSnapshot(it, src, syntheticPara) }
             try {
                 val execution = resolvedContext
                     ?: error("无法解析评论所属书籍或章节，无法执行评论网络打开")
@@ -353,7 +352,7 @@ object BookImgClick {
                             fallback?.snapshot?.html,
                             execution.book,
                             execution.chapter,
-                            src,
+                            src.takeUnless { syntheticPara?.snapshotFallbackAllowed == false },
                             syntheticPara,
                         )
                         executeClick(
