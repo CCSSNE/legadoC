@@ -866,8 +866,14 @@ class TextChapterLayout(
         if (illustration.pageBreak) {
             prepareNextPageIfNeed()
         }
-        srcs.chunked(cellCount).forEach { group ->
-            drawIllustrationGroup(book, group, illustration.layoutType, displayHeight)
+        val previousStructural = renderingStructuralHtml
+        renderingStructuralHtml = true
+        try {
+            srcs.chunked(cellCount).forEach { group ->
+                drawIllustrationGroup(book, group, illustration.layoutType, displayHeight)
+            }
+        } finally {
+            renderingStructuralHtml = previousStructural
         }
         if (illustration.pageBreak) {
             prepareNextPageIfNeed()

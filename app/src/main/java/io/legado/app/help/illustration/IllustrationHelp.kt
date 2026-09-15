@@ -19,6 +19,8 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookIllustration
 import io.legado.app.help.book.BookHelp
+import io.legado.app.ui.book.read.page.provider.ChapterProvider
+import org.jsoup.Jsoup
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
@@ -386,7 +388,13 @@ object IllustrationHelp {
 
     /** 生成段落指纹：head=true 取开头，否则取末尾；归一化空白 */
     fun fingerprint(text: String, head: Boolean): String {
-        val normalized = text.trim().replace(Regex("\\s+"), "")
+        // 原文含评论/图片 HTML，排版后是占位符；两侧必须只按可见正文取指纹。
+        val normalized = Jsoup.parseBodyFragment(text).text().filterNot {
+            it.isWhitespace() || it == '\u00a0' ||
+                it == ChapterProvider.reviewChar ||
+                it == ChapterProvider.hiddenReviewChar ||
+                it == ChapterProvider.srcReplaceChar
+        }
         return if (head) {
             normalized.take(FINGERPRINT_LENGTH)
         } else {
