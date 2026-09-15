@@ -1,0 +1,4 @@
+<resources>
+    <!-- 每次启动检测更新的默认值：公开版保持开启，自用版由 app/src/c 覆盖为关闭 -->
+    <bool name="update_check_on_start_default">true</bool>
+</resources>

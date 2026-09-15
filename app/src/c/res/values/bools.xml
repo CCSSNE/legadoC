@@ -1,0 +1,4 @@
+<resources>
+    <!-- 自用版（c 通道）：每次启动检测更新默认关闭，公开版不受影响 -->
+    <bool name="update_check_on_start_default">false</bool>
+</resources>

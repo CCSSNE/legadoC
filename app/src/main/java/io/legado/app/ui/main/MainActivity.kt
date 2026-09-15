@@ -86,7 +86,6 @@ import io.legado.app.utils.isCreated
 import io.legado.app.utils.BitmapUtils
 import io.legado.app.utils.navigationBarHeight
 import io.legado.app.utils.observeEvent
-import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.setHuaweiDisplayCutoutShortEdgesCompat
 import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
@@ -292,7 +291,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         super.onPostCreate(savedInstanceState)
         lifecycleScope.launch {
             //自动检查更新
-            if (getPrefBoolean(PreferKey.updateCheckOnStart, true)) {
+            if (AppConfig.updateCheckOnStart) {
                 UpdateManager.checkUpdate(this@MainActivity)
             }
             notifyAppCrash()

@@ -3,6 +3,7 @@ package io.legado.app.help.config
 import android.content.SharedPreferences
 import android.os.Build
 import io.legado.app.BuildConfig
+import io.legado.app.R
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.LogModule
@@ -1628,6 +1629,16 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val onlyLatestBackup get() = appCtx.getPrefBoolean(PreferKey.onlyLatestBackup, true)
 
     val autoCheckNewBackup get() = appCtx.getPrefBoolean(PreferKey.autoCheckNewBackup, true)
+
+    /**
+     * 每次启动检测更新的默认值跟着版本通道走：
+     * 公开版为开，自用版（c 通道）为关，见 update_check_on_start_default 的各通道覆盖。
+     */
+    val updateCheckOnStartDefault: Boolean
+        get() = appCtx.resources.getBoolean(R.bool.update_check_on_start_default)
+
+    val updateCheckOnStart
+        get() = appCtx.getPrefBoolean(PreferKey.updateCheckOnStart, updateCheckOnStartDefault)
 
     val defaultHomePage get() = appCtx.getPrefString(PreferKey.defaultHomePage, "bookshelf")
 
