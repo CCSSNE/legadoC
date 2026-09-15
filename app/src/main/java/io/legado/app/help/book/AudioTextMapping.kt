@@ -22,6 +22,32 @@ data class AudioTextMapping(
 ) {
     val hasTimeMapping: Boolean get() = cues.isNotEmpty()
 
+    /** 无时间标签的字幕按全文字数分配媒体时长，供位置预测使用。 */
+    fun withEstimatedTiming(durationMs: Int): AudioTextMapping {
+        if (hasTimeMapping || durationMs <= 0 || paragraphs.isEmpty()) return this
+        val total = paragraphs.sumOf { it.length.toLong() }
+        if (total == 0L) return this
+        var consumed = 0L
+        val estimated = paragraphs.map { text ->
+            Cue((durationMs.toLong() * consumed / total).toInt(), text).also {
+                consumed += text.length
+            }
+        }
+        var index = 0
+        return copy(cues = estimated, displayParts = displayParts.map { part ->
+            if (part is DisplayPart.Body) part.copy(cueIndex = index++) else part
+        })
+    }
+
+    /** 当前字幕区间内的文字比例；末段以媒体结束为边界。 */
+    fun paragraphFractionAt(timeMs: Int, durationMs: Int): Double? {
+        val index = paragraphAt(timeMs) ?: return null
+        val start = cues[index].startMs
+        val end = cues.getOrNull(index + 1)?.startMs ?: durationMs
+        if (end <= start) return null
+        return ((timeMs.toDouble() - start) / (end - start)).coerceIn(0.0, 1.0)
+    }
+
     fun timeForParagraph(paragraphIndex: Int): Int? {
         return cues.getOrNull(paragraphIndex)?.startMs
     }

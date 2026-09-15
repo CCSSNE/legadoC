@@ -260,6 +260,11 @@ class SourceAudioReadAloudService : BaseReadAloudService(), Player.Listener {
                     return
                 }
                 upReadAloudLoading(false)
+                if (!mapping.hasTimeMapping) {
+                    mapping = mapping.withEstimatedTiming(duration.toInt())
+                    layoutBinding = runCatching { bindMappingToLayout(mapping) }
+                        .onFailure { AppLog.put("书源音频预测字幕绑定失败", it) }.getOrNull()
+                }
                 currentChapter?.takeIf { it.index == currentChapterIndex }?.let { chapter ->
                     if (chapter.end != duration) {
                         chapter.end = duration
@@ -330,7 +335,6 @@ class SourceAudioReadAloudService : BaseReadAloudService(), Player.Listener {
         val paragraphUnchanged = paragraphIndex == lastMappedParagraph
         // 用户显式传送（拖动进度条）：映射段落未变也要发布一次位置事件，
         // 阅读页“回原进度”对齐才有目标；常规轮询保持段落变化才发布。
-        if (paragraphUnchanged && !syncView) return
         val paragraphs = chapter.getParagraphs(false)
         val paragraph = paragraphs.getOrNull(paragraphIndex) ?: run {
             // 字幕映射异常只影响正文同步与高亮，不能停止正常播放的音频
@@ -345,7 +349,15 @@ class SourceAudioReadAloudService : BaseReadAloudService(), Player.Listener {
             readAloudNumber = paragraph.chapterPosition
             pageIndex = chapter.getPageIndexByCharIndex(paragraph.chapterPosition)
         }
-        postReadAloudTextPosition(paragraph.chapterPosition + 1, syncView)
+        val fraction = mapping.paragraphFractionAt(position, player.duration.toInt()) ?: 0.0
+        val offset = (paragraph.length * fraction).toInt()
+            .coerceIn(0, (paragraph.length - 1).coerceAtLeast(0))
+        val textPosition = paragraph.chapterPosition + offset + 1
+        val predictedPage = chapter.getPageIndexByCharIndex(textPosition - 1)
+        if (!paragraphUnchanged || syncView || predictedPage != pageIndex) {
+            pageIndex = predictedPage
+            postReadAloudTextPosition(textPosition, syncView)
+        }
     }
 
     private fun persistProgress(position: Int) {
