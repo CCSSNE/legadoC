@@ -548,6 +548,10 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
         
         override fun onPageFinished(view: WebView?, url: String?) {
             super.onPageFinished(view, url)
+            viewModel.reviewResourceBook = fallbackReviewResourceBook
+            if (fallbackApplied && view != null) {
+                io.legado.app.help.review.ReviewSnapshotImages.install(view)
+            }
             // 页面加载成功：取消超时定时任务
             cancelFallbackTimeout()
             // 离线评论模式：评论兜底打开的页面注入接管脚本（在线形态拦截发评请求）
@@ -586,6 +590,9 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
         }
 
         private fun shouldOverrideUrlLoading(url: Uri): Boolean {
+            if (fallbackApplied && io.legado.app.help.review.ReviewSnapshotImages.open(
+                    this@WebViewActivity, fallbackReviewResourceBook, url
+                )) return true
             return when (url.scheme) {
                 "http", "https" -> false
                 "legado", "yuedu" -> {

@@ -901,8 +901,9 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
     private fun saveImage(webPic: String?, uri: Uri) {
         webPic ?: return
         Coroutine.async(lifecycleScope) {
-            val fileName = "${AppConst.fileNameFormat.format(Date(System.currentTimeMillis()))}.jpg"
-            val byteArray = webData2bitmap(webPic) ?: throw NoStackTraceException("NULL")
+            val local = io.legado.app.help.review.ReviewSnapshotImages.readLocal(reviewResourceBook, webPic)
+            val fileName = "${AppConst.fileNameFormat.format(Date(System.currentTimeMillis()))}.${local?.first ?: "jpg"}"
+            val byteArray = local?.second ?: webData2bitmap(webPic) ?: throw NoStackTraceException("NULL")
             uri.writeBytes(requireContext(), fileName, byteArray)
         }.onError {
             ACache.get().remove(imagePathKey)
@@ -1145,6 +1146,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
             }
             // 快照显示中：注入章评/书评补充 section 与离线 tab/楼中楼交互
             if (displayingSnapshotHtml && view != null) {
+                io.legado.app.help.review.ReviewSnapshotImages.install(view)
                 expandSnapshotSheet()
                 injectReviewSupplements(view)
             }
@@ -1224,6 +1226,9 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         }
 
         private fun shouldOverrideUrlLoading(url: Uri): Boolean {
+            if (displayingSnapshotHtml && io.legado.app.help.review.ReviewSnapshotImages.open(
+                    requireActivity(), reviewResourceBook, url
+                )) return true
             return when (url.scheme) {
                 "http", "https" -> false
                 "legado", "yuedu" -> {

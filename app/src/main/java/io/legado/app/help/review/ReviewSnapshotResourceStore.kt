@@ -33,6 +33,7 @@ data class ReviewSnapshotResourceEntry(
 data class ReviewSnapshotResourceHandle(
     val mimeType: String,
     val inputStream: InputStream,
+    val file: File,
 )
 
 /** Enables an external REVIEW-start epoch check while a GC scan is in flight (ABA guard). */
@@ -221,7 +222,7 @@ object ReviewSnapshotResourceStore {
         if (entry != null) {
             validateEntry(dir, entry)
         }
-        ReviewSnapshotResourceHandle(entry?.mimeType ?: guessMime(file), FileInputStream(file))
+        ReviewSnapshotResourceHandle(entry?.mimeType ?: guessMime(file), FileInputStream(file), file)
     }
 
     fun copyAllTo(book: Book, targetDir: File) = synchronized(lock) {
