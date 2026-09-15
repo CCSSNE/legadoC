@@ -744,7 +744,6 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
                 }
             }.onFailure {
                 currentWebView.post {
-                    currentWebView.resumeTimers()
                     currentWebView.onResume()
                     currentWebView.loadDataWithBaseURL(
                         url,

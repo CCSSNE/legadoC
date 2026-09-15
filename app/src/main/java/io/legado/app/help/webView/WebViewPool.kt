@@ -55,9 +55,7 @@ object WebViewPool {
         pooledWebView.upContext(context).apply {
             realWebView.settings.configureOfflineResourceLoading(false)
             realWebView.settings.setDarkeningAllowed(AppConfig.isNightTheme) //设置是否夜间
-            if (inUsePool.isEmpty()) {
-                realWebView.resumeTimers()
-            }
+            realWebView.onResume()
             isInUse = true
         }
         inUsePool[pooledWebView.id] = pooledWebView
@@ -118,9 +116,9 @@ object WebViewPool {
                             loadWithOverviewMode = false // 恢复默认
                             textZoom = 100
                         }
-                        if (inUsePool.isEmpty()) {
-                            webview.pauseTimers()
-                        }
+                        // 池只拥有当前实例。pauseTimers 会暂停进程内所有 WebView 的
+                        // 排版、解析和 JS，导致池外的创作卡片编辑器等页面永久白屏。
+                        // 空白页已卸载原内容，仅暂停当前实例，不能按池使用数控制全局。
                         webview.onPause()
                     }
                     pooledWebView.isInUse = false

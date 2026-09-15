@@ -241,7 +241,6 @@ class SelectionWebSearchDialog() : BottomSheetDialogFragment(R.layout.dialog_sel
                 }
                 false
             }
-            resumeTimers()
             onResume()
         }
     }
