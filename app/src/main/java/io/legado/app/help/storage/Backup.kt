@@ -289,10 +289,10 @@ object Backup {
         val zipFileName = getNowZipFileName()
         val paths = backupFileNames
             .filter { targets.shouldBackupTarget(it) }
+            .map { File(backupPath, it) }
+            .filter { it.exists() }
+            .map { it.absolutePath }
             .toMutableList()
-        for (i in 0 until paths.size) {
-            paths[i] = backupPath + File.separator + paths[i]
-        }
         backgroundAssetDirNames.forEach { dirName ->
             if (targets.shouldBackupTarget(dirName)) {
                 paths.add(appCtx.externalFiles.getFile(dirName).absolutePath)
