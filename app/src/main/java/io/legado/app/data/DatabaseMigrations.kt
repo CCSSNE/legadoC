@@ -382,7 +382,9 @@ object DatabaseMigrations {
                 END
                 """.trimIndent()
             )
-            db.execSQL("DROP INDEX `index_books_name_author`")
+            // 补 IF EXISTS：半迁移残留库可能缺该索引，DROP INDEX 抛 SQLiteException
+            // 会让 Room 迁移失败、App 无法启动
+            db.execSQL("DROP INDEX IF EXISTS `index_books_name_author`")
             db.execSQL(
                 "CREATE UNIQUE INDEX `index_books_name_author_mediaType` " +
                     "ON `books` (`name`, `author`, `mediaType`)"
