@@ -2318,7 +2318,13 @@ class ReadBookActivity : BaseReadBookActivity(),
     private fun shouldFollowAloudAdvance(
         prev: ReadAloudPosition?,
         current: ReadAloudPosition,
+        switchConfirmed: Boolean = false,
     ): Boolean {
+        // 用户双击换段/从本页读定位后，引擎发布的首个位置是「起点确认」，
+        // 不是自然朗读推进，此时不得拽动显示（setAloudStart 只写朗读起点）。
+        // switchConfirmed 由 ReadAloud.publishAloudPosition 在 pendingSwitchPosition 命中时生成，
+        // 无此短路时向前双击会把显示拽走（向后双击被下方单调性拦住，行为不对称）。
+        if (switchConfirmed) return false
         if (prev == null) return false
         if (current.chapterIndex != ReadBook.durChapterIndex) return false
         val chapter = ReadBook.curTextChapter ?: return false
@@ -3685,13 +3691,49 @@ class ReadBookActivity : BaseReadBookActivity(),
                     )
                     return@launch
                 }
-                if (shouldFollowAloudAdvance(update.previousPosition, position)) {
+                // 翻页动画期间不得跟随写。
+                // PageDelegate.onAnimStop() 才真正推进页面，动画期间 curPage 仍是旧页，
+                // 跟随判定会误判为「显示页 == 朗读出发页」从而中途改 durChapterPos
+                // 并重渲染，动画结束后 fillPage() 再推进一次 → 页面回跳/多跳。
+                // 红字投影已由上面的 invalidateReadAloudHighlight 失效缓存，不受影响。
+                //
+                // 判据必须区分「真动画」与「滚动跟手」：
+                // ScrollPageDelegate 的拖动 (onTouch) 只置 isRunning 不置 isStarted，
+                // 而 isStarted 仅由基类 startScroll()/fling() 置位（二者同时置 isRunning）。
+                // 若只用 isRunning，滚动模式（听书主用模式）下用户一拖动就会整段丢弃
+                // 位置事件；又因 stopScroll() 的 isRunning=false 在 post{} 内延迟执行，
+                // 松手后还会多丢一帧。丢弃期间引擎侧已前移 previousPosition，导致
+                // 跟随判定滞后累积。故滚动模式只在真正有滚动动画时才丢弃。
+                val delegate = binding.readView.pageDelegate
+                val inPageAnim = delegate != null && delegate.isRunning &&
+                    (delegate !is ScrollPageDelegate || delegate.isStarted)
+                if (inPageAnim) {
+                    AppLog.putDebug(
+                        "[朗读] 位置事件忽略(翻页动画中) pos:${position.chapterPosition}",
+                        module = LogModule.READ_ALOUD
+                    )
+                    // 面板刷新是本函数的统一收尾，早退也必须执行，否则丢弃期间面板状态停更。
+                    updateReadAloudPanels()
+                    return@launch
+                }
+                if (shouldFollowAloudAdvance(
+                        update.previousPosition,
+                        position,
+                        update.switchConfirmed
+                    )
+                ) {
                     AppLog.putDebug(
                         "[朗读] 跟随写显示 pos:${position.chapterPosition}",
                         module = LogModule.READ_ALOUD
                     )
                     ReadBook.durChapterPos = position.chapterPosition
-                    upContent()
+                    // 跟随写后立即落库（异步），避免进程被杀丢失听书进度。
+                    // 不传 pageChanged=true：那会跳过书源 SAVE_READ 回调，
+                    // 而跟随写是持续行为，不能长期跳过。
+                    ReadBook.saveRead()
+                    // 滚动模式下 resetPageOffset=true 会清零滚动偏移，
+                    // 导致每次朗读位置事件都把用户拽回页首
+                    upContent(resetPageOffset = false)
                 } else {
                     AppLog.putDebug(
                         "[朗读] 不跟随 显示页与朗读出发页不同 显示pos:${ReadBook.durChapterPos} " +
