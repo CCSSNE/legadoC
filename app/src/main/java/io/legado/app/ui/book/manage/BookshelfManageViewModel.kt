@@ -108,7 +108,10 @@ class BookshelfManageViewModel(application: Application) : BaseViewModel(applica
                         AppLog.put("获取目录出错\n${it.localizedMessage}", it, true)
                     }.getOrNull()?.let { toc ->
                         book.migrateTo(newBook, toc)
-                        book.removeType(BookType.updateError)
+                        // updateError 标记要清在真正落库的新记录上（旧记录随后即删）
+                        newBook.removeType(BookType.updateError)
+                        // 删旧插新，与单本换源路径一致：旧记录不删必然在书架上留下重复条目
+                        book.delete()
                         appDb.bookDao.insert(newBook)
                         appDb.bookChapterDao.insert(*toc.toTypedArray())
                     }
