@@ -1,6 +1,7 @@
 package io.legado.app.help
 
 import android.net.Uri
+import com.google.gson.JsonObject
 import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookMediaType
@@ -22,12 +23,12 @@ import io.legado.app.model.remote.RemoteBookWebDav
 import io.legado.app.utils.AlphanumComparator
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
+import io.legado.app.utils.GSONStrict
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.UrlUtil
 import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getPrefString
-import io.legado.app.utils.isJson
 import io.legado.app.utils.normalizeFileName
 import io.legado.app.utils.removePref
 import io.legado.app.utils.toastOnUi
@@ -417,67 +418,40 @@ object AppWebDav {
         ) + ".json"
     }
 
-    /**
-     * 获取书籍进度
-     *
-     * 必须区分「云端无文件」与「拉取失败」两种 null 情形。
-     * 调用方（ReadBook/ReadManga/VideoPlay 的 syncProgress）把 null 与 LOCAL_NEWER
-     * 合并进同一分支并上传本地进度；若网络抖动导致的拉取失败也返回 null，就会用
-     * 本地旧进度覆盖云端新进度（不可逆数据丢失）。
-     * 因此：文件存在却拉取失败 → 抛出异常，由调用方 onError 中止，绝不上传；
-     *       云端确无该文件（首同步）→ 返回 null，允许调用方上传；
-     *       拉取失败后连「文件是否存在」都无法判定（网络故障）→ 同样抛出异常中止。
-     * 注：判定存在性用 existsChecked() 而非 exists()——后者吞掉网络异常返回 false，
-     *     弱网下会把「无法判定」误判为「云端无文件」导致反向覆盖。
-     */
+    /** 只有确认云端文件不存在才返回 null；下载或解析失败必须中止同步。 */
     suspend fun getBookProgress(book: Book): BookProgress? {
+        val authorization = authorization ?: error("WebDAV 未配置，无法获取进度")
         val url = getProgressUrl(
             book.name,
             book.author,
             BookMediaType.fromBookType(book.type)
         )
-        var fetchError: Throwable? = null
-        kotlin.runCatching {
-            val authorization = authorization ?: return null
-            WebDav(url, authorization).download().let { byteArray ->
-                val json = String(byteArray)
-                if (json.isJson()) {
-                    return GSON.fromJsonObject<BookProgress>(json).getOrNull()
-                }
-                // HTTP 下载成功但内容非合法 JSON（文件被写坏、半途上传残留、BOM/多余
-                // 字符），绝不能当成"云端无进度"而上传本地进度覆盖。走下方 existsChecked()
-                // 判定：文件确实存在则抛异常中止上传；仅空文件（byteArray 为空）保持
-                // 原路径视为无有效内容。
-                if (byteArray.isNotEmpty()) {
-                    error("进度文件内容不是合法 JSON: ${json.take(80)}")
-                }
-            }
-        }.onFailure {
+        val webDav = WebDav(url, authorization)
+        val bytes = try {
+            webDav.download()
+        } catch (error: Exception) {
             currentCoroutineContext().ensureActive()
-            AppLog.put("获取书籍进度失败\n${it.localizedMessage}", it)
-            fetchError = it
+            AppLog.put("获取书籍进度失败\n${error.localizedMessage}", error)
+            if (!webDav.existsChecked()) return null
+            throw error
         }
-        val error = fetchError
-        if (error != null) {
-            val authorization = authorization ?: return null
-            // 必须用不吞异常的 existsChecked 严格判定：确定存在 → throw 中止；
-            // 确定不存在 → 返回 null 允许首同步上传；无法判定（网络故障）→ throw 中止，
-            // 宁可不更新，绝不上传覆盖。
-            val exists = try {
-                WebDav(url, authorization).existsChecked()
-            } catch (e: Exception) {
-                currentCoroutineContext().ensureActive()
-                AppLog.put("确认进度文件是否存在失败，中止本次同步\n${e.localizedMessage}", e)
-                throw error
+        // 下载成功就说明文件存在：空文件、null、残缺对象与错误字段均不能当成首同步。
+        val json = bytes.toString(Charsets.UTF_8)
+        val objectValue = GSONStrict.fromJsonObject<JsonObject>(json).getOrThrow()
+        listOf("name", "author", "durChapterIndex", "durChapterPos", "durChapterTime")
+            .forEach { key ->
+                require(objectValue.has(key) && !objectValue[key].isJsonNull) {
+                    "云端进度缺少字段：$key"
+                }
             }
-            if (exists) {
-                // 文件存在却拉取失败：网络/鉴权/解析问题，
-                // 绝不能让调用方当成"云端无进度"而上传本地进度
-                throw error
-            }
+        val progress = GSONStrict.fromJsonObject<BookProgress>(json).getOrThrow()
+        require(progress.name == book.name && progress.author == book.author &&
+            progress.mediaType == BookMediaType.fromBookType(book.type)) {
+            "云端进度书籍身份不匹配"
         }
-        // 云端确无该进度文件（首同步），返回 null 由调用方上传本地进度
-        return null
+        require(progress.durChapterIndex >= 0 && progress.durChapterPos >= 0 &&
+            progress.durChapterTime >= 0) { "云端进度包含非法位置或时间" }
+        return progress
     }
 
     suspend fun downloadAllBookProgress() {
