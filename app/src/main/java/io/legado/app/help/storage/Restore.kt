@@ -12,6 +12,8 @@ import io.legado.app.R
 import io.legado.app.constant.AppConst.androidId
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.BookMediaType
+import io.legado.app.constant.BookType
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
@@ -33,7 +35,9 @@ import io.legado.app.data.entities.Server
 import io.legado.app.data.entities.TxtTocRule
 import io.legado.app.help.DirectLinkUpload
 import io.legado.app.help.LauncherIconHelp
+import io.legado.app.help.book.isArchive
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.isType
 import io.legado.app.help.book.upType
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.NavigationBarIconConfig
@@ -275,38 +279,12 @@ object Restore {
      */
     private suspend fun restoreDbData(path: String, aes: BackupAES) {
         appDb.withTransaction {
-            fileToBookList(path)?.let {
-                it.forEach { book ->
-                    book.upType()
-                }
-                it.filter { book -> book.isLocal }
-                    .forEach { book ->
-                        book.coverUrl = LocalBook.getCoverPath(book)
-                    }
-                val newBooks = arrayListOf<Book>()
-                val ignoreLocalBook = BackupConfig.ignoreLocalBook
-                it.forEach { book ->
-                    if (ignoreLocalBook && book.isLocal) {
-                        return@forEach
-                    }
-                    if (appDb.bookDao.has(book.bookUrl)) {
-                        try {
-                            appDb.bookDao.update(book)
-                        } catch (_: SQLiteConstraintException) {
-                            appDb.bookDao.insert(book)
-                        }
-                    } else {
-                        newBooks.add(book)
-                    }
-                }
-                appDb.bookDao.insert(*newBooks.toTypedArray())
-            }
+            // 备份书 URL → 最终落库去向；配图段据此重映射并过滤，保证外键恒有父行。
+            val restoredBooks = restoreShelfBooks(path)
             fileToListT<Bookmark>(path, "bookmark.json")?.let {
                 appDb.bookmarkDao.insert(*it.toTypedArray())
             }
-            fileToListT<BookIllustration>(path, "bookIllustration.json")?.let {
-                appDb.bookIllustrationDao.insert(*it.toTypedArray())
-            }
+            restoreIllustrations(path, restoredBooks)
             fileToListT<BookGroup>(path, "bookGroup.json")?.let {
                 appDb.bookGroupDao.insert(*it.toTypedArray())
             }
@@ -370,6 +348,141 @@ object Restore {
             }?.onFailure {
                 AppLog.put("恢复服务器配置出错\n${it.localizedMessage}", it)
             }
+        }
+    }
+
+    /**
+     * 恢复书架书籍，返回「备份书 URL → 最终落库去向」映射，供配图段重映射外键。
+     *
+     * 身份收敛：`Book` 表主键是 `bookUrl`（详情页地址），同一本书在不同书源下 `bookUrl` 不同，
+     * 只按 `bookUrl` 合并会让两设备选了不同书源的同一本书在书架出现两条。
+     * 按「书名+作者+媒体类型」命中本机已有行时，把备份并入**本机行**（只 UPDATE 不 INSERT），
+     * 绝不删除本机数据；身份与进度一律保持本机——备份的章节索引锚定在备份源目录上，
+     * 与本机目录不可比，直接搬会跳错章节。
+     */
+    private fun restoreShelfBooks(path: String): Map<String, RestoredBookRef> {
+        val books = fileToBookList(path) ?: return emptyMap()
+        books.forEach { book ->
+            book.upType()
+            // upType() 只改写 type，不同步 mediaType 列；mediaType 有独立读取点（如朗读语速），
+            // 恢复落库时补一次同步。
+            book.syncMediaType()
+        }
+        books.filter { book -> book.isLocal }
+            .forEach { book ->
+                book.coverUrl = LocalBook.getCoverPath(book)
+            }
+        val refs = hashMapOf<String, RestoredBookRef>()
+        val newBooks = arrayListOf<Book>()
+        val ignoreLocalBook = BackupConfig.ignoreLocalBook
+        books.forEach { book ->
+            if (ignoreLocalBook && book.isLocal) {
+                return@forEach
+            }
+            // 身份命中且 bookUrl 不同：并入本机行，不再插入备份主键，书架不产生同书重复条目。
+            val localByIdentity = findLocalBookByIdentity(book)
+            if (localByIdentity != null && localByIdentity.bookUrl != book.bookUrl) {
+                appDb.bookDao.update(mergeBackupIntoLocal(localByIdentity, book))
+                refs[book.bookUrl] = RestoredBookRef(
+                    bookUrl = localByIdentity.bookUrl,
+                    sameOrigin = localByIdentity.origin == book.origin,
+                )
+                return@forEach
+            }
+            if (appDb.bookDao.has(book.bookUrl)) {
+                try {
+                    appDb.bookDao.update(book)
+                } catch (_: SQLiteConstraintException) {
+                    appDb.bookDao.insert(book)
+                }
+            } else {
+                newBooks.add(book)
+            }
+            refs[book.bookUrl] = RestoredBookRef(book.bookUrl, sameOrigin = true)
+        }
+        appDb.bookDao.insert(*newBooks.toTypedArray())
+        return refs
+    }
+
+    /** 恢复落库去向：`bookUrl` 为最终写入 books 表的主键，`sameOrigin` 表示与备份是否同书源。 */
+    private data class RestoredBookRef(val bookUrl: String, val sameOrigin: Boolean)
+
+    /**
+     * 按「书名+作者+媒体类型」在本机找同书；不参与身份收敛时返回 null。
+     * 媒体类型两侧都按 `type` 现算（[BookMediaType.fromBookType]），不依赖可能陈旧的 mediaType 列；
+     * 本地书/归档书/未入架临时书/无书名不参与——本地书牵连文件资源，试读临时书不该被记进正式书架。
+     */
+    private fun findLocalBookByIdentity(book: Book): Book? {
+        if (!identityEligible(book)) return null
+        val mediaType = BookMediaType.fromBookType(book.type)
+        return appDb.bookDao.getBooks(book.name, book.author).firstOrNull { local ->
+            identityEligible(local) && BookMediaType.fromBookType(local.type) == mediaType
+        }
+    }
+
+    private fun identityEligible(book: Book): Boolean {
+        if (book.isLocal || book.isArchive) return false
+        if (book.isType(BookType.notShelf)) return false
+        return book.name.isNotBlank()
+    }
+
+    /**
+     * 恢复专用保守合并：把备份书 [backup] 的用户状态并入本机行 [local]，返回应 UPDATE 的对象。
+     * - 身份与进度（bookUrl/origin/originName/tocUrl/variable/order/totalChapterNum/durChapter*）
+     *   一律保持 [local]；特别是 `variable`——恢复不动 origin，本机源脚本变量必须随本机，
+     *   否则书源脚本状态与 origin 错配。
+     * - 用户自定义字段（标签/简介/自定义封面/阅读配置）本机为空才用备份补，不覆盖本机填写。
+     * - 分组是位掩码取并集，否则被并书所在分组会被静默丢弃；syncTime 取较晚者
+     *   （参与 WebDAV 进度同步判定，取小值会让本机新状态被误判为无更新）。
+     * - 绝不删除本机数据。
+     */
+    private fun mergeBackupIntoLocal(local: Book, backup: Book): Book {
+        val merged = local.copy()
+        if (merged.customTag == null) merged.customTag = backup.customTag
+        if (merged.customIntro == null) merged.customIntro = backup.customIntro
+        if (merged.customCoverUrl == null) merged.customCoverUrl = backup.customCoverUrl
+        if (merged.readConfig == null) merged.readConfig = backup.readConfig
+        if (!merged.canUpdate) merged.canUpdate = backup.canUpdate
+        merged.group = local.group or backup.group
+        merged.syncTime = maxOf(local.syncTime, backup.syncTime)
+        return merged
+    }
+
+    /**
+     * 恢复配图。硬约束（`book_illustrations` 对 books.bookUrl 有外键，且整段在 withTransaction 内，
+     * 违反任一条都会导致整个 DB 段回滚）：
+     * ① 每行必须重映射到最终落库的书 URL（ignoreLocalBook 跳过的本地书、身份合并的书，其原 URL 不在库）；
+     * ② 找不到父行的行跳过并记日志（暴露而非静默）；
+     * ③ 身份合并且跨源时丢弃备份配图——chapterIndex 锚定备份源目录，与本机目录不可比；
+     * ④ 目标书已存在同章节配图则跳过，避免重复恢复不断累积副本（落库 id=0 自增，重复插入即新增）。
+     * 不删除任何本机配图：备份不含章节表，本机配图清掉即永久丢失。
+     */
+    private fun restoreIllustrations(path: String, restoredBooks: Map<String, RestoredBookRef>) {
+        val illustrations = fileToListT<BookIllustration>(path, "bookIllustration.json") ?: return
+        val pending = arrayListOf<BookIllustration>()
+        var skipped = 0
+        illustrations.forEach { illustration ->
+            val ref = restoredBooks[illustration.bookUrl]
+            if (ref == null) {
+                skipped++
+                return@forEach
+            }
+            if (ref.bookUrl != illustration.bookUrl && !ref.sameOrigin) {
+                skipped++
+                return@forEach
+            }
+            val exist = appDb.bookIllustrationDao
+                .getByBookAndChapter(ref.bookUrl, illustration.chapterIndex)
+            if (exist.isNotEmpty()) {
+                return@forEach
+            }
+            pending.add(illustration.copy(id = 0, bookUrl = ref.bookUrl))
+        }
+        if (pending.isNotEmpty()) {
+            appDb.bookIllustrationDao.insert(*pending.toTypedArray())
+        }
+        if (skipped > 0) {
+            LogUtils.d(TAG, "恢复配图跳过 $skipped 条（父书不存在或跨源锚点不可比）")
         }
     }
 
