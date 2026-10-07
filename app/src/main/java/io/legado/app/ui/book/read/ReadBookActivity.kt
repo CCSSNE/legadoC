@@ -371,11 +371,13 @@ class ReadBookActivity : BaseReadBookActivity(),
         NetworkChangedListener(this)
     }
     private var justInitData: Boolean = false
+    private var lastUiNightMode = Configuration.UI_MODE_NIGHT_UNDEFINED
     private var syncDialog: AlertDialog? = null
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         super.onActivityCreated(savedInstanceState)
+        lastUiNightMode = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
         pendingDirectAudioPlayMode = intent.getStringExtra(EXTRA_DIRECT_AUDIO_PLAY)
         binding.cursorLeft.setColorFilter(accentColor)
         binding.cursorRight.setColorFilter(accentColor)
@@ -459,15 +461,15 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
-        // 旧 uiMode 必须在 super 之前捕获：对声明 uiMode 的 Activity，AppCompat 会在
-        // super 链里就地更新 resources 配置，之后读到的就是新值了。
-        val oldUiMode = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
+        // 使用上次已应用的快照，不能假定回调入口的 resources 仍然是旧配置。
+        val oldUiMode = lastUiNightMode
         super.onConfigurationChanged(newConfig)
+        lastUiNightMode = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
         upSystemUiVisibility()
         binding.readView.upStatusBar()
         // 声明 uiMode 后系统日/夜翻转（AUTO 跟随）不再触发重建，按主题模式就地刷新
         // 阅读界面（与 ReadStyleDialog 就地切日夜同一事件组合：重刷背景/样式/重载内容）。
-        if (oldUiMode != (newConfig.uiMode and Configuration.UI_MODE_NIGHT_MASK)) {
+        if (oldUiMode != lastUiNightMode) {
             postEvent(EventBus.UP_CONFIG, arrayListOf(1, 2, 5))
             if (AppConfig.readBarStyleFollowPage) {
                 postEvent(EventBus.UPDATE_READ_ACTION_BAR, true)
