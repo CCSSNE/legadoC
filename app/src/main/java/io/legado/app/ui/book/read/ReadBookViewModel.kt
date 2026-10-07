@@ -407,6 +407,9 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
     fun refreshContentDur(book: Book) {
         CacheCoordinator.markReviewRefresh(book.bookUrl, ReadBook.durChapterIndex)
         execute {
+            // 刷新即真正提交评论下载（IO 线程、正文删除前）：正文此刻仍完整的章立即
+            // REVIEW 重抓，不再只打待刷新标记等未来某次 BODY/自动 REVIEW 顺带消费。
+            CacheCoordinator.submitReviewDownload(book, listOf(ReadBook.durChapterIndex))
             appDb.bookChapterDao.getChapter(book.bookUrl, ReadBook.durChapterIndex)
                 ?.let { chapter ->
                     BookHelp.delContent(book, chapter)
@@ -417,19 +420,20 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
 
     fun refreshContentAfter(book: Book) {
         // 当前章及之后全部章节：按章节逐个打强制重抓标记
-        appDb.bookChapterDao.getChapterList(
+        val afterRange = appDb.bookChapterDao.getChapterList(
             book.bookUrl,
             ReadBook.durChapterIndex,
             book.totalChapterNum
-        ).forEach { chapter ->
+        )
+        afterRange.forEach { chapter ->
             CacheCoordinator.markReviewRefresh(book.bookUrl, chapter.index)
         }
         execute {
-            appDb.bookChapterDao.getChapterList(
-                book.bookUrl,
-                ReadBook.durChapterIndex,
-                book.totalChapterNum
-            ).forEach { chapter ->
+            // 先提交评论下载（IO 线程、正文删除前）：正文此刻仍完整的章立即 REVIEW 重抓；
+            // 正文不完整（含即将删掉、尚未重抓回的）由 submitReviewDownload 跳过，
+            // 待正文重抓完成后的自动 REVIEW 路径消费上方的待刷新标记。
+            CacheCoordinator.submitReviewDownload(book, afterRange.map { it.index })
+            afterRange.forEach { chapter ->
                 BookHelp.delContent(book, chapter)
             }
             ReadBook.loadContent(false)
@@ -437,7 +441,10 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
     }
 
     fun refreshContentAll(book: Book) {
-        // 全书刷新：按章节逐个打强制重抓标记
+        // 全书刷新：按章节逐个打强制重抓标记。
+        // 注意：execute 内 BookHelp.clearCache 会删除整个 book_cache/<book>/（含评论快照），
+        // 故这里不立即 submitReviewDownload——正文与快照都刚被清空，立即提交只会让 REVIEW
+        // worker 去抓已被清空的正文。评论由之后各章正文重新缓存时消费待刷新标记逐章恢复。
         appDb.bookChapterDao.getChapterList(book.bookUrl).forEach { chapter ->
             CacheCoordinator.markReviewRefresh(book.bookUrl, chapter.index)
         }

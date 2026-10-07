@@ -381,6 +381,81 @@ object CacheCoordinator : CacheUiPort {
         ReviewSnapshotManager.markUserRefresh(bookUrl, chapterIndex)
     }
 
+    /**
+     * 阅读刷新触发的「现在就重抓评论」：为已有完整正文产物的章集合真正提交一个 REVIEW
+     * 任务，而不是只打 [markReviewRefresh] 待刷新标记等未来某次 BODY/自动 REVIEW 顺带
+     * 消费——autoDownloadReview 默认关闭时那条链路不会到来，标记会一直挂起（断链）。
+     *
+     * 评论快照是整页序列化，[incremental] 映射为 force 整页重抓覆盖：新快照就是该评论
+     * 按钮的当时全集，put() 覆盖旧快照、绝不删除仍存在的评论。
+     * [incremental]=false 时不保证 force，交由既有 REVIEW 语义（有快照可跳过）。
+     *
+     * 只挑选正文/音频离线产物已完整的章（满足 READER REVIEW 的前置校验）；产物不完整的
+     * 章（例如本次刷新即将 delContent 删掉正文）一律跳过、不 require 崩溃，等正文重抓
+     * 完成后的自动 REVIEW 路径消费已打的待刷新标记。本方法不删除任何已缓存评论文件。
+     *
+     * @return 提交成功的 REVIEW CacheSubmission；无符合条件章、与在跑 REVIEW 全部重叠
+     * 或书类型不支持 REVIEW 时返回 null。
+     */
+    fun submitReviewDownload(
+        book: Book,
+        chapterIndexes: Iterable<Int>,
+        incremental: Boolean = true,
+    ): CacheSubmission? {
+        if (!AppConfig.syncCacheReview || book.isLocal || book.isVideo) return null
+        val reviewKind = if (book.isAudio) CacheKind.AUDIO else CacheKind.TEXT
+        // 每个候选章在提交这一刻都必须有完整正文产物；刚被 delContent 的章在此过滤掉。
+        val candidates = chapterIndexes
+            .asSequence()
+            .filterNot { chapterIndex ->
+                appDb.bookChapterDao.getChapter(book.bookUrl, chapterIndex)?.isVolume == true
+            }
+            .distinct()
+            .mapNotNull { chapterIndex ->
+                val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, chapterIndex)
+                    ?: return@mapNotNull null
+                val complete = when (reviewKind) {
+                    CacheKind.TEXT -> BodyOfflineState.isComplete(book, chapter)
+                    CacheKind.AUDIO -> AudioOfflineState.isComplete(book, chapter)
+                    else -> false
+                }
+                CacheUnitKey(book.bookUrl, chapterIndex).takeIf { complete }
+            }
+            .toList()
+        if (candidates.isEmpty()) return null
+        synchronized(reviewTaskLock) {
+            val activeIndexes = snapshot.value.sessions.asSequence()
+                .flatMap { it.tasks.asSequence() }
+                .filter {
+                    it.kind == reviewKind &&
+                        it.phase == CachePhase.REVIEW &&
+                        it.bookUrl == book.bookUrl &&
+                        !CacheLifecycleRules.isTerminal(it.status)
+                }
+                .flatMap { task -> task.units.asSequence().map { it.key.chapterIndex } }
+                .toHashSet()
+            val unowned = candidates.filterNot { unit -> unit.chapterIndex in activeIndexes }
+            if (unowned.isEmpty()) return null
+            // 显式刷新语义：只对实际提交的章保留 force 待刷新标记（与在跑 REVIEW 重叠、
+            // 本次未提交的章不登记），标记在 force 处理成功后由 clearUserRefresh 清除。
+            if (incremental) {
+                unowned.forEach { unit ->
+                    ReviewSnapshotManager.markUserRefresh(book.bookUrl, unit.chapterIndex)
+                }
+            }
+            val request = CacheRequest(
+                source = CacheRequestSource.READER,
+                kind = reviewKind,
+                phase = CachePhase.REVIEW,
+                bookUrl = book.bookUrl,
+                bookName = book.name,
+                units = unowned,
+                reviewEnabled = true,
+            )
+            return submit(request)
+        }
+    }
+
     /** Cache-management retry boundary for one chapter's recorded failed review buttons. */
     fun retryReviewSnapshots(book: Book, chapter: BookChapter): Boolean {
         return retryReviewSnapshots(book, listOf(chapter)) == 1
