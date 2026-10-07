@@ -83,6 +83,8 @@
 
 [阅读Archive 发现页 浏览器搜索](https://github.com/Rimchars/legado)
 
+[阅读SK --- bug 修复同步](https://github.com/skxingyu/legado-sk)
+
 ### 阅读C 独有支持的书源能力
 
 因为做了有声书和普通小说的界面融合，所以有声书源也可以用userhtml添加评论按钮之类的。
