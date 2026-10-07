@@ -216,8 +216,9 @@ interface BookDao {
 
     @Transaction
     fun replace(oldBook: Book, newBook: Book) {
-        delete(oldBook)
-        insert(newBook)
+        // 同址更新不能触发 DELETE CASCADE；目标行已存在时也不能 REPLACE 它。
+        if (oldBook.bookUrl != newBook.bookUrl) delete(oldBook)
+        if (has(newBook.bookUrl)) update(newBook) else insert(newBook)
     }
 
     @Query("update books set durChapterPos = :pos where bookUrl = :bookUrl")

@@ -2,6 +2,7 @@ package io.legado.app.ui.book.manage
 
 import android.app.Application
 import androidx.lifecycle.MutableLiveData
+import androidx.room.withTransaction
 import io.legado.app.R
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
@@ -17,6 +18,7 @@ import io.legado.app.help.book.BookShortcutHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.webBook.WebBook
+import io.legado.app.model.ReadBook
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.stackTraceStr
@@ -110,10 +112,15 @@ class BookshelfManageViewModel(application: Application) : BaseViewModel(applica
                         book.migrateTo(newBook, toc)
                         // updateError 标记要清在真正落库的新记录上（旧记录随后即删）
                         newBook.removeType(BookType.updateError)
-                        // 删旧插新，与单本换源路径一致：旧记录不删必然在书架上留下重复条目
-                        book.delete()
-                        appDb.bookDao.insert(newBook)
-                        appDb.bookChapterDao.insert(*toc.toTypedArray())
+                        // 书籍和目录必须一起提交；任一步失败都保留旧书与旧目录。
+                        appDb.withTransaction {
+                            appDb.bookDao.replace(book, newBook)
+                            appDb.bookChapterDao.delByBook(newBook.bookUrl)
+                            appDb.bookChapterDao.insert(*toc.toTypedArray())
+                        }
+                        if (ReadBook.book?.bookUrl == book.bookUrl) {
+                            ReadBook.book = null
+                        }
                     }
                 delay(changeSourceDelay)
             }
