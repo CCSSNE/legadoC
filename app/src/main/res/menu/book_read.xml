@@ -59,16 +59,17 @@
         android:title="@string/book_page_anim"
         app:showAsAction="never" />
 
+    <!-- 云端进度：常驻项，禁止按 WebDAV/书架状态隐藏。
+         该菜单是 SurfacePopupMenu 在显示瞬间对 isVisible 做的快照，
+         任何异步后的可见性赋值都赶不上渲染，只会让选项时有时无。 -->
     <item
         android:id="@+id/menu_get_progress"
         android:title="@string/get_book_progress"
-        android:visible="false"
         app:showAsAction="never" />
 
     <item
         android:id="@+id/menu_cover_progress"
         android:title="@string/cover_book_progress"
-        android:visible="false"
         app:showAsAction="never" />
 
     <item

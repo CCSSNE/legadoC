@@ -1546,6 +1546,7 @@
     <string name="sync_book_progress_s">Synchronize reading progress when entering / exiting the reading interface</string>
     <string name="sync_book_progress_plus_t">Sync Enhancement</string>
     <string name="sync_book_progress_plus_s">Sync cloud progress when re-entering the page (screen off, returning from background, etc.) or when the network becomes available. You will be prompted before syncing new progress.</string>
+    <string name="sync_book_progress_disabled">Reading progress sync is off; enable it in Backup &amp; Restore settings first</string>
     <string name="sync_book_progress_success">Sync progress success</string>
     <string name="create_bookmark_error">Failed to create bookmark</string>
     <string name="single_url">Single URL</string>

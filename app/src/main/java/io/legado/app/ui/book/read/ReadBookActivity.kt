@@ -630,13 +630,22 @@ class ReadBookActivity : BaseReadBookActivity(),
                 }
             }
         }
-        lifecycleScope.launch {
-            val show = ReadBook.inBookshelf && withContext(IO) {
-                AppWebDav.isOk
-            }
-            menu.findItem(R.id.menu_get_progress)?.isVisible = show
-            menu.findItem(R.id.menu_cover_progress)?.isVisible = show
+    }
+
+    /**
+     * 云端进度菜单项常驻（见 R.menu.book_read），因此开启条件不满足时必须在点击后
+     * 给出明确原因，不能让用户点了没有任何反应。
+     */
+    private fun cloudProgressReady(): Boolean {
+        if (!AppWebDav.isOk) {
+            toastOnUi(R.string.webdav_not_configured)
+            return false
         }
+        if (!AppConfig.syncBookProgress) {
+            toastOnUi(R.string.sync_book_progress_disabled)
+            return false
+        }
+        return true
     }
 
     /**
@@ -788,12 +797,14 @@ class ReadBookActivity : BaseReadBookActivity(),
             }
 
             R.id.menu_get_progress -> ReadBook.book?.let {
+                if (!cloudProgressReady()) return@let
                 viewModel.syncBookProgress(it) { progress ->
                     sureSyncProgress(progress)
                 }
             }
 
             R.id.menu_cover_progress -> ReadBook.book?.let {
+                if (!cloudProgressReady()) return@let
                 ReadBook.uploadProgress(true) { toastOnUi(R.string.upload_book_success) }
             }
 
