@@ -178,6 +178,10 @@ class ChangeBookSourceAdapter(
             getItem(holder.layoutPosition)?.let {
                 if (it.bookUrl != callBack.oldBookUrl) {
                     callBack.changeTo(it)
+                } else {
+                    // 带勾的行就是当前在用的书源，!= 守卫会把它静默吞掉：
+                    // 不弹提示、不报错，用户无法区分「设计上不给换」和「程序坏了」。
+                    callBack.onCurrentSourceClick(it)
                 }
             }
         }
@@ -224,6 +228,9 @@ class ChangeBookSourceAdapter(
     interface CallBack {
         val oldBookUrl: String?
         fun changeTo(searchBook: SearchBook)
+
+        /** 点到「当前正在使用的书源」那一行：不能换源，但必须给出可见反馈。 */
+        fun onCurrentSourceClick(searchBook: SearchBook)
         fun topSource(searchBook: SearchBook)
         fun bottomSource(searchBook: SearchBook)
         fun editSource(searchBook: SearchBook)

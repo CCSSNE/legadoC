@@ -45,6 +45,7 @@ import io.legado.app.utils.getCompatDrawable
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.startActivity
+import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.transaction
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers.IO
@@ -354,6 +355,14 @@ class ChangeBookSourceDialog() : BaseDialogFragment(R.layout.dialog_book_change_
 
     override val oldBookUrl: String?
         get() = callBack?.oldBook?.bookUrl
+
+    /**
+     * 点到当前正在使用的书源：不换源（重复解析目录没有意义），但必须告知原因，
+     * 否则表现为「这一行点不动」——分不清是设计如此还是程序坏了。
+     */
+    override fun onCurrentSourceClick(searchBook: SearchBook) {
+        toastOnUi(R.string.change_source_current_in_use)
+    }
 
     override fun topSource(searchBook: SearchBook) {
         viewModel.topSource(searchBook)
