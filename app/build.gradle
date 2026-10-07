@@ -39,11 +39,22 @@ android {
 
     signingConfigs {
         // 签名策略（AGENTS.md 明文规则）：正式/交付构建只需 assembleAppC 与 assembleOssRelease，
-        // 两者都是 release 系构建类型，一律使用 SDK 自带 debug 签名（无需任何密钥/口令）。
-        // 与源集/包名无关，自用版（appC）与公开版（oss）用同一把 debug 签名，可互相覆盖安装。
-        // 严禁 debug 构建类型产物；buildTypes 已强制拦截，见文件尾部 guard。
+        // 两者都是 release 系构建类型；绝对禁止 debug 构建类型产物，buildTypes 已强制拦截，见文件尾部 guard。
+        // 自用版（appC / buildType c）沿用 SDK 自带 debug 签名；公开版（oss / buildType release）改用
+        // 仓库根 signing/debug.keystore（与 SDK debug 同口令体系、不同密钥；两版包名不同，覆盖安装靠包名区分）。
+        // signing/ 不进入公开仓库（publish-oss-source.ps1 剥离）：公开克隆缺该文件时自动回退 SDK debug 签名，
+        // 保证外部可编译；此时签名与官方版本不同，不能与官方版本互相覆盖安装。
         debug {
             // 使用 Android SDK 自动生成的默认 debug.keystore，keyAlias=android
+        }
+        ossRelease {
+            def ks = rootProject.file('signing/debug.keystore')
+            if (ks.exists()) {
+                storeFile ks
+                storePassword 'android'
+                keyAlias 'androiddebugkey'
+                keyPassword 'android'
+            }
         }
     }
     defaultConfig {
@@ -80,7 +91,10 @@ android {
     }
     buildTypes {
         release {
-            signingConfig signingConfigs.debug
+            // 公开版签名：本地有 signing/debug.keystore 用仓库签名；公开克隆缺该文件（剥离）时回退 SDK debug。
+            // ossRelease 未配置文件时无 storeFile，直接引用会构建失败，故按文件存在与否二选一。
+            def ossKs = rootProject.file('signing/debug.keystore')
+            signingConfig ossKs.exists() ? signingConfigs.ossRelease : signingConfigs.debug
             applicationIdSuffix '.c'
             manifestPlaceholders.put("app_name", "@string/app_name")
 
