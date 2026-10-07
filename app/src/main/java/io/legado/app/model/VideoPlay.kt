@@ -967,11 +967,12 @@ object VideoPlay : CoroutineScope by MainScope(){
                 null,
                 BookProgressComparison.LOCAL_NEWER -> {
                     Coroutine.async {
-                        AppWebDav.uploadBookProgress(BookProgress(book), uploadSuccessAction)
-                        // uploadBookProgress(BookProgress) 重载不写 syncTime，
-                        // 不补写会导致每次冷启动都白跑一次网络拉取
-                        book.syncTime = System.currentTimeMillis()
-                        book.update()
+                        AppWebDav.uploadBookProgress(BookProgress(book)) {
+                            // 只有上传成功才推进同步水位；断网、鉴权失败不能标成已同步。
+                            book.syncTime = System.currentTimeMillis()
+                            book.update()
+                            uploadSuccessAction?.invoke()
+                        }
                     }
                 }
                 BookProgressComparison.REMOTE_NEWER -> {
