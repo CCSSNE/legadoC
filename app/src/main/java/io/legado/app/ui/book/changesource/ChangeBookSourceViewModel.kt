@@ -217,7 +217,14 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
             tocMap.clear()
             bookMap.clear()
             tocMapChapterCount = 0
-            bookSourceParts.add(appDb.bookSourceDao.getBookSourcePart(origin)!!)
+            // 书源可能已被删除：原 !! 抛 NPE，execute 无 onError 会静默吞掉，
+            // 表现为点击换源搜索毫无反应。缺失时提示并直接返回。
+            val part = appDb.bookSourceDao.getBookSourcePart(origin)
+            if (part == null) {
+                context.toastOnUi("该书源已删除，无法搜索")
+                return@execute
+            }
+            bookSourceParts.add(part)
             searchBooks.removeIf { it.origin == origin }
             initSearchPool()
             search()
