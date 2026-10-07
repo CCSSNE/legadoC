@@ -251,25 +251,30 @@ object ThemeConfig {
     }
 
     internal fun syncSystemNightMode(context: Context) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            // Application night mode is persisted and available when the next system splash is built.
-            val targetMode = when (currentThemeMode()) {
-                // For the application-scoped API, AUTO clears the package-specific night override.
-                ThemeMode.AUTO -> UiModeManager.MODE_NIGHT_AUTO
-                ThemeMode.DARK -> UiModeManager.MODE_NIGHT_YES
-                ThemeMode.LIGHT, ThemeMode.EINK -> UiModeManager.MODE_NIGHT_NO
-            }
-            context.getSystemService(UiModeManager::class.java)
-                .setApplicationNightMode(targetMode)
-            return
-        }
-
+        // AppCompat 本地夜间覆盖必须同步写入：应用级夜间模式（setApplicationNightMode）
+        // 由系统异步应用，而 applyDayNight 的 RECREATE → recreate() 是立即执行的，
+        // 重建会赶在系统生效之前、按旧 uiMode 配置解析 values-night 资源（卡片、文字、
+        // 搜索条等黑白混杂的根因）。AppCompat 覆盖在 Activity attach 时即生效，
+        // 保证重建出来的界面就是目标模式。AUTO 下 isNightTheme 取 Resources.getSystem
+        // 的全局配置，不含应用级覆盖，等价于覆盖清除后的系统真实模式。
         val targetMode = if (AppConfig.isNightTheme) {
             AppCompatDelegate.MODE_NIGHT_YES
         } else {
             AppCompatDelegate.MODE_NIGHT_NO
         }
         AppCompatDelegate.setDefaultNightMode(targetMode)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // Application night mode is persisted and available when the next system splash is built.
+            val appTargetMode = when (currentThemeMode()) {
+                // For the application-scoped API, AUTO clears the package-specific night override.
+                ThemeMode.AUTO -> UiModeManager.MODE_NIGHT_AUTO
+                ThemeMode.DARK -> UiModeManager.MODE_NIGHT_YES
+                ThemeMode.LIGHT, ThemeMode.EINK -> UiModeManager.MODE_NIGHT_NO
+            }
+            context.getSystemService(UiModeManager::class.java)
+                .setApplicationNightMode(appTargetMode)
+        }
     }
 
     /**

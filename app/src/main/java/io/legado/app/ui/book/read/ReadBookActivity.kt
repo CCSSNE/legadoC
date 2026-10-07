@@ -459,9 +459,20 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
+        // 旧 uiMode 必须在 super 之前捕获：对声明 uiMode 的 Activity，AppCompat 会在
+        // super 链里就地更新 resources 配置，之后读到的就是新值了。
+        val oldUiMode = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
         super.onConfigurationChanged(newConfig)
         upSystemUiVisibility()
         binding.readView.upStatusBar()
+        // 声明 uiMode 后系统日/夜翻转（AUTO 跟随）不再触发重建，按主题模式就地刷新
+        // 阅读界面（与 ReadStyleDialog 就地切日夜同一事件组合：重刷背景/样式/重载内容）。
+        if (oldUiMode != (newConfig.uiMode and Configuration.UI_MODE_NIGHT_MASK)) {
+            postEvent(EventBus.UP_CONFIG, arrayListOf(1, 2, 5))
+            if (AppConfig.readBarStyleFollowPage) {
+                postEvent(EventBus.UPDATE_READ_ACTION_BAR, true)
+            }
+        }
     }
 
     override fun onTopResumedActivityChanged(isTopResumedActivity: Boolean) {
@@ -3597,6 +3608,13 @@ class ReadBookActivity : BaseReadBookActivity(),
                     12 -> readView.upPageTouchClick()
                 }
             }
+        }
+        // 主链切主题（applyDayNight）后本 Activity 资源已由 AppCompat 就地刷新，
+        // 但已 inflate 的视图树不会自动重着色——与 MainActivity 一样 recreate 一次
+        // 保证全量一致。阅读页内 recreate=false 链（排版弹窗切日夜）不 post 该事件，
+        // 弹窗与其宿主不受影响。
+        observeEvent<String>(EventBus.RECREATE) {
+            recreate()
         }
         observeEvent<Int>(EventBus.ALOUD_STATE) {
             AppLog.putDebug(
