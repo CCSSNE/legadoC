@@ -419,6 +419,16 @@ object AppWebDav {
 
     /**
      * 获取书籍进度
+     *
+     * 必须区分「云端无文件」与「拉取失败」两种 null 情形。
+     * 调用方（ReadBook/ReadManga/VideoPlay 的 syncProgress）把 null 与 LOCAL_NEWER
+     * 合并进同一分支并上传本地进度；若网络抖动导致的拉取失败也返回 null，就会用
+     * 本地旧进度覆盖云端新进度（不可逆数据丢失）。
+     * 因此：文件存在却拉取失败 → 抛出异常，由调用方 onError 中止，绝不上传；
+     *       云端确无该文件（首同步）→ 返回 null，允许调用方上传；
+     *       拉取失败后连「文件是否存在」都无法判定（网络故障）→ 同样抛出异常中止。
+     * 注：判定存在性用 existsChecked() 而非 exists()——后者吞掉网络异常返回 false，
+     *     弱网下会把「无法判定」误判为「云端无文件」导致反向覆盖。
      */
     suspend fun getBookProgress(book: Book): BookProgress? {
         val url = getProgressUrl(
@@ -426,6 +436,7 @@ object AppWebDav {
             book.author,
             BookMediaType.fromBookType(book.type)
         )
+        var fetchError: Throwable? = null
         kotlin.runCatching {
             val authorization = authorization ?: return null
             WebDav(url, authorization).download().let { byteArray ->
@@ -433,21 +444,60 @@ object AppWebDav {
                 if (json.isJson()) {
                     return GSON.fromJsonObject<BookProgress>(json).getOrNull()
                 }
+                // HTTP 下载成功但内容非合法 JSON（文件被写坏、半途上传残留、BOM/多余
+                // 字符），绝不能当成"云端无进度"而上传本地进度覆盖。走下方 existsChecked()
+                // 判定：文件确实存在则抛异常中止上传；仅空文件（byteArray 为空）保持
+                // 原路径视为无有效内容。
+                if (byteArray.isNotEmpty()) {
+                    error("进度文件内容不是合法 JSON: ${json.take(80)}")
+                }
             }
         }.onFailure {
             currentCoroutineContext().ensureActive()
             AppLog.put("获取书籍进度失败\n${it.localizedMessage}", it)
+            fetchError = it
         }
+        val error = fetchError
+        if (error != null) {
+            val authorization = authorization ?: return null
+            // 必须用不吞异常的 existsChecked 严格判定：确定存在 → throw 中止；
+            // 确定不存在 → 返回 null 允许首同步上传；无法判定（网络故障）→ throw 中止，
+            // 宁可不更新，绝不上传覆盖。
+            val exists = try {
+                WebDav(url, authorization).existsChecked()
+            } catch (e: Exception) {
+                currentCoroutineContext().ensureActive()
+                AppLog.put("确认进度文件是否存在失败，中止本次同步\n${e.localizedMessage}", e)
+                throw error
+            }
+            if (exists) {
+                // 文件存在却拉取失败：网络/鉴权/解析问题，
+                // 绝不能让调用方当成"云端无进度"而上传本地进度
+                throw error
+            }
+        }
+        // 云端确无该进度文件（首同步），返回 null 由调用方上传本地进度
         return null
     }
 
     suspend fun downloadAllBookProgress() {
         val authorization = authorization ?: return
         if (!NetworkUtils.isAvailable()) return
-        val bookProgressFiles = WebDav(bookProgressUrl, authorization).listFiles()
+        val bookProgressFiles = try {
+            WebDav(bookProgressUrl, authorization).listFiles()
+        } catch (e: Exception) {
+            currentCoroutineContext().ensureActive()
+            AppLog.put("拉取进度文件列表失败\n${e.localizedMessage}", e)
+            return
+        }
         val map = hashMapOf<String, WebDavFile>()
         bookProgressFiles.forEach {
             map[it.displayName] = it
+            // displayName 来自 URLDecoder.decodeForPath（已解码），
+            // 而 progressFileName 产出的是 UrlUtil.replaceReservedChar 百分号编码名
+            //（空格→%20、#→%23…）。只按一种编码态建索引，会让含这些字符的书名
+            // 永远匹配不到进度文件并被静默跳过，故两种形态都登记。
+            map[UrlUtil.replaceReservedChar(it.displayName)] = it
         }
         appDb.bookDao.all.forEach { book ->
             val progressFileName = getProgressFileName(
@@ -456,20 +506,26 @@ object AppWebDav {
                 BookMediaType.fromBookType(book.type)
             )
             val webDavFile = map[progressFileName]
+            // 必须 return@forEach 跳过当前书，裸 return 会中断整批进度拉取
             webDavFile ?: return@forEach
             if (webDavFile.lastModify <= book.syncTime) {
                 //本地同步时间大于上传时间不用同步
-                return
+                return@forEach
             }
-            getBookProgress(book)?.let { bookProgress ->
-                if (bookProgress.compareWith(book) == BookProgressComparison.REMOTE_NEWER) {
-                    book.durChapterIndex = bookProgress.durChapterIndex
-                    book.durChapterPos = bookProgress.durChapterPos
-                    book.durChapterTitle = bookProgress.durChapterTitle
-                    book.durChapterTime = bookProgress.durChapterTime
-                    book.syncTime = System.currentTimeMillis()
-                    appDb.bookDao.update(book)
-                }
+            val bookProgress = try {
+                getBookProgress(book)
+            } catch (e: Exception) {
+                currentCoroutineContext().ensureActive()
+                AppLog.put("获取书籍进度失败(批量)\n${e.localizedMessage}", e)
+                null
+            } ?: return@forEach
+            if (bookProgress.compareWith(book) == BookProgressComparison.REMOTE_NEWER) {
+                book.durChapterIndex = bookProgress.durChapterIndex
+                book.durChapterPos = bookProgress.durChapterPos
+                book.durChapterTitle = bookProgress.durChapterTitle
+                book.durChapterTime = bookProgress.durChapterTime
+                book.syncTime = System.currentTimeMillis()
+                appDb.bookDao.update(book)
             }
         }
     }
