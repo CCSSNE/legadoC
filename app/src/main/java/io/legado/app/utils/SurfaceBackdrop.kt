@@ -519,8 +519,9 @@ object SurfaceBackdrop {
             mainHandler.postDelayed(timeoutGuard, SURFACE_PIXEL_COPY_TIMEOUT_MS)
             PixelCopy.request(hostWindow, sourceRect, sourceBitmap, { result ->
                 if (settled) {
-                    // 超时兜底已触发，忽略迟到回调
-                    if (!generationValid()) sourceBitmap.recycleSafely()
+                    // 超时兜底已触发，迟到结果已无用：一律回收，
+                    // 否则整张全屏位图泄漏（代际仍有效时旧代码直接 return）。
+                    sourceBitmap.recycleSafely()
                     return@request
                 }
                 mainHandler.removeCallbacks(timeoutGuard)
