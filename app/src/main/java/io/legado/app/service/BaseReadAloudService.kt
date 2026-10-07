@@ -1092,6 +1092,9 @@ abstract class BaseReadAloudService : BaseService(),
                     cancelReadAloudStart(request)
                     return@execute
                 }
+                // prepare 期间可能被新请求打断——IO 协程无挂起点仍可被线程抢占。
+                // 写回前复查令牌，避免过期请求压掉新请求的状态。
+                if (request != readAloudStartRequest) return@execute
                 preparedReadAloudStartRequest = request
                 publishPreparedAloudPosition()
                 launch(Main) {
@@ -1112,6 +1115,8 @@ abstract class BaseReadAloudService : BaseService(),
                     return@execute
                 }
             }
+            // 同上：prepare 完成后、写回前复查令牌，关闭过期请求压掉新请求状态的竞态窗口。
+            if (request != readAloudStartRequest) return@execute
             preparedReadAloudStartRequest = request
             publishPreparedAloudPosition()
             launch(Main) {

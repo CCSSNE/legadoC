@@ -213,13 +213,14 @@ class SourceAudioReadAloudService : BaseReadAloudService(), Player.Listener {
     }
 
     override fun setPlaybackSpeed(speed: Float) {
-        require(speed.isFinite() && speed in 0.5f..3.0f) {
-            "书源音频速度超出范围：$speed"
-        }
-        val book = requireNotNull(ReadBook.book) { "设置书源音频速度时当前书籍为空" }
-        book.setPlaySpeed(speed)
+        // 入口有 Intent extra 缺失（默认 NaN）与书配置越界 playSpeed 两条可达路径，
+        // require 会直接崩溃服务进程；收敛为判空早退 + 夹取到合法区间。
+        if (!speed.isFinite()) return
+        val book = ReadBook.book ?: return
+        val safeSpeed = speed.coerceIn(0.5f, 3.0f)
+        book.setPlaySpeed(safeSpeed)
         lifecycleScope.launch(IO) { book.save() }
-        player.setPlaybackSpeed(speed)
+        player.setPlaybackSpeed(safeSpeed)
     }
 
     override fun seekToReadAloudProgress(

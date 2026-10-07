@@ -72,7 +72,6 @@ class AboutFragment : PreferenceFragmentCompat() {
             "license" -> showMdFile(getString(R.string.license), "LICENSE.md")
             "disclaimer" -> showMdFile(getString(R.string.disclaimer), "disclaimer.md")
             "privacyPolicy" -> showMdFile(getString(R.string.privacy_policy), "privacyPolicy.md")
-            "gzGzh" -> requireContext().sendToClip(getString(R.string.legado_gzh))
             "crashLog" -> showDialogFragment<CrashLogsDialog>()
             "saveCrashLog" -> saveCrashLog()
             "showLog" -> showDialogFragment<AppLogDialog>()
