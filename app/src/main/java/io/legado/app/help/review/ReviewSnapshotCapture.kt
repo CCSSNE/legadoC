@@ -85,6 +85,14 @@ object ReviewSnapshotCapture {
     private val EXPAND_ROUND_INTERVAL_MS get() = ReviewDownloadConfig.Number.STABLE_INTERVAL.value.toLong()
     /** 连续几轮稳定才判定完成（含慢加载评论） */
     private val STABLE_ROUNDS_TO_FINISH get() = ReviewDownloadConfig.Number.STABLE_ROUNDS.value
+    /**
+     * 兜底强展轮数上限：穷尽展开稳定收口后，对仍残留的“楼中楼/查看回复/展开N条回复”
+     * 折叠项额外反复扫描的轮数上限。仍整体受 PAGE_EXECUTION_TIMEOUT_MS 看门狗约束，
+     * 这里只是独立上限，避免极端页面把整个执行预算耗在兜底上。
+     */
+    private const val MAX_FORCE_EXPAND_ROUNDS = 12
+    /** 兜底强展连续几轮无新点击即判定收口完成，进入资源冻结。 */
+    private const val FORCE_EXPAND_STABLE_ROUNDS = 2
     /** 章评/书评 tab 点击校验重试上限 */
     private const val MAX_TAB_CLICK_ATTEMPTS = 5
     /** 单个资源抓取超时；传输失败会记录并移除该非关键资源，取消仍会中止快照。 */
@@ -677,8 +685,11 @@ object ReviewSnapshotCapture {
          */
         private var expandLoopActive = false
 
-        /** 楼中楼兜底强展已执行的轮数 */
-        private var forceExpandPasses = 0
+        /** 兜底强展已执行的轮数（穷尽展开收口后的补充扫描，session 只跑一次）。 */
+        private var forceExpandRounds = 0
+
+        /** 兜底强展连续几轮无点击的计数，用于提前收口。 */
+        private var forceExpandStableRounds = 0
 
         /** 章评/书评 tab 点击尝试次数 */
         private var tabClickAttempts = 0
@@ -1011,18 +1022,27 @@ object ReviewSnapshotCapture {
                 inlineResources()
                 return
             }
-            forceExpandReplies()
+            forceExpandRemaining()
         }
 
         /**
-         * 楼中楼兜底强展：逐一点击全部未展开的回复 toggle（不限每轮数量），
-         * 直到页面再无“展开 N 条回复”类元素。点击后可能出现新的“加载更多回复”，
-         * 因此按页面稳定状态收敛；页面执行超时必须报错，不能把未展开完的页面当作完整结果。
+         * 序列化前的“兜底强展”（楼中楼强展，真修版）：在穷尽展开稳定收口之后、进入资源冻结
+         * 之前，把仍残留的楼中楼/折叠回复 toggle（“展开N条回复/查看更多回复/1条回复”等，
+         * 区别于页面底部“加载更多”翻页）平铺到最内层。
+         *
+         * 两段式 FORCE_EXPAND_REPLIES_JS：一) 结构定位契约类 .reply-toggle（其后兄弟
+         * .replies-container 已预置收起态回复 DOM）直接强制显示——纯 DOM 操作、不依赖点击；
+         * 二) 文本兜底覆盖无该契约类名的平台。脚本在 click/显示前给每个元素打
+         * data-legado-force-expanded 标记并跳过已标记元素，任何 toggle 至多被处理一次，
+         * 杜绝“展开→收起→再展开”往返把快照留在收起态。
+         *
+         * 收口：连续 FORCE_EXPAND_STABLE_ROUNDS 轮无新展开、或达到 MAX_FORCE_EXPAND_ROUNDS
+         * 轮上限后进入资源冻结。解析不出结果仍按本仓策略显式 fail，绝不把未展开完的
+         * 页面当作完整结果。
          */
-        private fun forceExpandReplies() {
+        private fun forceExpandRemaining() {
             if (destroyed) return
-            forceExpandPasses++
-            webView.evaluateJavascript(FORCE_EXPAND_JS) { json ->
+            webView.evaluateJavascript(FORCE_EXPAND_REPLIES_JS) { json ->
                 mHandler.post {
                     if (destroyed) return@post
                     val clicked = parseForceClicked(json) ?: run {
@@ -1033,10 +1053,16 @@ object ReviewSnapshotCapture {
                         "FORCE_EXPAND_PASS",
                         CacheOperationDiagnostics.Metrics(resourceCount = clicked),
                     )
-                    if (clicked > 0) {
-                        mHandler.postDelayed({ forceExpandReplies() }, EXPAND_ROUND_INTERVAL_MS)
-                    } else {
+                    totalExpandClicks += clicked
+                    forceExpandStableRounds =
+                        if (clicked == 0) forceExpandStableRounds + 1 else 0
+                    forceExpandRounds++
+                    if (forceExpandStableRounds >= FORCE_EXPAND_STABLE_ROUNDS ||
+                        forceExpandRounds >= MAX_FORCE_EXPAND_ROUNDS
+                    ) {
                         inlineResources()
+                    } else {
+                        mHandler.postDelayed({ forceExpandRemaining() }, EXPAND_ROUND_INTERVAL_MS)
                     }
                 }
             }
@@ -2159,27 +2185,61 @@ object ReviewSnapshotCapture {
     }
 
     /**
-     * 楼中楼兜底强展脚本：不限每轮数量地点击全部未展开的回复 toggle。
-     * 展开循环受“每轮 6 个 + 轮数上限”约束，懒加载页面的尾部楼中楼会漏点，
-     * 序列化后离线永远打不开；本脚本在序列化前穷尽兜底，由页面自身 JS
-     * 完成展开（不操作 DOM 结构，通用书源均适用）。
+     * 序列化前的兜底强展脚本：穷尽展开收口后仍残留的楼中楼/折叠回复 toggle 平铺到最内层。
+     *
+     * 与 EXPAND_JS 的区别与用意：
+     * - 无“每轮最多 6 个”上限（该上限是 EXPAND_JS 避免一轮抢点太多、给异步加载留节奏，
+     *   却也让深层楼中楼可能在收口前没被扫到）；兜底轮点尽量多。
+     * - 两段式：一) 结构定位契约类 .reply-toggle（楼中楼展开开关），直接把它后面
+     *   display:none 的回复容器(.replies-container)显示出来。实测平台“1 条回复”这类
+     *   reply toggle 从不被旧版纯文本正则匹配（expandRe 只有“展开/查看回复/查看更多”等，
+     *   没有“N 条回复”），导致强展从没真正展开过任何楼中楼；而回复 DOM 其实早已预置在收起的
+     *   容器里（非点击懒加载），强制显示即可让回复进入冻结快照，纯 DOM 操作、不依赖 toggle
+     *   事件与异步、无往返风险。
+     *   二) 文本兜底，覆盖没有 .reply-toggle 契约类名的平台：命中“展开类”且不命中“收起类”词
+     *   的可点击元素。
+     * - 防重入是本脚本的关键：处理前打 data-legado-force-expanded 标记并跳过已标记元素，
+     *   任何 toggle 至多被处理一次，杜绝“展开→收起→再展开”的无限往返把快照留在收起态。
      */
-    private const val FORCE_EXPAND_JS =
+    private const val FORCE_EXPAND_REPLIES_JS =
         "(function(){" +
-            "var pat=/(展开\\s*\\d*\\s*条回复|展开回复|查看回复|全部回复|更多回复|共\\s*\\d+\\s*条回复|load\\s*more\\s*repl)/i;" +
+            "var expandRe=/(展开|更多回复|查看回复|查看更多|查看全部|显示全部|继续阅读|load\\s*more|show\\s*more|view\\s*more|expand|\\d+\\s*条回复|\\d+\\s*个回复|\\d+\\s*楼回复)/i;" +
+            "var collapseRe=/(收起|折叠|collapse|hide\\s*(reply|comment|all))/i;" +
             "var clicked=0;" +
+            // 一) 结构定位优先：平台契约类 .reply-toggle 是楼中楼展开开关，其后兄弟 .replies-container
+            //    已预置回复 DOM（抓取时回复并非懒加载，只是容器 display:none 收起）。
+            //    直接把它显示出来即可让回复在冻结快照里可见——纯 DOM 操作，不依赖 toggle 事件与异步，
+            //    也杜绝“点击后再收起”的往返。文本正则曾漏掉“N 条回复”类按钮导致强展从未真正展开过。
+            "document.querySelectorAll('.reply-toggle').forEach(function(t){" +
+            "if(t.getAttribute('data-legado-force-expanded'))return;" +
+            "var box=t.nextElementSibling;" +
+            "if(!box)return;" +
+            "var st=box.style?box.style.display:'';" +
+            "if(st==='none'||!st){" +
+            "box.style.display='block';" +
+            "if(t.classList)t.classList.add('open');" +
+            "t.setAttribute('data-legado-force-expanded','1');" +
+            "clicked++;}});" +
+            // 二) 文本兜底：命中展开类词的可点击元素（覆盖无 .reply-toggle 契约类名的平台）
             "var els=document.querySelectorAll('a,button,[role=\"button\"],[onclick],div,span,p');" +
             "for(var i=0;i<els.length;i++){var el=els[i];" +
+            "if(el.getAttribute('data-legado-force-expanded'))continue;" +
+            "var anc=el.parentElement,skip=false;" +
+            "while(anc){if(anc.getAttribute&&anc.getAttribute('data-legado-force-expanded')){skip=true;break;}anc=anc.parentElement;}" +
+            "if(skip)continue;" +
             "var t=(el.innerText||'').trim();" +
-            "if(!t||t.length>30||!pat.test(t))continue;" +
+            "if(!t||t.length>24||!expandRe.test(t)||collapseRe.test(t))continue;" +
             "var r=el.getBoundingClientRect();" +
             "if(r.width<1||r.height<1)continue;" +
             "if(el.children.length>2)continue;" +
+            "el.setAttribute('data-legado-force-expanded','1');" +
             "el.scrollIntoView({block:'center'});" +
             "try{el.click();}catch(e){}" +
             "try{el.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));" +
-            "el.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));}catch(e){}" +
+            "el.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));" +
+            "el.dispatchEvent(new TouchEvent('touchend',{bubbles:true}));}catch(e){}" +
             "clicked++;}" +
+            "try{window.scrollTo(0,document.body?document.body.scrollHeight:0);}catch(e){}" +
             "return JSON.stringify({c:clicked});" +
             "})()"
 
