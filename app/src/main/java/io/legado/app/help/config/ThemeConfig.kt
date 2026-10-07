@@ -426,7 +426,12 @@ object ThemeConfig {
         }
         var hasTheme = false
         configList.forEachIndexed { index, config ->
-            if (newConfig.themeName == config.themeName) {
+            // 必须连同日/夜一起判定：同一个 themeName 可以同时存在日间与夜间两条配置
+            // （主题包按同一目录名生成两份），只比 themeName 会让后写入的一条
+            // 整体替换掉另一条，导致日间配色丢失。
+            if (newConfig.themeName == config.themeName &&
+                newConfig.isNightTheme == config.isNightTheme
+            ) {
                 configList[index] = newConfig
                 hasTheme = true
                 return@forEachIndexed
@@ -446,7 +451,13 @@ object ThemeConfig {
             return
         }
         newConfigs.forEach { newConfig ->
-            val existingIndex = configList.indexOfFirst { it.themeName == newConfig.themeName }
+            // 与 addConfig 保持同一匹配口径：themeName + isNightTheme 双键。
+            // 本方法经 upConfig()（恢复备份时）用同一 configList 重建，若只修 addConfig
+            // 而此处仍是单键，恢复备份后日夜两条会被再次合并，日间配置重新丢失。
+            val existingIndex = configList.indexOfFirst {
+                it.themeName == newConfig.themeName &&
+                    it.isNightTheme == newConfig.isNightTheme
+            }
             if (existingIndex != -1) {
                 configList[existingIndex] = newConfig
             } else {
