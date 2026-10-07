@@ -88,6 +88,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import splitties.init.appCtx
 import splitties.systemservices.audioManager
 import splitties.systemservices.notificationManager
@@ -307,6 +310,7 @@ abstract class BaseReadAloudService : BaseService(),
 
     @Volatile
     private var preparedReadAloudStartRequest = -1L
+    private val readAloudPrepareMutex = Mutex()
 
     internal fun minReadAloudPreloadLength(): Int {
         return MIN_READ_ALOUD_PRELOAD_LENGTH
@@ -1080,48 +1084,41 @@ abstract class BaseReadAloudService : BaseService(),
         pageIndex: Int,
         startPos: Int,
     ) {
-        execute(executeContext = IO) {
-            if (request != readAloudStartRequest) return@execute
-            val textChapter = ReadBook.curTextChapter
-            if (!sessionChapterCanStartWithoutText) {
-                val chapter = textChapter ?: run {
-                    cancelReadAloudStart(request)
-                    return@execute
+        execute {
+            // 章节准备会修改共享播放字段；旧请求必须退出后新请求才能准备。
+            readAloudPrepareMutex.withLock {
+                if (request != readAloudStartRequest) return@withLock
+                val textChapter = ReadBook.curTextChapter
+                var preparedText = false
+                if (!sessionChapterCanStartWithoutText) {
+                    if (textChapter == null ||
+                        !prepareReadAloudChapter(textChapter, pageIndex, startPos)
+                    ) {
+                        cancelReadAloudStart(request)
+                        return@withLock
+                    }
+                    preparedText = true
+                } else {
+                    currentChapterIndex = ReadBook.durChapterIndex
+                    textChapter?.takeIf { tc ->
+                        tc.chapter.index == currentChapterIndex &&
+                            tc.isCompleted && tc.pageSize > 0
+                    }?.let { tc ->
+                        if (!prepareReadAloudChapter(tc, pageIndex, startPos)) {
+                            cancelReadAloudStart(request)
+                            return@withLock
+                        }
+                        preparedText = true
+                    }
                 }
-                if (!prepareReadAloudChapter(chapter, pageIndex, startPos)) {
-                    cancelReadAloudStart(request)
-                    return@execute
-                }
-                // prepare 期间可能被新请求打断——IO 协程无挂起点仍可被线程抢占。
-                // 写回前复查令牌，避免过期请求压掉新请求的状态。
-                if (request != readAloudStartRequest) return@execute
-                preparedReadAloudStartRequest = request
-                publishPreparedAloudPosition()
-                launch(Main) {
-                    if (request != readAloudStartRequest) return@launch
+                // 与 requestReadAloud 的令牌递增同在主线程，中间没有挂起点。
+                withContext(Main) {
+                    if (request != readAloudStartRequest) return@withContext
+                    preparedReadAloudStartRequest = request
+                    if (preparedText) publishParagraphProgress()
+                    publishPreparedAloudPosition()
                     if (play) play() else pageChanged = true
                 }
-                return@execute
-            }
-            // 书源音频：会话章节身份先由统一阅读目标（ReadBook.durChapterIndex）确定，
-            // 正文 TextChapter 只在 index 与该目标相同时用于段落/LRC 准备，绝不反向决定当前章节。
-            currentChapterIndex = ReadBook.durChapterIndex
-            textChapter?.takeIf { tc ->
-                tc.chapter.index == currentChapterIndex &&
-                    tc.isCompleted && tc.pageSize > 0
-            }?.let { tc ->
-                if (!prepareReadAloudChapter(tc, pageIndex, startPos)) {
-                    cancelReadAloudStart(request)
-                    return@execute
-                }
-            }
-            // 同上：prepare 完成后、写回前复查令牌，关闭过期请求压掉新请求状态的竞态窗口。
-            if (request != readAloudStartRequest) return@execute
-            preparedReadAloudStartRequest = request
-            publishPreparedAloudPosition()
-            launch(Main) {
-                if (request != readAloudStartRequest) return@launch
-                if (play) play() else pageChanged = true
             }
         }.onError {
             cancelReadAloudStart(request)
@@ -1129,8 +1126,8 @@ abstract class BaseReadAloudService : BaseService(),
         }
     }
 
-    private fun cancelReadAloudStart(request: Long) {
-        if (request != readAloudStartRequest) return
+    private suspend fun cancelReadAloudStart(request: Long) = withContext(Main) {
+        if (request != readAloudStartRequest) return@withContext
         preparedReadAloudStartRequest = -1L
         ReadAloud.cancelPositionSwitch()
     }
@@ -1146,15 +1143,13 @@ abstract class BaseReadAloudService : BaseService(),
             return false
         }
         if (chapter.pageSize <= 0) {
-            stopReadAloudOnInvalidPosition("Read aloud chapter has no page")
-            return false
+            error("Read aloud chapter has no page")
         }
         val safePageIndex = pageIndex.coerceIn(0, chapter.pageSize - 1)
         this@BaseReadAloudService.pageIndex = safePageIndex
         val page = chapter.getPage(safePageIndex)
         if (page == null) {
-            stopReadAloudOnInvalidPosition("Read aloud page is null, pageIndex=$safePageIndex")
-            return false
+            error("Read aloud page is null, pageIndex=$safePageIndex")
         }
         readAloudNumber = chapter.getReadLength(safePageIndex) + startPos.coerceAtLeast(0)
         // 朗读单元只由 pageSplit 有效值决定；滚动模式锁定关闭（无页界概念）。
@@ -1180,7 +1175,6 @@ abstract class BaseReadAloudService : BaseService(),
                 "number:$readAloudNumber nowSpeak:$nowSpeak offset:$paragraphStartPos " +
                 "byPage:$pageSplit toLast:${chapter.getLastParagraphPosition() == readAloudNumber}"
         )
-        publishParagraphProgress()
         return true
     }
 
