@@ -51,6 +51,19 @@ import androidx.core.content.edit
 import io.legado.app.model.VideoPlay.VIDEO_PREF_NAME
 
 /**
+ * 只保留真正存在于 [dir] 下的条目。
+ *
+ * 备份目录里的 json 由 [Backup.writeListToJson] 按「列表非空」写出，空表不会落盘；
+ * 而 `ZipUtils.zipFile` 已改为 `require` 源文件存在，把不存在的路径交给它会让
+ * 一个空表直接中止整次备份。所以打包前必须按实际落盘结果过滤，而不是按清单全量拼路径。
+ *
+ * 独立成顶层函数（不挂在 `Backup` object 上）以便不依赖 Android 依赖即可覆盖。
+ */
+internal fun existingZipSources(dir: String, names: Collection<String>): List<String> {
+    return names.map { File(dir, it) }.filter { it.exists() }.map { it.absolutePath }
+}
+
+/**
  * 备份
  */
 object Backup {
@@ -287,19 +300,21 @@ object Backup {
         }
         currentCoroutineContext().ensureActive()
         val zipFileName = getNowZipFileName()
-        val paths = backupFileNames
-            .filter { targets.shouldBackupTarget(it) }
-            .toMutableList()
-        for (i in 0 until paths.size) {
-            paths[i] = backupPath + File.separator + paths[i]
+        val paths = existingZipSources(
+            backupPath,
+            backupFileNames.filter { targets.shouldBackupTarget(it) }
+        ).toMutableList()
+        // 先落盘 covers 再做存在性过滤：covers 属于 backgroundAssetDirNames，
+        // 目录若在过滤之后才创建就会漏出打包清单
+        if (targets.shouldBackupTarget("covers")) {
+            prepareCustomCoverBackup()
         }
         backgroundAssetDirNames.forEach { dirName ->
             if (targets.shouldBackupTarget(dirName)) {
-                paths.add(appCtx.externalFiles.getFile(dirName).absolutePath)
+                val dir = appCtx.externalFiles.getFile(dirName)
+                // 同上：从未配置过背景/字体/封面时这些目录不存在，不是错误，跳过即可
+                if (dir.exists()) paths.add(dir.absolutePath)
             }
-        }
-        if (targets.shouldBackupTarget("covers")) {
-            prepareCustomCoverBackup()
         }
         if (targets.shouldBackupTarget(BackupThemePackageDedupe.themePackagesDirName)) {
             BackupThemePackageDedupe.prepareBackupThemePackages(
@@ -307,11 +322,16 @@ object Backup {
                 backupRoot = File(backupPath)
             )?.let {
                 paths.add(it.absolutePath)
-                paths.add(File(backupPath, BackupThemePackageDedupe.manifestFileName).absolutePath)
+                // manifest 仅在存在重复字体时才写出（见 prepareBackupThemePackages），
+                // 无重复字体时该文件不存在，不能强加进 zip
+                val manifest = File(backupPath, BackupThemePackageDedupe.manifestFileName)
+                if (manifest.exists()) paths.add(manifest.absolutePath)
             }
         }
         if (targets.shouldBackupTarget(NavigationBarIconConfig.rootDir.name)) {
-            paths.add(NavigationBarIconConfig.rootDir.absolutePath)
+            // rootDir 未预建目录，用户从未自定义导航栏图标时并不存在
+            val iconDir = NavigationBarIconConfig.rootDir
+            if (iconDir.exists()) paths.add(iconDir.absolutePath)
         }
         FileUtils.delete(zipFilePath)
         FileUtils.delete(zipFilePath.replace("tmp_", ""))
