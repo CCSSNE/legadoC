@@ -444,6 +444,17 @@ object AppWebDav {
                     "云端进度缺少字段：$key"
                 }
             }
+        // 通用 Gson 的 Int 适配器会把错误类型变成 null/默认 0，数字必须先严格校验。
+        listOf("durChapterIndex", "durChapterPos", "durChapterTime", "mediaType")
+            .filter { objectValue.has(it) }
+            .forEach { key ->
+                val value = objectValue[key]
+                require(value.isJsonPrimitive && value.asJsonPrimitive.isNumber) {
+                    "云端进度字段不是数字：$key"
+                }
+                if (key == "durChapterTime") value.asBigDecimal.longValueExact()
+                else value.asBigDecimal.intValueExact()
+            }
         val progress = GSONStrict.fromJsonObject<BookProgress>(json).getOrThrow()
         require(progress.name == book.name && progress.author == book.author &&
             progress.mediaType == BookMediaType.fromBookType(book.type)) {
