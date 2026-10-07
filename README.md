@@ -102,6 +102,12 @@
 
 关注信息，收评论点赞回帖，回评论点赞回帖
 
+### 签名说明
+
+- 公开版（包名 `io.legado.app.c`）正式 APK 使用仓库根目录 `signing/debug.keystore` 签名，不使用 SDK 自带的 debug 签名；官方证书 SHA-256 为 `70:CB:88:CA:1F:73:79:E4:7D:8F:42:57:A0:A8:B6:07:BF:BC:FA:53:0C:78:D6:08:2F:2D:D9:B5:CD:E3:89:5C`，可用 `apksigner verify --print-certs` 核对。
+- `signing/` 只存于自有仓库，不进入公开仓库源码（发布时剥离）；外部从公开仓库编译公开版时自动回退 SDK debug 签名，可正常编译安装，但签名与官方版本不同，不能与官方版本互相覆盖安装。
+- 自用版（包名 `io.legado.app.dev`）沿用 SDK 自带 debug 签名。
+
 ## 更新记录
 
 ### 2026-10-08
