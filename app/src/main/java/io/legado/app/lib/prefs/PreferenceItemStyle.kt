@@ -1,5 +1,6 @@
 package io.legado.app.lib.prefs
 
+import android.content.Context
 import android.view.View
 import android.view.ViewGroup
 import androidx.core.content.ContextCompat
@@ -13,15 +14,23 @@ import androidx.preference.PreferenceCategory as AndroidPreferenceCategory
 
 object PreferenceItemStyle {
 
+    /**
+     * 偏好行卡片实际绘制的表面色——文字明暗判定必须与绘制同源。
+     * 不能改用原始 bottomBackground 存值：主题可能把 bottomBackground 配成
+     * 亮度不足 0.5 的中灰（如 #B6B6B6），而卡片经 surfaceColor 混合后渲染为浅色，
+     * 按原始值判定会得到白字配浅卡。
+     */
+    fun itemSurfaceColor(context: Context): Int {
+        return UiCorner.surfaceColor(UiCorner.themeSurfaceCardColor(context))
+    }
+
     fun apply(preference: AndroidPreference, holder: PreferenceViewHolder) {
         val parent = preference.parent ?: return
         val hasPrev = hasVisibleSibling(parent, preference, forward = false)
         val hasNext = hasVisibleSibling(parent, preference, forward = true)
         holder.isDividerAllowedAbove = false
         holder.isDividerAllowedBelow = false
-        val itemColor = UiCorner.surfaceColor(
-            UiCorner.themeSurfaceCardColor(preference.context)
-        )
+        val itemColor = itemSurfaceColor(preference.context)
         val dividerColor = UiCorner.surfaceColor(
             ContextCompat.getColor(preference.context, R.color.bg_divider_line)
         )

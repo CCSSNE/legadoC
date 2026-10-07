@@ -6,7 +6,6 @@ import android.widget.TextView
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceViewHolder
 import io.legado.app.R
-import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.utils.ColorUtils
@@ -33,7 +32,8 @@ class NameListPreference(context: Context, attrs: AttributeSet? = null) : ListPr
             v.typeface = context.uiTypeface()
             v.text = entry
             if (isBottomBackground) {
-                val bgColor = context.bottomBackground
+                // 与 Preference.bindView 同源：按行实际绘制的卡片表面色判定明暗
+                val bgColor = PreferenceItemStyle.itemSurfaceColor(context)
                 val pTextColor = context.getPrimaryTextColor(ColorUtils.isColorLight(bgColor))
                 v.setTextColor(pTextColor)
             }

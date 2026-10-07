@@ -15,7 +15,6 @@ import io.legado.app.R
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.applyUiTitleTypeface
 import io.legado.app.lib.theme.applyUiBodyTypeface
-import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.getSecondaryTextColor
 import io.legado.app.lib.theme.uiTypeface
@@ -72,7 +71,11 @@ open class Preference(context: Context, attrs: AttributeSet? = null) :
                 tvSummary?.typeface = context.uiTypeface()
             }
             if (isBottomBackground && !viewHolder.itemView.isInEditMode) {
-                val isLight = ColorUtils.isColorLight(context.bottomBackground)
+                // 文字配色按行实际绘制的卡片表面色判定（与 PreferenceItemStyle 同源），
+                // 不按原始 bottomBackground 存值：主题可能把它配成亮度<0.5 的中灰，
+                // 而卡片经 surfaceColor 混合后渲染为浅色，按原始值判定会白字配浅卡。
+                val isLight =
+                    ColorUtils.isColorLight(PreferenceItemStyle.itemSurfaceColor(context))
                 val pTextColor = context.getPrimaryTextColor(isLight)
                 tvTitle?.setTextColor(pTextColor)
                 val sTextColor = context.getSecondaryTextColor(isLight)
