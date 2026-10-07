@@ -946,17 +946,26 @@ abstract class BaseReadAloudService : BaseService(),
             return
         }
         if (obstruction.active) {
-            check(
-                obstruction.topOnScreen >= 0 &&
-                    obstruction.bottomOnScreen > obstruction.topOnScreen
+            // bounds 来自外部上报（旋转/窗口切换/异常 insets 时可为非法区间），
+            // 抛 IllegalArgumentException 会直接崩溃朗读服务；改为记录并跳过该避让源。
+            //
+            // 注意不能在此 return：本函数末尾的 applyReadAloudFloatingAvoidance() 是唯一调用点，
+            // 早退会跳过它；且该 source 上一轮留下的合法区间不会被清除，悬浮窗会被一个
+            // 已经不存在的遮挡区持续挤走。故非法时清除陈旧项后继续走到末尾统一后处理。
+            if (obstruction.topOnScreen < 0 ||
+                obstruction.bottomOnScreen <= obstruction.topOnScreen
             ) {
-                "Read-aloud floating obstruction has invalid bounds: " +
-                    "[${obstruction.topOnScreen}, ${obstruction.bottomOnScreen}]"
+                AppLog.put(
+                    "朗读悬浮窗避让源 bounds 非法，忽略: " +
+                        "[${obstruction.topOnScreen}, ${obstruction.bottomOnScreen}]"
+                )
+                avoidanceBounds.remove(obstruction.source)
+            } else {
+                avoidanceBounds[obstruction.source] = FloatingAvoidanceBounds(
+                    obstruction.topOnScreen,
+                    obstruction.bottomOnScreen,
+                )
             }
-            avoidanceBounds[obstruction.source] = FloatingAvoidanceBounds(
-                obstruction.topOnScreen,
-                obstruction.bottomOnScreen,
-            )
         } else {
             avoidanceBounds.remove(obstruction.source)
         }
