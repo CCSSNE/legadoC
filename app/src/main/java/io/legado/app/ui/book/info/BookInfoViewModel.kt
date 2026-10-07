@@ -333,11 +333,15 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
                         val oldChapterList = appDb.bookChapterDao.getChapterList(oldBook.bookUrl)
                         BookHelp.remapContentCache(oldBook, oldChapterList, it)
                         book.removeType(BookType.updateError)
-                        appDb.bookDao.replace(oldBook, book)
-                        /**
-                         * runPreUpdateJs 有可能会修改 book 的 bookUrl
-                         */
-                        if (oldBook.bookUrl != book.bookUrl) {
+                        // 同 bookUrl 用 update：replace 是 delete+insert，裸调会触发
+                        // chapters/book_shortcuts/book_collection_items/book_illustrations 的 CASCADE 清空
+                        if (oldBook.bookUrl == book.bookUrl) {
+                            appDb.bookDao.update(book)
+                        } else {
+                            appDb.bookDao.replace(oldBook, book)
+                            /**
+                             * runPreUpdateJs 有可能会修改 book 的 bookUrl
+                             */
                             BookHelp.updateCacheFolder(oldBook, book)
                         }
                         appDb.bookChapterDao.delByBook(oldBook.bookUrl)
