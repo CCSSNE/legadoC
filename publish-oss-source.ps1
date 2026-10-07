@@ -19,6 +19,7 @@ publish-oss-source.ps1 — 开源发布：把本地 own 完整历史剥离专有
   app/src/main/jniLibs                                         百度引擎动态库（迁移前旧路径）
   app/src/main/java/io/legado/app/service/BdReadAloudService.kt        （迁移前旧路径）
   app/src/main/java/io/legado/app/ui/book/read/config/BdEngineManageActivity.kt （迁移前旧路径）
+  signing                                                              公开版 release 签名密钥（公开克隆缺文件时回退 SDK debug，不影响外部编译）
 
 用法:
   .\publish-oss-source.ps1 [-DryRun]     # DryRun 只做克隆/剥离/校验/预览，不推送
@@ -40,7 +41,8 @@ $stripPaths = @(
   'app/src/main/java/io/legado/app/help/bdtts',
   'app/src/main/jniLibs',
   'app/src/main/java/io/legado/app/service/BdReadAloudService.kt',
-  'app/src/main/java/io/legado/app/ui/book/read/config/BdEngineManageActivity.kt'
+  'app/src/main/java/io/legado/app/ui/book/read/config/BdEngineManageActivity.kt',
+  'signing'
 )
 
 git filter-repo --version *> $null
