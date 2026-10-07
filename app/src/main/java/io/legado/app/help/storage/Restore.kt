@@ -1,7 +1,6 @@
 package io.legado.app.help.storage
 
 import android.content.Context
-import android.database.sqlite.SQLiteConstraintException
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import androidx.room.withTransaction
@@ -337,16 +336,13 @@ object Restore {
             }
             File(path, "servers.json").takeIf {
                 it.exists()
-            }?.runCatching {
-                var json = readText()
+            }?.let { file ->
+                var json = file.readText()
                 if (!json.isJsonArray()) {
                     json = aes.decryptStr(json)
                 }
-                GSON.fromJsonArray<Server>(json).getOrNull()?.let {
-                    appDb.serverDao.insert(*it.toTypedArray())
-                }
-            }?.onFailure {
-                AppLog.put("恢复服务器配置出错\n${it.localizedMessage}", it)
+                val servers = GSON.fromJsonArray<Server>(json).getOrThrow()
+                appDb.serverDao.insert(*servers.toTypedArray())
             }
         }
     }
@@ -373,14 +369,14 @@ object Restore {
                 book.coverUrl = LocalBook.getCoverPath(book)
             }
         val refs = hashMapOf<String, RestoredBookRef>()
-        val newBooks = arrayListOf<Book>()
         val ignoreLocalBook = BackupConfig.ignoreLocalBook
         books.forEach { book ->
             if (ignoreLocalBook && book.isLocal) {
                 return@forEach
             }
             // 身份命中且 bookUrl 不同：并入本机行，不再插入备份主键，书架不产生同书重复条目。
-            val localByIdentity = findLocalBookByIdentity(book)
+            val localByIdentity = appDb.bookDao.getBook(book.bookUrl)
+                ?: findLocalBookByIdentity(book)
             if (localByIdentity != null && localByIdentity.bookUrl != book.bookUrl) {
                 appDb.bookDao.update(mergeBackupIntoLocal(localByIdentity, book))
                 refs[book.bookUrl] = RestoredBookRef(
@@ -390,17 +386,13 @@ object Restore {
                 return@forEach
             }
             if (appDb.bookDao.has(book.bookUrl)) {
-                try {
-                    appDb.bookDao.update(book)
-                } catch (_: SQLiteConstraintException) {
-                    appDb.bookDao.insert(book)
-                }
+                appDb.bookDao.update(book)
             } else {
-                newBooks.add(book)
+                // 立即插入，使同一备份后续条目也能按身份命中；外层事务保证整体回滚。
+                appDb.bookDao.insert(book)
             }
             refs[book.bookUrl] = RestoredBookRef(book.bookUrl, sameOrigin = true)
         }
-        appDb.bookDao.insert(*newBooks.toTypedArray())
         return refs
     }
 
@@ -432,8 +424,7 @@ object Restore {
      *   一律保持 [local]；特别是 `variable`——恢复不动 origin，本机源脚本变量必须随本机，
      *   否则书源脚本状态与 origin 错配。
      * - 用户自定义字段（标签/简介/自定义封面/阅读配置）本机为空才用备份补，不覆盖本机填写。
-     * - 分组是位掩码取并集，否则被并书所在分组会被静默丢弃；syncTime 取较晚者
-     *   （参与 WebDAV 进度同步判定，取小值会让本机新状态被误判为无更新）。
+     * - 分组取并集；本机更新开关和 syncTime 保持原值，未同步的备份不能推进同步水位。
      * - 绝不删除本机数据。
      */
     private fun mergeBackupIntoLocal(local: Book, backup: Book): Book {
@@ -442,9 +433,7 @@ object Restore {
         if (merged.customIntro == null) merged.customIntro = backup.customIntro
         if (merged.customCoverUrl == null) merged.customCoverUrl = backup.customCoverUrl
         if (merged.readConfig == null) merged.readConfig = backup.readConfig
-        if (!merged.canUpdate) merged.canUpdate = backup.canUpdate
         merged.group = local.group or backup.group
-        merged.syncTime = maxOf(local.syncTime, backup.syncTime)
         return merged
     }
 
@@ -454,15 +443,19 @@ object Restore {
      * ① 每行必须重映射到最终落库的书 URL（ignoreLocalBook 跳过的本地书、身份合并的书，其原 URL 不在库）；
      * ② 找不到父行的行跳过并记日志（暴露而非静默）；
      * ③ 身份合并且跨源时丢弃备份配图——chapterIndex 锚定备份源目录，与本机目录不可比；
-     * ④ 目标书已存在同章节配图则跳过，避免重复恢复不断累积副本（落库 id=0 自增，重复插入即新增）。
+     * ④ 按配图内容去重，不能因章节已有一张配图就丢弃该章其他配图。
      * 不删除任何本机配图：备份不含章节表，本机配图清掉即永久丢失。
      */
     private fun restoreIllustrations(path: String, restoredBooks: Map<String, RestoredBookRef>) {
         val illustrations = fileToListT<BookIllustration>(path, "bookIllustration.json") ?: return
         val pending = arrayListOf<BookIllustration>()
+        val known = hashMapOf<Pair<String, Int>, MutableSet<BookIllustration>>()
         var skipped = 0
         illustrations.forEach { illustration ->
             val ref = restoredBooks[illustration.bookUrl]
+                ?: appDb.bookDao.getBook(illustration.bookUrl)?.let {
+                    RestoredBookRef(it.bookUrl, sameOrigin = true)
+                }
             if (ref == null) {
                 skipped++
                 return@forEach
@@ -471,12 +464,12 @@ object Restore {
                 skipped++
                 return@forEach
             }
-            val exist = appDb.bookIllustrationDao
-                .getByBookAndChapter(ref.bookUrl, illustration.chapterIndex)
-            if (exist.isNotEmpty()) {
-                return@forEach
+            val restored = illustration.copy(id = 0, bookUrl = ref.bookUrl)
+            val existing = known.getOrPut(ref.bookUrl to illustration.chapterIndex) {
+                appDb.bookIllustrationDao.getByBookAndChapter(ref.bookUrl, illustration.chapterIndex)
+                    .map { it.copy(id = 0) }.toMutableSet()
             }
-            pending.add(illustration.copy(id = 0, bookUrl = ref.bookUrl))
+            if (existing.add(restored)) pending.add(restored)
         }
         if (pending.isNotEmpty()) {
             appDb.bookIllustrationDao.insert(*pending.toTypedArray())
@@ -501,7 +494,7 @@ object Restore {
             }
         } catch (e: Exception) {
             AppLog.put("$fileName\n读取解析出错\n${e.localizedMessage}", e)
-            appCtx.toastOnUi("$fileName\n读取文件出错\n${e.localizedMessage}")
+            throw IllegalStateException("$fileName 读取失败，恢复已中止", e)
         }
         return null
     }
@@ -552,11 +545,9 @@ object Restore {
                         runCatching {
                             GSON.fromJson(bookJson, Book::class.java)
                         }.onSuccess { book ->
-                            if (book != null) {
-                                list.add(book)
-                            }
+                            list.add(requireNotNull(book) { "书籍条目为 null" })
                         }.onFailure {
-                            AppLog.put("$fileName 第${index + 1}项读取失败\n${it.localizedMessage}", it)
+                            throw IllegalStateException("$fileName 第${index + 1}项读取失败", it)
                         }
                     }
                 }
@@ -567,7 +558,7 @@ object Restore {
             }
         } catch (e: Exception) {
             AppLog.put("$fileName\n读取解析出错\n${e.localizedMessage}", e)
-            appCtx.toastOnUi("$fileName\n读取文件出错\n${e.localizedMessage}")
+            throw IllegalStateException("$fileName 读取失败，恢复已中止", e)
         }
         return null
     }
