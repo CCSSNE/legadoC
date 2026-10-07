@@ -42,6 +42,7 @@ class TextFile(private var book: Book) {
             return textFile!!
         }
 
+        @Synchronized
         @Throws(FileNotFoundException::class)
         fun getChapterList(book: Book): ArrayList<BookChapter> {
             return getTextFile(book).getChapterList()
