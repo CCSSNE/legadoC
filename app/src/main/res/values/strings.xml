@@ -1543,6 +1543,10 @@
     <string name="bluetooth_key_next_track">Next track</string>
     <string name="bluetooth_key_fast_forward">Fast forward</string>
     <string name="bluetooth_key_play_pause">Play/Pause</string>
+    <string name="bluetooth_key_volume_up">Volume up</string>
+    <string name="bluetooth_key_volume_down">Volume down</string>
+    <string name="bluetooth_mode_read">Reading</string>
+    <string name="bluetooth_mode_aloud">Read aloud</string>
     <string name="bluetooth_action_page_bookmark">Whole-page bookmark</string>
     <string name="bluetooth_action_read_aloud_previous_paragraph">Read aloud previous paragraph</string>
     <string name="bluetooth_action_read_aloud_next_paragraph">Read aloud next paragraph</string>

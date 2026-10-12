@@ -103,20 +103,6 @@
 
     <io.legado.app.lib.prefs.SwitchPreference
         android:defaultValue="true"
-        android:key="volumeKeyPage"
-        android:title="@string/volume_key_page"
-        app:iconSpaceReserved="false"
-        app:isBottomBackground="true" />
-
-    <io.legado.app.lib.prefs.SwitchPreference
-        android:defaultValue="false"
-        android:key="volumeKeyPageOnPlay"
-        android:title="@string/volume_key_page_on_play"
-        app:iconSpaceReserved="false"
-        app:isBottomBackground="true" />
-
-    <io.legado.app.lib.prefs.SwitchPreference
-        android:defaultValue="true"
         android:key="illustrationAudioVolumeKey"
         android:title="@string/illustration_audio_volume_key"
         android:summary="@string/illustration_audio_volume_key_summary"

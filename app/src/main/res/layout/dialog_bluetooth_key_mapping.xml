@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
@@ -15,13 +14,9 @@
         android:textSize="18sp" />
 
     <LinearLayout
-        android:id="@+id/row_previous_track"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
-        android:clickable="true"
-        android:focusable="true"
-        android:foreground="?attr/selectableItemBackground"
         android:gravity="center_vertical"
         android:minHeight="44dp"
         android:orientation="horizontal">
@@ -38,21 +33,26 @@
             android:id="@+id/action_previous_track"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:background="@drawable/selector_fillet_btn_bg"
+            android:clickable="true"
             android:contentDescription="@string/bluetooth_action_choose"
+            android:focusable="true"
+            android:gravity="center"
             android:maxLines="1"
-            android:textColor="@color/secondaryText"
+            android:minWidth="96dp"
+            android:paddingStart="12dp"
+            android:paddingTop="6dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="6dp"
+            android:textColor="@color/primaryText"
             android:textSize="15sp"
             tools:text="@string/non_action" />
 
     </LinearLayout>
 
     <LinearLayout
-        android:id="@+id/row_rewind"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:clickable="true"
-        android:focusable="true"
-        android:foreground="?attr/selectableItemBackground"
         android:gravity="center_vertical"
         android:minHeight="44dp"
         android:orientation="horizontal">
@@ -69,21 +69,26 @@
             android:id="@+id/action_rewind"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:background="@drawable/selector_fillet_btn_bg"
+            android:clickable="true"
             android:contentDescription="@string/bluetooth_action_choose"
+            android:focusable="true"
+            android:gravity="center"
             android:maxLines="1"
-            android:textColor="@color/secondaryText"
+            android:minWidth="96dp"
+            android:paddingStart="12dp"
+            android:paddingTop="6dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="6dp"
+            android:textColor="@color/primaryText"
             android:textSize="15sp"
             tools:text="@string/bluetooth_action_read_aloud_previous_paragraph" />
 
     </LinearLayout>
 
     <LinearLayout
-        android:id="@+id/row_next_track"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:clickable="true"
-        android:focusable="true"
-        android:foreground="?attr/selectableItemBackground"
         android:gravity="center_vertical"
         android:minHeight="44dp"
         android:orientation="horizontal">
@@ -100,21 +105,26 @@
             android:id="@+id/action_next_track"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:background="@drawable/selector_fillet_btn_bg"
+            android:clickable="true"
             android:contentDescription="@string/bluetooth_action_choose"
+            android:focusable="true"
+            android:gravity="center"
             android:maxLines="1"
-            android:textColor="@color/secondaryText"
+            android:minWidth="96dp"
+            android:paddingStart="12dp"
+            android:paddingTop="6dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="6dp"
+            android:textColor="@color/primaryText"
             android:textSize="15sp"
             tools:text="@string/non_action" />
 
     </LinearLayout>
 
     <LinearLayout
-        android:id="@+id/row_fast_forward"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:clickable="true"
-        android:focusable="true"
-        android:foreground="?attr/selectableItemBackground"
         android:gravity="center_vertical"
         android:minHeight="44dp"
         android:orientation="horizontal">
@@ -131,21 +141,26 @@
             android:id="@+id/action_fast_forward"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:background="@drawable/selector_fillet_btn_bg"
+            android:clickable="true"
             android:contentDescription="@string/bluetooth_action_choose"
+            android:focusable="true"
+            android:gravity="center"
             android:maxLines="1"
-            android:textColor="@color/secondaryText"
+            android:minWidth="96dp"
+            android:paddingStart="12dp"
+            android:paddingTop="6dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="6dp"
+            android:textColor="@color/primaryText"
             android:textSize="15sp"
             tools:text="@string/bluetooth_action_read_aloud_next_paragraph" />
 
     </LinearLayout>
 
     <LinearLayout
-        android:id="@+id/row_play_pause"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:clickable="true"
-        android:focusable="true"
-        android:foreground="?attr/selectableItemBackground"
         android:gravity="center_vertical"
         android:minHeight="44dp"
         android:orientation="horizontal">
@@ -162,19 +177,137 @@
             android:id="@+id/action_play_pause"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:background="@drawable/selector_fillet_btn_bg"
+            android:clickable="true"
             android:contentDescription="@string/bluetooth_action_choose"
+            android:focusable="true"
+            android:gravity="center"
             android:maxLines="1"
-            android:textColor="@color/secondaryText"
+            android:minWidth="96dp"
+            android:paddingStart="12dp"
+            android:paddingTop="6dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="6dp"
+            android:textColor="@color/primaryText"
             android:textSize="15sp"
             tools:text="@string/non_action" />
 
     </LinearLayout>
 
-    <com.google.android.flexbox.FlexboxLayout
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:paddingTop="8dp"
-        app:justifyContent="flex_end">
+        android:gravity="center_vertical"
+        android:minHeight="44dp"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/label_volume_up"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="@color/primaryText"
+            android:textSize="16sp" />
+
+        <TextView
+            android:id="@+id/action_volume_up"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/selector_fillet_btn_bg"
+            android:clickable="true"
+            android:contentDescription="@string/bluetooth_action_choose"
+            android:focusable="true"
+            android:gravity="center"
+            android:maxLines="1"
+            android:minWidth="96dp"
+            android:paddingStart="12dp"
+            android:paddingTop="6dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="6dp"
+            android:textColor="@color/primaryText"
+            android:textSize="15sp"
+            tools:text="@string/prev_page" />
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:minHeight="44dp"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/label_volume_down"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="@color/primaryText"
+            android:textSize="16sp" />
+
+        <TextView
+            android:id="@+id/action_volume_down"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/selector_fillet_btn_bg"
+            android:clickable="true"
+            android:contentDescription="@string/bluetooth_action_choose"
+            android:focusable="true"
+            android:gravity="center"
+            android:maxLines="1"
+            android:minWidth="96dp"
+            android:paddingStart="12dp"
+            android:paddingTop="6dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="6dp"
+            android:textColor="@color/primaryText"
+            android:textSize="15sp"
+            tools:text="@string/next_page" />
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/tv_mode_read"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:background="@drawable/shape_fillet_btn_press"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
+            android:text="@string/bluetooth_mode_read"
+            android:textColor="@color/primaryText" />
+
+        <Space
+            android:layout_width="8dp"
+            android:layout_height="wrap_content" />
+
+        <TextView
+            android:id="@+id/tv_mode_aloud"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:background="@drawable/shape_fillet_btn"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
+            android:text="@string/bluetooth_mode_aloud"
+            android:textColor="@color/primaryText" />
+
+        <Space
+            android:layout_width="8dp"
+            android:layout_height="wrap_content" />
 
         <io.legado.app.ui.widget.text.AccentTextView
             android:id="@+id/tv_close"
@@ -184,6 +317,6 @@
             android:text="@string/close"
             tools:ignore="RtlHardcoded" />
 
-    </com.google.android.flexbox.FlexboxLayout>
+    </LinearLayout>
 
 </LinearLayout>

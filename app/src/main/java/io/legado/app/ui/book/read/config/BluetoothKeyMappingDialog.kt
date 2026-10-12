@@ -35,9 +35,14 @@ class BluetoothKeyMappingDialog : BaseDialogFragment(R.layout.dialog_bluetooth_k
             ActionOption(
                 BluetoothKeyMapping.ACTION_READ_ALOUD_NEXT_PARAGRAPH,
                 R.string.bluetooth_action_read_aloud_next_paragraph
-            )
+            ),
+            ActionOption(BluetoothKeyMapping.ACTION_PREVIOUS_CHAPTER, R.string.previous_chapter),
+            ActionOption(BluetoothKeyMapping.ACTION_NEXT_CHAPTER, R.string.next_chapter),
+            ActionOption(BluetoothKeyMapping.ACTION_READ_ALOUD_TOGGLE, R.string.read_aloud_pause_resume)
         )
     }
+
+    private var showReading = true
 
     override fun onStart() {
         super.onStart()
@@ -45,70 +50,90 @@ class BluetoothKeyMappingDialog : BaseDialogFragment(R.layout.dialog_bluetooth_k
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        val rows = listOf(
-            binding.rowPreviousTrack,
-            binding.rowRewind,
-            binding.rowNextTrack,
-            binding.rowFastForward,
-            binding.rowPlayPause
-        )
         val actionViews = listOf(
             binding.actionPreviousTrack,
             binding.actionRewind,
             binding.actionNextTrack,
             binding.actionFastForward,
-            binding.actionPlayPause
+            binding.actionPlayPause,
+            binding.actionVolumeUp,
+            binding.actionVolumeDown
         )
         val labelViews = listOf(
             binding.labelPreviousTrack,
             binding.labelRewind,
             binding.labelNextTrack,
             binding.labelFastForward,
-            binding.labelPlayPause
+            binding.labelPlayPause,
+            binding.labelVolumeUp,
+            binding.labelVolumeDown
         )
-        BluetoothKeyMapping.keys.zip(actionViews).forEach { (key, actionView) ->
-            updateActionView(actionView, key.preferenceKey)
-        }
         BluetoothKeyMapping.keys.zip(labelViews).forEach { (key, labelView) ->
             labelView.setText(key.label)
         }
-        BluetoothKeyMapping.keys.zip(rows.zip(actionViews)).forEach { (key, rowAndAction) ->
-            val (row, actionView) = rowAndAction
-            row.setOnClickListener {
-                showActionSelector(actionView, key.preferenceKey)
+        BluetoothKeyMapping.keys.zip(actionViews).forEach { (key, actionView) ->
+            actionView.setOnClickListener {
+                showActionSelector(actionView, key)
             }
+        }
+        binding.tvModeRead.setOnClickListener {
+            showReading = true
+            refreshAll()
+        }
+        binding.tvModeAloud.setOnClickListener {
+            showReading = false
+            refreshAll()
         }
         binding.tvClose.setOnClickListener {
             dismissAllowingStateLoss()
         }
+        refreshAll()
     }
 
-    private fun showActionSelector(actionView: TextView, preferenceKey: String) {
+    private fun refreshAll() {
+        val actionViews = listOf(
+            binding.actionPreviousTrack,
+            binding.actionRewind,
+            binding.actionNextTrack,
+            binding.actionFastForward,
+            binding.actionPlayPause,
+            binding.actionVolumeUp,
+            binding.actionVolumeDown
+        )
+        BluetoothKeyMapping.keys.zip(actionViews).forEach { (key, actionView) ->
+            updateActionView(actionView, key)
+        }
+        binding.tvModeRead.setBackgroundResource(
+            if (showReading) R.drawable.shape_fillet_btn_press else R.drawable.shape_fillet_btn
+        )
+        binding.tvModeAloud.setBackgroundResource(
+            if (showReading) R.drawable.shape_fillet_btn else R.drawable.shape_fillet_btn_press
+        )
+    }
+
+    private fun slotKey(key: BluetoothKeyMapping.Key): String {
+        return if (showReading) key.preferenceKey else key.playPreferenceKey
+    }
+
+    private fun slotDefault(key: BluetoothKeyMapping.Key): Int {
+        return if (showReading) key.defaultAction else key.defaultPlayAction
+    }
+
+    private fun showActionSelector(actionView: TextView, key: BluetoothKeyMapping.Key) {
         context?.selector(
             R.string.bluetooth_action_select,
             actionOptions.map { getString(it.title) }
         ) { _, index ->
-            putPrefInt(preferenceKey, actionOptions[index].value)
-            updateActionView(actionView, preferenceKey)
+            putPrefInt(slotKey(key), actionOptions[index].value)
+            updateActionView(actionView, key)
         }
     }
 
-    private fun updateActionView(actionView: TextView, preferenceKey: String) {
-        val key = BluetoothKeyMapping.keys.firstOrNull {
-            it.preferenceKey == preferenceKey
-        } ?: error("Unknown Bluetooth key preference: $preferenceKey")
+    private fun updateActionView(actionView: TextView, key: BluetoothKeyMapping.Key) {
         val selected = actionOptions.firstOrNull {
-            it.value == getPrefInt(preferenceKey, key.defaultAction)
-        } ?: error("Unknown Bluetooth key action for $preferenceKey")
-        actionView.text = if (selected.value == BluetoothKeyMapping.ACTION_NONE) {
-            ""
-        } else {
-            getString(selected.title)
-        }
-        actionView.contentDescription = if (selected.value == BluetoothKeyMapping.ACTION_NONE) {
-            getString(R.string.bluetooth_action_choose)
-        } else {
-            getString(selected.title)
-        }
+            it.value == getPrefInt(slotKey(key), slotDefault(key))
+        } ?: error("Unknown Bluetooth key action for ${slotKey(key)}")
+        actionView.text = getString(selected.title)
+        actionView.contentDescription = getString(selected.title)
     }
 }

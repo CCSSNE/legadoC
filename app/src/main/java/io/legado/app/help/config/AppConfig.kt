@@ -1655,12 +1655,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val keyPageOnLongPress
         get() = appCtx.getPrefBoolean(PreferKey.keyPageOnLongPress, false)
 
-    val volumeKeyPage
-        get() = appCtx.getPrefBoolean(PreferKey.volumeKeyPage, true)
-
-    val volumeKeyPageOnPlay
-        get() = appCtx.getPrefBoolean(PreferKey.volumeKeyPageOnPlay, false)
-
     val illustrationAudioVolumeKey
         get() = appCtx.getPrefBoolean(PreferKey.illustrationAudioVolumeKey, true)
 

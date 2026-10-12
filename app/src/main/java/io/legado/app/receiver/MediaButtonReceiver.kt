@@ -16,8 +16,6 @@ import io.legado.app.ui.book.audio.AudioPlayActivity
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.read.config.BluetoothKeyMapping
 import io.legado.app.utils.LogUtils
-import io.legado.app.utils.getPrefBoolean
-import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.postEvent
 
 
@@ -52,26 +50,18 @@ class MediaButtonReceiver : BroadcastReceiver() {
                     }
                     when (keycode) {
                         KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
-                            if (context.getPrefBoolean("mediaButtonPerNext", false)) {
-                                if (BaseReadAloudService.isRun) {
-                                    ReadAloud.prevChapter(context)
-                                } else {
-                                    ReadBook.moveToPrevChapter(true)
-                                }
-                            } else {
+                            if (BaseReadAloudService.isRun) {
                                 ReadAloud.prevParagraph(context)
+                            } else {
+                                ReadBook.moveToPrevChapter(true)
                             }
                         }
 
                         KeyEvent.KEYCODE_MEDIA_NEXT -> {
-                            if (context.getPrefBoolean("mediaButtonPerNext", false)) {
-                                if (BaseReadAloudService.isRun) {
-                                    ReadAloud.nextChapter(context)
-                                } else {
-                                    ReadBook.moveToNextChapter(true)
-                                }
-                            } else {
+                            if (BaseReadAloudService.isRun) {
                                 ReadAloud.nextParagraph(context)
+                            } else {
+                                ReadBook.moveToNextChapter(true)
                             }
                         }
 
@@ -126,29 +116,14 @@ class MediaButtonReceiver : BroadcastReceiver() {
                 ?: if (!screenIsInteractive) ReadBookActivity.readerInstance() else null
             if (activity?.handleBluetoothMediaKey(keyCode) == true) return true
 
-            val key = BluetoothKeyMapping.keyForKeyCode(keyCode) ?: return false
-            return when (context.getPrefInt(key.preferenceKey, key.defaultAction)) {
-                BluetoothKeyMapping.ACTION_READ_ALOUD_PREVIOUS_PARAGRAPH -> {
-                    BluetoothReadAloudSkip.enqueue(
-                        context,
-                        BluetoothReadAloudSkip.Direction.PREVIOUS
-                    )
-                    true
-                }
-
-                BluetoothKeyMapping.ACTION_READ_ALOUD_NEXT_PARAGRAPH -> {
-                    BluetoothReadAloudSkip.enqueue(
-                        context,
-                        BluetoothReadAloudSkip.Direction.NEXT
-                    )
-                    true
-                }
-
-                BluetoothKeyMapping.ACTION_NONE -> keyCode == KeyEvent.KEYCODE_MEDIA_REWIND ||
+            val key = BluetoothKeyMapping.keyForKeyCode(keyCode)
+                ?.takeIf { it.isMediaKey } ?: return false
+            val action = BluetoothKeyMapping.slotAction(key, context)
+            if (action == BluetoothKeyMapping.ACTION_NONE) {
+                return keyCode == KeyEvent.KEYCODE_MEDIA_REWIND ||
                     keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD
-
-                else -> false
             }
+            return BluetoothKeyMapping.dispatch(action, context, null)
         }
     }
 

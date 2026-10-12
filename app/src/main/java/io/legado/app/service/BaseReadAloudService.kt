@@ -1602,11 +1602,7 @@ abstract class BaseReadAloudService : BaseService(),
                         KeyEvent.KEYCODE_MEDIA_NEXT
                     )
                 ) return
-                if (getPrefBoolean("mediaButtonPerNext", false)) {
-                    nextChapter(syncView = true)
-                } else {
-                    nextP()
-                }
+                nextP()
             }
 
             override fun onSkipToPrevious() {
@@ -1615,11 +1611,7 @@ abstract class BaseReadAloudService : BaseService(),
                         KeyEvent.KEYCODE_MEDIA_PREVIOUS
                     )
                 ) return
-                if (getPrefBoolean("mediaButtonPerNext", false)) {
-                    prevChapter(syncView = true)
-                } else {
-                    prevP()
-                }
+                prevP()
             }
 
             override fun onStop() {

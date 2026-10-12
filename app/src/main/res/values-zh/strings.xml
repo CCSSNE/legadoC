@@ -1291,6 +1291,10 @@
     <string name="bluetooth_key_next_track">下一曲</string>
     <string name="bluetooth_key_fast_forward">快进</string>
     <string name="bluetooth_key_play_pause">播放暂停</string>
+    <string name="bluetooth_key_volume_up">音量加</string>
+    <string name="bluetooth_key_volume_down">音量减</string>
+    <string name="bluetooth_mode_read">阅读式</string>
+    <string name="bluetooth_mode_aloud">朗读式</string>
     <string name="bluetooth_action_page_bookmark">整页书签</string>
     <string name="bluetooth_action_read_aloud_previous_paragraph">朗读上一段</string>
     <string name="bluetooth_action_read_aloud_next_paragraph">朗读下一段</string>

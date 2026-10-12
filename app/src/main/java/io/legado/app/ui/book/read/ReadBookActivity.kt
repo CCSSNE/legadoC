@@ -93,7 +93,6 @@ import io.legado.app.model.ReadBook
 import io.legado.app.utils.isJsonObject
 import io.legado.app.model.localBook.EpubFile
 import io.legado.app.model.localBook.MobiFile
-import io.legado.app.receiver.BluetoothReadAloudSkip
 import io.legado.app.receiver.NetworkChangedListener
 import io.legado.app.receiver.TimeBatteryReceiver
 import io.legado.app.service.BaseReadAloudService
@@ -1065,11 +1064,11 @@ class ReadBookActivity : BaseReadBookActivity(),
             }
         }
         when (keyCode) {
-            KeyEvent.KEYCODE_VOLUME_UP -> if (volumeKeyPage(PageDirection.PREV, longPress)) {
+            KeyEvent.KEYCODE_VOLUME_UP -> if (handleVolumeKey(keyCode, longPress)) {
                 return true
             }
 
-            KeyEvent.KEYCODE_VOLUME_DOWN -> if (volumeKeyPage(PageDirection.NEXT, longPress)) {
+            KeyEvent.KEYCODE_VOLUME_DOWN -> if (handleVolumeKey(keyCode, longPress)) {
                 return true
             }
 
@@ -1098,7 +1097,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
         when (keyCode) {
             KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN -> {
-                if (volumeKeyPage(PageDirection.NONE, false)) {
+                if (isVolumeKeyConsumed(keyCode)) {
                     return true
                 }
             }
@@ -1686,21 +1685,45 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     /**
-     * 音量键翻页
+     * 音量键走按键映射表（阅读/朗读双态），无映射则交还系统调音量。
      */
-    private fun volumeKeyPage(direction: PageDirection, longPress: Boolean): Boolean {
-        if (!AppConfig.volumeKeyPage) {
-            return false
-        }
-        if (!AppConfig.volumeKeyPageOnPlay && BaseReadAloudService.isPlay()) {
-            return false
-        }
+    private fun handleVolumeKey(keyCode: Int, longPress: Boolean): Boolean {
+        val key = BluetoothKeyMapping.keyForKeyCode(keyCode)
+            ?.takeIf { !it.isMediaKey } ?: return false
         // 内嵌音频块播放时，按设置决定音量键是否让位给系统调音量（像听书一样）
         if (AppConfig.illustrationAudioVolumeKey && AudioBlockPlayer.isPlaying) {
             return false
         }
-        handleKeyPage(direction, longPress)
-        return true
+        val action = BluetoothKeyMapping.slotAction(key, this)
+        if (action == BluetoothKeyMapping.ACTION_NONE) {
+            return key.consumeWhenNone
+        }
+        if (action == BluetoothKeyMapping.ACTION_PREVIOUS_PAGE
+            || action == BluetoothKeyMapping.ACTION_NEXT_PAGE
+        ) {
+            handleKeyPage(
+                if (action == BluetoothKeyMapping.ACTION_PREVIOUS_PAGE) {
+                    PageDirection.PREV
+                } else {
+                    PageDirection.NEXT
+                },
+                longPress
+            )
+            return true
+        }
+        if (longPress) {
+            return true
+        }
+        return BluetoothKeyMapping.dispatch(action, this, bluetoothUiHandler)
+    }
+
+    private fun isVolumeKeyConsumed(keyCode: Int): Boolean {
+        val key = BluetoothKeyMapping.keyForKeyCode(keyCode)
+            ?.takeIf { !it.isMediaKey } ?: return false
+        if (AppConfig.illustrationAudioVolumeKey && AudioBlockPlayer.isPlaying) {
+            return false
+        }
+        return BluetoothKeyMapping.slotAction(key, this) != BluetoothKeyMapping.ACTION_NONE
     }
 
     private fun handleKeyPage(direction: PageDirection, longPress: Boolean) {
@@ -3244,23 +3267,22 @@ class ReadBookActivity : BaseReadBookActivity(),
         return true
     }
 
+    private val bluetoothUiHandler = object : BluetoothKeyMapping.UiHandler {
+        override fun pageBookmark(): Boolean = addPageBookmarkSilently()
+        override fun previousPage() = keyPage(PageDirection.PREV)
+        override fun nextPage() = keyPage(PageDirection.NEXT)
+        override fun toggleReadAloud() = onClickReadAloud()
+    }
+
     fun handleBluetoothMediaKey(keyCode: Int): Boolean {
         val key = BluetoothKeyMapping.keyForKeyCode(keyCode) ?: return false
+        if (!key.isMediaKey) return false
         // An empty mapping is an explicit no-op; consume it instead of running legacy media actions.
-        when (val action = getPrefInt(key.preferenceKey, key.defaultAction)) {
-            BluetoothKeyMapping.ACTION_NONE -> Unit
-            BluetoothKeyMapping.ACTION_PAGE_BOOKMARK -> addPageBookmarkSilently()
-            BluetoothKeyMapping.ACTION_PREVIOUS_PAGE -> keyPage(PageDirection.PREV)
-            BluetoothKeyMapping.ACTION_NEXT_PAGE -> keyPage(PageDirection.NEXT)
-            BluetoothKeyMapping.ACTION_READ_ALOUD_PREVIOUS_PARAGRAPH ->
-                BluetoothReadAloudSkip.enqueue(this, BluetoothReadAloudSkip.Direction.PREVIOUS)
-
-            BluetoothKeyMapping.ACTION_READ_ALOUD_NEXT_PARAGRAPH ->
-                BluetoothReadAloudSkip.enqueue(this, BluetoothReadAloudSkip.Direction.NEXT)
-
-            else -> error("Unknown Bluetooth key action: $action")
+        val action = BluetoothKeyMapping.slotAction(key, this)
+        if (action == BluetoothKeyMapping.ACTION_NONE) {
+            return key.consumeWhenNone
         }
-        return true
+        return BluetoothKeyMapping.dispatch(action, this, bluetoothUiHandler)
     }
 
     /** 当前页是否有整页书签（按页首文字匹配） */
