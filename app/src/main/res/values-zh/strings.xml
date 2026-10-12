@@ -1281,6 +1281,15 @@
     <string name="next_page">下一页</string>
     <string name="prev_page">上一页</string>
     <string name="non_action">无操作</string>
+    <string name="bluetooth_key_mapping">蓝牙按键映射</string>
+    <string name="bluetooth_key_previous_track">上一曲</string>
+    <string name="bluetooth_key_rewind">快退</string>
+    <string name="bluetooth_key_next_track">下一曲</string>
+    <string name="bluetooth_key_fast_forward">快进</string>
+    <string name="bluetooth_key_play_pause">播放暂停</string>
+    <string name="bluetooth_action_page_bookmark">整页书签</string>
+    <string name="bluetooth_action_select">选择功能</string>
+    <string name="bluetooth_action_choose">选择功能</string>
     <string name="body_title">正文标题</string>
     <string name="show_hide">显示/隐藏</string>
     <string name="header_footer">页眉<![CDATA[&]]>页脚</string>

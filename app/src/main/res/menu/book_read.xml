@@ -191,4 +191,9 @@
         android:title="@string/help"
         app:showAsAction="never" />
 
+    <item
+        android:id="@+id/menu_bluetooth_key_mapping"
+        android:title="@string/bluetooth_key_mapping"
+        app:showAsAction="never" />
+
 </menu>

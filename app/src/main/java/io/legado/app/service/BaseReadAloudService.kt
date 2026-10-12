@@ -32,6 +32,7 @@ import android.support.v4.media.session.PlaybackStateCompat
 import android.telephony.PhoneStateListener
 import android.telephony.TelephonyManager
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewOutlineProvider
@@ -1576,14 +1577,31 @@ abstract class BaseReadAloudService : BaseService(),
         )
         mediaSessionCompat.setCallback(object : MediaSessionCompat.Callback() {
             override fun onPlay() {
-                resumeReadAloud()
+                if (!MediaButtonReceiver.handleReaderMediaKey(
+                        this@BaseReadAloudService,
+                        KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
+                    )
+                ) {
+                    resumeReadAloud()
+                }
             }
 
             override fun onPause() {
-                pauseReadAloud()
+                if (!MediaButtonReceiver.handleReaderMediaKey(
+                        this@BaseReadAloudService,
+                        KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
+                    )
+                ) {
+                    pauseReadAloud()
+                }
             }
 
             override fun onSkipToNext() {
+                if (MediaButtonReceiver.handleReaderMediaKey(
+                        this@BaseReadAloudService,
+                        KeyEvent.KEYCODE_MEDIA_NEXT
+                    )
+                ) return
                 if (getPrefBoolean("mediaButtonPerNext", false)) {
                     nextChapter(syncView = true)
                 } else {
@@ -1592,6 +1610,11 @@ abstract class BaseReadAloudService : BaseService(),
             }
 
             override fun onSkipToPrevious() {
+                if (MediaButtonReceiver.handleReaderMediaKey(
+                        this@BaseReadAloudService,
+                        KeyEvent.KEYCODE_MEDIA_PREVIOUS
+                    )
+                ) return
                 if (getPrefBoolean("mediaButtonPerNext", false)) {
                     prevChapter(syncView = true)
                 } else {
@@ -1601,6 +1624,26 @@ abstract class BaseReadAloudService : BaseService(),
 
             override fun onStop() {
                 stopSelf()
+            }
+
+            override fun onFastForward() {
+                if (!MediaButtonReceiver.handleReaderMediaKey(
+                        this@BaseReadAloudService,
+                        KeyEvent.KEYCODE_MEDIA_FAST_FORWARD
+                    )
+                ) {
+                    super.onFastForward()
+                }
+            }
+
+            override fun onRewind() {
+                if (!MediaButtonReceiver.handleReaderMediaKey(
+                        this@BaseReadAloudService,
+                        KeyEvent.KEYCODE_MEDIA_REWIND
+                    )
+                ) {
+                    super.onRewind()
+                }
             }
 
             override fun onCustomAction(action: String, extras: Bundle?) {

@@ -1533,6 +1533,15 @@
     <string name="next_page">Next page</string>
     <string name="prev_page">Prior page</string>
     <string name="non_action">None</string>
+    <string name="bluetooth_key_mapping">Bluetooth key mapping</string>
+    <string name="bluetooth_key_previous_track">Previous track</string>
+    <string name="bluetooth_key_rewind">Rewind</string>
+    <string name="bluetooth_key_next_track">Next track</string>
+    <string name="bluetooth_key_fast_forward">Fast forward</string>
+    <string name="bluetooth_key_play_pause">Play/Pause</string>
+    <string name="bluetooth_action_page_bookmark">Whole-page bookmark</string>
+    <string name="bluetooth_action_select">Choose action</string>
+    <string name="bluetooth_action_choose">Choose an action</string>
     <string name="body_title">Title</string>
     <string name="show_hide">Show/Hide</string>
     <string name="header_footer">Footer <![CDATA[&]]> Header</string>

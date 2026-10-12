@@ -104,6 +104,8 @@ import io.legado.app.ui.book.changesource.ChangeChapterSourceDialog
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.read.config.IllustrationEditDialog
 import io.legado.app.ui.book.read.config.AutoReadDialog
+import io.legado.app.ui.book.read.config.BluetoothKeyMapping
+import io.legado.app.ui.book.read.config.BluetoothKeyMappingActivity
 import io.legado.app.ui.book.read.creation.AiCreationDialog
 import io.legado.app.ui.book.read.config.BgTextConfigDialog.Companion.BG_COLOR
 import io.legado.app.ui.book.read.config.BgTextConfigDialog.Companion.READ_MENU_BG_COLOR
@@ -487,6 +489,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun onStart() {
         super.onStart()
         activeActivityRef = WeakReference(this)
+        readerInstanceRef = WeakReference(this)
         postEvent(EventBus.READ_BOOK_ACTIVITY_ACTIVE, true)
     }
 
@@ -827,6 +830,8 @@ class ReadBookActivity : BaseReadBookActivity(),
 
             R.id.menu_effective_replaces -> showDialogFragment<EffectiveReplacesDialog>()
 
+            R.id.menu_bluetooth_key_mapping -> startActivity<BluetoothKeyMappingActivity>()
+
             R.id.menu_offline_review_mode -> {
                 AppConfig.offlineReviewMode = !AppConfig.offlineReviewMode
                 item.isChecked = AppConfig.offlineReviewMode
@@ -1042,6 +1047,9 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         if (menuLayoutIsVisible) {
             return super.onKeyDown(keyCode, event)
+        }
+        if (handleBluetoothMediaKey(keyCode)) {
+            return true
         }
         val longPress = event.repeatCount > 0
         when {
@@ -3194,6 +3202,14 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     override fun addPageBookmark(): Boolean {
+        return savePageBookmark(showFeedback = true)
+    }
+
+    fun addPageBookmarkSilently(): Boolean {
+        return savePageBookmark(showFeedback = false)
+    }
+
+    private fun savePageBookmark(showFeedback: Boolean): Boolean {
         val book = ReadBook.book
         val page = ReadBook.curTextChapter?.getPage(ReadBook.durPageIndex)
         if (book == null || page == null) {
@@ -3210,7 +3226,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                 it.bookText.trim() == pageText
         }
         if (exists) {
-            toastOnUi(R.string.page_bookmark_added)
+            if (showFeedback) toastOnUi(R.string.page_bookmark_added)
             return false
         }
         val bookmark = book.createBookMark().apply {
@@ -3223,7 +3239,20 @@ class ReadBookActivity : BaseReadBookActivity(),
         appDb.bookmarkDao.insert(bookmark)
         bookmarkLoadChapterIndex = -1
         upChapterBookmarks()
-        toastOnUi(R.string.page_bookmark_added)
+        if (showFeedback) toastOnUi(R.string.page_bookmark_added)
+        return true
+    }
+
+    fun handleBluetoothMediaKey(keyCode: Int): Boolean {
+        val preferenceKey = BluetoothKeyMapping.preferenceForKeyCode(keyCode) ?: return false
+        // An empty mapping is an explicit no-op; consume it instead of running legacy media actions.
+        when (val action = getPrefInt(preferenceKey, BluetoothKeyMapping.ACTION_NONE)) {
+            BluetoothKeyMapping.ACTION_NONE -> Unit
+            BluetoothKeyMapping.ACTION_PAGE_BOOKMARK -> addPageBookmarkSilently()
+            BluetoothKeyMapping.ACTION_PREVIOUS_PAGE -> keyPage(PageDirection.PREV)
+            BluetoothKeyMapping.ACTION_NEXT_PAGE -> keyPage(PageDirection.NEXT)
+            else -> error("Unknown Bluetooth key action: $action")
+        }
         return true
     }
 
@@ -3576,6 +3605,9 @@ class ReadBookActivity : BaseReadBookActivity(),
         if (activeActivityRef?.get() === this) {
             activeActivityRef = null
         }
+        if (readerInstanceRef?.get() === this) {
+            readerInstanceRef = null
+        }
         postEvent(EventBus.READ_BOOK_ACTIVITY_ACTIVE, false)
         textActionMenu.dismiss()
         popupAction.dismiss()
@@ -3850,8 +3882,12 @@ class ReadBookActivity : BaseReadBookActivity(),
         const val DIRECT_AUDIO_PLAY_ALL = "all"
         const val DIRECT_AUDIO_PLAY_IF_NO_SUBTITLE = "ifNoSubtitle"
         private var activeActivityRef: WeakReference<ReadBookActivity>? = null
+        // Keep the reader through onStop so media keys can still act while the screen is off.
+        private var readerInstanceRef: WeakReference<ReadBookActivity>? = null
 
         fun activeActivity(): ReadBookActivity? = activeActivityRef?.get()
+
+        fun readerInstance(): ReadBookActivity? = readerInstanceRef?.get()
     }
 
 }

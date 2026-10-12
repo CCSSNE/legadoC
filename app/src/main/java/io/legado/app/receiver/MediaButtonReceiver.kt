@@ -3,6 +3,7 @@ package io.legado.app.receiver
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.PowerManager
 import android.view.KeyEvent
 import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
@@ -44,6 +45,9 @@ class MediaButtonReceiver : BroadcastReceiver() {
                 val action: Int = keyEvent.action
                 if (action == KeyEvent.ACTION_DOWN) {
                     LogUtils.d(TAG, "Receive mediaButton event, keycode:$keycode")
+                    if (handleReaderMediaKey(context, keycode)) {
+                        return true
+                    }
                     when (keycode) {
                         KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
                             if (context.getPrefBoolean("mediaButtonPerNext", false)) {
@@ -111,6 +115,14 @@ class MediaButtonReceiver : BroadcastReceiver() {
                     }
                 }
             }
+        }
+
+        fun handleReaderMediaKey(context: Context, keyCode: Int): Boolean {
+            val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+            val screenIsInteractive = powerManager.isInteractive
+            val activity = ReadBookActivity.activeActivity()
+                ?: if (!screenIsInteractive) ReadBookActivity.readerInstance() else null
+            return activity?.handleBluetoothMediaKey(keyCode) ?: false
         }
     }
 
