@@ -57,7 +57,7 @@
   <tr>
     <td width="33.33%" align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/28.png" width="100%" alt="界面截图 28" /></td>
     <td width="33.33%" align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/29.png" width="100%" alt="界面截图 29" /></td>
-    <td width="33.33%" align="center"></td>
+    <td width="33.33%" align="center"><img src="https://github.com/CCSSNE/legadoC/raw/own/docs/30.png" width="100%" alt="界面截图 30" /></td>
   </tr>
 </table>
 
