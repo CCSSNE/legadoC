@@ -82,7 +82,8 @@ object BackupConfig {
         PreferKey.clickActionBR,
         PreferKey.readAloudDoubleTapTimeout,
         PreferKey.readAloudScrollFollowTimeout,
-        PreferKey.readAloudProgressPollInterval
+        PreferKey.readAloudProgressPollInterval,
+        PreferKey.bluetoothReadAloudSkipInterval
     )
 
     private val themePrefKeys = arrayOf(

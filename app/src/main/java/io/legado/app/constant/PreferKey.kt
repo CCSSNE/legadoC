@@ -361,6 +361,7 @@ object PreferKey {
     const val readAloudDoubleTapTimeout = "readAloudDoubleTapTimeout"
     const val readAloudScrollFollowTimeout = "readAloudScrollFollowTimeout"
     const val readAloudProgressPollInterval = "readAloudProgressPollInterval"
+    const val bluetoothReadAloudSkipInterval = "bluetoothReadAloudSkipInterval"
     const val pageAnimationSpeed = "pageAnimationSpeed"
     const val keyPageAnimationSpeed = "keyPageAnimationSpeed"
     const val showAddToShelfAlert = "showAddToShelfAlert"

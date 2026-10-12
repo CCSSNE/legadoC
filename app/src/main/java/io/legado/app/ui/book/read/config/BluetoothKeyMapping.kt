@@ -11,11 +11,14 @@ object BluetoothKeyMapping {
     const val ACTION_PAGE_BOOKMARK = 1
     const val ACTION_PREVIOUS_PAGE = 2
     const val ACTION_NEXT_PAGE = 3
+    const val ACTION_READ_ALOUD_PREVIOUS_PARAGRAPH = 4
+    const val ACTION_READ_ALOUD_NEXT_PARAGRAPH = 5
 
     data class Key(
         val preferenceKey: String,
         @StringRes val label: Int,
-        val mediaKeyCode: Int
+        val mediaKeyCode: Int,
+        val defaultAction: Int = ACTION_NONE
     )
 
     val keys = listOf(
@@ -27,7 +30,8 @@ object BluetoothKeyMapping {
         Key(
             PreferKey.bluetoothRewindAction,
             R.string.bluetooth_key_rewind,
-            KeyEvent.KEYCODE_MEDIA_REWIND
+            KeyEvent.KEYCODE_MEDIA_REWIND,
+            ACTION_READ_ALOUD_PREVIOUS_PARAGRAPH
         ),
         Key(
             PreferKey.bluetoothNextTrackAction,
@@ -37,7 +41,8 @@ object BluetoothKeyMapping {
         Key(
             PreferKey.bluetoothFastForwardAction,
             R.string.bluetooth_key_fast_forward,
-            KeyEvent.KEYCODE_MEDIA_FAST_FORWARD
+            KeyEvent.KEYCODE_MEDIA_FAST_FORWARD,
+            ACTION_READ_ALOUD_NEXT_PARAGRAPH
         ),
         Key(
             PreferKey.bluetoothPlayPauseAction,
@@ -46,13 +51,17 @@ object BluetoothKeyMapping {
         )
     )
 
-    fun preferenceForKeyCode(keyCode: Int): String? =
-        keys.firstOrNull { it.mediaKeyCode == keyCode }?.preferenceKey
+    fun keyForKeyCode(keyCode: Int): Key? =
+        keys.firstOrNull { it.mediaKeyCode == keyCode }
             ?: when (keyCode) {
                 KeyEvent.KEYCODE_MEDIA_PLAY,
                 KeyEvent.KEYCODE_MEDIA_PAUSE,
-                KeyEvent.KEYCODE_HEADSETHOOK -> PreferKey.bluetoothPlayPauseAction
+                KeyEvent.KEYCODE_HEADSETHOOK -> keys.first {
+                    it.preferenceKey == PreferKey.bluetoothPlayPauseAction
+                }
 
                 else -> null
             }
+
+    fun preferenceForKeyCode(keyCode: Int): String? = keyForKeyCode(keyCode)?.preferenceKey
 }

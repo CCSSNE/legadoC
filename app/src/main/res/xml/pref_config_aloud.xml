@@ -34,6 +34,13 @@
             android:key="mediaButtonPerNext"
             app:iconSpaceReserved="false" />
 
+        <io.legado.app.lib.prefs.Preference
+            android:defaultValue="400"
+            android:key="bluetoothReadAloudSkipInterval"
+            android:summary="@string/bluetooth_read_aloud_skip_interval_summary"
+            android:title="@string/bluetooth_read_aloud_skip_interval_title"
+            app:iconSpaceReserved="false" />
+
         <io.legado.app.lib.prefs.SwitchPreference
             android:defaultValue="false"
             android:title="@string/read_aloud_force_page_follow"

@@ -44,6 +44,8 @@ import java.net.URI
 @Suppress("MemberVisibilityCanBePrivate", "ConstPropertyName")
 object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
+    const val DEFAULT_BLUETOOTH_READ_ALOUD_SKIP_INTERVAL = 400
+
     /** 评论打开方式取值 */
     object ReviewOpenMode {
         const val NETWORK = "network"
@@ -1790,6 +1792,15 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         get() = appCtx.getPrefInt(PreferKey.readAloudProgressPollInterval, 500).coerceIn(100, 5000)
         set(value) {
             appCtx.putPrefInt(PreferKey.readAloudProgressPollInterval, value.coerceIn(100, 5000))
+        }
+
+    var bluetoothReadAloudSkipInterval: Int
+        get() = appCtx.getPrefInt(
+            PreferKey.bluetoothReadAloudSkipInterval,
+            DEFAULT_BLUETOOTH_READ_ALOUD_SKIP_INTERVAL
+        )
+        set(value) {
+            appCtx.putPrefInt(PreferKey.bluetoothReadAloudSkipInterval, value)
         }
 
     var bookshelfSort: Int

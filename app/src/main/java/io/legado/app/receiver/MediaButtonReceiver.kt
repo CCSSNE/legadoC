@@ -14,8 +14,10 @@ import io.legado.app.model.ReadBook
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.book.audio.AudioPlayActivity
 import io.legado.app.ui.book.read.ReadBookActivity
+import io.legado.app.ui.book.read.config.BluetoothKeyMapping
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.getPrefBoolean
+import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.postEvent
 
 
@@ -122,7 +124,31 @@ class MediaButtonReceiver : BroadcastReceiver() {
             val screenIsInteractive = powerManager.isInteractive
             val activity = ReadBookActivity.activeActivity()
                 ?: if (!screenIsInteractive) ReadBookActivity.readerInstance() else null
-            return activity?.handleBluetoothMediaKey(keyCode) ?: false
+            if (activity?.handleBluetoothMediaKey(keyCode) == true) return true
+
+            val key = BluetoothKeyMapping.keyForKeyCode(keyCode) ?: return false
+            return when (context.getPrefInt(key.preferenceKey, key.defaultAction)) {
+                BluetoothKeyMapping.ACTION_READ_ALOUD_PREVIOUS_PARAGRAPH -> {
+                    BluetoothReadAloudSkip.enqueue(
+                        context,
+                        BluetoothReadAloudSkip.Direction.PREVIOUS
+                    )
+                    true
+                }
+
+                BluetoothKeyMapping.ACTION_READ_ALOUD_NEXT_PARAGRAPH -> {
+                    BluetoothReadAloudSkip.enqueue(
+                        context,
+                        BluetoothReadAloudSkip.Direction.NEXT
+                    )
+                    true
+                }
+
+                BluetoothKeyMapping.ACTION_NONE -> keyCode == KeyEvent.KEYCODE_MEDIA_REWIND ||
+                    keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD
+
+                else -> false
+            }
         }
     }
 

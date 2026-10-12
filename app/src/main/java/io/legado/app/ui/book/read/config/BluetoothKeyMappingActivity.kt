@@ -25,7 +25,15 @@ class BluetoothKeyMappingActivity : BaseActivity<ActivityBluetoothKeyMappingBind
                 R.string.bluetooth_action_page_bookmark
             ),
             ActionOption(BluetoothKeyMapping.ACTION_PREVIOUS_PAGE, R.string.prev_page),
-            ActionOption(BluetoothKeyMapping.ACTION_NEXT_PAGE, R.string.next_page)
+            ActionOption(BluetoothKeyMapping.ACTION_NEXT_PAGE, R.string.next_page),
+            ActionOption(
+                BluetoothKeyMapping.ACTION_READ_ALOUD_PREVIOUS_PARAGRAPH,
+                R.string.bluetooth_action_read_aloud_previous_paragraph
+            ),
+            ActionOption(
+                BluetoothKeyMapping.ACTION_READ_ALOUD_NEXT_PARAGRAPH,
+                R.string.bluetooth_action_read_aloud_next_paragraph
+            )
         )
     }
 
@@ -84,8 +92,11 @@ class BluetoothKeyMappingActivity : BaseActivity<ActivityBluetoothKeyMappingBind
     }
 
     private fun updateActionView(actionView: TextView, preferenceKey: String) {
+        val key = BluetoothKeyMapping.keys.firstOrNull {
+            it.preferenceKey == preferenceKey
+        } ?: error("Unknown Bluetooth key preference: $preferenceKey")
         val selected = actionOptions.firstOrNull {
-            it.value == getPrefInt(preferenceKey, BluetoothKeyMapping.ACTION_NONE)
+            it.value == getPrefInt(preferenceKey, key.defaultAction)
         } ?: error("Unknown Bluetooth key action for $preferenceKey")
         actionView.text = if (selected.value == BluetoothKeyMapping.ACTION_NONE) {
             ""

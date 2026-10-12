@@ -94,6 +94,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
             upCoverRotationDurationSummary()
             upScrollFollowTimeoutSummary()
             upProgressPollIntervalSummary()
+            upBluetoothReadAloudSkipIntervalSummary()
             upPlaybackPanelDurationSummary()
         }
 
@@ -122,6 +123,8 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 PreferKey.readAloudCoverRotationDuration -> showCoverRotationDurationDialog()
                 PreferKey.readAloudScrollFollowTimeout -> showScrollFollowTimeoutDialog()
                 PreferKey.readAloudProgressPollInterval -> showProgressPollIntervalDialog()
+                PreferKey.bluetoothReadAloudSkipInterval ->
+                    showBluetoothReadAloudSkipIntervalDialog()
                 PreferKey.readAloudPlaybackPanelDuration -> showPlaybackPanelDurationDialog()
             }
             return super.onPreferenceTreeClick(preference)
@@ -164,6 +167,26 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 getString(
                     R.string.read_aloud_progress_poll_interval_value,
                     AppConfig.readAloudProgressPollInterval
+                )
+        }
+
+        private fun showBluetoothReadAloudSkipIntervalDialog() {
+            showIntegerInputDialog(
+                title = R.string.bluetooth_read_aloud_skip_interval_dialog_title,
+                currentValue = AppConfig.bluetoothReadAloudSkipInterval,
+                validRange = 0..Int.MAX_VALUE,
+                defaultValue = AppConfig.DEFAULT_BLUETOOTH_READ_ALOUD_SKIP_INTERVAL
+            ) {
+                AppConfig.bluetoothReadAloudSkipInterval = it
+                upBluetoothReadAloudSkipIntervalSummary()
+            }
+        }
+
+        private fun upBluetoothReadAloudSkipIntervalSummary() {
+            findPreference<Preference>(PreferKey.bluetoothReadAloudSkipInterval)?.summary =
+                getString(
+                    R.string.bluetooth_read_aloud_skip_interval_value,
+                    AppConfig.bluetoothReadAloudSkipInterval
                 )
         }
 
@@ -241,6 +264,8 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
 
                 PreferKey.readAloudScrollFollowTimeout -> upScrollFollowTimeoutSummary()
                 PreferKey.readAloudProgressPollInterval -> upProgressPollIntervalSummary()
+                PreferKey.bluetoothReadAloudSkipInterval ->
+                    upBluetoothReadAloudSkipIntervalSummary()
                 PreferKey.readAloudPlaybackPanelDuration -> {
                     upPlaybackPanelDurationSummary()
                     postEvent(key, "")

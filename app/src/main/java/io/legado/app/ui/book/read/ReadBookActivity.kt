@@ -93,6 +93,7 @@ import io.legado.app.model.ReadBook
 import io.legado.app.utils.isJsonObject
 import io.legado.app.model.localBook.EpubFile
 import io.legado.app.model.localBook.MobiFile
+import io.legado.app.receiver.BluetoothReadAloudSkip
 import io.legado.app.receiver.NetworkChangedListener
 import io.legado.app.receiver.TimeBatteryReceiver
 import io.legado.app.service.BaseReadAloudService
@@ -3244,13 +3245,19 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     fun handleBluetoothMediaKey(keyCode: Int): Boolean {
-        val preferenceKey = BluetoothKeyMapping.preferenceForKeyCode(keyCode) ?: return false
+        val key = BluetoothKeyMapping.keyForKeyCode(keyCode) ?: return false
         // An empty mapping is an explicit no-op; consume it instead of running legacy media actions.
-        when (val action = getPrefInt(preferenceKey, BluetoothKeyMapping.ACTION_NONE)) {
+        when (val action = getPrefInt(key.preferenceKey, key.defaultAction)) {
             BluetoothKeyMapping.ACTION_NONE -> Unit
             BluetoothKeyMapping.ACTION_PAGE_BOOKMARK -> addPageBookmarkSilently()
             BluetoothKeyMapping.ACTION_PREVIOUS_PAGE -> keyPage(PageDirection.PREV)
             BluetoothKeyMapping.ACTION_NEXT_PAGE -> keyPage(PageDirection.NEXT)
+            BluetoothKeyMapping.ACTION_READ_ALOUD_PREVIOUS_PARAGRAPH ->
+                BluetoothReadAloudSkip.enqueue(this, BluetoothReadAloudSkip.Direction.PREVIOUS)
+
+            BluetoothKeyMapping.ACTION_READ_ALOUD_NEXT_PARAGRAPH ->
+                BluetoothReadAloudSkip.enqueue(this, BluetoothReadAloudSkip.Direction.NEXT)
+
             else -> error("Unknown Bluetooth key action: $action")
         }
         return true

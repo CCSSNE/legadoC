@@ -270,6 +270,10 @@
     <string name="read_aloud_progress_poll_interval_summary">How often source audio updates playback position and text following; shorter follows more closely.</string>
     <string name="read_aloud_progress_poll_interval_dialog_title">Reading progress update interval (ms)</string>
     <string name="read_aloud_progress_poll_interval_value">%sms</string>
+    <string name="bluetooth_read_aloud_skip_interval_title">Bluetooth paragraph skip interval</string>
+    <string name="bluetooth_read_aloud_skip_interval_summary">Space repeated paragraph skips by this interval while reading aloud. Shorter intervals skip faster.</string>
+    <string name="bluetooth_read_aloud_skip_interval_dialog_title">Bluetooth paragraph skip interval (ms)</string>
+    <string name="bluetooth_read_aloud_skip_interval_value">%sms</string>
     <string name="integer_input_range_hint">%1$d-%2$d</string>
     <string name="integer_input_range_invalid">Enter an integer from %1$d to %2$d.</string>
     <string name="read_aloud_original_progress">Original</string>
@@ -1540,6 +1544,8 @@
     <string name="bluetooth_key_fast_forward">Fast forward</string>
     <string name="bluetooth_key_play_pause">Play/Pause</string>
     <string name="bluetooth_action_page_bookmark">Whole-page bookmark</string>
+    <string name="bluetooth_action_read_aloud_previous_paragraph">Read aloud previous paragraph</string>
+    <string name="bluetooth_action_read_aloud_next_paragraph">Read aloud next paragraph</string>
     <string name="bluetooth_action_select">Choose action</string>
     <string name="bluetooth_action_choose">Choose an action</string>
     <string name="body_title">Title</string>
