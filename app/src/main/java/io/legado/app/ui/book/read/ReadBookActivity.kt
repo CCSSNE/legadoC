@@ -106,7 +106,7 @@ import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.read.config.IllustrationEditDialog
 import io.legado.app.ui.book.read.config.AutoReadDialog
 import io.legado.app.ui.book.read.config.BluetoothKeyMapping
-import io.legado.app.ui.book.read.config.BluetoothKeyMappingActivity
+import io.legado.app.ui.book.read.config.BluetoothKeyMappingDialog
 import io.legado.app.ui.book.read.creation.AiCreationDialog
 import io.legado.app.ui.book.read.config.BgTextConfigDialog.Companion.BG_COLOR
 import io.legado.app.ui.book.read.config.BgTextConfigDialog.Companion.READ_MENU_BG_COLOR
@@ -831,7 +831,7 @@ class ReadBookActivity : BaseReadBookActivity(),
 
             R.id.menu_effective_replaces -> showDialogFragment<EffectiveReplacesDialog>()
 
-            R.id.menu_bluetooth_key_mapping -> startActivity<BluetoothKeyMappingActivity>()
+            R.id.menu_bluetooth_key_mapping -> showDialogFragment(BluetoothKeyMappingDialog())
 
             R.id.menu_offline_review_mode -> {
                 AppConfig.offlineReviewMode = !AppConfig.offlineReviewMode

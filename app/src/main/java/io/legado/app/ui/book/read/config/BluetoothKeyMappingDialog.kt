@@ -1,19 +1,21 @@
 package io.legado.app.ui.book.read.config
 
 import android.os.Bundle
+import android.view.View
+import android.view.ViewGroup
 import android.widget.TextView
 import io.legado.app.R
-import io.legado.app.base.BaseActivity
-import io.legado.app.databinding.ActivityBluetoothKeyMappingBinding
+import io.legado.app.base.BaseDialogFragment
+import io.legado.app.databinding.DialogBluetoothKeyMappingBinding
 import io.legado.app.lib.dialogs.selector
-import io.legado.app.lib.theme.UiCorner
 import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.putPrefInt
+import io.legado.app.utils.setLayout
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
-class BluetoothKeyMappingActivity : BaseActivity<ActivityBluetoothKeyMappingBinding>() {
+class BluetoothKeyMappingDialog : BaseDialogFragment(R.layout.dialog_bluetooth_key_mapping) {
 
-    override val binding by viewBinding(ActivityBluetoothKeyMappingBinding::inflate)
+    private val binding by viewBinding(DialogBluetoothKeyMappingBinding::bind)
 
     private data class ActionOption(val value: Int, val title: Int)
 
@@ -37,16 +39,19 @@ class BluetoothKeyMappingActivity : BaseActivity<ActivityBluetoothKeyMappingBind
         )
     }
 
-    override fun onActivityCreated(savedInstanceState: Bundle?) {
-        setSupportActionBar(binding.toolbar)
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        supportActionBar?.title = getString(R.string.bluetooth_key_mapping)
-        binding.toolbar.setNavigationOnClickListener { finish() }
-        binding.cardContent.background = UiCorner.rounded(
-            UiCorner.themeSurfaceCardColor(this),
-            UiCorner.panelRadius(this)
-        )
+    override fun onStart() {
+        super.onStart()
+        setLayout(0.9f, ViewGroup.LayoutParams.WRAP_CONTENT)
+    }
 
+    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
+        val rows = listOf(
+            binding.rowPreviousTrack,
+            binding.rowRewind,
+            binding.rowNextTrack,
+            binding.rowFastForward,
+            binding.rowPlayPause
+        )
         val actionViews = listOf(
             binding.actionPreviousTrack,
             binding.actionRewind,
@@ -62,27 +67,24 @@ class BluetoothKeyMappingActivity : BaseActivity<ActivityBluetoothKeyMappingBind
             binding.labelPlayPause
         )
         BluetoothKeyMapping.keys.zip(actionViews).forEach { (key, actionView) ->
-            actionView.background = UiCorner.rounded(
-                UiCorner.themeSurfaceCardColor(this),
-                UiCorner.actionRadius(this)
-            )
             updateActionView(actionView, key.preferenceKey)
-            actionView.setOnClickListener {
-                showActionSelector(actionView, key.preferenceKey)
-            }
         }
         BluetoothKeyMapping.keys.zip(labelViews).forEach { (key, labelView) ->
             labelView.setText(key.label)
         }
-    }
-
-    override fun onSupportNavigateUp(): Boolean {
-        finish()
-        return true
+        BluetoothKeyMapping.keys.zip(rows.zip(actionViews)).forEach { (key, rowAndAction) ->
+            val (row, actionView) = rowAndAction
+            row.setOnClickListener {
+                showActionSelector(actionView, key.preferenceKey)
+            }
+        }
+        binding.tvClose.setOnClickListener {
+            dismissAllowingStateLoss()
+        }
     }
 
     private fun showActionSelector(actionView: TextView, preferenceKey: String) {
-        selector(
+        context?.selector(
             R.string.bluetooth_action_select,
             actionOptions.map { getString(it.title) }
         ) { _, index ->

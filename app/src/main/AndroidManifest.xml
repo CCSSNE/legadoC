@@ -176,11 +176,6 @@
                 android:resource="@xml/spen_remote_actions" />
         </activity>
 
-        <activity
-            android:name=".ui.book.read.config.BluetoothKeyMappingActivity"
-            android:exported="false"
-            android:launchMode="singleTop" />
-
         <!-- 阅读漫画界面 -->
         <activity
             android:name=".ui.book.manga.ReadMangaActivity"
