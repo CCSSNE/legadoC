@@ -29,6 +29,11 @@ abstract class BaseLogDialogFragment : BaseDialogFragment(R.layout.dialog_recycl
                 true
             }
 
+            R.id.menu_share -> {
+                shareLogs()
+                true
+            }
+
             else -> false
         }
     }
@@ -36,4 +41,6 @@ abstract class BaseLogDialogFragment : BaseDialogFragment(R.layout.dialog_recycl
     protected abstract fun clearLogs(onCleared: () -> Unit)
 
     protected abstract fun copyAllLogs()
+
+    protected abstract fun shareLogs()
 }

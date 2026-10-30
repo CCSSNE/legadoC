@@ -15,6 +15,7 @@ import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.sendToClip
+import io.legado.app.utils.share
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import splitties.views.onClick
@@ -44,6 +45,10 @@ class AiLogDialog : BaseLogDialogFragment() {
 
     override fun copyAllLogs() {
         requireContext().sendToClip(AppLog.formatLogs(AppLog.aiLogs))
+    }
+
+    override fun shareLogs() {
+        requireContext().share(AppLog.formatLogs(AppLog.aiLogs), getString(R.string.ai_log))
     }
 
     inner class LogAdapter(context: Context) :

@@ -25,6 +25,7 @@ import io.legado.app.utils.find
 import io.legado.app.utils.getFile
 import io.legado.app.utils.list
 import io.legado.app.utils.sendToClip
+import io.legado.app.utils.share
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -56,6 +57,10 @@ class CrashLogsDialog : BaseLogDialogFragment() {
 
     override fun copyAllLogs() {
         viewModel.copyAllLogs(adapter.getItems())
+    }
+
+    override fun shareLogs() {
+        viewModel.shareAllLogs(adapter.getItems())
     }
 
     private fun showLogFile(fileDoc: FileDoc) {
@@ -156,13 +161,27 @@ class CrashLogsDialog : BaseLogDialogFragment() {
 
         fun copyAllLogs(logs: List<FileDoc>) {
             execute {
-                logs.joinToString("\n\n") { file ->
-                    "${file.name}\n${file.readText()}"
-                }
+                allLogsText(logs)
             }.onSuccess {
                 context.sendToClip(it)
             }.onError {
                 context.toastOnUi(it.localizedMessage)
+            }
+        }
+
+        fun shareAllLogs(logs: List<FileDoc>) {
+            execute {
+                allLogsText(logs)
+            }.onSuccess {
+                context.share(it, context.getString(R.string.crash_log))
+            }.onError {
+                context.toastOnUi(it.localizedMessage)
+            }
+        }
+
+        private fun allLogsText(logs: List<FileDoc>): String {
+            return logs.joinToString("\n\n") { file ->
+                "${file.name}\n${file.readText()}"
             }
         }
 

@@ -17,6 +17,7 @@ import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.sendToClip
+import io.legado.app.utils.share
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import java.util.*
@@ -58,6 +59,10 @@ class AppLogDialog : BaseLogDialogFragment() {
 
     override fun copyAllLogs() {
         requireContext().sendToClip(AppLog.formatLogs(visibleLogs()))
+    }
+
+    override fun shareLogs() {
+        requireContext().share(AppLog.formatLogs(visibleLogs()), getString(R.string.log))
     }
 
     /** 显示与复制共用同一份数据：通用条目始终显示，其余按勾选模块过滤 */
