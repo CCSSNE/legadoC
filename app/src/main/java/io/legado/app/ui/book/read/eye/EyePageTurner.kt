@@ -3,6 +3,7 @@
 package io.legado.app.ui.book.read.eye
 
 import android.app.Activity
+import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
@@ -32,6 +33,7 @@ class EyePageTurner(
     private val activity: Activity,
     private val root: FrameLayout,
     private val readerContent: View,
+    private val gazePointBounds: () -> IntRange?,
     private val readingBlockReason: () -> String?,
     private val canCalibrate: () -> Boolean,
     private val onReadyChanged: (Boolean) -> Unit,
@@ -102,6 +104,23 @@ class EyePageTurner(
     fun setGazePointEnabled(enabled: Boolean) {
         gazePointEnabled = enabled
         if (!enabled) hideGazePoint()
+    }
+
+    fun refreshGazePointStyle() {
+        val marker = gazePoint ?: return
+        val color = ReadBookConfig.eyePageGazePointColor.takeIf { it != 0 } ?: activity.accentColor
+        val size = dp(ReadBookConfig.eyePageGazePointSize.coerceIn(MIN_GAZE_POINT_SIZE_DP, MAX_GAZE_POINT_SIZE_DP))
+        marker.background = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(Color.argb(0x66, Color.red(color), Color.green(color), Color.blue(color)))
+            setStroke(dp(2), Color.argb(0xDD, Color.red(color), Color.green(color), Color.blue(color)))
+        }
+        marker.alpha = ReadBookConfig.eyePageGazePointAlpha.coerceIn(0, 100) / 100f
+        marker.layoutParams = (marker.layoutParams as? FrameLayout.LayoutParams
+            ?: FrameLayout.LayoutParams(size, size, Gravity.TOP or Gravity.LEFT)).apply {
+            width = size
+            height = size
+        }
     }
 
     fun recalibrate() {
@@ -297,23 +316,33 @@ class EyePageTurner(
             hideGazePoint()
             return
         }
+        val footer = gazePointBounds()
+        if (footer == null || root.width <= 0) {
+            hideGazePoint()
+            return
+        }
         val marker = gazePoint ?: View(activity).apply {
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor((activity.accentColor and 0x00FFFFFF) or 0x88000000.toInt())
-                setStroke(dp(2), (activity.accentColor and 0x00FFFFFF) or 0xCC000000.toInt())
-            }
             elevation = dp(4).toFloat()
             isClickable = false
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }.also {
             gazePoint = it
-            root.addView(it, FrameLayout.LayoutParams(dp(20), dp(20), Gravity.TOP or Gravity.CENTER_HORIZONTAL))
+            root.addView(it, FrameLayout.LayoutParams(0, 0, Gravity.TOP or Gravity.LEFT))
+            refreshGazePointStyle()
         }
-        val top = dp(56)
-        val bottom = (root.height - dp(40)).coerceAtLeast(top)
-        val centerY = top + ((bottom - top) * position.coerceIn(0f, 1f)).toInt()
-        marker.translationY = (centerY - dp(10)).toFloat()
+        val markerSize = dp(ReadBookConfig.eyePageGazePointSize.coerceIn(MIN_GAZE_POINT_SIZE_DP, MAX_GAZE_POINT_SIZE_DP))
+        val left = dp(4) + markerSize / 2
+        val right = root.width - dp(4) - markerSize / 2
+        val footerTop = footer.first.coerceAtLeast(0)
+        val footerBottom = footer.last.coerceAtMost(root.height)
+        if (right <= left || footerBottom <= footerTop) {
+            hideGazePoint()
+            return
+        }
+        val centerX = left + ((right - left) * position.coerceIn(0f, 1f)).toInt()
+        val centerY = footerTop + (footerBottom - footerTop) / 2
+        marker.translationX = (centerX - markerSize / 2).toFloat()
+        marker.translationY = (centerY - markerSize / 2).toFloat()
         marker.visibility = View.VISIBLE
     }
 
@@ -521,5 +550,7 @@ class EyePageTurner(
     private companion object {
         const val CALIBRATION_PREPARATION_MS = 3000L
         const val CALIBRATION_TIMEOUT_MS = 20000L
+        const val MIN_GAZE_POINT_SIZE_DP = 8
+        const val MAX_GAZE_POINT_SIZE_DP = 64
     }
 }

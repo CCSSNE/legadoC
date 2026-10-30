@@ -114,6 +114,7 @@ class SurfacePopupMenu(
 
     private val levels = ArrayDeque<Level>()
     private var itemClickListener: ((MenuItem) -> Boolean)? = null
+    private var itemLongClickListener: ((MenuItem) -> Unit)? = null
     private var activeMenu: Menu = menu
 
     fun inflate(@MenuRes menuRes: Int) {
@@ -122,6 +123,10 @@ class SurfacePopupMenu(
 
     fun setOnMenuItemClickListener(listener: (MenuItem) -> Boolean) {
         itemClickListener = listener
+    }
+
+    fun setOnMenuItemLongClickListener(listener: ((MenuItem) -> Unit)?) {
+        itemLongClickListener = listener
     }
 
     fun setOnDismissListener(listener: (() -> Unit)?) {
@@ -200,6 +205,11 @@ class SurfacePopupMenu(
                         itemClickListener?.invoke(item) ?: activeMenu.performIdentifierAction(item.itemId, 0)
                     }
                 }
+            }
+            setOnLongClickListener {
+                if (!item.isEnabled || itemLongClickListener == null) return@setOnLongClickListener false
+                dismissWithFade { itemLongClickListener?.invoke(item) }
+                true
             }
         }
     }

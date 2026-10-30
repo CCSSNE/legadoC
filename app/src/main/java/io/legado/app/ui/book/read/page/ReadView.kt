@@ -74,6 +74,7 @@ class ReadView(context: Context, attrs: AttributeSet) :
     val curPage by lazy { PageView(context) }
     val nextPage by lazy { PageView(context) }
     val footerBounds: IntRange get() = curPage.footerBounds
+    val footerBoundsOrNull: IntRange? get() = curPage.footerBoundsOrNull
     val defaultAnimationSpeed: Int
         get() = AppConfig.pageAnimationSpeed
     private var pressDown = false

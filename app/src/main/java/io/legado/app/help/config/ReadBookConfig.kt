@@ -59,6 +59,18 @@ object ReadBookConfig {
         get() = appCtx.getPrefBoolean("eyePageGazePointEnabled", false)
         set(value) = appCtx.putPrefBoolean("eyePageGazePointEnabled", value)
 
+    var eyePageGazePointColor: Int
+        get() = appCtx.getPrefInt("eyePageGazePointColor", 0)
+        set(value) = appCtx.putPrefInt("eyePageGazePointColor", value)
+
+    var eyePageGazePointAlpha: Int
+        get() = appCtx.getPrefInt("eyePageGazePointAlpha", 100)
+        set(value) = appCtx.putPrefInt("eyePageGazePointAlpha", value)
+
+    var eyePageGazePointSize: Int
+        get() = appCtx.getPrefInt("eyePageGazePointSize", 20)
+        set(value) = appCtx.putPrefInt("eyePageGazePointSize", value)
+
     const val configFileName = "readConfig.json"
     const val shareConfigFileName = "shareReadConfig.json"
     private const val activeReadConfigFileName = "activeReadConfig.json"

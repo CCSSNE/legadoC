@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="eye_page_recalibrate_now">眼动校准</string>
-    <string name="eye_page_gaze_point">显示视线落点（上下）</string>
+    <string name="eye_page_gaze_point">显示视线落点</string>
+    <string name="eye_page_gaze_point_settings">视线落点样式</string>
+    <string name="eye_page_gaze_point_color">颜色</string>
+    <string name="eye_page_gaze_point_alpha">透明度：%1$d%%</string>
+    <string name="eye_page_gaze_point_size">大小：%1$d dp</string>
     <string name="eye_page_recalibrate_not_running">已清除校准结果，开启眼动翻页后将重新校准</string>
     <string name="eye_page_turn">眼动翻页</string>
     <string name="eye_page_look_up_hint">上看翻页</string>

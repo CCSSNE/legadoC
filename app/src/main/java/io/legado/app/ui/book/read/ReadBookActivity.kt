@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.Rect
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
@@ -21,6 +22,9 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageButton
+import android.widget.LinearLayout
+import android.widget.SeekBar
+import android.widget.TextView
 import androidx.activity.addCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
@@ -32,6 +36,8 @@ import androidx.core.view.setPadding
 import androidx.core.view.size
 import androidx.lifecycle.lifecycleScope
 import com.jaredrummler.android.colorpicker.ColorPickerDialogListener
+import com.jaredrummler.android.colorpicker.ColorPickerDialog
+import com.jaredrummler.android.colorpicker.ColorShape
 import com.google.android.material.snackbar.Snackbar
 import io.legado.app.R
 import io.legado.app.constant.AppConst
@@ -314,6 +320,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     private var selectedReviewButton: ReviewButton? = null
     private var selectedSyntheticPara: SyntheticParaContent? = null
     private var eyePageTurner: EyePageTurner? = null
+    private var eyeGazePointColorPreview: View? = null
     private var eyePageTurnEnabled = ReadBookConfig.eyePageTurnEnabled
     private var readerResumed = false
     private val eyeCameraPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -631,7 +638,10 @@ class ReadBookActivity : BaseReadBookActivity(),
                     ReadBook.curTextChapter?.sameTitleRemoved == true
                 upMenu(this)
             },
-            onClick = ::onMenuItemClick
+            onClick = ::onMenuItemClick,
+            onLongClick = { item ->
+                if (item.itemId == R.id.menu_eye_gaze_point) showEyeGazePointSettings()
+            }
         )
     }
 
@@ -1848,6 +1858,138 @@ class ReadBookActivity : BaseReadBookActivity(),
         eyePageTurner?.setGazePointEnabled(enabled)
     }
 
+    private fun showEyeGazePointSettings() {
+        fun dp(value: Int) = value.dpToPx()
+
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(8), dp(24), dp(8))
+        }
+        val colorRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(52)
+            isClickable = true
+            isFocusable = true
+            setBackgroundResource(android.R.drawable.list_selector_background)
+        }
+        val colorPreview = View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(28), dp(28)).apply {
+                marginEnd = dp(16)
+            }
+        }
+        eyeGazePointColorPreview = colorPreview
+        val colorLabel = TextView(this).apply {
+            text = getString(R.string.eye_page_gaze_point_color)
+            setTextColor(getPrimaryTextColor(ColorUtils.isColorLight(bottomBackground)))
+        }
+        colorRow.addView(colorPreview)
+        colorRow.addView(colorLabel)
+        content.addView(colorRow, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+
+        updateEyeGazePointColorPreview()
+        colorRow.setOnClickListener { showEyeGazePointColorPicker() }
+
+        val alphaLabel = TextView(this).apply {
+            setTextColor(getPrimaryTextColor(ColorUtils.isColorLight(bottomBackground)))
+        }
+        val alphaSeek = SeekBar(this).apply {
+            max = 100
+            progress = ReadBookConfig.eyePageGazePointAlpha.coerceIn(0, max)
+        }
+        content.addView(alphaLabel, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(12)
+        })
+        content.addView(alphaSeek, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        alphaLabel.text = getString(R.string.eye_page_gaze_point_alpha, alphaSeek.progress)
+        alphaSeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
+                ReadBookConfig.eyePageGazePointAlpha = progress
+                alphaLabel.text = getString(R.string.eye_page_gaze_point_alpha, progress)
+                eyePageTurner?.refreshGazePointStyle()
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar) = Unit
+            override fun onStopTrackingTouch(seekBar: SeekBar) = Unit
+        })
+
+        val sizeLabel = TextView(this).apply {
+            setTextColor(getPrimaryTextColor(ColorUtils.isColorLight(bottomBackground)))
+        }
+        val sizeSeek = SeekBar(this).apply {
+            max = MAX_EYE_GAZE_POINT_SIZE_DP - MIN_EYE_GAZE_POINT_SIZE_DP
+            progress = (ReadBookConfig.eyePageGazePointSize - MIN_EYE_GAZE_POINT_SIZE_DP).coerceIn(0, max)
+        }
+        val selectedSize = sizeSeek.progress + MIN_EYE_GAZE_POINT_SIZE_DP
+        sizeLabel.text = getString(R.string.eye_page_gaze_point_size, selectedSize)
+        content.addView(sizeLabel, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(8)
+        })
+        content.addView(sizeSeek, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        sizeSeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
+                val size = progress + MIN_EYE_GAZE_POINT_SIZE_DP
+                ReadBookConfig.eyePageGazePointSize = size
+                sizeLabel.text = getString(R.string.eye_page_gaze_point_size, size)
+                eyePageTurner?.refreshGazePointStyle()
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar) = Unit
+            override fun onStopTrackingTouch(seekBar: SeekBar) = Unit
+        })
+
+        alert(title = getString(R.string.eye_page_gaze_point_settings)) {
+            customView { content }
+            positiveButton(android.R.string.ok)
+            onDismiss {
+                if (eyeGazePointColorPreview === colorPreview) eyeGazePointColorPreview = null
+            }
+        }
+    }
+
+    private fun updateEyeGazePointColorPreview() {
+        val preview = eyeGazePointColorPreview ?: return
+        val color = ReadBookConfig.eyePageGazePointColor.takeIf { it != 0 } ?: accentColor
+        preview.background = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(color)
+        }
+    }
+
+    private fun showEyeGazePointColorPicker() {
+        val color = ReadBookConfig.eyePageGazePointColor.takeIf { it != 0 } ?: accentColor
+        val dialog = ColorPreference.ColorPickerDialogCompat.newBuilder()
+            .setDialogType(ColorPickerDialog.TYPE_PRESETS)
+            .setDialogTitle(R.string.eye_page_gaze_point_color)
+            .setColorShape(ColorShape.CIRCLE)
+            .setPresets(ColorPickerDialog.MATERIAL_COLORS)
+            .setAllowPresets(true)
+            .setAllowCustom(true)
+            .setShowAlphaSlider(false)
+            .setShowColorShades(true)
+            .setShowDefaultColorButton(true)
+            .setColor(color)
+            .setDialogId(EYE_GAZE_POINT_COLOR_DIALOG)
+            .create()
+        dialog.setColorPickerDialogListener(this)
+        dialog.show(supportFragmentManager, "eye_gaze_point_color")
+    }
+
+    private fun eyeGazePointBounds(): IntRange? {
+        val footerBounds = binding.readView.footerBoundsOrNull ?: return null
+        val rootLocation = IntArray(2)
+        val pageLocation = IntArray(2)
+        binding.root.getLocationOnScreen(rootLocation)
+        binding.readView.getLocationOnScreen(pageLocation)
+        val offset = pageLocation[1] - rootLocation[1]
+        return (footerBounds.first + offset)..(footerBounds.last + offset)
+    }
+
     private fun setEyePageTurnEnabled(enabled: Boolean) {
         eyePageTurnEnabled = enabled
         ReadBookConfig.eyePageTurnEnabled = enabled
@@ -1877,6 +2019,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
         if (eyePageTurner == null) {
             eyePageTurner = EyePageTurner(this, binding.root, binding.readerContent,
+                gazePointBounds = ::eyeGazePointBounds,
                 readingBlockReason = {
                     when {
                         !readerResumed -> "not_resumed"
@@ -3248,6 +3391,13 @@ class ReadBookActivity : BaseReadBookActivity(),
                 postEvent(EventBus.TIP_COLOR, "")
                 postEvent(EventBus.UP_CONFIG, arrayListOf(2))
             }
+
+            EYE_GAZE_POINT_COLOR_DIALOG -> {
+                ReadBookConfig.eyePageGazePointColor =
+                    if (color == ColorPickerDialogCompat.DEFAULT_COLOR) 0 else color
+                updateEyeGazePointColorPreview()
+                eyePageTurner?.refreshGazePointStyle()
+            }
         }
     }
 
@@ -4074,6 +4224,9 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     companion object {
         const val RESULT_DELETED = 100
+        private const val EYE_GAZE_POINT_COLOR_DIALOG = 127
+        private const val MIN_EYE_GAZE_POINT_SIZE_DP = 8
+        private const val MAX_EYE_GAZE_POINT_SIZE_DP = 64
         /** 回退设置音频书直进听书页：intent extra，值为 handoff 模式 */
         const val EXTRA_DIRECT_AUDIO_PLAY = "directAudioPlay"
         const val DIRECT_AUDIO_PLAY_ALL = "all"
