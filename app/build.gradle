@@ -68,6 +68,9 @@ android {
 
         buildConfigField "String", "Cronet_Version", "\"$CronetVersion\""
         buildConfigField "String", "Cronet_Main_Version", "\"$CronetMainVersion\""
+        // 版本通道标记：默认公开版（false）；buildType c（自用交付）覆盖为 true。
+        // 用于运行时判定自用版，如启动检测更新在自用版强制关闭。
+        buildConfigField "boolean", "OWN_BUILD", "false"
 
         if (project.hasProperty("abi")) {
             ndk {
@@ -127,6 +130,8 @@ android {
             // 自用交付使用 release 运行设置，避免 CheckJNI 拖慢眼动图像处理。
             initWith release
             debuggable false
+            // 自用版通道标记，覆盖 defaultConfig 的 false。
+            buildConfigField "boolean", "OWN_BUILD", "true"
             // 自用版签名与公开版统一：本地有 signing/debug.keystore 用仓库签名；缺文件时回退 SDK debug。
             def cKs = rootProject.file('signing/debug.keystore')
             signingConfig cKs.exists() ? signingConfigs.repoKey : signingConfigs.debug

@@ -12,6 +12,7 @@ import androidx.appcompat.widget.SearchView
 import androidx.preference.Preference
 import androidx.preference.PreferenceGroup
 import io.legado.app.R
+import io.legado.app.BuildConfig
 import io.legado.app.base.BaseFragment
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
@@ -217,6 +218,10 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
             }
             findPreference<EditTextPreference>(PreferKey.updateAcceleratorCustom)?.isVisible =
                 getPrefString(PreferKey.updateAccelerator) == "custom"
+            if (BuildConfig.OWN_BUILD) {
+                // 自用版启动检测更新被 AppConfig 强制关闭，开关无实际作用，这里直接隐藏。
+                findPreference<Preference>(PreferKey.updateCheckOnStart)?.isVisible = false
+            }
             updateSettingsEntryVisibility()
         }
 
@@ -292,8 +297,9 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
                     is PreferenceGroup -> filterMainGroup(preference, keyword) || matchesMainPreference(preference, keyword)
                     else -> matchesMainPreference(preference, keyword)
                 }
-                val allowed = preference.key != KEY_RSS_PAGE
-                    || AppConfig.showRssPageInSettings
+                val allowed = (preference.key != KEY_RSS_PAGE
+                    || AppConfig.showRssPageInSettings)
+                    && !isOwnHiddenKey(preference.key)
                 preference.isVisible = visible && allowed
                 anyVisible = anyVisible || preference.isVisible
             }
@@ -305,13 +311,18 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
             group.isVisible = true
             for (index in 0 until group.preferenceCount) {
                 val preference = group.getPreference(index)
-                preference.isVisible = preference.key != KEY_RSS_PAGE
-                    || AppConfig.showRssPageInSettings
+                preference.isVisible = !isOwnHiddenKey(preference.key)
+                    && (preference.key != KEY_RSS_PAGE
+                        || AppConfig.showRssPageInSettings)
                 if (preference is PreferenceGroup) {
                     resetVisibility(preference)
                 }
             }
         }
+
+        /** 自用版（OWN_BUILD）启动检测更新被强制关闭，对应开关一律隐藏，避免展示无效开关。 */
+        private fun isOwnHiddenKey(key: String?): Boolean =
+            BuildConfig.OWN_BUILD && key == PreferKey.updateCheckOnStart
 
         private fun updateSettingsEntryVisibility() {
             if (activeSearchKeyword.isBlank()) {
