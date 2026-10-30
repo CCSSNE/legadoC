@@ -23,7 +23,6 @@ import com.google.mediapipe.tasks.core.BaseOptions
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.google.mediapipe.tasks.vision.facelandmarker.FaceLandmarker
 import io.legado.app.constant.AppLog
-import java.nio.ByteBuffer
 
 /** Owns camera and inference on one worker. Images never leave the device or get saved. */
 internal class EyeCameraTracker(
@@ -79,7 +78,7 @@ internal class EyeCameraTracker(
         landmarker = FaceLandmarker.createFromOptions(context,
             FaceLandmarker.FaceLandmarkerOptions.builder()
                 .setBaseOptions(BaseOptions.builder()
-                    .setModelAssetBuffer(modelBuffer(context)).build())
+                    .setModelAssetPath("eye_page/face_landmarker.task").build())
                 .setRunningMode(RunningMode.VIDEO)
                 .setNumFaces(2)
                 .setMinFaceDetectionConfidence(0.6f)
@@ -239,24 +238,6 @@ internal class EyeCameraTracker(
             reader = null
             landmarker = null
             thread.quitSafely()
-        }
-    }
-
-    private companion object {
-        private var model: ByteBuffer? = null
-
-        @Synchronized
-        fun modelBuffer(context: Context): ByteBuffer {
-            // MediaPipe rewrites the cached file for every relative asset path; an
-            // overlapping tracker could read a truncated mmap during restart.
-            val bytes = model ?: context.assets.open("eye_page/face_landmarker.task").use { stream ->
-                val data = stream.readBytes()
-                ByteBuffer.allocateDirect(data.size).apply {
-                    put(data)
-                    rewind()
-                }.also { model = it }
-            }
-            return bytes.asReadOnlyBuffer()
         }
     }
 }
