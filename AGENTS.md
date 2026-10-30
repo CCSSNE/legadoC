@@ -282,7 +282,7 @@ AI 铁律（死路，见到先复述给用户再定夺）：模型永远只当�
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- 最近一次自用版交付为 `3.26.103008c` / `10907`，2026-10-30，基于提交 `9bc4463a`（移植眼动翻页与视线校准）使用 `assembleAppC` 编译成功（`BUILD SUCCESSFUL in 4m 27s`，`75 actionable tasks: 11 executed, 64 up-to-date`）。产物包名 `io.legado.app.dev`、versionName `3.26.103008c`、versionCode `10907`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C-自用`（label/label-zh 逐字匹配），`apksigner verify --print-certs` 确认证书 SHA-256 为仓库密钥 `70:CB:…:89:5C`、退出码 0；APK 位于 `app\build\outputs\apk\app\c\legado_app_3.26.103008_10907.apk`（56.38 MiB）。本次仅授权编译，未安装或设备回归。
+- 最近一次自用版交付为 `3.26.103009c` / `10908`，2026-10-30，基于提交 `b113bad6`（眼动落点移至页脚并增加样式设置）使用 `assembleAppC` 编译成功（`BUILD SUCCESSFUL in 4m 3s`，`121 actionable tasks: 14 executed, 107 up-to-date`）。产物包名 `io.legado.app.dev`、versionName `3.26.103009c`、versionCode `10908`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C-自用`（label/label-zh 逐字匹配），`apksigner verify --print-certs` 确认证书 SHA-256 为仓库密钥 `70:CB:…:89:5C`、退出码 0；APK 位于 `app\build\outputs\apk\app\c\legado_app_3.26.103009_10908.apk`（49,532,449 字节）。本次仅编译和核验产物，未安装或设备回归。
 - 最近一次公开版交付为 `3.26.101209` / `10906`，2026-10-12，基于提交 `1e65e3aa`（宣传图追加第30张；含7键双态蓝牙映射的 `app/src/main` 主代码）使用 `assembleOssRelease` 编译成功（`BUILD SUCCESSFUL in 3m 55s`，`121 actionable tasks: 28 executed, 1 from cache, 92 up-to-date`）。产物包名 `io.legado.app.c`、versionName `3.26.101209`（无 c 后缀）、versionCode `10906`，`aapt` 确认应用名 `阅读C`（label-zh 逐字匹配），`apksigner verify --print-certs` 确认证书 SHA-256 为仓库密钥 `70:CB:…:89:5C`、退出码 0；APK 位于 `app\build\outputs\apk\oss\release\legado_oss_3.26.101209_10906.apk`（37.79 MB），已发布 Pre 版 `v3.26.101209`（release id `410410306`，`prerelease=true`，`make_latest=false`，Latest 仍为 `v3.26.100717`；复查 tag/目标分支/中文正文（与源字节比对一致）/资产 39618080 字节与下载 200 均正常）。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
