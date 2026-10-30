@@ -60,11 +60,14 @@ object ReadBookConfig {
         set(value) = appCtx.putPrefBoolean("eyePageGazePointEnabled", value)
 
     var eyePageGazePointColor: Int
+        // 未设置（0 或首次使用）默认为灰色；颜色本体恒定不透明，透明度单独由
+        // eyePageGazePointAlpha 控制，避免填充与描边透明度各自拆层。
         get() = appCtx.getPrefInt("eyePageGazePointColor", 0)
+            .takeIf { it != 0 } ?: 0xFF9E9E9E.toInt()
         set(value) = appCtx.putPrefInt("eyePageGazePointColor", value)
 
     var eyePageGazePointAlpha: Int
-        get() = appCtx.getPrefInt("eyePageGazePointAlpha", 100)
+        get() = appCtx.getPrefInt("eyePageGazePointAlpha", 20)
         set(value) = appCtx.putPrefInt("eyePageGazePointAlpha", value)
 
     var eyePageGazePointSize: Int

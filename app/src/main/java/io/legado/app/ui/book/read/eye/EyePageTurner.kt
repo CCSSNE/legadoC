@@ -106,7 +106,7 @@ class EyePageTurner(
 
     fun refreshGazePointStyle() {
         val marker = gazePoint ?: return
-        val color = ReadBookConfig.eyePageGazePointColor.takeIf { it != 0 } ?: activity.accentColor
+        val color = ReadBookConfig.eyePageGazePointColor
         val size = dp(ReadBookConfig.eyePageGazePointSize.coerceIn(MIN_GAZE_POINT_SIZE_DP, MAX_GAZE_POINT_SIZE_DP))
         // 单一均匀圆点：颜色强制不透明，整体透明度只由 eyePageGazePointAlpha 控制，
         // 不再有“圈内/圈外”两层不同透明度的结构。

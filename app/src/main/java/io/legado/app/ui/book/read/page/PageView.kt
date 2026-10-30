@@ -195,6 +195,10 @@ class PageView(context: Context) : FrameLayout(context) {
         if (eyePageHintVisible == visible) return
         eyePageHintVisible = visible
         upEyePageHint()
+        if (!visible) {
+            // 提示消失时把临时清空的页脚信息用既有刷新逻辑整体恢复。
+            upTipStyle()
+        }
     }
 
     private fun upEyePageHint() = binding.run {
@@ -203,6 +207,15 @@ class PageView(context: Context) : FrameLayout(context) {
             if (tipColor == 0) ReadBookConfig.textColor else tipColor
         })
         tvEyePageHint.typeface = ChapterProvider.typeface
+        if (eyePageHintVisible) {
+            // 提示独占页脚：不垫任何底色块，直接贴合页面自己的背景（纯色或图片都不违和），
+            // 同时临时清空它背后的页脚信息（左右与中间槽位）。
+            // 显示期间的清空在此统一维护；恢复由 setEyePageHint(false) 走 upTipStyle 完成。
+            tvFooterLeft.isInvisible = true
+            tvFooterMiddle.isGone = true
+            tvFooterRight.isGone = true
+            footerCenterActionGroup.isGone = true
+        }
     }
 
     /**

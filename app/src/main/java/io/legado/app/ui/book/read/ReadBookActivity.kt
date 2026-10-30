@@ -1957,15 +1957,13 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     private fun updateEyeGazePointColorPreview() {
         val preview = eyeGazePointColorPreview ?: return
-        val color = ReadBookConfig.eyePageGazePointColor.takeIf { it != 0 } ?: accentColor
         preview.background = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
-            setColor(color)
+            setColor(ReadBookConfig.eyePageGazePointColor)
         }
     }
 
     private fun showEyeGazePointColorPicker() {
-        val color = ReadBookConfig.eyePageGazePointColor.takeIf { it != 0 } ?: accentColor
         val dialog = ColorPickerDialogCompat.newBuilder()
             .setDialogType(ColorPickerDialog.TYPE_PRESETS)
             .setDialogTitle(R.string.eye_page_gaze_point_color)
@@ -1976,7 +1974,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             .setShowAlphaSlider(false)
             .setShowColorShades(true)
             .setShowDefaultColorButton(true)
-            .setColor(color)
+            .setColor(ReadBookConfig.eyePageGazePointColor)
             .setDialogId(EYE_GAZE_POINT_COLOR_DIALOG)
             .create()
         dialog.setColorPickerDialogListener(this)
