@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="eye_page_recalibrate_now">眼动校准</string>
+    <string name="eye_page_gaze_point">显示视线落点（上下）</string>
+    <string name="eye_page_recalibrate_not_running">已清除校准结果，开启眼动翻页后将重新校准</string>
     <string name="eye_page_turn">眼动翻页</string>
     <string name="eye_page_look_up_hint">上看翻页</string>
     <string name="eye_page_help">开启后使用前置摄像头识别视线，图像仅在设备本地处理，不会保存或上传。\n\n首次开启时，请保持光线充足、手机与头部稳定，按提示依次注视屏幕顶部、底部和中间的圆点。中点校验通过后才会保存结果，后续开启无需重复校准。\n\n自然阅读到屏幕底部，短暂停留，页脚出现“上看翻页”后将视线向上移，即可翻到下一页。眨眼或单纯抬头不会触发翻页。\n\n退出阅读或进入后台会关闭眼动翻页，每次重新进入阅读界面需手动开启。识别效果受光线、眼镜反光与握持姿势影响，请尽量保持校准时的握持姿势。\n\n若识别效果不好，可尝试点击“设置 → 其他设置 → 眼动翻页重新校准”，之后重新打开眼动翻页，重新进行校准。</string>

@@ -46,6 +46,8 @@ class EyePageTurner(
     private var generation = 0
     private var overlay: FrameLayout? = null
     private var target: View? = null
+    private var gazePoint: View? = null
+    private var gazePointEnabled = false
     private var message: TextView? = null
     private var status: TextView? = null
     private enum class CalibrationStage { TOP, BOTTOM, MIDPOINT }
@@ -96,6 +98,24 @@ class EyePageTurner(
         updateReadyHint(detector.armed)
     }
     val isCalibrating: Boolean get() = overlay != null
+
+    fun setGazePointEnabled(enabled: Boolean) {
+        gazePointEnabled = enabled
+        if (!enabled) hideGazePoint()
+    }
+
+    fun recalibrate() {
+        if (camera == null) {
+            start()
+            return
+        }
+        detector.calibrate(0f, 0f)
+        updateReadyHint(false)
+        hideGazePoint()
+        if (overlay != null) hideCalibration()
+        showCalibration()
+    }
+
     private val timeout = Runnable {
         if (overlay != null) {
             AppLog.put("眼动校准超时：stage=${stage()} frames=$receivedFrames stale=$staleFrames progress=${calibration.progress} issue=${issueMessage()}")
@@ -156,6 +176,7 @@ class EyePageTurner(
             detector.expireReadyWindow(SystemClock.uptimeMillis())
             updateReadyHint(detector.armed)
             calibration.reset()
+            hideGazePoint()
             if (overlay == null) recordReading(sample, time, "stale_frame")
             return
         }
@@ -221,11 +242,13 @@ class EyePageTurner(
         }
         val blocked = readingBlockReason()
         if (blocked != null) {
+            hideGazePoint()
             detector.reset(reason = "paused:$blocked")
             updateReadyHint(false)
             recordReading(sample, time, detector.state)
             return
         }
+        updateGazePoint(sample.takeIf { observation.state == GazeTrackingState.TRACKING })
         val wasArmed = detector.armed
         val turn = detector.update(sample, time, observation.state == GazeTrackingState.EYES_CLOSED)
         updateReadyHint(detector.armed)
@@ -264,7 +287,47 @@ class EyePageTurner(
         maxPosition = Float.NEGATIVE_INFINITY
     }
 
+    private fun updateGazePoint(sample: GazeSample?) {
+        if (!gazePointEnabled || sample == null || !detector.calibrated || root.height <= 0) {
+            hideGazePoint()
+            return
+        }
+        val position = detector.position(sample)
+        if (!position.isFinite()) {
+            hideGazePoint()
+            return
+        }
+        val marker = gazePoint ?: View(activity).apply {
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor((activity.accentColor and 0x00FFFFFF) or 0x88000000.toInt())
+                setStroke(dp(2), (activity.accentColor and 0x00FFFFFF) or 0xCC000000.toInt())
+            }
+            elevation = dp(4).toFloat()
+            isClickable = false
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }.also {
+            gazePoint = it
+            root.addView(it, FrameLayout.LayoutParams(dp(20), dp(20), Gravity.TOP or Gravity.CENTER_HORIZONTAL))
+        }
+        val top = dp(56)
+        val bottom = (root.height - dp(40)).coerceAtLeast(top)
+        val centerY = top + ((bottom - top) * position.coerceIn(0f, 1f)).toInt()
+        marker.translationY = (centerY - dp(10)).toFloat()
+        marker.visibility = View.VISIBLE
+    }
+
+    private fun hideGazePoint() {
+        gazePoint?.visibility = View.GONE
+    }
+
+    private fun clearGazePoint() {
+        gazePoint?.let(root::removeView)
+        gazePoint = null
+    }
+
     private fun showCalibration() {
+        hideGazePoint()
         calibration.reset()
         calibrationStage = CalibrationStage.TOP
         topPoint = null
@@ -451,6 +514,7 @@ class EyePageTurner(
         camera?.stop()
         camera = null
         hideCalibration()
+        clearGazePoint()
         resetGesture()
     }
 

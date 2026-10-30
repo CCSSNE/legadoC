@@ -656,6 +656,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                     R.id.menu_enable_ai_chapter_purify ->
                         item.isChecked = book.getAiChapterPurifyEnabled()
                     R.id.menu_eye_page_turn -> item.isChecked = eyePageTurnEnabled
+                    R.id.menu_eye_gaze_point -> item.isChecked = ReadBookConfig.eyePageGazePointEnabled
                     R.id.menu_re_segment -> item.isChecked = book.getReSegment()
                     R.id.menu_offline_review_mode ->
                         item.isChecked = AppConfig.offlineReviewMode
@@ -689,6 +690,8 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.menu_eye_page_turn -> toggleEyePageTurn()
+            R.id.menu_eye_page_recalibrate -> recalibrateEyePageTurn()
+            R.id.menu_eye_gaze_point -> toggleEyeGazePoint(item)
             R.id.menu_change_source,
             R.id.menu_book_change_source -> {
                 binding.readMenu.runMenuOut()
@@ -1825,6 +1828,28 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
     }
 
+    private fun recalibrateEyePageTurn() {
+        ReadBookConfig.eyePageCalibration = null
+        if (eyePageTurnEnabled) {
+            binding.readMenu.runMenuOut()
+            val turner = eyePageTurner
+            if (turner != null) {
+                turner.recalibrate()
+            } else {
+                startEyePageTurner()
+            }
+        } else {
+            toastOnUi(R.string.eye_page_recalibrate_not_running)
+        }
+    }
+
+    private fun toggleEyeGazePoint(item: MenuItem) {
+        val enabled = !ReadBookConfig.eyePageGazePointEnabled
+        ReadBookConfig.eyePageGazePointEnabled = enabled
+        item.isChecked = enabled
+        eyePageTurner?.setGazePointEnabled(enabled)
+    }
+
     private fun setEyePageTurnEnabled(enabled: Boolean) {
         eyePageTurnEnabled = enabled
         menu?.findItem(R.id.menu_eye_page_turn)?.isChecked = enabled
@@ -1889,6 +1914,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                 },
                 onCancel = { setEyePageTurnEnabled(false) })
         }
+        eyePageTurner?.setGazePointEnabled(ReadBookConfig.eyePageGazePointEnabled)
         eyePageTurner?.start()
     }
 

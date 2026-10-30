@@ -51,6 +51,10 @@ object ReadBookConfig {
         get() = appCtx.getPrefString("eyePageCalibration")
         set(value) = appCtx.putPrefString("eyePageCalibration", value)
 
+    var eyePageGazePointEnabled: Boolean
+        get() = appCtx.getPrefBoolean("eyePageGazePointEnabled", false)
+        set(value) = appCtx.putPrefBoolean("eyePageGazePointEnabled", value)
+
     const val configFileName = "readConfig.json"
     const val shareConfigFileName = "shareReadConfig.json"
     private const val activeReadConfigFileName = "activeReadConfig.json"
