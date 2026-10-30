@@ -4,6 +4,11 @@
     android:layout_height="match_parent"
     android:orientation="vertical">
 
+    <FrameLayout
+        android:id="@+id/reader_content"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
     <io.legado.app.ui.book.read.page.ReadView
         android:id="@+id/read_view"
         android:layout_width="match_parent"
@@ -150,5 +155,7 @@
         android:layout_height="match_parent"
         android:clickable="false"
         android:visibility="gone" />
+
+    </FrameLayout>
 
 </FrameLayout>

@@ -79,6 +79,7 @@ class PageView(context: Context) : FrameLayout(context) {
     private var tvTimeBatteryP: BatteryView? = null
     private var isMainView = false
     private var currentTextPage: TextPage? = null
+    private var eyePageHintVisible = false
     private var footerCenterActions = emptyList<FooterCenterAction>()
     private val footerCenterActionHitRect = Rect()
     private var advancedTitleLottieKey: String? = null
@@ -187,6 +188,22 @@ class PageView(context: Context) : FrameLayout(context) {
         }
         upTime()
         upBattery(battery)
+        upEyePageHint()
+    }
+
+    fun setEyePageHint(visible: Boolean) {
+        if (eyePageHintVisible == visible) return
+        eyePageHintVisible = visible
+        upEyePageHint()
+    }
+
+    private fun upEyePageHint() = binding.run {
+        tvEyePageHint.isGone = !eyePageHintVisible
+        tvEyePageHint.setTextColor(with(ReadTipConfig) {
+            if (tipColor == 0) ReadBookConfig.textColor else tipColor
+        })
+        tvEyePageHint.backgroundColor = ReadBookConfig.bgMeanColor
+        tvEyePageHint.typeface = ChapterProvider.typeface
     }
 
     /**

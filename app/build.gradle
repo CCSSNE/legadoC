@@ -261,6 +261,7 @@ dependencies {
     implementation(libs.flexbox)
     implementation(libs.gson)
     implementation(libs.lottie)
+    implementation(libs.mediapipe.tasks.vision)
 
     //baidu offline tts（语音包 config.yaml 解析；仅自有构建 app flavor 需要）
     appImplementation(libs.snakeyaml)

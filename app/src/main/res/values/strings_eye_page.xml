@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="eye_page_turn">眼动翻页</string>
+    <string name="eye_page_look_up_hint">上看翻页</string>
+    <string name="eye_page_help">开启后使用前置摄像头识别视线，图像仅在设备本地处理，不会保存或上传。\n\n首次开启时，请保持光线充足、手机与头部稳定，按提示依次注视屏幕顶部、底部和中间的圆点。中点校验通过后才会保存结果，后续开启无需重复校准。\n\n自然阅读到屏幕底部，短暂停留，页脚出现“上看翻页”后将视线向上移，即可翻到下一页。眨眼或单纯抬头不会触发翻页。\n\n退出阅读或进入后台会关闭眼动翻页，每次重新进入阅读界面需手动开启。识别效果受光线、眼镜反光与握持姿势影响，请尽量保持校准时的握持姿势。\n\n若识别效果不好，可尝试点击“设置 → 其他设置 → 眼动翻页重新校准”，之后重新打开眼动翻页，重新进行校准。</string>
+    <string name="eye_page_enable">开启眼动翻页</string>
+    <string name="eye_page_recalibrate">眼动翻页重新校准</string>
+    <string name="eye_page_recalibrate_summary">清除已保存的校准结果，下次在阅读界面开启眼动翻页时重新校准</string>
+    <string name="eye_page_recalibrate_ready">校准结果已清除，请返回阅读界面开启眼动翻页进行重新校准</string>
+    <string name="eye_page_permission_required">眼动翻页需要摄像头权限，请允许后重新开启</string>
+    <string name="eye_page_unsupported">眼动翻页需要 Android 7.0 及以上系统和前置摄像头</string>
+    <string name="eye_page_error">眼动翻页已关闭：%1$s</string>
+    <string name="eye_page_target">眼动校准注视点</string>
+    <string name="eye_page_prepare_top">请保持手机与头部稳定。\n请只看屏幕顶部圆点，\n不要看说明或其他地方。</string>
+    <string name="eye_page_prepare_bottom">请保持手机与头部稳定。\n请只看屏幕底部圆点，\n不要看说明或其他地方。</string>
+    <string name="eye_page_prepare_midpoint">上下采样完成，请保持姿势稳定。\n请只看屏幕中间圆点，\n不要看下方说明。</string>
+    <string name="eye_page_calibration_countdown">%1$d 秒后开始校准</string>
+    <string name="eye_page_calibrate_top">请保持头部不动，注视顶部圆点约 3 秒\n请勿看此说明，正在校准视线…</string>
+    <string name="eye_page_calibrate_bottom">请保持头部不动，注视底部圆点约 3 秒\n请勿看此说明，正在校准视线…</string>
+    <string name="eye_page_calibrate_midpoint">请保持头部不动，\n注视中间圆点约 3 秒。\n请勿看下方说明，正在校验…</string>
+    <string name="eye_page_calibration_failed">未能完成视线校准，请在光线充足时保持头部稳定，重新开启</string>
+    <string name="eye_page_ready">眼动翻页已开启：读到底部后向上看即可翻页</string>
+    <string name="eye_page_camera_starting">正在启动前置摄像头…</string>
+    <string name="eye_page_sampling">正在采集视线：%1$d%%</string>
+    <string name="eye_page_target_changed">顶部校准完成，请将视线移到下方圆点</string>
+    <string name="eye_page_no_face">未识别到人脸，请正对前置摄像头并保持光线充足</string>
+    <string name="eye_page_multiple_faces">检测到多个人脸，请保持摄像头中只有您一人</string>
+    <string name="eye_page_eyes_closed">暂未识别到睁开的双眼，眨眼后会继续采集</string>
+    <string name="eye_page_too_far">眼睛距离过远，请将手机稍微靠近</string>
+    <string name="eye_page_eyes_unclear">双眼识别不清，请调整光线并避免眼镜反光</string>
+    <string name="eye_page_gaze_unstable">视线尚未稳定，请持续注视圆点</string>
+    <string name="eye_page_processing_slow">摄像头图像处理延迟较高，请稍后重试</string>
+    <string name="eye_page_calibration_paused">校准已暂停，请关闭菜单或弹窗后继续</string>
+    <string name="eye_page_pose_changed">校准时头部位置变化较大，请保持头部和手机稳定，只移动视线</string>
+    <string name="eye_page_midpoint_failed">中间视线校验未通过，可能被识别为顶部或底部，请保持姿势稳定并只注视圆点，重新校准</string>
+    <string name="eye_page_gaze_too_close">上下视线区分不明显，请注视圆点并保持头部稳定</string>
+    <string name="eye_page_retrying">正在重新校准，请先注视顶部圆点</string>
+    <string name="eye_page_calibration_detail">视线校准未完成：%1$s</string>
+</resources>

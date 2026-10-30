@@ -1,7 +1,9 @@
 package io.legado.app.ui.book.read
 
 import android.annotation.SuppressLint
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.Rect
@@ -23,6 +25,7 @@ import androidx.activity.addCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.core.view.get
+import androidx.core.content.ContextCompat
 import androidx.core.view.doOnLayout
 import androidx.core.view.isVisible
 import androidx.core.view.setPadding
@@ -117,6 +120,7 @@ import io.legado.app.ui.book.read.config.ReadAloudDialog
 import io.legado.app.ui.book.read.config.ReadStyleDialog
 import io.legado.app.ui.book.read.config.TipConfigDialog.Companion.TIP_COLOR
 import io.legado.app.ui.book.read.config.TipConfigDialog.Companion.TIP_DIVIDER_COLOR
+import io.legado.app.ui.book.read.eye.EyePageTurner
 import io.legado.app.ui.book.read.page.ContentTextView
 import io.legado.app.ui.book.read.page.FooterCenterAction
 import io.legado.app.ui.book.read.page.ReadView
@@ -309,6 +313,17 @@ class ReadBookActivity : BaseReadBookActivity(),
     private var illustrationAnchor: IllustrationAnchor? = null
     private var selectedReviewButton: ReviewButton? = null
     private var selectedSyntheticPara: SyntheticParaContent? = null
+    private var eyePageTurner: EyePageTurner? = null
+    private var eyePageTurnEnabled = false
+    private var readerResumed = false
+    private val eyeCameraPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            setEyePageTurnEnabled(true)
+        } else {
+            setEyePageTurnEnabled(false)
+            toastOnUi(R.string.eye_page_permission_required)
+        }
+    }
     val textActionMenu: TextActionMenu by lazy {
         TextActionMenu(this, this)
     }
@@ -412,6 +427,10 @@ class ReadBookActivity : BaseReadBookActivity(),
         updateReadAloudPageFloating()
         updateReadAloudPanels()
         onBackPressedDispatcher.addCallback(this) {
+            if (eyePageTurner?.isCalibrating == true) {
+                setEyePageTurnEnabled(false)
+                return@addCallback
+            }
             if (binding.readAiPanel.isVisible) {
                 binding.readAiPanel.close()
                 return@addCallback
@@ -448,12 +467,14 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setEyePageTurnEnabled(false)
         pendingDirectAudioPlayMode = intent.getStringExtra(EXTRA_DIRECT_AUDIO_PLAY)
         viewModel.initData(intent)
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
+        eyePageTurner?.resetGesture()
         upSystemUiVisibility()
         if (hasFocus) {
             binding.readMenu.upBrightnessState()
@@ -466,6 +487,9 @@ class ReadBookActivity : BaseReadBookActivity(),
         // 使用上次已应用的快照，不能假定回调入口的 resources 仍然是旧配置。
         val oldUiMode = lastUiNightMode
         super.onConfigurationChanged(newConfig)
+        eyePageTurner?.stop()
+        eyePageTurner = null
+        startEyePageTurner()
         lastUiNightMode = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
         upSystemUiVisibility()
         binding.readView.upStatusBar()
@@ -496,6 +520,8 @@ class ReadBookActivity : BaseReadBookActivity(),
     @SuppressLint("UnspecifiedRegisterReceiverFlag")
     override fun onResume() {
         super.onResume()
+        readerResumed = true
+        startEyePageTurner()
         io.legado.app.help.agent.mcp.AgentReading.attach(this) { binding.readView.agentSelection() }
         ReadBook.readStartTime = System.currentTimeMillis()
         if (bookChanged) {
@@ -532,6 +558,8 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     override fun onPause() {
+        readerResumed = false
+        eyePageTurner?.stop()
         io.legado.app.help.agent.mcp.AgentReading.detach(this)
         super.onPause()
         autoPageStop()
@@ -554,6 +582,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     override fun onStop() {
+        if (eyePageTurnEnabled) setEyePageTurnEnabled(false)
         super.onStop()
         if (activeActivityRef?.get() === this) {
             activeActivityRef = null
@@ -626,6 +655,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                     R.id.menu_enable_replace -> item.isChecked = book.getUseReplaceRule()
                     R.id.menu_enable_ai_chapter_purify ->
                         item.isChecked = book.getAiChapterPurifyEnabled()
+                    R.id.menu_eye_page_turn -> item.isChecked = eyePageTurnEnabled
                     R.id.menu_re_segment -> item.isChecked = book.getReSegment()
                     R.id.menu_offline_review_mode ->
                         item.isChecked = AppConfig.offlineReviewMode
@@ -658,6 +688,7 @@ class ReadBookActivity : BaseReadBookActivity(),
      */
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
+            R.id.menu_eye_page_turn -> toggleEyePageTurn()
             R.id.menu_change_source,
             R.id.menu_book_change_source -> {
                 binding.readMenu.runMenuOut()
@@ -1760,9 +1791,110 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     private fun keyPage(direction: PageDirection) {
+        eyePageTurner?.resetGesture()
         binding.readView.cancelSelect()
         binding.readView.pageDelegate?.isCancel = false
         binding.readView.pageDelegate?.keyTurnPage(direction)
+    }
+
+    private fun toggleEyePageTurn() {
+        if (eyePageTurnEnabled) {
+            setEyePageTurnEnabled(false)
+            return
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            toastOnUi(R.string.eye_page_unsupported)
+            return
+        }
+        if (!ReadBookConfig.eyePageTurnHelpShown) {
+            ReadBookConfig.eyePageTurnHelpShown = true
+            alert(getString(R.string.eye_page_turn), getString(R.string.eye_page_help)) {
+                positiveButton(R.string.eye_page_enable) { requestEyePageTurn() }
+                negativeButton(R.string.cancel) { }
+            }
+        } else {
+            requestEyePageTurn()
+        }
+    }
+
+    private fun requestEyePageTurn() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            setEyePageTurnEnabled(true)
+        } else {
+            eyeCameraPermission.launch(Manifest.permission.CAMERA)
+        }
+    }
+
+    private fun setEyePageTurnEnabled(enabled: Boolean) {
+        eyePageTurnEnabled = enabled
+        menu?.findItem(R.id.menu_eye_page_turn)?.isChecked = enabled
+        if (enabled) {
+            autoPageStop()
+            binding.readMenu.runMenuOut()
+            startEyePageTurner()
+        } else {
+            eyePageTurner?.stop()
+            eyePageTurner = null
+        }
+        upScreenTimeOut()
+    }
+
+    private fun startEyePageTurner() {
+        if (!readerResumed || !eyePageTurnEnabled) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            setEyePageTurnEnabled(false)
+            toastOnUi(R.string.eye_page_unsupported)
+            return
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            setEyePageTurnEnabled(false)
+            toastOnUi(R.string.eye_page_permission_required)
+            return
+        }
+        if (eyePageTurner == null) {
+            eyePageTurner = EyePageTurner(this, binding.root, binding.readerContent,
+                readingBlockReason = {
+                    when {
+                        !readerResumed -> "not_resumed"
+                        !window.decorView.hasWindowFocus() -> "window_unfocused"
+                        menuLayoutIsVisible -> "menu_visible"
+                        binding.readAiPanel.isVisible -> "ai_panel_visible"
+                        isShowingSearchResult -> "search_visible"
+                        !isInitFinish -> "initializing"
+                        isAutoPage -> "auto_paging"
+                        BaseReadAloudService.isPlay() -> "read_aloud"
+                        binding.readView.isTextSelected -> "text_selected"
+                        textActionMenu.isShowing || popupAction.isShowing -> "text_menu"
+                        binding.readView.pageDelegate == null -> "no_page_delegate"
+                        binding.readView.pageDelegate?.isRunning == true -> "page_animation"
+                        binding.readView.curPage.textPage.isMsgPage -> "message_page"
+                        binding.readView.curPage.textPage.lines.isEmpty() -> "empty_page"
+                        else -> null
+                    }
+                },
+                canCalibrate = { readerResumed && window.decorView.hasWindowFocus() && !menuLayoutIsVisible },
+                onReadyChanged = { ready ->
+                    binding.readView.curPage.setEyePageHint(ready)
+                    binding.readView.invalidate()
+                },
+                onNextPage = {
+                    AppLog.putDebug("眼动翻页请求：chapter=${ReadBook.durChapterIndex} page=${ReadBook.durPageIndex} delegate=${binding.readView.pageDelegate?.javaClass?.simpleName}")
+                    keyPage(PageDirection.NEXT)
+                    screenOffTimerStart()
+                },
+                onError = { error ->
+                    AppLog.put("眼动翻页启动或识别失败", error)
+                    setEyePageTurnEnabled(false)
+                    toastOnUi(getString(R.string.eye_page_error, error.localizedMessage ?: error.javaClass.simpleName))
+                },
+                onCancel = { setEyePageTurnEnabled(false) })
+        }
+        eyePageTurner?.start()
+    }
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) eyePageTurner?.resetGesture()
+        return super.dispatchTouchEvent(event)
     }
 
     override fun upMenuView() {
@@ -1885,6 +2017,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         // ReadBook 的内容加载协程在 IO 线程回调本方法；
         // 面板动画等 UI 操作只能在 Looper 线程执行，统一收敛到主线程。
         handler.post {
+            eyePageTurner?.resetGesture()
             if (!fromReadAloud && !ReadBook.skipReadAloudSyncOnce) {
                 onManualPageChanged()
             }
@@ -2672,6 +2805,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         if (isAutoPage) {
             autoPageStop()
         } else {
+            if (eyePageTurnEnabled) setEyePageTurnEnabled(false)
             binding.readView.autoPager.start()
             binding.readMenu.setAutoPage(true)
             screenTimeOut = -1L
@@ -2885,6 +3019,7 @@ class ReadBookActivity : BaseReadBookActivity(),
      * 朗读按钮
      */
     override fun onClickReadAloud() {
+        if (eyePageTurnEnabled) setEyePageTurnEnabled(false)
         autoPageStop()
         when {
             !BaseReadAloudService.isRun -> {
@@ -3629,6 +3764,8 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     override fun onDestroy() {
+        eyePageTurner?.stop()
+        eyePageTurner = null
         cancelAiChapterPurify()
         super.onDestroy()
         if (activeActivityRef?.get() === this) {
@@ -3889,14 +4026,14 @@ class ReadBookActivity : BaseReadBookActivity(),
      */
     override fun screenOffTimerStart() {
         handler.post {
-            if (screenTimeOut < 0) {
+            handler.removeCallbacks(screenOffRunnable)
+            if (screenTimeOut < 0 || (readerResumed && eyePageTurnEnabled)) {
                 keepScreenOn(true)
                 return@post
             }
             val t = screenTimeOut - sysScreenOffTime
             if (t > 0) {
                 keepScreenOn(true)
-                handler.removeCallbacks(screenOffRunnable)
                 handler.postDelayed(screenOffRunnable, screenTimeOut)
             } else {
                 keepScreenOn(false)
