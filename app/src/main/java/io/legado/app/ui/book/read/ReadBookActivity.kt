@@ -94,6 +94,8 @@ import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.prefs.ColorPreference.ColorPickerDialogCompat
 import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.bottomBackground
+import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadAloudPosition
 import io.legado.app.model.ReadAloudPositionUpdate
@@ -155,6 +157,7 @@ import io.legado.app.ui.replace.edit.ReplaceEditActivity
 import io.legado.app.ui.widget.PopupAction
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.utils.ACache
+import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.Debounce
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.NetworkUtils
@@ -1963,7 +1966,7 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     private fun showEyeGazePointColorPicker() {
         val color = ReadBookConfig.eyePageGazePointColor.takeIf { it != 0 } ?: accentColor
-        val dialog = ColorPreference.ColorPickerDialogCompat.newBuilder()
+        val dialog = ColorPickerDialogCompat.newBuilder()
             .setDialogType(ColorPickerDialog.TYPE_PRESETS)
             .setDialogTitle(R.string.eye_page_gaze_point_color)
             .setColorShape(ColorShape.CIRCLE)
