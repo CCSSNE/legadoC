@@ -24,6 +24,33 @@ object AppFreezeMonitor {
     }
 
     private var registeredReceiver = false
+    private var monitoring = false
+    private var previous = 0L
+
+    private val detectRunnable = object : Runnable {
+        override fun run() {
+            val current = SystemClock.uptimeMillis()
+            val elapsed = current - previous
+            val extra = elapsed - 3000
+
+            if (extra > 300) {
+                LogUtils.d(TAG, "检测到应用被系统冻结，时长：$extra 毫秒")
+            }
+
+            previous = current
+
+            if (AppConfig.debugLogEnabled) {
+                handler.postDelayed(this, 3000)
+            } else {
+                monitoring = false
+            }
+        }
+    }
+
+    private fun stop() {
+        handler.removeCallbacks(detectRunnable)
+        monitoring = false
+    }
 
     @SuppressLint("UnspecifiedRegisterReceiverFlag")
     fun init(context: Context) {
@@ -32,6 +59,7 @@ object AppFreezeMonitor {
                 registeredReceiver = false
                 context.unregisterReceiver(screenStatusReceiver)
             }
+            stop()
             return
         }
 
@@ -40,26 +68,12 @@ object AppFreezeMonitor {
             context.registerReceiver(screenStatusReceiver, screenStatusReceiver.filter)
         }
 
-        var previous = SystemClock.uptimeMillis()
-
-        val runnable = object : Runnable {
-            override fun run() {
-                val current = SystemClock.uptimeMillis()
-                val elapsed = current - previous
-                val extra = elapsed - 3000
-
-                if (extra > 300) {
-                    LogUtils.d(TAG, "检测到应用被系统冻结，时长：$extra 毫秒")
-                }
-
-                previous = current
-
-                if (AppConfig.debugLogEnabled) {
-                    handler.postDelayed(this, 3000)
-                }
-            }
-        }
-        handler.postDelayed(runnable, 3000)
+        // init 会被 App.onCreate 与偏好变更多次调用；同一时刻只能维持一条检测链，
+        // 否则每次重复 init 都会叠加一串 postDelayed 定时链（检测逻辑缺陷修复）
+        if (monitoring) return
+        monitoring = true
+        previous = SystemClock.uptimeMillis()
+        handler.postDelayed(detectRunnable, 3000)
     }
 
     class ScreenStatusReceiver : BroadcastReceiver() {
