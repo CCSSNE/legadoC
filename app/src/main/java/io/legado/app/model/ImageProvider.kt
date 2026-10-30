@@ -35,6 +35,7 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.max
 import kotlin.math.min
 
 object ImageProvider {
@@ -126,10 +127,16 @@ object ImageProvider {
         val lruMaxSize = bitmapLruCache.maxSize()
         val lruSize = bitmapLruCache.size()
         val byteCount = bitmap.byteCount
+        // 书架 OOM 修复：动态扩容上限从 min(256MB, 单图*1.3) 改为受堆预算约束，
+        // 只允许占满堆上限的 25%，否则低内存机型上缓存可以逼近整个堆，diff 线程
+        // 任何一次小分配都会直接 OOM
+        val budgetLimit = min((Runtime.getRuntime().maxMemory() / 4).toInt(), 256 * M)
         val size = if (byteCount > lruMaxSize) {
-            min(256 * M, (byteCount * 1.3).toInt())
+            // 保底必须放得下本次这张图：上限小于 single byteCount 时，put 会立刻
+            // 被 LruCache 逐出并 recycle，调用方随后复用就会直接崩溃
+            max(byteCount, min(budgetLimit, (byteCount * 1.3).toInt()))
         } else if (lruSize + byteCount > lruMaxSize && bitmapLruCache.count < 5) {
-            min(256 * M, (lruSize + byteCount * 1.3).toInt())
+            min(budgetLimit, (lruSize + byteCount * 1.3).toInt())
         } else {
             lruMaxSize
         }
