@@ -1983,16 +1983,6 @@ class ReadBookActivity : BaseReadBookActivity(),
         dialog.show(supportFragmentManager, "eye_gaze_point_color")
     }
 
-    private fun eyeGazePointBounds(): IntRange? {
-        val footerBounds = binding.readView.footerBoundsOrNull ?: return null
-        val rootLocation = IntArray(2)
-        val pageLocation = IntArray(2)
-        binding.root.getLocationOnScreen(rootLocation)
-        binding.readView.getLocationOnScreen(pageLocation)
-        val offset = pageLocation[1] - rootLocation[1]
-        return (footerBounds.first + offset)..(footerBounds.last + offset)
-    }
-
     private fun setEyePageTurnEnabled(enabled: Boolean) {
         eyePageTurnEnabled = enabled
         ReadBookConfig.eyePageTurnEnabled = enabled
@@ -2022,7 +2012,6 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
         if (eyePageTurner == null) {
             eyePageTurner = EyePageTurner(this, binding.root, binding.readerContent,
-                gazePointBounds = ::eyeGazePointBounds,
                 readingBlockReason = {
                     when {
                         !readerResumed -> "not_resumed"

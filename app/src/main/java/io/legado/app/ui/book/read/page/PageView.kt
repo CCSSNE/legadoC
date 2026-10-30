@@ -112,12 +112,6 @@ class PageView(context: Context) : FrameLayout(context) {
             }
             return binding.llFooter.top..binding.llFooter.bottom
         }
-    val footerBoundsOrNull: IntRange?
-        get() = if (binding.llFooter.isGone || binding.llFooter.height <= 0) {
-            null
-        } else {
-            binding.llFooter.top..binding.llFooter.bottom
-        }
     private val isClassicEpub: Boolean
         get() = ReadBook.book?.isEpub == true &&
             AppConfig.epubParseMode == AppConfig.EPUB_PARSE_MODE_CLASSIC
@@ -208,7 +202,6 @@ class PageView(context: Context) : FrameLayout(context) {
         tvEyePageHint.setTextColor(with(ReadTipConfig) {
             if (tipColor == 0) ReadBookConfig.textColor else tipColor
         })
-        tvEyePageHint.backgroundColor = ReadBookConfig.bgMeanColor
         tvEyePageHint.typeface = ChapterProvider.typeface
     }
 
