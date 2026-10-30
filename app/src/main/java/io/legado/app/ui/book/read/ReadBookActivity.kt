@@ -314,7 +314,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     private var selectedReviewButton: ReviewButton? = null
     private var selectedSyntheticPara: SyntheticParaContent? = null
     private var eyePageTurner: EyePageTurner? = null
-    private var eyePageTurnEnabled = false
+    private var eyePageTurnEnabled = ReadBookConfig.eyePageTurnEnabled
     private var readerResumed = false
     private val eyeCameraPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
@@ -467,7 +467,6 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        setEyePageTurnEnabled(false)
         pendingDirectAudioPlayMode = intent.getStringExtra(EXTRA_DIRECT_AUDIO_PLAY)
         viewModel.initData(intent)
     }
@@ -582,7 +581,6 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     override fun onStop() {
-        if (eyePageTurnEnabled) setEyePageTurnEnabled(false)
         super.onStop()
         if (activeActivityRef?.get() === this) {
             activeActivityRef = null
@@ -1852,6 +1850,7 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     private fun setEyePageTurnEnabled(enabled: Boolean) {
         eyePageTurnEnabled = enabled
+        ReadBookConfig.eyePageTurnEnabled = enabled
         menu?.findItem(R.id.menu_eye_page_turn)?.isChecked = enabled
         if (enabled) {
             autoPageStop()
@@ -1865,7 +1864,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     private fun startEyePageTurner() {
-        if (!readerResumed || !eyePageTurnEnabled) return
+        if (!readerResumed || !eyePageTurnEnabled || isAutoPage || BaseReadAloudService.isPlay()) return
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
             setEyePageTurnEnabled(false)
             toastOnUi(R.string.eye_page_unsupported)
@@ -2831,7 +2830,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         if (isAutoPage) {
             autoPageStop()
         } else {
-            if (eyePageTurnEnabled) setEyePageTurnEnabled(false)
+            if (eyePageTurnEnabled) eyePageTurner?.stop()
             binding.readView.autoPager.start()
             binding.readMenu.setAutoPage(true)
             screenTimeOut = -1L
@@ -2845,6 +2844,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             binding.readMenu.setAutoPage(false)
             dismissDialogFragment<AutoReadDialog>()
             upScreenTimeOut()
+            if (eyePageTurnEnabled) startEyePageTurner()
         }
     }
 
@@ -3045,8 +3045,8 @@ class ReadBookActivity : BaseReadBookActivity(),
      * 朗读按钮
      */
     override fun onClickReadAloud() {
-        if (eyePageTurnEnabled) setEyePageTurnEnabled(false)
         autoPageStop()
+        if (eyePageTurnEnabled) eyePageTurner?.stop()
         when {
             !BaseReadAloudService.isRun -> {
                 if (AppConfig.readAloudFloatOnDesktop) {
@@ -3867,6 +3867,11 @@ class ReadBookActivity : BaseReadBookActivity(),
             updateReadAloudPageFloating()
             if (it == Status.STOP) {
                 hideReadAloudPagePanel()
+                if (eyePageTurnEnabled) startEyePageTurner()
+            } else if (it == Status.PLAY) {
+                eyePageTurner?.stop()
+            } else if (it == Status.PAUSE && eyePageTurnEnabled) {
+                startEyePageTurner()
             }
             // 红字是 aloudPosition 的绘制期投影，播放状态变化（PLAY/PAUSE/STOP）
             // 只需触发一次重绘，投影内容由 TextLine.isReadAloud 在绘制时现算。

@@ -47,6 +47,10 @@ object ReadBookConfig {
         get() = appCtx.getPrefBoolean("eyePageTurnHelpShown", false)
         set(value) = appCtx.putPrefBoolean("eyePageTurnHelpShown", value)
 
+    var eyePageTurnEnabled: Boolean
+        get() = appCtx.getPrefBoolean("eyePageTurnEnabled", false)
+        set(value) = appCtx.putPrefBoolean("eyePageTurnEnabled", value)
+
     var eyePageCalibration: String?
         get() = appCtx.getPrefString("eyePageCalibration")
         set(value) = appCtx.putPrefString("eyePageCalibration", value)
