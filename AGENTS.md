@@ -132,17 +132,17 @@
 
 ### 本机环境与正式命令
 
-- JDK: `C:\Program Files\Eclipse Adoptium\jdk-17.0.19.10-hotspot`
+- JDK: `D:\AI\audio\jdk-17.0.19.10-hotspot`（Eclipse Adoptium 17.0.19+10）
 - Android SDK: `D:\AI\audio\android-sdk`
-- Gradle user home: `D:\AI\audio\android-gradle-user-home`
+- Gradle user home: `E:\AI\audio\android-gradle-user-home`（与工程同盘）
 - Gradle wrapper: `8.14.4`; compileSdk: `36`
 
 ```powershell
 $OutputEncoding = [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
-$env:JAVA_HOME = 'C:\Program Files\Eclipse Adoptium\jdk-17.0.19.10-hotspot'
+$env:JAVA_HOME = 'D:\AI\audio\jdk-17.0.19.10-hotspot'
 $env:ANDROID_HOME = 'D:\AI\audio\android-sdk'
 $env:ANDROID_SDK_ROOT = 'D:\AI\audio\android-sdk'
-$env:GRADLE_USER_HOME = 'D:\AI\audio\android-gradle-user-home'
+$env:GRADLE_USER_HOME = 'E:\AI\audio\android-gradle-user-home'
 $env:Path = @(
   "$env:JAVA_HOME\bin",
   "$env:ANDROID_HOME\cmdline-tools\latest\bin",
@@ -159,6 +159,8 @@ $versionName = '3.26.<MMddHH>' # <MMddHH> uses UTC; appC automatically appends c
 * 任何可能长时间运行的命令都必须监控实际进度；以进程、CPU、日志和产物是否持续变化判断是否仍在运行，不得无限等待，也不得仅凭启动器退出或工具超时误判任务失败。
 * 构建失败时先读取实际错误、文件、行号和异常信息，再判断根因；不得在没有证据时把源码错误、文件锁、缓存问题或内存问题混为一谈并盲目重跑。
 * 只有证据明确指向缓存、Gradle/Kotlin 进程、文件锁或内存问题时，才执行对应的进程清理、冷编译或局部构建目录清理；不得无依据删除整个构建目录，也不得终止不属于本次任务的进程。
+* Windows 下 KSP 若报 `this and base files have different roots`，先确认工程与 Gradle 缓存是否跨盘。工程与 `GRADLE_USER_HOME` 应同盘；使用原跨盘增量缓存时，可在该次构建加 `-Pksp.incremental=false`。2026-10-30 通过这两项调整完成自用版构建并交付。
+* Google Maven 发生 TLS 握手失败时，确认网络原因后可在本机构建环境临时使用项目允许的 Maven 镜像，不必改动已提交的仓库配置；2026-10-30 使用镜像后完成自用版构建并交付。
 * 同一检出目录同时只允许一个正式构建。构建结束、中断或失败后，必须清理属于本次构建的残留进程；构建结果以真实日志、退出状态和产物校验为准。
 
 ### 双构建路线（自有 / 开源）
@@ -192,7 +194,7 @@ $versionName = '3.26.<MMddHH>' # <MMddHH> uses UTC; appC automatically appends c
 ### 产物验证
 
 ```powershell
-$apk = 'D:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_<version>.apk'
+$apk = 'E:\AI\audio\legadoC-own\app\build\outputs\apk\app\c\legado_app_<version>.apk'
 & "$env:ANDROID_HOME\build-tools\36.0.0\aapt.exe" dump badging $apk
 & "$env:ANDROID_HOME\build-tools\36.0.0\apksigner.bat" verify --print-certs $apk
 ```
@@ -280,7 +282,7 @@ AI 铁律（死路，见到先复述给用户再定夺）：模型永远只当�
 
 仅保留最近一次已交付版本，下一次覆盖安装必须在此基础上递增：
 
-- 最近一次自用版交付为 `3.26.101208c` / `10905`，2026-10-12，基于提交 `a74f1f6a`（蓝牙按键映射扩展为7键阅读朗读双态并删除旧音量耳机开关）使用 `assembleAppC` 编译成功（`BUILD SUCCESSFUL in 49s`，`75 actionable tasks: 20 executed, 55 up-to-date`）。产物包名 `io.legado.app.dev`、versionName `3.26.101208c`、versionCode `10905`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C-自用`（label/label-zh 逐字匹配），`apksigner verify --print-certs` 确认证书 SHA-256 为仓库密钥 `70:CB:…:89:5C`、退出码 0；APK 位于 `app\build\outputs\apk\app\c\legado_app_3.26.101208_10905.apk`（47.87 MB），已通过 `adb install -r` 覆盖安装到设备 `1afaa639`（`dumpsys` 确认 versionCode `10905` / versionName `3.26.101208c`）。
+- 最近一次自用版交付为 `3.26.103008c` / `10907`，2026-10-30，基于提交 `9bc4463a`（移植眼动翻页与视线校准）使用 `assembleAppC` 编译成功（`BUILD SUCCESSFUL in 4m 27s`，`75 actionable tasks: 11 executed, 64 up-to-date`）。产物包名 `io.legado.app.dev`、versionName `3.26.103008c`、versionCode `10907`、架构 `arm64-v8a`，`aapt` 确认应用名 `阅读C-自用`（label/label-zh 逐字匹配），`apksigner verify --print-certs` 确认证书 SHA-256 为仓库密钥 `70:CB:…:89:5C`、退出码 0；APK 位于 `app\build\outputs\apk\app\c\legado_app_3.26.103008_10907.apk`（56.38 MiB）。本次仅授权编译，未安装或设备回归。
 - 最近一次公开版交付为 `3.26.101209` / `10906`，2026-10-12，基于提交 `1e65e3aa`（宣传图追加第30张；含7键双态蓝牙映射的 `app/src/main` 主代码）使用 `assembleOssRelease` 编译成功（`BUILD SUCCESSFUL in 3m 55s`，`121 actionable tasks: 28 executed, 1 from cache, 92 up-to-date`）。产物包名 `io.legado.app.c`、versionName `3.26.101209`（无 c 后缀）、versionCode `10906`，`aapt` 确认应用名 `阅读C`（label-zh 逐字匹配），`apksigner verify --print-certs` 确认证书 SHA-256 为仓库密钥 `70:CB:…:89:5C`、退出码 0；APK 位于 `app\build\outputs\apk\oss\release\legado_oss_3.26.101209_10906.apk`（37.79 MB），已发布 Pre 版 `v3.26.101209`（release id `410410306`，`prerelease=true`，`make_latest=false`，Latest 仍为 `v3.26.100717`；复查 tag/目标分支/中文正文（与源字节比对一致）/资产 39618080 字节与下载 200 均正常）。
 
 每次交付后当场更新本节。历史发布信息应从 Git、GitHub Release 或提交记录查询，不在本文件累积。
