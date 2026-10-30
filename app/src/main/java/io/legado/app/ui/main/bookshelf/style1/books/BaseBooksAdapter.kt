@@ -14,7 +14,6 @@ import io.legado.app.R
 import io.legado.app.base.adapter.DiffRecyclerAdapter
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.data.entities.Book
-import io.legado.app.help.book.shelfKey
 import io.legado.app.ui.main.bookshelf.BookCollectionShelfItem
 
 abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
@@ -34,7 +33,11 @@ abstract class BaseBooksAdapter<VB : ViewBinding>(context: Context) :
             override fun areItemsTheSame(oldItem: Any, newItem: Any): Boolean {
                 return when {
                     oldItem is Book && newItem is Book -> {
-                        oldItem.shelfKey == newItem.shelfKey
+                        // 书架 OOM 根因修复：shelfKey 每次访问都新拼字符串，
+                        // DiffUtil 热路径按 O(n) 比较量反复构造临时对象，
+                        // 这里直接比较身份字段，不构造任何字符串
+                        oldItem.shortcutId == newItem.shortcutId &&
+                                oldItem.bookUrl == newItem.bookUrl
                     }
 
                     oldItem is BookCollectionShelfItem && newItem is BookCollectionShelfItem -> {

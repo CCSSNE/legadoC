@@ -9,7 +9,6 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
-import io.legado.app.help.book.shelfKey
 import io.legado.app.lib.theme.applyUiBodyTypeface
 import io.legado.app.ui.main.bookshelf.BookCollectionShelfItem
 
@@ -32,7 +31,11 @@ abstract class BaseBooksAdapter<VH : RecyclerView.ViewHolder>(
         override fun areItemsTheSame(oldItem: Any, newItem: Any): Boolean {
             return when {
                 oldItem is Book && newItem is Book -> {
-                    oldItem.shelfKey == newItem.shelfKey
+                    // 书架 OOM 根因修复：shelfKey 每次访问都新拼字符串，
+                    // DiffUtil 热路径按 O(n) 比较量反复构造临时对象，
+                    // 这里直接比较身份字段，不构造任何字符串
+                    oldItem.shortcutId == newItem.shortcutId &&
+                            oldItem.bookUrl == newItem.bookUrl
                 }
 
                 oldItem is BookGroup && newItem is BookGroup -> {
