@@ -2663,4 +2663,17 @@
     <string name="cache_manage_maintenance_recount_book">%1$s：补算 %2$d 章 / 缓缺 %3$d 章 / 整书回写 %4$s</string>
     <string name="cache_manage_maintenance_recount_done">重算完成，共补算 %1$d 章</string>
     <string name="bookshelf_show_reading_progress">书架显示阅读进度</string>
+    <string name="read_record_day_detail_empty">这一天没有按书记录（明细自本版本起记录）</string>
+    <string name="bgm_enabled">朗读背景音乐</string>
+    <string name="bgm_enabled_summary">朗读时垫播背景音乐；不抢音频焦点，不干扰朗读</string>
+    <string name="bgm_volume">背景音乐音量</string>
+    <string name="bgm_volume_summary">相对朗读人声的音量（默认 15%）</string>
+    <string name="bgm_repeat_mode">背景音乐循环模式</string>
+    <string name="bgm_repeat_mode_list">列表循环</string>
+    <string name="bgm_repeat_mode_one">单曲循环</string>
+    <string name="bgm_repeat_mode_shuffle">随机循环</string>
+    <string name="bgm_pick_tracks">选择背景音乐曲目</string>
+    <string name="bgm_pick_tracks_summary">未选择曲目</string>
+    <string name="bgm_picked_count">已选 %1$d 首</string>
+    <string name="bgm_track_add_failed">所选文件无法获取持久读权限</string>
 </resources>

@@ -2823,4 +2823,17 @@
     <string name="cache_manage_maintenance_recount_book">%1$s: recounted %2$d, missing %3$d, book updated %4$s</string>
     <string name="cache_manage_maintenance_recount_done">Recount done, %1$d chapter(s) recounted</string>
     <string name="bookshelf_show_reading_progress">Show reading progress on bookshelf</string>
+    <string name="read_record_day_detail_empty">No per-book records for this day (recording starts from this version)</string>
+    <string name="bgm_enabled">Read-aloud background music</string>
+    <string name="bgm_enabled_summary">Play a background music track alongside read-aloud; never takes audio focus</string>
+    <string name="bgm_volume">BGM volume</string>
+    <string name="bgm_volume_summary">Volume relative to the read-aloud voice (default 15%)</string>
+    <string name="bgm_repeat_mode">BGM repeat mode</string>
+    <string name="bgm_repeat_mode_list">Loop playlist</string>
+    <string name="bgm_repeat_mode_one">Repeat one track</string>
+    <string name="bgm_repeat_mode_shuffle">Shuffle</string>
+    <string name="bgm_pick_tracks">Choose BGM tracks</string>
+    <string name="bgm_pick_tracks_summary">No tracks selected</string>
+    <string name="bgm_picked_count">%1$d track(s) selected</string>
+    <string name="bgm_track_add_failed">Failed to take persistable permission for selected file(s)</string>
 </resources>
