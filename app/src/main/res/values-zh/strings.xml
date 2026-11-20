@@ -2650,4 +2650,16 @@
     <string name="homepage_manual_add_module">手动添加模块</string>
     <string name="homepage_kind_select_title">选择分类</string>
     <string name="homepage_kind_select_confirm">确定</string>
+    <string name="cache_manage_maintenance">缓存维护</string>
+    <string name="cache_manage_maintenance_btn">缓存维护</string>
+    <string name="cache_manage_maintenance_choose">选择维护操作</string>
+    <string name="cache_manage_maintenance_orphans">孤立章节缓存</string>
+    <string name="cache_manage_maintenance_orphans_empty">未发现孤立章节缓存</string>
+    <string name="cache_manage_maintenance_orphans_item">%1$s：%2$d 个孤立文件</string>
+    <string name="cache_manage_maintenance_orphans_deleted">已删除 %1$d 个孤立文件</string>
+    <string name="cache_manage_maintenance_recount">重算章节字数</string>
+    <string name="cache_manage_maintenance_recount_targets">%1$d 本书存在已缓存但缺字数的章节</string>
+    <string name="cache_manage_maintenance_recount_targets_empty">已缓存的章节均有字数</string>
+    <string name="cache_manage_maintenance_recount_book">%1$s：补算 %2$d 章 / 缓缺 %3$d 章 / 整书回写 %4$s</string>
+    <string name="cache_manage_maintenance_recount_done">重算完成，共补算 %1$d 章</string>
 </resources>

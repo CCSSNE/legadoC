@@ -2810,4 +2810,16 @@
     <string name="agent_tools">工具设置</string>
     <string name="agent_loading">正在加载 Agent 配置…</string>
     <string name="agent_internal_switch_summary">内部 Agent 总开关；关闭后停止当前任务，对外 MCP 服务不受影响</string>
+    <string name="cache_manage_maintenance">Maintenance</string>
+    <string name="cache_manage_maintenance_btn">Maintenance</string>
+    <string name="cache_manage_maintenance_choose">Choose a maintenance action</string>
+    <string name="cache_manage_maintenance_orphans">Orphaned chapter caches</string>
+    <string name="cache_manage_maintenance_orphans_empty">No orphaned chapter caches</string>
+    <string name="cache_manage_maintenance_orphans_item">%1$s: %2$d orphaned file(s)</string>
+    <string name="cache_manage_maintenance_orphans_deleted">Deleted %1$d orphaned file(s)</string>
+    <string name="cache_manage_maintenance_recount">Recount chapter word counts</string>
+    <string name="cache_manage_maintenance_recount_targets">%1$d book(s) have cached chapters missing word counts</string>
+    <string name="cache_manage_maintenance_recount_targets_empty">All cached chapters already have word counts</string>
+    <string name="cache_manage_maintenance_recount_book">%1$s: recounted %2$d, missing %3$d, book updated %4$s</string>
+    <string name="cache_manage_maintenance_recount_done">Recount done, %1$d chapter(s) recounted</string>
 </resources>
