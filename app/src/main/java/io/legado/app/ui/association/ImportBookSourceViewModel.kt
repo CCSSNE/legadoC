@@ -146,8 +146,8 @@ class ImportBookSourceViewModel(app: Application) : BaseViewModel(app) {
                 mText.isUri() -> {
                     val uri = Uri.parse(mText)
                     uri.inputStream(context).getOrThrow().use { inputS ->
-                        val content = inputS.bufferedReader().readText()
-                        when (val parsed = parseBookSourceJson(content)) {
+                        // 流式解析：不把整份内容读成字符串再解析，防大合集 OOM
+                        when (val parsed = parseBookSourceJson(inputS.bufferedReader())) {
                             is BookSourceImportJson.Sources -> allSources.addAll(parsed.items)
                             is BookSourceImportJson.SourceUrls -> parsed.items.forEach {
                                 importSourceUrl(it)
@@ -179,9 +179,9 @@ class ImportBookSourceViewModel(app: Application) : BaseViewModel(app) {
             } else {
                 url(url)
             }
-        }.decompressed().byteStream().use { inputS ->
-            val content = inputS.bufferedReader().readText()
-            when (val parsed = parseBookSourceJson(content, allowSourceUrls = false)) {
+        }.decompressed().byteStream().bufferedReader().use { inputS ->
+            // 流式解析：网络响应不落地为整段字符串，防大合集 OOM
+            when (val parsed = parseBookSourceJson(inputS, allowSourceUrls = false)) {
                 is BookSourceImportJson.Sources -> allSources.addAll(parsed.items)
                 is BookSourceImportJson.SourceUrls -> throw NoStackTraceException("不是书源")
             }
@@ -190,8 +190,15 @@ class ImportBookSourceViewModel(app: Application) : BaseViewModel(app) {
 
     private fun comparisonSource() {
         execute {
+            // 批量导入时逐条查库是 N+1 查询，改为一次性取全量投影建索引；仅单条/空导入保持按 key 查询
+            val existingSources = if (allSources.size <= 1) {
+                allSources.mapNotNull { appDb.bookSourceDao.getBookSourcePart(it.bookSourceUrl) }
+                    .associateBy { it.bookSourceUrl }
+            } else {
+                appDb.bookSourceDao.allPart.associateBy { it.bookSourceUrl }
+            }
             allSources.forEach {
-                val source = appDb.bookSourceDao.getBookSourcePart(it.bookSourceUrl)
+                val source = existingSources[it.bookSourceUrl]
                 checkSources.add(source)
                 selectStatus.add(source == null || source.lastUpdateTime < it.lastUpdateTime)
                 newSourceStatus.add(source == null)
