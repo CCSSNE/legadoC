@@ -55,6 +55,20 @@ import java.util.Locale
 object ThemeConfig {
 
     /**
+     * 程序化切主题的同步栈标志。[switchThemeMode] 应用主题期间（含
+     * [AppCompatDelegate.setDefaultNightMode] 同步触发 Activity.onConfigurationChanged
+     * 的整个过程）为 true。
+     *
+     * 用途：ReadBookActivity.onConfigurationChanged 检测到 uiMode 翻转会同步派发
+     * UP_CONFIG 就地刷新阅读区；程序化切换（弹窗就地切日夜等 recreate=false 链）时
+     * 调用方在同一同步栈内会统一派发刷新事件，此处置位让 onConfigurationChanged
+     * 跳过，避免「背景先切、弹窗后切」的时序错拍与 UP_CONFIG 双投递（内容双载）。
+     * 系统 AUTO 日夜翻转不经本标志，就地刷新行为不变。
+     */
+    var applyingProgrammaticNightMode: Boolean = false
+        private set
+
+    /**
      * The persisted application theme mode. Every user-facing selector must
      * switch this state through [switchThemeMode] so the UI and reader cannot
      * update different theme sources.
@@ -189,10 +203,15 @@ object ThemeConfig {
     ): Boolean {
         val changed = setThemeModeState(context, mode)
         if (changed || forceApply) {
-            if (recreate) {
-                applyDayNight(context)
-            } else {
-                applyDayNightNoRecreate(context)
+            applyingProgrammaticNightMode = true
+            try {
+                if (recreate) {
+                    applyDayNight(context)
+                } else {
+                    applyDayNightNoRecreate(context)
+                }
+            } finally {
+                applyingProgrammaticNightMode = false
             }
         }
         return changed

@@ -78,6 +78,7 @@ import io.legado.app.help.book.update
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ReadTipConfig
+import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.illustration.IllustrationAnchor
 import io.legado.app.help.illustration.AudioBlockPlayer
@@ -504,7 +505,10 @@ class ReadBookActivity : BaseReadBookActivity(),
         binding.readView.upStatusBar()
         // 声明 uiMode 后系统日/夜翻转（AUTO 跟随）不再触发重建，按主题模式就地刷新
         // 阅读界面（与 ReadStyleDialog 就地切日夜同一事件组合：重刷背景/样式/重载内容）。
-        if (oldUiMode != lastUiNightMode) {
+        // 程序化切主题（setDefaultNightMode 经 switchThemeMode 的同步栈触发本回调）时
+        // 跳过：调用方会在同一同步栈内统一派发刷新事件，这里再派发一次会双投递
+        // UP_CONFIG——背景先切、弹窗后切（issue #17）且内容被重载两遍。
+        if (oldUiMode != lastUiNightMode && !ThemeConfig.applyingProgrammaticNightMode) {
             postEvent(EventBus.UP_CONFIG, arrayListOf(1, 2, 5))
             if (AppConfig.readBarStyleFollowPage) {
                 postEvent(EventBus.UPDATE_READ_ACTION_BAR, true)
