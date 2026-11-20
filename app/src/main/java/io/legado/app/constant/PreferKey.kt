@@ -406,6 +406,7 @@ object PreferKey {
     const val aiCreationFloatingOutsideReader = "aiCreationFloatingOutsideReader"
     const val aiCreationFloatingAutoCloseSeconds = "aiCreationFloatingAutoCloseSeconds"
     const val showLastUpdateTime = "showLastUpdateTime"
+    const val bookshelfShowReadingProgress = "bookshelfShowReadingProgress"
     const val showLocalBookIcon = "showLocalBookIcon"
     const val showWaitUpCount = "showWaitUpCount"
     const val clearWebViewData = "clearWebViewData"

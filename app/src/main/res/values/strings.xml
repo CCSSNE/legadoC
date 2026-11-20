@@ -2822,4 +2822,5 @@
     <string name="cache_manage_maintenance_recount_targets_empty">All cached chapters already have word counts</string>
     <string name="cache_manage_maintenance_recount_book">%1$s: recounted %2$d, missing %3$d, book updated %4$s</string>
     <string name="cache_manage_maintenance_recount_done">Recount done, %1$d chapter(s) recounted</string>
+    <string name="bookshelf_show_reading_progress">Show reading progress on bookshelf</string>
 </resources>
