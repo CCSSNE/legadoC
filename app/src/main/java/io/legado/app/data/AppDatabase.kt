@@ -102,7 +102,7 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 118,
+    version = 119,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
         BookCollection::class, BookCollectionItem::class, BookCollectionChild::class,
@@ -110,6 +110,7 @@ val appDb by lazy {
         ReplaceRule::class, HighlightRule::class, SearchBook::class, SearchKeyword::class, Cookie::class,
         RssSource::class, Bookmark::class, RssArticle::class, RssReadRecord::class,
         RssStar::class, TxtTocRule::class, ReadRecord::class, ReadRecordDaily::class,
+        ReadRecordDetail::class,
         HttpTTS::class, Cache::class, BookIllustration::class,
         RuleSub::class, DictRule::class, KeyboardAssist::class, Server::class,
         ReadRecentBook::class, AiChapterPurifyRecord::class, BookShortcut::class,
@@ -195,6 +196,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract val txtTocRuleDao: TxtTocRuleDao
     abstract val readRecordDao: ReadRecordDao
     abstract val readRecordDailyDao: ReadRecordDailyDao
+    abstract val readRecordDetailDao: ReadRecordDetailDao
     abstract val readRecentBookDao: ReadRecentBookDao
     abstract val httpTTSDao: HttpTTSDao
     abstract val cacheDao: CacheDao
