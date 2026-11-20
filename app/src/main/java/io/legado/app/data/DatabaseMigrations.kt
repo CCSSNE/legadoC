@@ -38,10 +38,20 @@ object DatabaseMigrations {
             migration_114_115,
             migration_115_116,
             migration_116_117,
+            migration_117_118,
         )
     }
 
     private val migration_116_117 = object : Migration(116, 117) {
+    private val migration_117_118 = object : Migration(117, 118) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // 高亮规则夜间逐效果颜色（JSON 同白天格式；空 = 跟随白天）
+            db.execSQL(
+                "ALTER TABLE highlight_rules ADD COLUMN styleColorsNight TEXT NOT NULL DEFAULT ''"
+            )
+        }
+    }
+
         override fun migrate(db: SupportSQLiteDatabase) {
             // 配图每图备注（宫格多图各写各的，排版与备注解构）
             db.execSQL(
