@@ -283,4 +283,14 @@
 		<item>Customize</item>
 	</string-array>
 
+    <string-array name="bgm_repeat_mode_entries">
+        <item>@string/bgm_repeat_mode_list</item>
+        <item>@string/bgm_repeat_mode_one</item>
+        <item>@string/bgm_repeat_mode_shuffle</item>
+    </string-array>
+    <string-array name="bgm_repeat_mode_values">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+    </string-array>
 </resources>

@@ -265,6 +265,12 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefBoolean(PreferKey.showLastUpdateTime, value)
         }
 
+    var bookshelfShowReadingProgress: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.bookshelfShowReadingProgress, false)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.bookshelfShowReadingProgress, value)
+        }
+
     val showLocalBookIcon: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.showLocalBookIcon, false)
 

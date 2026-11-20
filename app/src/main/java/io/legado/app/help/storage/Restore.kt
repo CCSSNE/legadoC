@@ -25,6 +25,7 @@ import io.legado.app.data.entities.HttpTTS
 import io.legado.app.data.entities.KeyboardAssist
 import io.legado.app.data.entities.ReadRecord
 import io.legado.app.data.entities.ReadRecordDaily
+import io.legado.app.data.entities.ReadRecordDetail
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.data.entities.RssSource
 import io.legado.app.data.entities.RssStar
@@ -334,6 +335,11 @@ object Restore {
                     mergeReadRecordDaily(record)
                 }
             }
+            fileToListT<ReadRecordDetail>(path, "readRecordDetail.json")?.let {
+                it.forEach { record ->
+                    mergeReadRecordDetail(record)
+                }
+            }
             File(path, "servers.json").takeIf {
                 it.exists()
             }?.let { file ->
@@ -526,6 +532,27 @@ object Restore {
             current.copy(
                 readTime = maxOf(current.readTime, record.readTime),
                 updatedAt = maxOf(current.updatedAt, record.updatedAt)
+            )
+        )
+    }
+
+    private fun mergeReadRecordDetail(record: ReadRecordDetail) {
+        val normalized = record.copy(
+            deviceId = record.deviceId.ifBlank { androidId }
+        )
+        val current = appDb.readRecordDetailDao.get(
+            normalized.deviceId,
+            normalized.bookName,
+            normalized.date
+        )
+        if (current == null) {
+            appDb.readRecordDetailDao.insert(normalized)
+            return
+        }
+        appDb.readRecordDetailDao.insert(
+            current.copy(
+                readTime = maxOf(current.readTime, normalized.readTime),
+                lastRead = maxOf(current.lastRead, normalized.lastRead)
             )
         )
     }

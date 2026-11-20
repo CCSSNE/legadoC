@@ -53,6 +53,7 @@ class HighlightRuleEditDialog() : BaseDialogFragment(R.layout.dialog_highlight_r
         binding.effectStylePicker.setStyles(
             rule.style,
             BookmarkStyle.parseStyleColors(rule.styleColors),
+            BookmarkStyle.parseStyleColors(rule.styleColorsNight),
             0
         )
         binding.tvFooterLeft.visible(editPos >= 0)
@@ -67,6 +68,7 @@ class HighlightRuleEditDialog() : BaseDialogFragment(R.layout.dialog_highlight_r
                 rule.excludeScope = editExcludeScope.text?.toString()
                 rule.style = effectStylePicker.getCheckedStyles()
                 rule.styleColors = effectStylePicker.getStyleColorsJson()
+                rule.styleColorsNight = effectStylePicker.getStyleColorsNightJson()
                 if (rule.pattern.isBlank()) {
                     toastOnUi(R.string.highlight_rule_invalid)
                     return@setOnClickListener

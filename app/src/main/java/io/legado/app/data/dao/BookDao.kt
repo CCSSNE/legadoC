@@ -232,4 +232,8 @@ interface BookDao {
 
     @Query("delete from books where type & ${BookType.notShelf} > 0")
     fun deleteNotShelfBook()
+
+    // 整书字数列级写入：@Update 全字段会覆盖阅读页并发写回的进度字段（durChapter*），禁用
+    @Query("update books set wordCount = :wordCount where bookUrl = :bookUrl")
+    fun upWordCount(bookUrl: String, wordCount: String)
 }
