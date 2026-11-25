@@ -547,7 +547,10 @@ object BookTtsCastingCoordinator {
         } else {
             cachedSpeakers()
         }
-        if (speakers.isEmpty()) return 0
+        if (speakers.isEmpty()) {
+            CastingDebugLog.add("选音", "没有任何候选音色，跳过自动选音")
+            return 0
+        }
         val speakerIds = speakers.map { it.id }.toSet()
         val bindings = dao.getBindings(workKey)
             .associateBy { it.targetType to it.targetId }
@@ -568,8 +571,20 @@ object BookTtsCastingCoordinator {
             }
         }
         val eligible = targets.filter { it.candidateSpeakerIds.isNotEmpty() }
-        if (eligible.isEmpty()) return 0
+        CastingDebugLog.add(
+            "选音",
+            "宿主=${if (scriptHost) "脚本引擎" else "内置目录"} 候选音色=${speakers.size} " +
+                "未绑定=${targets.size} 可分配=${eligible.size}"
+        )
+        if (eligible.isEmpty()) {
+            CastingDebugLog.add("选音", "没有可分配目标（角色都已绑定或候选为空）")
+            return 0
+        }
         val assignments = requestAssignments(provider, modelId, speakers, eligible)
+        CastingDebugLog.add(
+            "选音",
+            "模型返回 ${assignments.size} 条，assigned ${assignments.count { it.decision == "assigned" }} 条"
+        )
         val assignmentIndex = assignments
             .filter { it.decision == "assigned" && it.confidence >= MIN_AUTO_CONFIDENCE }
             .associateBy { it.targetType to it.targetId }
@@ -600,6 +615,10 @@ object BookTtsCastingCoordinator {
                 )
             }
             dao.insertBinding(binding)
+            CastingDebugLog.add(
+                "选音",
+                "绑定 ${target.name} → ${speakerId.take(48)}（置信度 ${assignment.confidence}）"
+            )
             saved++
         }
         return saved

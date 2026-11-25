@@ -487,6 +487,7 @@ object AiTtsStoryboardHelper {
                 throw error
             } catch (error: Throwable) {
                 lastError = error
+                CastingDebugLog.add("分镜", "块 $blockIndex/$blockCount 第${attempt + 1}次失败：${error.message}")
                 AppLog.putAi(
                     "STORYBOARD BLOCK FAILED\n" +
                         "block=$blockIndex/$blockCount\n" +
@@ -518,6 +519,12 @@ object AiTtsStoryboardHelper {
             add("units", GSON.toJsonTree(units))
             add("targetUnitIds", GSON.toJsonTree(units.map { it.unitId }))
         }
+        CastingDebugLog.add(
+            "分镜",
+            "请求模型：units=${units.size} paragraphs=${paragraphs.size} " +
+                "knownCharacters=${knownCharacters.size} knownCastRoles=${knownCastRoles.size} model=$modelId"
+        )
+        val startedAt = System.currentTimeMillis()
         val result = AiChatService.generateStructuredText(
             provider = provider,
             model = modelId,
@@ -526,9 +533,18 @@ object AiTtsStoryboardHelper {
             temperature = 0.0,
             requestTemplate = AiStoryboardConfig.storyboardRequestTemplate
         )
+        CastingDebugLog.add(
+            "分镜",
+            "模型返回：${result.length} 字符，耗时 ${System.currentTimeMillis() - startedAt}ms"
+        )
         check(result.isNotBlank()) { "AI 分镜返回为空" }
         val parsed = parseAndValidate(result, units, knownCharacters, knownCastRoles)
-        return applyAdjacentGenderEvidence(parsed, units)
+        val adjusted = applyAdjacentGenderEvidence(parsed, units)
+        CastingDebugLog.add(
+            "分镜",
+            "解析通过：${adjusted.size} 个单元，对白 ${adjusted.count { it.roleType != "narration" }} 个"
+        )
+        return adjusted
     }
 
     private fun readBaseRoutingPrompt(): String {
