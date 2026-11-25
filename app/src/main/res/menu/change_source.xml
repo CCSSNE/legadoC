@@ -19,6 +19,11 @@
         tools:ignore="AlwaysShowAction" />
 
     <item
+        android:id="@+id/menu_keyword_verify"
+        android:title="关键词校验"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/menu_source_manage"
         android:title="@string/book_source_manage"
         app:showAsAction="never" />

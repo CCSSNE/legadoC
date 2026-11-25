@@ -299,6 +299,21 @@ class ChangeBookSourceDialog() : BaseDialogFragment(R.layout.dialog_book_change_
                 viewModel.onLoadWordCountChecked(item.isChecked)
             }
 
+            R.id.menu_keyword_verify -> {
+                val sources = viewModel.bookMap.map { (url, book) ->
+                    book.originName.ifBlank { url } to url
+                }
+                if (sources.isEmpty()) {
+                    toastOnUi("还没有可校验的书源，先等搜索出结果")
+                } else {
+                    KeywordVerifyDialog.show(
+                        childFragmentManager,
+                        sources,
+                        io.legado.app.model.ReadBook.curTextChapter?.title,
+                    ) { url -> viewModel.bookMap[url] }
+                }
+            }
+
             R.id.menu_start_stop -> viewModel.startOrStopSearch()
             R.id.menu_source_manage -> startActivity<BookSourceActivity>()
             R.id.menu_close -> dismissAllowingStateLoss()
