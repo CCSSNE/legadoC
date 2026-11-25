@@ -14,6 +14,10 @@ import com.google.android.material.tabs.TabLayout
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.base.adapter.ItemViewHolder
+import android.widget.BaseAdapter
+import android.widget.LinearLayout
+import android.widget.ListView
+import android.widget.TextView
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
@@ -26,6 +30,9 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.ai.AiStoryboardConfig
 import io.legado.app.help.tts.AiBatchAnalyzeDialog
 import io.legado.app.help.tts.AiMultiVoiceConfig
+import io.legado.app.help.tts.CastingDebugLog
+import io.legado.app.help.tts.TtsVoice
+import io.legado.app.help.tts.TtsVoicePreviewers
 import io.legado.app.help.tts.AiStoryboardCacheDialog
 import io.legado.app.help.tts.BookTtsAutomationConfig
 import io.legado.app.help.tts.BookTtsCastingCoordinator
@@ -153,6 +160,7 @@ class AiMultiVoiceDialog : BaseDialogFragment(R.layout.dialog_ai_multi_voice) {
         binding.tvBatchAnalyze.setOnClickListener {
             AiBatchAnalyzeDialog().show(childFragmentManager, "aiBatchAnalyze")
         }
+        binding.tvCastingLog.setOnClickListener { showCastingLog() }
         binding.tvStoryboardCache.setOnClickListener {
             AiStoryboardCacheDialog().show(childFragmentManager, "aiStoryboardCache")
         }
@@ -182,6 +190,32 @@ class AiMultiVoiceDialog : BaseDialogFragment(R.layout.dialog_ai_multi_voice) {
                 dialog.dismiss()
             }
             .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    /** 角色分析日志：模型请求/校验/角色采纳/选音全链路，用于定位「哪一步没跑通」。 */
+    private fun showCastingLog() {
+        val context = requireContext()
+        val textView = TextView(context).apply {
+            text = CastingDebugLog.dump()
+            setTextIsSelectable(true)
+            textSize = 10f
+            typeface = android.graphics.Typeface.MONOSPACE
+            setPadding(24, 24, 24, 24)
+        }
+        val scroll = android.widget.ScrollView(context).apply { addView(textView) }
+        androidx.appcompat.app.AlertDialog.Builder(context)
+            .setTitle("角色分析日志")
+            .setView(scroll)
+            .setPositiveButton("复制全部") { _, _ ->
+                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                    as android.content.ClipboardManager
+                clipboard.setPrimaryClip(
+                    android.content.ClipData.newPlainText("castingLog", CastingDebugLog.dump())
+                )
+            }
+            .setNeutralButton("清空") { _, _ -> CastingDebugLog.clear() }
+            .setNegativeButton("关闭", null)
             .show()
     }
 
@@ -312,15 +346,122 @@ class AiMultiVoiceDialog : BaseDialogFragment(R.layout.dialog_ai_multi_voice) {
                 toastOnUi(R.string.tts_engine_v2_fetch_empty)
                 return@launch
             }
-            val names = voices.map { it.name.ifBlank { it.id } }
-            alert(titleResource = R.string.tts_engine_v2_pick_voice) {
-                singleChoiceItems(names.toTypedArray(), -1) { dialog, which ->
-                    dialog.dismiss()
-                    onPicked(voices[which].id)
+            showVoicePicker(engine, voices, onPicked)
+        }
+    }
+
+    /**
+     * 音色选择：顶部搜索 + 每行试听。
+     * 音色数量可能上百（内置豆包 374 个），逐行滚动找名字不现实；
+     * 试听经 [TtsVoicePreviewers] 交给内置引擎实现，没有实现时明确提示。
+     */
+    private fun showVoicePicker(
+        engine: TtsEngineSetting,
+        voices: List<TtsVoice>,
+        onPicked: (voiceId: String) -> Unit
+    ) {
+        val context = requireContext()
+        val density = resources.displayMetrics.density
+        fun dp(value: Int) = (value * density).toInt()
+
+        val container = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(8), dp(16), 0)
+        }
+        val search = EditText(context).apply {
+            hint = getString(R.string.tts_voice_search_hint)
+            setSingleLine(true)
+        }
+        container.addView(
+            search,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+        val listView = ListView(context)
+        container.addView(
+            listView,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(360)
+            )
+        )
+
+        val shown = mutableListOf<TtsVoice>()
+        val rowAdapter = object : BaseAdapter() {
+            override fun getCount(): Int = shown.size
+            override fun getItem(position: Int): Any = shown[position]
+            override fun getItemId(position: Int): Long = position.toLong()
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
+                val row = (convertView ?: LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                }) as LinearLayout
+                row.removeAllViews()
+                val voice = shown[position]
+                val label = TextView(context).apply {
+                    text = voice.name.ifBlank { voice.id }
+                    setPadding(dp(4), dp(12), dp(4), dp(12))
                 }
-                negativeButton(R.string.cancel)
+                row.addView(
+                    label,
+                    LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                )
+                val speaker = TextView(context).apply {
+                    text = "🔊"
+                    setPadding(dp(12), dp(12), dp(12), dp(12))
+                    setOnClickListener {
+                        val previewer = TtsVoicePreviewers.active
+                        if (previewer == null) {
+                            toastOnUi(R.string.tts_voice_preview_unsupported)
+                        } else {
+                            val started = previewer.preview(
+                                engine.id,
+                                voice.id,
+                                getString(R.string.tts_voice_preview_text)
+                            )
+                            if (!started) toastOnUi(R.string.tts_voice_preview_unsupported)
+                        }
+                    }
+                }
+                row.addView(speaker)
+                return row
             }
         }
+        listView.adapter = rowAdapter
+
+        fun applyFilter(keyword: String) {
+            val key = keyword.trim()
+            shown.clear()
+            if (key.isEmpty()) {
+                shown.addAll(voices)
+            } else {
+                shown.addAll(
+                    voices.filter {
+                        it.name.contains(key, ignoreCase = true) || it.id.contains(key, ignoreCase = true)
+                    }
+                )
+            }
+            rowAdapter.notifyDataSetChanged()
+        }
+        applyFilter("")
+        search.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = applyFilter(s?.toString().orEmpty())
+            override fun afterTextChanged(s: android.text.Editable?) = Unit
+        })
+
+        val dialog = androidx.appcompat.app.AlertDialog.Builder(context)
+            .setTitle(R.string.tts_engine_v2_pick_voice)
+            .setView(container)
+            .setNegativeButton(R.string.cancel, null)
+            .create()
+        listView.setOnItemClickListener { _, _, position, _ ->
+            dialog.dismiss()
+            onPicked(shown[position].id)
+        }
+        dialog.show()
     }
 
     // ===================== 第二页：角色管理 =====================

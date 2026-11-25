@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.SystemClock
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.IntentAction
@@ -63,6 +64,11 @@ object ReadAloud {
     private var pendingSwitchPosition: ReadAloudPosition? = null
     private var positionGeneration = 0L
 
+    /** 位置发布日志节流：位置按字符时长推进（约每 200ms 一次），逐条打印会淹没跨章/脱钩等关键诊断。 */
+    private const val POSITION_LOG_INTERVAL_MS = 1000L
+    private var lastPositionLogAt = 0L
+    private var lastPositionLogChapter: Int? = null
+
     @Synchronized
     fun beginPositionSwitch(position: ReadAloudPosition) {
         pendingSwitchPosition = position
@@ -83,17 +89,35 @@ object ReadAloud {
         syncView: Boolean = false,
     ): ReadAloudPositionUpdate {
         val previousPosition = aloudPosition
+        val switchConfirmed = pendingSwitchPosition == position
+        // 相同位置的重复发布直接吞掉：引擎按字符时长轮询播放位置
+        // （DoubaoReadAloudService.trackProgress），音频位置还没跨过字符边界时会连续
+        // 发来同一个 chapterPosition。位置值是显示侧投影与跟随判定的唯一输入，
+        // 值不变就不可能产生任何状态变化，继续广播只会让显示侧每个字符多跑一次整页重绘。
+        // 世代号也不递增，避免把正在处理的旧事件误判成过期事件。
+        if (!syncView && !switchConfirmed && position == previousPosition) {
+            return ReadAloudPositionUpdate(
+                position, previousPosition, false, positionGeneration, false
+            )
+        }
         aloudPosition = position
         val generation = ++positionGeneration
-        val switchConfirmed = pendingSwitchPosition == position
         if (switchConfirmed) {
             pendingSwitchPosition = null
         }
-        AppLog.putDebug(
-            "[朗读] 位置发布 ch:${position.chapterIndex} pos:${position.chapterPosition} " +
-                "gen:$generation confirmed:$switchConfirmed syncView:$syncView " +
-                "prev:${previousPosition?.let { "ch${it.chapterIndex}:${it.chapterPosition}" } ?: "null"}"
-        )
+        val now = SystemClock.elapsedRealtime()
+        if (syncView || switchConfirmed ||
+            lastPositionLogChapter != position.chapterIndex ||
+            now - lastPositionLogAt >= POSITION_LOG_INTERVAL_MS
+        ) {
+            lastPositionLogAt = now
+            lastPositionLogChapter = position.chapterIndex
+            AppLog.putDebug(
+                "[朗读] 位置发布 ch:${position.chapterIndex} pos:${position.chapterPosition} " +
+                    "gen:$generation confirmed:$switchConfirmed syncView:$syncView " +
+                    "prev:${previousPosition?.let { "ch${it.chapterIndex}:${it.chapterPosition}" } ?: "null"}"
+            )
+        }
         return ReadAloudPositionUpdate(
             position,
             previousPosition,

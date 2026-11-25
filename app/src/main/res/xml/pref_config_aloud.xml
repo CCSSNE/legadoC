@@ -2,6 +2,19 @@
 <androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
+    <io.legado.app.lib.prefs.SwitchPreference
+        android:defaultValue="true"
+        android:key="readAloudRoleMark"
+        android:title="@string/read_aloud_role_mark_title"
+        android:summary="@string/read_aloud_role_mark_summary"
+        app:iconSpaceReserved="false" />
+
+    <io.legado.app.lib.prefs.Preference
+        android:key="read_aloud_log"
+        android:title="@string/read_aloud_log_title"
+        android:summary="@string/read_aloud_log_summary"
+        app:iconSpaceReserved="false" />
+
     <io.legado.app.lib.prefs.PreferenceCategory
         android:title="@string/aloud_config"
         app:allowDividerAbove="false"
@@ -153,37 +166,6 @@
             android:key="sysTtsConfig"
             app:iconSpaceReserved="false" />
 
-
-        <io.legado.app.lib.prefs.SwitchPreference
-            android:defaultValue="false"
-            android:key="bgmEnabled"
-            android:summary="@string/bgm_enabled_summary"
-            android:title="@string/bgm_enabled"
-            app:iconSpaceReserved="false" />
-
-        <androidx.preference.SeekBarPreference
-            android:defaultValue="15"
-            android:key="bgmVolume"
-            android:max="100"
-            android:summary="@string/bgm_volume_summary"
-            android:title="@string/bgm_volume"
-            app:iconSpaceReserved="false"
-            app:min="0"
-            app:showSeekBarValue="true" />
-
-        <androidx.preference.ListPreference
-            android:defaultValue="0"
-            android:entries="@array/bgm_repeat_mode_entries"
-            android:entryValues="@array/bgm_repeat_mode_values"
-            android:key="bgmRepeatMode"
-            android:title="@string/bgm_repeat_mode"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.Preference
-            android:key="bgmPickTracks"
-            android:summary="@string/bgm_pick_tracks_summary"
-            android:title="@string/bgm_pick_tracks"
-            app:iconSpaceReserved="false" />
     </io.legado.app.lib.prefs.PreferenceCategory>
 
 </androidx.preference.PreferenceScreen>

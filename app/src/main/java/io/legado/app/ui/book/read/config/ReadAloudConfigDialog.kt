@@ -9,7 +9,6 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.preference.ListPreference
 import androidx.preference.Preference
@@ -19,8 +18,8 @@ import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.help.IntentHelp
-import io.legado.app.help.bgm.BgmSettingsStore
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.tts.ReadAloudDebugLog
 import io.legado.app.lib.dialogs.showDecimalInputDialog
 import io.legado.app.lib.dialogs.showIntegerInputDialog
 import io.legado.app.lib.permission.Permissions
@@ -35,7 +34,6 @@ import io.legado.app.utils.postEvent
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.showDialogFragment
-import io.legado.app.utils.toastOnUi
 import java.math.BigDecimal
 import kotlin.math.roundToInt
 
@@ -74,16 +72,6 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
         SpeakEngineDialog.CallBack,
         SharedPreferences.OnSharedPreferenceChangeListener {
 
-        private val bgmTrackPicker =
-            registerForActivityResult(ActivityResultContracts.OpenDocumentMultiple()) { uris ->
-                if (uris.isNullOrEmpty()) return@registerForActivityResult
-                val added = BgmSettingsStore.addTracks(uris)
-                upBgmTrackSummary()
-                if (added > 0) {
-                    toastOnUi(getString(R.string.bgm_picked_count, BgmSettingsStore.read().tracks.size))
-                }
-            }
-
         private val speakEngineSummary: String
             get() {
                 val ttsEngine = ReadAloud.ttsEngine
@@ -100,6 +88,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
 
         override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
             addPreferencesFromResource(R.xml.pref_config_aloud)
+            initReadAloudLogEntry()
             upSpeakEngineSummary()
             initPhoneCallPausePreference()
             initFloatOnDesktopPreference()
@@ -109,6 +98,44 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
             upProgressPollIntervalSummary()
             upBluetoothReadAloudSkipIntervalSummary()
             upPlaybackPanelDurationSummary()
+        }
+
+        /** 朗读日志：查看/复制最近合成与播放过程，排查引擎失败的原因。 */
+        private fun initReadAloudLogEntry() {
+            val preference = findPreference<Preference>("read_aloud_log") ?: return
+            preference.summary = getString(R.string.read_aloud_log_summary) +
+                "（当前 ${ReadAloudDebugLog.size()} 条）"
+            preference.setOnPreferenceClickListener {
+                showReadAloudLog()
+                true
+            }
+        }
+
+        private fun showReadAloudLog() {
+            val context = requireContext()
+            val textView = android.widget.TextView(context).apply {
+                text = ReadAloudDebugLog.dump()
+                setTextIsSelectable(true)
+                textSize = 10f
+                typeface = android.graphics.Typeface.MONOSPACE
+                setPadding(24, 24, 24, 24)
+            }
+            val scroll = android.widget.ScrollView(context).apply { addView(textView) }
+            androidx.appcompat.app.AlertDialog.Builder(context)
+                .setTitle("朗读日志")
+                .setView(scroll)
+                .setPositiveButton("复制全部") { _, _ ->
+                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                        as android.content.ClipboardManager
+                    clipboard.setPrimaryClip(
+                        android.content.ClipData.newPlainText("readAloudLog", ReadAloudDebugLog.dump())
+                    )
+                }
+                .setNeutralButton("清空") { _, _ ->
+                    ReadAloudDebugLog.clear()
+                }
+                .setNegativeButton("关闭", null)
+                .show()
         }
 
         override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -121,7 +148,6 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
         override fun onResume() {
             super.onResume()
             preferenceManager.sharedPreferences?.registerOnSharedPreferenceChangeListener(this)
-                upBgmTrackSummary()
         }
 
         override fun onPause() {
@@ -140,7 +166,6 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 PreferKey.bluetoothReadAloudSkipInterval ->
                     showBluetoothReadAloudSkipIntervalDialog()
                 PreferKey.readAloudPlaybackPanelDuration -> showPlaybackPanelDurationDialog()
-                PreferKey.bgmPickTracks -> bgmTrackPicker.launch(arrayOf("audio/*"))
             }
             return super.onPreferenceTreeClick(preference)
         }
@@ -176,20 +201,6 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 upProgressPollIntervalSummary()
             }
         }
-
-
-
-        private fun upBgmTrackSummary() {
-
-            findPreference<Preference>(PreferKey.bgmPickTracks)?.summary =
-
-                BgmSettingsStore.tracksSummary()
-
-        }
-
-
-
-
 
         private fun upProgressPollIntervalSummary() {
             findPreference<Preference>(PreferKey.readAloudProgressPollInterval)?.summary =

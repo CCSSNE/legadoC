@@ -2810,6 +2810,14 @@
     <string name="agent_tools">工具设置</string>
     <string name="agent_loading">正在加载 Agent 配置…</string>
     <string name="agent_internal_switch_summary">内部 Agent 总开关；关闭后停止当前任务，对外 MCP 服务不受影响</string>
+    <string name="read_aloud_log_title">朗读日志</string>
+    <string name="read_aloud_log_summary">查看最近朗读/合成过程，便于排查失败原因</string>
+    <string name="tts_voice_search_hint">搜索音色名称或 ID</string>
+    <string name="tts_voice_preview_text">这是音色试听，听听效果如何。</string>
+    <string name="tts_voice_preview_unsupported">该引擎不支持试听</string>
+    <string name="ai_casting_log">角色分析日志</string>
+    <string name="read_aloud_role_mark_title">角色标注</string>
+    <string name="read_aloud_role_mark_summary">按分镜识别结果逐段使用角色音色朗读（关闭时全部用旁白音色）</string>
     <string name="cache_manage_maintenance">Maintenance</string>
     <string name="cache_manage_maintenance_btn">Maintenance</string>
     <string name="cache_manage_maintenance_choose">Choose a maintenance action</string>
