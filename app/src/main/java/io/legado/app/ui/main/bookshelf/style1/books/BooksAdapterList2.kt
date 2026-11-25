@@ -17,7 +17,9 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.ui.main.bookshelf.BookCollectionShelfItem
 import io.legado.app.ui.book.bindBookMediaBadge
+import io.legado.app.ui.main.bookshelf.bindBookshelfProgressBar
 import io.legado.app.ui.main.bookshelf.loadCollectionCovers
+import io.legado.app.ui.main.bookshelf.upBookshelfProgressText
 import io.legado.app.utils.gone
 import io.legado.app.utils.invisible
 import io.legado.app.utils.toTimeAgo
@@ -78,13 +80,14 @@ class BooksAdapterList2(
             if (payloads.isEmpty()) {
                 tvName.text = item.name
                 tvAuthor.text = item.author
-                tvRead.text = item.durChapterTitle
+                upBookshelfProgressText(tvRead, item)
                 tvLast.text = item.latestChapterTitle
                 ivCover.loadThumb(item, false, fragment, lifecycle)
                 root.bindBookMediaBadge(item.type)
                 ivLocal.visible(AppConfig.showLocalBookIcon && item.isLocal)
                 upRefresh(binding, item)
                 upLastUpdateTime(binding, item)
+                bindBookshelfProgressBar(binding.progressBar, item)
             } else {
                 for (i in payloads.indices) {
                     val bundle = payloads[i] as Bundle
@@ -92,7 +95,7 @@ class BooksAdapterList2(
                         when (it) {
                             "name" -> tvName.text = item.name
                             "author" -> tvAuthor.text = item.author
-                            "dur" -> tvRead.text = item.durChapterTitle
+                            "dur" -> upBookshelfProgressText(tvRead, item)
                             "last" -> tvLast.text = item.latestChapterTitle
                             "cover" -> ivCover.loadThumb(
                                 item,

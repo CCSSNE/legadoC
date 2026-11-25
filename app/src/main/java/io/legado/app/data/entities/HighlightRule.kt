@@ -32,7 +32,9 @@ data class HighlightRule(
     //显示效果位掩码（BookmarkStyle）
     var style: Int = 0,
     //每个效果的独立颜色（JSON：效果位 -> 颜色值）
-    var styleColors: String = ""
+    var styleColors: String = "",
+    //夜间模式逐效果颜色（JSON 同格式；空 = 跟随白天），白天/墨水屏读白天色
+    var styleColorsNight: String = ""
 ) : Parcelable {
 
     override fun equals(other: Any?): Boolean {
@@ -58,5 +60,36 @@ data class HighlightRule(
     @IgnoredOnParcel
     val styleColorsMap: Map<Int, Int> by lazy {
         BookmarkStyle.parseStyleColors(styleColors)
+    }
+
+    @delegate:Transient
+    @delegate:Ignore
+    @IgnoredOnParcel
+    val styleColorsNightMap: Map<Int, Int> by lazy {
+        BookmarkStyle.parseStyleColors(styleColorsNight)
+    }
+
+    /**
+     * 按当前阅读模式取生效颜色：夜间用夜间色，未单独设置的位回落白天色；
+     * 白天（及墨水屏，由调用方保证 isNightTheme=false）直接用白天色。
+     */
+    fun effectiveStyleColors(isNightTheme: Boolean): Map<Int, Int> {
+        if (!isNightTheme) {
+            return styleColorsMap
+        }
+        val night = styleColorsNightMap
+        if (night.isEmpty()) {
+            return styleColorsMap
+        }
+        if (styleColorsMap.isEmpty()) {
+            return night
+        }
+        val merged = HashMap(styleColorsMap)
+        night.forEach { (bit, color) ->
+            if (color != 0) {
+                merged[bit] = color
+            }
+        }
+        return merged
     }
 }

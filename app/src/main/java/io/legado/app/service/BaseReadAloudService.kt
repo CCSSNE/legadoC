@@ -58,6 +58,7 @@ import io.legado.app.constant.NotificationId
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Status
 import io.legado.app.help.MediaHelp
+import io.legado.app.help.bgm.BgmPlaybackController
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.glide.ImageLoader
@@ -105,6 +106,7 @@ import kotlin.math.abs
  */
 abstract class BaseReadAloudService : BaseService(),
     AudioManager.OnAudioFocusChangeListener {
+    private var bgmController: BgmPlaybackController? = null
 
     companion object {
         @JvmStatic
@@ -837,6 +839,7 @@ abstract class BaseReadAloudService : BaseService(),
         initMediaSession()
         initBroadcastReceiver()
         initPhoneStateListener()
+        bgmController = BgmPlaybackController(this)
         application.registerActivityLifecycleCallbacks(appFloatingLifecycleCallbacks)
         appFloatingActivity = ReadBookActivity.activeActivity()
         upMediaSessionPlaybackState(PlaybackStateCompat.STATE_PLAYING)
@@ -890,6 +893,12 @@ abstract class BaseReadAloudService : BaseService(),
         }
         observeSharedPreferences { _, key ->
             when (key) {
+                PreferKey.bgmSettings,
+                PreferKey.bgmEnabled,
+                PreferKey.bgmVolume,
+                PreferKey.bgmRepeatMode -> {
+                    bgmController?.reloadSettings()
+                }
                 PreferKey.ignoreAudioFocus,
                 PreferKey.pauseReadAloudWhilePhoneCalls -> {
                     initPhoneStateListener()
@@ -1032,6 +1041,8 @@ abstract class BaseReadAloudService : BaseService(),
             ReadAloud.clearAloudPosition()
         }
         abandonFocus()
+        bgmController?.release()
+        bgmController = null
         unregisterReceiver(broadcastReceiver)
         postEvent(EventBus.ALOUD_STATE, Status.STOP)
         removeReadAloudFloatingWindow()
@@ -1221,6 +1232,7 @@ abstract class BaseReadAloudService : BaseService(),
         updateReadAloudFloatingPlayState()
         upMediaSessionPlaybackState(PlaybackStateCompat.STATE_PLAYING)
         postEvent(EventBus.ALOUD_STATE, Status.PLAY)
+        bgmController?.onPlaybackStarted()
     }
 
     abstract fun playStop()
@@ -1243,6 +1255,7 @@ abstract class BaseReadAloudService : BaseService(),
         updateReadAloudFloatingPlayState()
         upMediaSessionPlaybackState(PlaybackStateCompat.STATE_PAUSED)
         postEvent(EventBus.ALOUD_STATE, Status.PAUSE)
+        bgmController?.onPlaybackPaused()
         ReadBook.uploadProgress()
         doDs()
     }
@@ -1295,6 +1308,7 @@ abstract class BaseReadAloudService : BaseService(),
         updateReadAloudFloatingPlayState()
         upMediaSessionPlaybackState(PlaybackStateCompat.STATE_PLAYING)
         postEvent(EventBus.ALOUD_STATE, Status.PLAY)
+        bgmController?.onPlaybackStarted()
     }
 
     abstract fun upSpeechRate(reset: Boolean = false)

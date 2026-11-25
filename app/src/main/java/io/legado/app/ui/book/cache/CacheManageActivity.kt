@@ -26,6 +26,7 @@ import io.legado.app.help.AppWebDav
 import io.legado.app.help.CacheManager
 import io.legado.app.help.ai.AiCreationImageFile
 import io.legado.app.help.ai.AiCreationInsertStash
+import io.legado.app.help.book.CacheMaintenance
 import io.legado.app.help.cache.CacheCoordinator
 import io.legado.app.help.cache.CacheLifecycle
 import io.legado.app.help.cache.CacheTaskStatus
@@ -44,6 +45,7 @@ import io.legado.app.utils.applyNavigationBarPadding
 import io.legado.app.utils.gone
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.showDialogFragment
+import io.legado.app.utils.stackTraceStr
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -51,7 +53,9 @@ import io.legado.app.utils.visible
 import io.legado.app.utils.compress.ZipUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -135,6 +139,7 @@ class CacheManageActivity :
         btnManga.setOnClickListener { switchMode(CacheManageMode.MANGA) }
         btnCreation.setOnClickListener { showCreation() }
         btnStats.setOnClickListener { showStats() }
+        btnMaintenance.setOnClickListener { showMaintenanceDialog() }
         btnUploadAll.setOnClickListener { uploadAll() }
         btnDeleteAll.setOnClickListener { deleteAll() }
         btnSelectAll.setOnClickListener { toggleSelectAll() }
@@ -571,6 +576,252 @@ class CacheManageActivity :
             noButton()
         }
     }
+
+
+
+    private fun showMaintenanceDialog() {
+
+        alert(
+
+            getString(R.string.cache_manage_maintenance),
+
+            getString(R.string.cache_manage_maintenance_choose)
+
+        ) {
+
+            items(
+
+                arrayOf(
+
+                    getString(R.string.cache_manage_maintenance_orphans),
+
+                    getString(R.string.cache_manage_maintenance_recount)
+
+                )
+
+            ) { _, which ->
+
+                when (which) {
+
+                    0 -> runOrphanCleanup()
+
+                    else -> runWordCountRecount()
+
+                }
+
+            }
+
+            noButton()
+
+        }
+
+    }
+
+
+
+    private fun runOrphanCleanup() {
+
+        lifecycleScope.launch(Dispatchers.IO) {
+
+            binding.rotateLoading.visible()
+
+            val groups = runCatching { CacheMaintenance.scanOrphanedGroups() }
+
+                .onFailure {
+
+                    withContext(Dispatchers.Main) { toastOnUi(it.stackTraceStr) }
+
+                }.getOrDefault(emptyList())
+
+            withContext(Dispatchers.Main) {
+
+                binding.rotateLoading.gone()
+
+                if (groups.isEmpty()) {
+
+                    toastOnUi(R.string.cache_manage_maintenance_orphans_empty)
+
+                    return@withContext
+
+                }
+
+                val message = groups.joinToString("\n") { group ->
+
+                    getString(
+
+                        R.string.cache_manage_maintenance_orphans_item,
+
+                        group.bookName,
+
+                        group.orphanFiles.size
+
+                    )
+
+                }
+
+                alert(getString(R.string.cache_manage_maintenance_orphans), message) {
+
+                    yesButton {
+
+                        lifecycleScope.launch(Dispatchers.IO) {
+
+                            val deleted = runCatching { CacheMaintenance.deleteOrphanedFiles(groups) }
+
+                                .onFailure {
+
+                                    withContext(Dispatchers.Main) { toastOnUi(it.stackTraceStr) }
+
+                                }.getOrDefault(0)
+
+                            withContext(Dispatchers.Main) {
+
+                                toastOnUi(
+
+                                    getString(R.string.cache_manage_maintenance_orphans_deleted, deleted)
+
+                                )
+
+                            }
+
+                        }
+
+                    }
+
+                    noButton()
+
+                }
+
+            }
+
+        }
+
+    }
+
+
+
+    private fun runWordCountRecount() {
+
+        lifecycleScope.launch(Dispatchers.IO) {
+
+            binding.rotateLoading.visible()
+
+            val targets = runCatching { CacheMaintenance.scanRecountTargets() }
+
+                .onFailure {
+
+                    withContext(Dispatchers.Main) { toastOnUi(it.stackTraceStr) }
+
+                }.getOrDefault(emptyList())
+
+            withContext(Dispatchers.Main) {
+
+                binding.rotateLoading.gone()
+
+                if (targets.isEmpty()) {
+
+                    toastOnUi(R.string.cache_manage_maintenance_recount_targets_empty)
+
+                    return@withContext
+
+                }
+
+                alert(
+
+                    getString(R.string.cache_manage_maintenance_recount),
+
+                    getString(R.string.cache_manage_maintenance_recount_targets, targets.size)
+
+                ) {
+
+                    yesButton {
+
+                        lifecycleScope.launch(Dispatchers.IO) {
+
+                            binding.rotateLoading.visible()
+
+                            val lines = ArrayList<String>()
+
+                            var recountedTotal = 0
+
+                            targets.forEach { book ->
+
+                                currentCoroutineContext().ensureActive()
+
+                                val result = runCatching { CacheMaintenance.recountBook(book) }
+
+                                    .getOrNull()
+
+                                if (result == null) {
+
+                                    lines.add(book.name + ": error")
+
+                                } else {
+
+                                    recountedTotal += result.recountedChapters
+
+                                    lines.add(
+
+                                        getString(
+
+                                            R.string.cache_manage_maintenance_recount_book,
+
+                                            result.bookName,
+
+                                            result.recountedChapters,
+
+                                            result.unresolvedChapters,
+
+                                            result.bookWordCountUpdated
+
+                                        )
+
+                                    )
+
+                                }
+
+                            }
+
+                            withContext(Dispatchers.Main) {
+
+                                binding.rotateLoading.gone()
+
+                                toastOnUi(
+
+                                    getString(R.string.cache_manage_maintenance_recount_done, recountedTotal)
+
+                                )
+
+                                alert(
+
+                                    getString(R.string.cache_manage_maintenance_recount),
+
+                                    lines.joinToString("\n")
+
+                                ) {
+
+                                    yesButton()
+
+                                }
+
+                            }
+
+                        }
+
+                    }
+
+                    noButton()
+
+                }
+
+            }
+
+        }
+
+    }
+
+
+
+
 
     private fun statsEmptyRow(): TextView {
         return TextView(this).apply {

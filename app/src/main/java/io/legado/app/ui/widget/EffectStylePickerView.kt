@@ -40,8 +40,16 @@ class EffectStylePickerView @JvmOverloads constructor(
     private val llEffectColors by lazy { findViewById<LinearLayout>(R.id.ll_effect_colors) }
 
     private val effectColorMap = mutableMapOf<Int, Int>()
+    private val effectColorMapNight = mutableMapOf<Int, Int>()
+    // 书签编辑（无夜间存储字段）不显示夜间色块；高亮规则编辑走 4 参入口开启
+    private var nightUiEnabled = false
     private var fallbackColor = 0
     private var fragmentManager: FragmentManager? = null
+
+    companion object {
+        // 夜间颜色选择器的 dialogId 偏移：效果位 1..32，+64 区分日/夜两路回调
+        private const val NIGHT_DIALOG_FLAG = 64
+    }
 
     init {
         orientation = VERTICAL
@@ -57,9 +65,24 @@ class EffectStylePickerView @JvmOverloads constructor(
      * 设置初始状态。fallbackColor 为未单独设置颜色时的展示兜底色（如书签全局颜色，规则场景传 0）。
      */
     fun setStyles(style: Int, styleColors: Map<Int, Int>, fallbackColor: Int) {
+        setStyles(style, styleColors, emptyMap(), fallbackColor)
+    }
+
+    /**
+     * 带夜间颜色的初始状态（书签场景夜间传 emptyMap，色块回退为仅白天）。
+     */
+    fun setStyles(
+        style: Int,
+        styleColors: Map<Int, Int>,
+        styleColorsNight: Map<Int, Int>,
+        fallbackColor: Int
+    ) {
         this.fallbackColor = fallbackColor
         effectColorMap.clear()
         effectColorMap.putAll(styleColors)
+        effectColorMapNight.clear()
+        effectColorMapNight.putAll(styleColorsNight)
+        nightUiEnabled = true
         checkStyleBoxes(style)
         rebuildEffectColorRows()
     }
@@ -77,6 +100,10 @@ class EffectStylePickerView @JvmOverloads constructor(
 
     fun getStyleColorsJson(): String {
         return BookmarkStyle.toStyleColorsJson(effectColorMap)
+    }
+
+    fun getStyleColorsNightJson(): String {
+        return BookmarkStyle.toStyleColorsJson(effectColorMapNight)
     }
 
     private fun checkStyleBoxes(styles: Int) {
@@ -158,14 +185,34 @@ class EffectStylePickerView @JvmOverloads constructor(
                     )
                 }
             )
-            val colorPanel = ColorPanelView(context).apply {
+            val dayPanel = ColorPanelView(context).apply {
                 color = effectColorOrFallback(bit)
                 layoutParams = LayoutParams(32.dpToPx(), 32.dpToPx())
+                contentDescription = context.getString(nameRes) + "（白天）"
                 setOnClickListener {
                     showColorPicker(bit)
                 }
             }
-            row.addView(colorPanel)
+            row.addView(dayPanel)
+            if (!nightUiEnabled) {
+                llEffectColors.addView(row)
+                return@forEach
+            }
+            // 夜间色块：未单独设置时展示白天色示意（实际渲染回落白天）；长按清除=跟随白天
+            val nightPanel = ColorPanelView(context).apply {
+                color = effectColorNightOrDay(bit)
+                layoutParams = LayoutParams(32.dpToPx(), 32.dpToPx())
+                contentDescription = context.getString(nameRes) + "（夜间，长按清除跟随白天）"
+                setOnClickListener {
+                    showColorPicker(bit + NIGHT_DIALOG_FLAG)
+                }
+                setOnLongClickListener {
+                    effectColorMapNight.remove(bit)
+                    rebuildEffectColorRows()
+                    true
+                }
+            }
+            row.addView(nightPanel)
             llEffectColors.addView(row)
         }
     }
@@ -174,6 +221,11 @@ class EffectStylePickerView @JvmOverloads constructor(
         return effectColorMap[styleBit]?.takeIf { it != 0 }
             ?: fallbackColor.takeIf { it != 0 }
             ?: appCtx.accentColor
+    }
+
+    private fun effectColorNightOrDay(styleBit: Int): Int {
+        return effectColorMapNight[styleBit]?.takeIf { it != 0 }
+            ?: effectColorOrFallback(styleBit)
     }
 
     private fun showColorPicker(dialogId: Int) {
@@ -201,7 +253,14 @@ class EffectStylePickerView @JvmOverloads constructor(
         } else {
             color
         }
-        if (value == 0) {
+        if (dialogId >= NIGHT_DIALOG_FLAG) {
+            val styleBit = dialogId - NIGHT_DIALOG_FLAG
+            if (value == 0) {
+                effectColorMapNight.remove(styleBit)
+            } else {
+                effectColorMapNight[styleBit] = value
+            }
+        } else if (value == 0) {
             effectColorMap.remove(dialogId)
         } else {
             effectColorMap[dialogId] = value

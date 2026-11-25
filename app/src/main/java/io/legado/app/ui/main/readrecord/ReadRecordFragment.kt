@@ -426,6 +426,9 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
             itemBinding.root.setOnClickListener {
                 startActivityForBook(item.book)
             }
+            itemBinding.root.setOnClickListener {
+                showDayBookDetail(item.date.toString())
+            }
             itemBinding.root.setOnLongClickListener {
                 requireContext().showReadRecordBookActionDialog(item.book.name, item.book, item.book.name) {
                     viewLifecycleOwner.lifecycleScope.launch {
@@ -481,6 +484,46 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
             }
         }
     }
+
+
+
+    private fun showDayBookDetail(date: String) {
+
+        lifecycleScope.launch {
+
+            val details = withContext(IO) {
+
+                runCatching { appDb.readRecordDetailDao.getByDate(date) }.getOrDefault(emptyList())
+
+            }
+
+            val message = if (details.isEmpty()) {
+
+                getString(R.string.read_record_day_detail_empty)
+
+            } else {
+
+                details.joinToString("\n") { detail ->
+
+                    detail.bookName + " · " + formatDuring(detail.readTime)
+
+                }
+
+            }
+
+            alert(date, message) {
+
+                yesButton()
+
+            }
+
+        }
+
+    }
+
+
+
+
 
     private fun renderRecentCovers(items: List<ReadRecentVisualItem>) {
         binding.tvRecentCoversEmpty.isVisible = items.isEmpty()

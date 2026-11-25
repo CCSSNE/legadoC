@@ -233,6 +233,16 @@
 
                 </LinearLayout>
 
+
+                <TextView
+                    android:id="@+id/btn_maintenance"
+                    android:layout_width="match_parent"
+                    android:layout_height="42dp"
+                    android:layout_marginTop="10dp"
+                    android:background="@drawable/bg_bookshelf_tag_item"
+                    android:gravity="center"
+                    android:text="@string/cache_manage_maintenance_btn"
+                    android:textSize="14sp" />
             </LinearLayout>
 
         </ScrollView>

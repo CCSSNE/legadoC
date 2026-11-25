@@ -14,6 +14,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.ReadRecord
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.ReadRecordDailyHelper
+import io.legado.app.help.ReadRecordDetailHelper
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.AudioTextMapping
 import io.legado.app.help.book.AudioTextFusion
@@ -346,6 +347,7 @@ object ReadBook : CoroutineScope by MainScope() {
             readRecord.lastRead = now
             appDb.readRecordDao.insert(readRecord)
             ReadRecordDailyHelper.record(delta, now, forceWidgetUpdate)
+            ReadRecordDetailHelper.record(readRecord.bookName, delta, now)
         }
     }
 

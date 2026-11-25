@@ -178,6 +178,10 @@ class TextChapterLayout(
         }.getOrDefault(emptyList())
     }
 
+    // 高亮夜间取色快照：一次排版取一次，防半章双色；墨水屏白底按白天处理
+    private val highlightNightMode: Boolean =
+        !AppConfig.isEInkMode && AppConfig.isNightTheme
+
     // 当前文字块的高亮规则命中区间（书签同坐标系：块首字符的章节绝对位置）
     private var currentRuleHits: List<RuleHit> = emptyList()
 
@@ -2929,7 +2933,7 @@ class TextChapterLayout(
                                     base + matcher.range.first,
                                     base + matcher.range.last + 1,
                                     rule.style,
-                                    rule.styleColorsMap
+                                    rule.effectiveStyleColors(highlightNightMode)
                                 )
                             )
                         }

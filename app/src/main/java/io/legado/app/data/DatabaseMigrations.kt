@@ -38,10 +38,30 @@ object DatabaseMigrations {
             migration_114_115,
             migration_115_116,
             migration_116_117,
+            migration_117_118,
+            migration_118_119,
         )
     }
 
     private val migration_116_117 = object : Migration(116, 117) {
+    private val migration_118_119 = object : Migration(118, 119) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // 按书×按日阅读时长明细（旁路聚合表，与 readRecordDaily 同日期口径）
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `readRecordDetail` (`deviceId` TEXT NOT NULL, `bookName` TEXT NOT NULL, `date` TEXT NOT NULL, `readTime` INTEGER NOT NULL DEFAULT 0, `lastRead` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`deviceId`, `bookName`, `date`))"
+            )
+        }
+    }
+
+    private val migration_117_118 = object : Migration(117, 118) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // 高亮规则夜间逐效果颜色（JSON 同白天格式；空 = 跟随白天）
+            db.execSQL(
+                "ALTER TABLE highlight_rules ADD COLUMN styleColorsNight TEXT NOT NULL DEFAULT ''"
+            )
+        }
+    }
+
         override fun migrate(db: SupportSQLiteDatabase) {
             // 配图每图备注（宫格多图各写各的，排版与备注解构）
             db.execSQL(
