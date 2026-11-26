@@ -78,7 +78,6 @@ import io.legado.app.help.book.update
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ReadTipConfig
-import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.illustration.IllustrationAnchor
 import io.legado.app.help.illustration.AudioBlockPlayer
@@ -505,10 +504,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         binding.readView.upStatusBar()
         // 声明 uiMode 后系统日/夜翻转（AUTO 跟随）不再触发重建，按主题模式就地刷新
         // 阅读界面（与 ReadStyleDialog 就地切日夜同一事件组合：重刷背景/样式/重载内容）。
-        // 程序化切主题（setDefaultNightMode 经 switchThemeMode 的同步栈触发本回调）时
-        // 跳过：调用方会在同一同步栈内统一派发刷新事件，这里再派发一次会双投递
-        // UP_CONFIG——背景先切、弹窗后切（issue #17）且内容被重载两遍。
-        if (oldUiMode != lastUiNightMode && !ThemeConfig.applyingProgrammaticNightMode) {
+        if (oldUiMode != lastUiNightMode) {
             postEvent(EventBus.UP_CONFIG, arrayListOf(1, 2, 5))
             if (AppConfig.readBarStyleFollowPage) {
                 postEvent(EventBus.UPDATE_READ_ACTION_BAR, true)
@@ -2647,6 +2643,59 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
     }
 
+    // ------------------------------------------------------------------
+    // 朗读位置事件：红字投影签名与诊断日志节流
+    // ------------------------------------------------------------------
+
+    /** 上一次已失效绘制缓存时的红字投影签名。 */
+    private var aloudHighlightSignature: String? = null
+
+    /** 跟随写落库的节流时间戳。 */
+    private var lastAloudFollowSaveAt = 0L
+
+    /**
+     * 红字投影签名 = TextLine.isReadAloud 的全部输入：
+     * 播放态 + 位置所属章 + 位置所属段落 + 显示章。
+     * 签名相同则每一行的红字判定结果必然相同，绘制缓存无需失效。
+     * 位置所属章从显示章及其前后章里找，保证章节交界处上一章末页的可见红字同样生效。
+     */
+    private fun aloudProjectionSignature(position: ReadAloudPosition): String {
+        val playing = BaseReadAloudService.isPlay()
+        val chapter = sequenceOf(
+            ReadBook.curTextChapter,
+            ReadBook.prevTextChapter,
+            ReadBook.nextTextChapter,
+        ).filterNotNull().firstOrNull { it.chapter.index == position.chapterIndex }
+        val paragraph = if (playing && chapter != null) {
+            chapter.getParagraphNum(position.chapterPosition + 1, false)
+        } else {
+            0
+        }
+        return "$playing|${position.chapterIndex}|$paragraph|${ReadBook.durChapterIndex}"
+    }
+
+    private fun invalidateAloudHighlightIfProjectionChanged(position: ReadAloudPosition) {
+        val signature = aloudProjectionSignature(position)
+        if (signature == aloudHighlightSignature) return
+        aloudHighlightSignature = signature
+        binding.readView.invalidateReadAloudHighlight()
+    }
+
+    private val aloudPositionLogAt = HashMap<String, Long>()
+
+    /** 位置事件诊断日志节流：同一 key 在 [intervalMs] 内只打一条。 */
+    private fun logAloudPositionEvent(
+        key: String,
+        message: String,
+        intervalMs: Long = 1000L,
+    ) {
+        val now = SystemClock.elapsedRealtime()
+        val last = aloudPositionLogAt[key]
+        if (last != null && now - last < intervalMs) return
+        aloudPositionLogAt[key] = now
+        AppLog.putDebug(message, module = LogModule.READ_ALOUD)
+    }
+
     /**
      * 跟随规则（纯判定，无存储）：显示页 == 朗读出发页时才跟随。
      * - 正常跟随：显示在出发页 → 写显示进度、跨页时翻页。
@@ -4046,88 +4095,113 @@ class ReadBookActivity : BaseReadBookActivity(),
             // 纯判定（显示页==朗读出发页），无任何存储的跟随/脱钩状态；
             // 显示与朗读的脱节是派生事实（isViewBehindAloud），悬浮窗随之现算。
             lifecycleScope.launch(Main) {
-                if (update.syncView) {
-                    // 用户显式传送（拖动朗读进度条）：等同再点一次“回原进度”，
-                    // 不走跟随规则判定，直接复用原语B对齐；
-                    // 回退方向（跟随规则永不做）与暂停态同样生效。
-                    // 先失效当前页绘制缓存，同页对齐时 upContent 的重绘才会重录红字
-                    binding.readView.invalidateReadAloudHighlight()
-                    AppLog.putDebug(
-                        "[朗读] 显式传送对齐 ch:${position.chapterIndex} pos:${position.chapterPosition} " +
-                            "显示章:${ReadBook.durChapterIndex} 显示pos:${ReadBook.durChapterPos}",
-                        module = LogModule.READ_ALOUD
-                    )
-                    backToAloudProgress()
+                // 面板刷新是本观察者的统一收尾：未播放/跨章/翻页动画中/不跟随这些
+                // 早退分支同样要刷新，否则脱节提示与播放面板会停在上一状态。
+                // 统一由 finally 保证，不再依赖各分支各自记得调用。
+                try {
+                    if (update.syncView) {
+                        // 用户显式传送（拖动朗读进度条）：等同再点一次“回原进度”，
+                        // 不走跟随规则判定，直接复用原语B对齐；
+                        // 回退方向（跟随规则永不做）与暂停态同样生效。
+                        // 先失效当前页绘制缓存，同页对齐时 upContent 的重绘才会重录红字
+                        binding.readView.invalidateReadAloudHighlight()
+                        AppLog.putDebug(
+                            "[朗读] 显式传送对齐 ch:${position.chapterIndex} pos:${position.chapterPosition} " +
+                                "显示章:${ReadBook.durChapterIndex} 显示pos:${ReadBook.durChapterPos}",
+                            module = LogModule.READ_ALOUD
+                        )
+                        backToAloudProgress()
+                        return@launch
+                    }
+                    if (!BaseReadAloudService.isPlay()) {
+                        logAloudPositionEvent(
+                            key = "未播放",
+                            message = "[朗读] 位置事件忽略(未播放) ch:${position.chapterIndex} " +
+                                "pos:${position.chapterPosition}",
+                        )
+                        return@launch
+                    }
+                    // 先失效绘制缓存，同页推进时重绘才会重录红字。
+                    // 红字是段级投影（TextLine.isReadAloud 按段落判定），位置却按字符推进
+                    // （约每 200ms 一次）；若每条事件都失效，滚动模式的三页绘制缓存每秒
+                    // 会重建数次。故按投影签名去重，只有投影结果可能变化时才失效。
+                    invalidateAloudHighlightIfProjectionChanged(position)
+                    if (ReadBook.curTextChapter?.chapter?.index != position.chapterIndex) {
+                        logAloudPositionEvent(
+                            key = "跨章",
+                            message = "[朗读] 位置事件忽略(跨章 显示章:${ReadBook.durChapterIndex} " +
+                                "朗读章:${position.chapterIndex})",
+                        )
+                        return@launch
+                    }
+                    // 翻页动画期间不得跟随写。
+                    // PageDelegate.onAnimStop() 才真正推进页面，动画期间 curPage 仍是旧页，
+                    // 跟随判定会误判为「显示页 == 朗读出发页」从而中途改 durChapterPos
+                    // 并重渲染，动画结束后 fillPage() 再推进一次 → 页面回跳/多跳。
+                    // 红字投影已由上面的投影签名按段失效，不受影响。
+                    //
+                    // 判据必须区分「真动画」与「滚动跟手」：
+                    // ScrollPageDelegate 的拖动 (onTouch) 只置 isRunning 不置 isStarted，
+                    // 而 isStarted 仅由基类 startScroll()/fling() 置位（二者同时置 isRunning）。
+                    // 若只用 isRunning，滚动模式（听书主用模式）下用户一拖动就会整段丢弃
+                    // 位置事件；又因 stopScroll() 的 isRunning=false 在 post{} 内延迟执行，
+                    // 松手后还会多丢一帧。丢弃期间引擎侧已前移 previousPosition，导致
+                    // 跟随判定滞后累积。故滚动模式只在真正有滚动动画时才丢弃。
+                    val delegate = binding.readView.pageDelegate
+                    val inPageAnim = delegate != null && delegate.isRunning &&
+                        (delegate !is ScrollPageDelegate || delegate.isStarted)
+                    if (inPageAnim) {
+                        logAloudPositionEvent(
+                            key = "翻页动画中",
+                            message = "[朗读] 位置事件忽略(翻页动画中) pos:${position.chapterPosition}",
+                        )
+                        return@launch
+                    }
+                    if (shouldFollowAloudAdvance(
+                            update.previousPosition,
+                            position,
+                            update.switchConfirmed
+                        )
+                    ) {
+                        val displayPage = currentDisplayPageIndex()
+                        val aloudPage = ReadBook.curTextChapter
+                            ?.getPageIndexByCharIndex(position.chapterPosition)
+                        ReadBook.durChapterPos = position.chapterPosition
+                        // 跟随写后落库（异步），避免进程被杀丢失听书进度。
+                        // 不传 pageChanged=true：那会跳过书源 SAVE_READ 回调，
+                        // 而跟随写是持续行为，不能长期跳过。
+                        // 位置按字符推进，逐条落库等于每秒写数次库，故按换页或秒级间隔落库。
+                        val now = SystemClock.elapsedRealtime()
+                        if (aloudPage == null || aloudPage != displayPage ||
+                            now - lastAloudFollowSaveAt >= 1000L
+                        ) {
+                            lastAloudFollowSaveAt = now
+                            ReadBook.saveRead()
+                        }
+                        // 显示页未变时整页布局结果完全相同，无需重排：
+                        // 红字已由投影签名在段级变化时失效重绘。
+                        // 只有本次位置落到别的页（该翻页了）才重排。
+                        // 滚动模式下 resetPageOffset=true 会清零滚动偏移，
+                        // 导致每次朗读位置事件都把用户拽回页首，故恒传 false。
+                        if (aloudPage == null || aloudPage != displayPage) {
+                            upContent(resetPageOffset = false)
+                        }
+                        logAloudPositionEvent(
+                            key = "跟随写显示",
+                            message = "[朗读] 跟随写显示 pos:${position.chapterPosition}",
+                        )
+                    } else {
+                        // 不跟随是常态（用户把显示翻到别处），按秒级节流；
+                        // 逐条打印会让日志被这条淹没。
+                        logAloudPositionEvent(
+                            key = "不跟随",
+                            message = "[朗读] 不跟随 显示页与朗读出发页不同 " +
+                                "显示pos:${ReadBook.durChapterPos} 朗读pos:${position.chapterPosition}",
+                        )
+                    }
+                } finally {
                     updateReadAloudPanels()
-                    return@launch
                 }
-                if (!BaseReadAloudService.isPlay()) {
-                    AppLog.putDebug(
-                        "[朗读] 位置事件忽略(未播放) ch:${position.chapterIndex} pos:${position.chapterPosition}",
-                        module = LogModule.READ_ALOUD
-                    )
-                    return@launch
-                }
-                // 先失效当前页绘制缓存，同页推进时 upContent 的重绘才会重录红字
-                binding.readView.invalidateReadAloudHighlight()
-                if (ReadBook.curTextChapter?.chapter?.index != position.chapterIndex) {
-                    AppLog.putDebug(
-                        "[朗读] 位置事件忽略(跨章 显示章:${ReadBook.durChapterIndex} 朗读章:${position.chapterIndex})",
-                        module = LogModule.READ_ALOUD
-                    )
-                    return@launch
-                }
-                // 翻页动画期间不得跟随写。
-                // PageDelegate.onAnimStop() 才真正推进页面，动画期间 curPage 仍是旧页，
-                // 跟随判定会误判为「显示页 == 朗读出发页」从而中途改 durChapterPos
-                // 并重渲染，动画结束后 fillPage() 再推进一次 → 页面回跳/多跳。
-                // 红字投影已由上面的 invalidateReadAloudHighlight 失效缓存，不受影响。
-                //
-                // 判据必须区分「真动画」与「滚动跟手」：
-                // ScrollPageDelegate 的拖动 (onTouch) 只置 isRunning 不置 isStarted，
-                // 而 isStarted 仅由基类 startScroll()/fling() 置位（二者同时置 isRunning）。
-                // 若只用 isRunning，滚动模式（听书主用模式）下用户一拖动就会整段丢弃
-                // 位置事件；又因 stopScroll() 的 isRunning=false 在 post{} 内延迟执行，
-                // 松手后还会多丢一帧。丢弃期间引擎侧已前移 previousPosition，导致
-                // 跟随判定滞后累积。故滚动模式只在真正有滚动动画时才丢弃。
-                val delegate = binding.readView.pageDelegate
-                val inPageAnim = delegate != null && delegate.isRunning &&
-                    (delegate !is ScrollPageDelegate || delegate.isStarted)
-                if (inPageAnim) {
-                    AppLog.putDebug(
-                        "[朗读] 位置事件忽略(翻页动画中) pos:${position.chapterPosition}",
-                        module = LogModule.READ_ALOUD
-                    )
-                    // 面板刷新是本函数的统一收尾，早退也必须执行，否则丢弃期间面板状态停更。
-                    updateReadAloudPanels()
-                    return@launch
-                }
-                if (shouldFollowAloudAdvance(
-                        update.previousPosition,
-                        position,
-                        update.switchConfirmed
-                    )
-                ) {
-                    AppLog.putDebug(
-                        "[朗读] 跟随写显示 pos:${position.chapterPosition}",
-                        module = LogModule.READ_ALOUD
-                    )
-                    ReadBook.durChapterPos = position.chapterPosition
-                    // 跟随写后立即落库（异步），避免进程被杀丢失听书进度。
-                    // 不传 pageChanged=true：那会跳过书源 SAVE_READ 回调，
-                    // 而跟随写是持续行为，不能长期跳过。
-                    ReadBook.saveRead()
-                    // 滚动模式下 resetPageOffset=true 会清零滚动偏移，
-                    // 导致每次朗读位置事件都把用户拽回页首
-                    upContent(resetPageOffset = false)
-                } else {
-                    AppLog.putDebug(
-                        "[朗读] 不跟随 显示页与朗读出发页不同 显示pos:${ReadBook.durChapterPos} " +
-                            "朗读pos:${position.chapterPosition}",
-                        module = LogModule.READ_ALOUD
-                    )
-                }
-                updateReadAloudPanels()
             }
         }
         observeEvent<Boolean>(PreferKey.keepLight) {
