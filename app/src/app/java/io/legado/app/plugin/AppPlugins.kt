@@ -1,12 +1,23 @@
 package io.legado.app.plugin
 
 import android.content.Context
+import io.legado.app.help.tts.TtsVoicePreviewers
+import io.legado.app.plugin.doubao.DoubaoEnginePlugin
+import io.legado.app.plugin.doubao.DoubaoVoiceDirectory
+import io.legado.app.plugin.doubao.DoubaoVoicePreviewer
 
 /**
- * 开源构建（oss flavor）插件引导：不注册任何专有插件。
- * 主代码以空注册表正常运行：百度TTS不在引擎列表出现，恢复的 bdtts 配置会明示回退，
- * AI选角在发音人目录缺失时自动降级，插件代码完全不参与编译与打包。
+ * 自用构建（app flavor）插件引导。
+ *
+ * 注册「豆包语音（内置）」朗读引擎：合成走原生 WebSocket 实现（DoubaoTtsClient），
+ * 音色表内置 374 个，AI 选角通过发音人目录直接可读。
+ * 开源构建不编译本源集，主代码在空注册表下正常运行。
  */
 object AppPlugins {
-    fun init(context: Context) = Unit
+
+    fun init(context: Context) {
+        ReadAloudEngines.register(DoubaoEnginePlugin)
+        TtsVoiceDirectories.register(DoubaoVoiceDirectory)
+        TtsVoicePreviewers.register(DoubaoVoicePreviewer)
+    }
 }

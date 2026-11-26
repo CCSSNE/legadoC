@@ -75,6 +75,9 @@ object PreferKey {
     const val bdNarrationVoices = "bdNarrationVoices"
     const val bdDialogueVoices = "bdDialogueVoices"
     const val aiMultiVoice = "aiMultiVoice"
+    /** 朗读页角色标注：开启后朗读按分镜角色切换音色，并在阅读页展示角色名。 */
+    const val readAloudRoleMark = "readAloudRoleMark"
+
     const val aiNarratorSpeakerId = "aiNarratorSpeakerId"
     const val aiDialogueMaleSpeakerId = "aiDialogueMaleSpeakerId"
     const val aiDialogueFemaleSpeakerId = "aiDialogueFemaleSpeakerId"

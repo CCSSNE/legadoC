@@ -23,8 +23,13 @@ object StoryboardCacheStore {
         providerId: String,
         modelId: String
     ): String {
+        // contentHash 不参与 key：同一章从不同入口取到的正文只要有细微差异（标题空白、
+        // 分页符、替换规则处理先后），hash 就不同，结果同一章存出好几份缓存。
+        // 章节正文本身由「重新生成」按钮按需覆盖，不需要靠 hash 区分。
+        @Suppress("UNUSED_PARAMETER")
+        val ignoredHash = contentHash
         return MD5Utils.md5Encode(
-            listOf(bookUrl, chapterIndex, chapterTitle, contentHash, providerId, modelId)
+            listOf(bookUrl, chapterIndex, chapterTitle, providerId, modelId)
                 .joinToString("\n")
         )
     }
